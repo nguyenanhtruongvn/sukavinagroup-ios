@@ -1,4 +1,4 @@
-# Sukavina Portal for iOS
+# Sukavina User for iOS
 
 Ung dung iOS dong bo truc tiep voi https://sukavinagroup.net.
 
