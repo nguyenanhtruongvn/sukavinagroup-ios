@@ -1,0 +1,42 @@
+{
+  "name": "@org/web",
+  "version": "0.0.1",
+  "private": true,
+  "nx": {
+    "targets": {
+      "build": {
+        "executor": "@nx/vite:build",
+        "options": {
+          "outputPath": "dist/apps/web",
+          "configFile": "apps/web/vite.config.ts",
+          "tsConfig": "apps/web/tsconfig.app.json"
+        }
+      },
+      "serve": {
+        "executor": "@nx/vite:dev-server",
+        "defaultConfiguration": "development",
+        "options": {
+          "buildTarget": "web:build",
+          "configFile": "apps/web/vite.config.ts"
+        },
+        "configurations": {
+          "development": {
+            "buildTarget": "web:build:development",
+            "configFile": "apps/web/vite.config.ts"
+          },
+          "production": {
+            "buildTarget": "web:build:production",
+            "configFile": "apps/web/vite.config.ts"
+          }
+        }
+      },
+      "preview": {
+        "executor": "@nx/vite:preview",
+        "options": {
+          "buildTarget": "web:build",
+          "configFile": "apps/web/vite.config.ts"
+        }
+      }
+    }
+  }
+}
