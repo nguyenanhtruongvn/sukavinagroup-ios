@@ -547,8 +547,13 @@ private struct VerificationView: View {
     let context: VerificationContext
     @Environment(\.dismiss) private var dismiss
     @State private var code = ""
-    @State private var message = "Nhập mã gồm 6 chữ số đã gửi tới \(context.email)."
+    @State private var message: String
     @State private var isWorking = false
+
+    init(context: VerificationContext) {
+        self.context = context
+        _message = State(initialValue: "Nhập mã gồm 6 chữ số đã gửi tới \(context.email).")
+    }
 
     var body: some View {
         NavigationView {
