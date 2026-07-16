@@ -1,20 +1,30 @@
 import UIKit
 import SwiftUI
 import Security
+import UserNotifications
 
 @UIApplicationMain
-final class AppDelegate: UIResponder, UIApplicationDelegate {
+final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var window: UIWindow?
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = UIHostingController(rootView: SukavinaAppView())
         window.makeKeyAndVisible()
         self.window = window
         return true
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
     }
 }
 
@@ -200,11 +210,60 @@ private struct ContentItem: Decodable, Identifiable {
     let sortOrder: Int
     let published: Bool
     let createdAt: Date
+    let plainBody: String
+    let bodyChunks: [String]
+    let preview: String
 
-    var plainBody: String { body.htmlPlainText }
-    var preview: String {
-        let text = plainBody.trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.count > 145 ? String(text.prefix(145)) + "…" : text
+    private enum CodingKeys: String, CodingKey {
+        case id, page, key, title, body, sortOrder, published, createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        page = try values.decode(String.self, forKey: .page)
+        key = try values.decode(String.self, forKey: .key)
+        title = try values.decode(String.self, forKey: .title)
+        body = try values.decode(String.self, forKey: .body)
+        sortOrder = try values.decode(Int.self, forKey: .sortOrder)
+        published = try values.decode(Bool.self, forKey: .published)
+        createdAt = try values.decode(Date.self, forKey: .createdAt)
+
+        let text = body.safeHTMLText
+        plainBody = text
+        bodyChunks = text.readingChunks
+        preview = text.count > 145 ? String(text.prefix(145)) + "…" : text
+    }
+}
+
+private final class NotificationManager {
+    static let shared = NotificationManager()
+
+    func requestAuthorization() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+
+    func notifyNewArticles(_ items: [ContentItem]) {
+        for item in items.prefix(3) {
+            let content = UNMutableNotificationContent()
+            content.title = "Bài viết nội bộ mới"
+            content.body = item.title
+            content.sound = .default
+            content.badge = NSNumber(value: items.count)
+            content.userInfo = ["articleId": item.id]
+            let request = UNNotificationRequest(
+                identifier: "article-\(item.id)",
+                content: content,
+                trigger: nil
+            )
+            UNUserNotificationCenter.current().add(request)
+        }
+    }
+
+    func clearBadge() {
+        DispatchQueue.main.async {
+            UIApplication.shared.applicationIconBadgeNumber = 0
+        }
     }
 }
 
@@ -251,8 +310,11 @@ private final class SessionStore: ObservableObject {
     @Published var dashboard: Dashboard?
     @Published var errorMessage: String?
     @Published var isWorking = false
+    @Published var unreadCount = 0
 
     private(set) var token: String?
+    private var knownArticleIDs: Set<String> = []
+    private let knownArticlesKey = "known-native-article-ids"
 
     func restore() async {
         guard let savedToken = KeychainStore.loadToken() else {
@@ -260,6 +322,8 @@ private final class SessionStore: ObservableObject {
             return
         }
         token = savedToken
+        loadKnownArticles()
+        NotificationManager.shared.requestAuthorization()
         do {
             profile = try await APIClient.shared.request("auth/me", token: savedToken)
             state = .signedIn
@@ -280,6 +344,8 @@ private final class SessionStore: ObservableObject {
             )
             token = response.accessToken
             KeychainStore.save(token: response.accessToken)
+            loadKnownArticles()
+            NotificationManager.shared.requestAuthorization()
             profile = Profile(
                 id: "",
                 employeeCode: response.user.employeeCode,
@@ -301,7 +367,9 @@ private final class SessionStore: ObservableObject {
     func refreshDashboard() async {
         guard let token else { return }
         do {
-            dashboard = try await APIClient.shared.request("me/dashboard", token: token)
+            let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
+            processNewArticles(fresh.contentItems)
+            dashboard = fresh
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -312,7 +380,40 @@ private final class SessionStore: ObservableObject {
         token = nil
         profile = nil
         dashboard = nil
+        unreadCount = 0
         state = .signedOut
+    }
+
+    func markArticlesRead() {
+        guard let items = dashboard?.contentItems else { return }
+        knownArticleIDs.formUnion(items.map(\.id))
+        persistKnownArticles()
+        unreadCount = 0
+        NotificationManager.shared.clearBadge()
+    }
+
+    private func loadKnownArticles() {
+        let stored = UserDefaults.standard.stringArray(forKey: knownArticlesKey) ?? []
+        knownArticleIDs = Set(stored)
+    }
+
+    private func processNewArticles(_ items: [ContentItem]) {
+        if knownArticleIDs.isEmpty {
+            knownArticleIDs = Set(items.map(\.id))
+            persistKnownArticles()
+            return
+        }
+        let newItems = items.filter { !knownArticleIDs.contains($0.id) }
+        if !newItems.isEmpty {
+            unreadCount += newItems.count
+            NotificationManager.shared.notifyNewArticles(newItems)
+            knownArticleIDs.formUnion(newItems.map(\.id))
+            persistKnownArticles()
+        }
+    }
+
+    private func persistKnownArticles() {
+        UserDefaults.standard.set(Array(knownArticleIDs.prefix(300)), forKey: knownArticlesKey)
     }
 
     func deleteAccount(password: String) async -> Bool {
@@ -617,16 +718,31 @@ private struct VerificationView: View {
 }
 
 private struct EmployeePortalView: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some View {
         TabView {
             DashboardView()
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
             NewsView()
                 .tabItem { Label("Bài viết", systemImage: "newspaper.fill") }
+                .badge(session.unreadCount)
             ProfileView()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
         .accentColor(AppTheme.red)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                if scenePhase == .active { await session.refreshDashboard() }
+            }
+        }
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                Task { await session.refreshDashboard() }
+            }
+        }
     }
 }
 
@@ -751,6 +867,7 @@ private struct NewsView: View {
             .navigationTitle("Bài viết nội bộ")
             .searchable(text: $query, prompt: "Tìm bài viết")
             .refreshable { await session.refreshDashboard() }
+            .onAppear { session.markArticlesRead() }
         }
         .navigationViewStyle(.stack)
     }
@@ -785,17 +902,20 @@ private struct ArticleDetailView: View {
     let item: ContentItem
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: 18) {
                 Text(item.createdAt.formatted(date: .long, time: .shortened))
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppTheme.red)
                 Text(item.title)
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                 Divider().overlay(Color.white.opacity(0.12))
-                Text(item.plainBody)
-                    .font(.body)
-                    .lineSpacing(7)
-                    .textSelection(.enabled)
+                ForEach(Array(item.bodyChunks.enumerated()), id: \.offset) { _, chunk in
+                    Text(chunk)
+                        .font(.body)
+                        .lineSpacing(7)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
             .padding(22)
         }
@@ -926,17 +1046,80 @@ private struct NativeSecureField: View {
 }
 
 private extension String {
-    var htmlPlainText: String {
-        guard let data = data(using: .utf8),
-              let attributed = try? NSAttributedString(
-                data: data,
-                options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue],
-                documentAttributes: nil
-              ) else {
-            return replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+    var safeHTMLText: String {
+        let maximumCharacters = 750_000
+        var output = String()
+        output.reserveCapacity(Swift.min(count, maximumCharacters))
+        var tag = String()
+        var isInsideTag = false
+        var written = 0
+
+        for character in self {
+            if written >= maximumCharacters {
+                output.append("\n\n[Nội dung đã được rút gọn để bảo đảm ứng dụng hoạt động ổn định.]")
+                break
+            }
+            if character == "<" {
+                isInsideTag = true
+                tag.removeAll(keepingCapacity: true)
+                continue
+            }
+            if isInsideTag {
+                if character == ">" {
+                    isInsideTag = false
+                    let name = tag.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                    if name.hasPrefix("br") || name.hasPrefix("/p") || name.hasPrefix("/div") ||
+                        name.hasPrefix("/li") || name.hasPrefix("/h") || name.hasPrefix("hr") {
+                        if output.last != "\n" { output.append("\n") }
+                    } else if name.hasPrefix("li") {
+                        if output.last != "\n" { output.append("\n") }
+                        output.append("• ")
+                    }
+                } else if tag.count < 80 {
+                    tag.append(character)
+                }
+                continue
+            }
+            output.append(character)
+            written += 1
         }
-        return attributed.string
-            .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let decoded = output
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        var lines: [String] = []
+        var previousWasEmpty = false
+        for rawLine in decoded.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty {
+                if !previousWasEmpty && !lines.isEmpty { lines.append("") }
+                previousWasEmpty = true
+            } else {
+                lines.append(line)
+                previousWasEmpty = false
+            }
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var readingChunks: [String] {
+        let maximumChunkLength = 1_800
+        var chunks: [String] = []
+        for paragraph in components(separatedBy: "\n\n") where !paragraph.isEmpty {
+            var remainder = paragraph[...]
+            while remainder.count > maximumChunkLength {
+                let tentativeEnd = remainder.index(remainder.startIndex, offsetBy: maximumChunkLength)
+                let split = remainder[..<tentativeEnd].lastIndex(of: " ") ?? tentativeEnd
+                chunks.append(String(remainder[..<split]))
+                remainder = remainder[split...].drop(while: { $0 == " " })
+            }
+            if !remainder.isEmpty { chunks.append(String(remainder)) }
+        }
+        return chunks.isEmpty ? [self] : chunks
     }
 }
