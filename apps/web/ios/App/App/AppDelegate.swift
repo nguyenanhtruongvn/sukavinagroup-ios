@@ -325,13 +325,10 @@ private enum HTMLArticleParser {
 private final class NotificationManager {
     static let shared = NotificationManager()
 
-    func requestAuthorization() async -> Bool {
-        (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-    }
-
-    func isAuthorized() async -> Bool {
+    func requestAuthorizationIfNeeded() async {
         let settings = await UNUserNotificationCenter.current().notificationSettings()
-        return settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
+        guard settings.authorizationStatus == .notDetermined else { return }
+        _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
     }
 
     func notifyNewArticles(_ items: [ContentItem]) {
@@ -402,7 +399,6 @@ private final class SessionStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var isWorking = false
     @Published var unreadCount = 0
-    @Published var notificationsEnabled = false
     @Published var realTimeConnected = false
 
     private(set) var token: String?
@@ -420,7 +416,7 @@ private final class SessionStore: ObservableObject {
         do {
             profile = try await APIClient.shared.request("auth/me", token: savedToken)
             state = .signedIn
-            await requestNotificationPermission()
+            await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             startRealTimeUpdates()
         } catch {
@@ -450,7 +446,7 @@ private final class SessionStore: ObservableObject {
                 protected: response.user.protected
             )
             state = .signedIn
-            await requestNotificationPermission()
+            await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             startRealTimeUpdates()
             return true
@@ -481,20 +477,6 @@ private final class SessionStore: ObservableObject {
         dashboard = nil
         unreadCount = 0
         state = .signedOut
-    }
-
-    func requestNotificationPermission() async {
-        let allowed = await NotificationManager.shared.requestAuthorization()
-        notificationsEnabled = allowed ? true : await NotificationManager.shared.isAuthorized()
-    }
-
-    func refreshNotificationPermission() async {
-        notificationsEnabled = await NotificationManager.shared.isAuthorized()
-    }
-
-    func openNotificationSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
     }
 
     private func startRealTimeUpdates() {
@@ -878,7 +860,6 @@ private struct EmployeePortalView: View {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task {
-                    await session.refreshNotificationPermission()
                     await session.refreshDashboard()
                 }
             }
@@ -893,10 +874,6 @@ private struct DashboardView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    if !session.notificationsEnabled {
-                        NotificationPermissionCard()
-                    }
-
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Xin chào,")
                             .foregroundColor(AppTheme.muted)
@@ -947,44 +924,6 @@ private struct DashboardView: View {
     private func shortStatus(_ value: String?) -> String {
         let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return text.isEmpty ? "--" : text
-    }
-}
-
-private struct NotificationPermissionCard: View {
-    @EnvironmentObject private var session: SessionStore
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: "bell.badge.fill")
-                    .font(.title2)
-                    .foregroundColor(AppTheme.red)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Bật thông báo bài viết mới").font(.headline)
-                    Text("Cho phép thiết bị hiển thị banner, âm thanh và huy hiệu.")
-                        .font(.caption)
-                        .foregroundColor(AppTheme.muted)
-                }
-            }
-            HStack {
-                Button("Cho phép") {
-                    Task { await session.requestNotificationPermission() }
-                }
-                .font(.subheadline.bold())
-                .padding(.horizontal, 16)
-                .frame(minHeight: 42)
-                .background(AppTheme.red)
-                .foregroundColor(.white)
-                .clipShape(Capsule())
-
-                Button("Mở Cài đặt") { session.openNotificationSettings() }
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
-            }
-        }
-        .padding(16)
-        .background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
