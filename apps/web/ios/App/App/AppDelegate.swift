@@ -64,7 +64,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UIGestureRecognizerDelega
         hasConfiguredPortal = true
         portalWebView = webView
         webView.allowsBackForwardNavigationGestures = false
-        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.contentInsetAdjustmentBehavior = .automatic
         webView.scrollView.keyboardDismissMode = .interactive
         webView.scrollView.alwaysBounceHorizontal = false
         webView.scrollView.showsHorizontalScrollIndicator = false
@@ -115,7 +115,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UIGestureRecognizerDelega
         viewport.name = 'viewport';
         document.head.appendChild(viewport);
       }
-      viewport.content = 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover';
+      viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
 
       if (document.getElementById('sukavina-ios-app-style')) return;
       const style = document.createElement('style');
@@ -129,11 +129,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UIGestureRecognizerDelega
         .sukavina-ios-app body {
           min-height: 100dvh;
           margin: 0;
-          padding-top: env(safe-area-inset-top);
-          padding-right: env(safe-area-inset-right);
-          padding-bottom: env(safe-area-inset-bottom);
-          padding-left: env(safe-area-inset-left);
-          overflow-x: clip;
+          max-width: 100vw;
+          overflow-x: hidden;
           -webkit-tap-highlight-color: transparent;
         }
         .sukavina-ios-app *,

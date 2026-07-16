@@ -14,7 +14,7 @@ const config: CapacitorConfig = {
     contentInset: 'automatic',
     preferredContentMode: 'mobile',
     scheme: 'Sukavina',
-    limitsNavigationsToAppBoundDomains: true,
+    limitsNavigationsToAppBoundDomains: false,
     backgroundColor: '#121116',
   },
   plugins: {
