@@ -1,167 +1,937 @@
 import UIKit
-import Capacitor
-import WebKit
+import SwiftUI
+import Security
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate, UIGestureRecognizerDelegate {
-
+final class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
-    private weak var portalWebView: WKWebView?
-    private var hasConfiguredPortal = false
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        DispatchQueue.main.async { [weak self] in
-            self?.configurePortalExperience()
-        }
+        let window = UIWindow(frame: UIScreen.main.bounds)
+        window.rootViewController = UIHostingController(rootView: SukavinaAppView())
+        window.makeKeyAndVisible()
+        self.window = window
         return true
     }
+}
 
-    func applicationWillResignActive(_ application: UIApplication) {}
+private enum AppTheme {
+    static let red = Color(red: 0.91, green: 0.12, blue: 0.16)
+    static let deepRed = Color(red: 0.45, green: 0.04, blue: 0.07)
+    static let ink = Color(red: 0.07, green: 0.07, blue: 0.09)
+    static let card = Color(red: 0.12, green: 0.12, blue: 0.15)
+    static let muted = Color(red: 0.66, green: 0.65, blue: 0.68)
+}
 
-    func applicationDidEnterBackground(_ application: UIApplication) {}
+private struct APIErrorPayload: Decodable {
+    let message: APIMessage
+}
 
-    func applicationWillEnterForeground(_ application: UIApplication) {}
+private enum APIMessage: Decodable {
+    case text(String)
+    case list([String])
 
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        configurePortalExperience()
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) {
+            self = .text(value)
+        } else {
+            self = .list(try container.decode([String].self))
+        }
     }
 
-    func applicationWillTerminate(_ application: UIApplication) {}
+    var text: String {
+        switch self {
+        case .text(let value): return value
+        case .list(let values): return values.joined(separator: "\n")
+        }
+    }
+}
 
-    func application(
-        _ app: UIApplication,
-        open url: URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        ApplicationDelegateProxy.shared.application(app, open: url, options: options)
+private enum NetworkError: LocalizedError {
+    case invalidResponse
+    case server(String)
+    case offline
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse: return "Máy chủ trả về dữ liệu không hợp lệ."
+        case .server(let message): return message
+        case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
+        }
+    }
+}
+
+private final class APIClient {
+    static let shared = APIClient()
+    private let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
+
+    func request<Response: Decodable, Body: Encodable>(
+        _ path: String,
+        method: String = "GET",
+        token: String? = nil,
+        body: Body? = nil
+    ) async throws -> Response {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = method
+        request.timeoutInterval = 25
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(body)
+        }
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw NetworkError.offline
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw NetworkError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let payload = try? decoder.decode(APIErrorPayload.self, from: data)
+            throw NetworkError.server(payload?.message.text ?? "Yêu cầu không thành công (\(http.statusCode)).")
+        }
+        do {
+            return try decoder.decode(Response.self, from: data)
+        } catch {
+            throw NetworkError.invalidResponse
+        }
     }
 
-    func application(
-        _ application: UIApplication,
-        continue userActivity: NSUserActivity,
-        restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
-    ) -> Bool {
-        ApplicationDelegateProxy.shared.application(
-            application,
-            continue: userActivity,
-            restorationHandler: restorationHandler
-        )
+    func request<Response: Decodable>(
+        _ path: String,
+        method: String = "GET",
+        token: String? = nil
+    ) async throws -> Response {
+        try await request(path, method: method, token: token, body: Optional<EmptyBody>.none)
+    }
+}
+
+private struct EmptyBody: Encodable {}
+
+private enum KeychainStore {
+    private static let service = "net.sukavinagroup.user"
+    private static let account = "access-token"
+
+    static func save(token: String) {
+        let data = Data(token.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+        var item = query
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        SecItemAdd(item as CFDictionary, nil)
     }
 
-    private func configurePortalExperience() {
-        guard !hasConfiguredPortal else { return }
-        guard let bridgeController = window?.rootViewController as? CAPBridgeViewController,
-              let webView = bridgeController.webView else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                self?.configurePortalExperience()
-            }
+    static func loadToken() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func clear() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
+private struct UserSummary: Codable {
+    let employeeCode: String
+    let name: String
+    let role: String
+    let accountType: String
+    let permissions: [String]
+    let protected: Bool
+}
+
+private struct LoginResponse: Decodable {
+    let accessToken: String
+    let user: UserSummary
+}
+
+private struct Profile: Decodable {
+    let id: String
+    let employeeCode: String
+    let name: String
+    let role: String
+    let accountType: String
+    let permissions: [String]
+    let protected: Bool
+}
+
+private struct ContentItem: Decodable, Identifiable {
+    let id: String
+    let page: String
+    let key: String
+    let title: String
+    let body: String
+    let sortOrder: Int
+    let published: Bool
+    let createdAt: Date
+
+    var plainBody: String { body.htmlPlainText }
+    var preview: String {
+        let text = plainBody.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.count > 145 ? String(text.prefix(145)) + "…" : text
+    }
+}
+
+private struct Dashboard: Decodable {
+    let employeeCode: String
+    let fullName: String
+    let role: String
+    let remainingLeaveDays: Int
+    let attendanceStatus: String
+    let payrollStatus: String
+    let name: String
+    let contentItems: [ContentItem]
+}
+
+private struct LoginBody: Encodable { let loginId: String; let password: String }
+private struct RegisterBody: Encodable {
+    let employeeCode: String
+    let fullName: String
+    let phoneNumber: String?
+    let gmailEmail: String
+    let password: String
+}
+private struct VerifyBody: Encodable { let employeeCode: String; let gmailEmail: String; let code: String }
+private struct ResendBody: Encodable { let employeeCode: String; let gmailEmail: String }
+private struct DeleteAccountBody: Encodable { let password: String; let confirmation: String }
+private struct MessageResponse: Decodable { let message: String }
+private struct RegistrationResponse: Decodable {
+    let id: String
+    let employeeCode: String
+    let message: String
+    let requiresVerification: Bool
+}
+
+@MainActor
+private final class SessionStore: ObservableObject {
+    enum State {
+        case restoring
+        case signedOut
+        case signedIn
+    }
+
+    @Published var state: State = .restoring
+    @Published var profile: Profile?
+    @Published var dashboard: Dashboard?
+    @Published var errorMessage: String?
+    @Published var isWorking = false
+
+    private(set) var token: String?
+
+    func restore() async {
+        guard let savedToken = KeychainStore.loadToken() else {
+            state = .signedOut
             return
         }
-
-        hasConfiguredPortal = true
-        portalWebView = webView
-        webView.allowsBackForwardNavigationGestures = false
-        webView.scrollView.contentInsetAdjustmentBehavior = .automatic
-        webView.scrollView.keyboardDismissMode = .interactive
-        webView.scrollView.alwaysBounceHorizontal = false
-        webView.scrollView.showsHorizontalScrollIndicator = false
-
-        let appModeScript = WKUserScript(
-            source: Self.appModeJavaScript,
-            injectionTime: .atDocumentEnd,
-            forMainFrameOnly: true
-        )
-        webView.configuration.userContentController.addUserScript(appModeScript)
-        webView.evaluateJavaScript(Self.appModeJavaScript)
-
-        let backGesture = UIScreenEdgePanGestureRecognizer(
-            target: self,
-            action: #selector(handleBackGesture(_:))
-        )
-        backGesture.edges = .left
-        backGesture.delegate = self
-        webView.addGestureRecognizer(backGesture)
+        token = savedToken
+        do {
+            profile = try await APIClient.shared.request("auth/me", token: savedToken)
+            state = .signedIn
+            await refreshDashboard()
+        } catch {
+            signOut()
+        }
     }
 
-    @objc private func handleBackGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
-        guard gesture.state == .ended,
-              gesture.translation(in: gesture.view).x > 70,
-              gesture.velocity(in: gesture.view).x > 0,
-              let webView = portalWebView,
-              webView.canGoBack else { return }
-
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        webView.goBack()
+    func signIn(loginId: String, password: String) async -> Bool {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let response: LoginResponse = try await APIClient.shared.request(
+                "auth/login",
+                method: "POST",
+                body: LoginBody(loginId: loginId, password: password)
+            )
+            token = response.accessToken
+            KeychainStore.save(token: response.accessToken)
+            profile = Profile(
+                id: "",
+                employeeCode: response.user.employeeCode,
+                name: response.user.name,
+                role: response.user.role,
+                accountType: response.user.accountType,
+                permissions: response.user.permissions,
+                protected: response.user.protected
+            )
+            state = .signedIn
+            await refreshDashboard()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        true
+    func refreshDashboard() async {
+        guard let token else { return }
+        do {
+            dashboard = try await APIClient.shared.request("me/dashboard", token: token)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
-    private static let appModeJavaScript = #"""
-    (() => {
-      if (!document.documentElement) return;
-      document.documentElement.classList.add('sukavina-ios-app');
+    func signOut() {
+        KeychainStore.clear()
+        token = nil
+        profile = nil
+        dashboard = nil
+        state = .signedOut
+    }
 
-      let viewport = document.querySelector('meta[name="viewport"]');
-      if (!viewport) {
-        viewport = document.createElement('meta');
-        viewport.name = 'viewport';
-        document.head.appendChild(viewport);
-      }
-      viewport.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
+    func deleteAccount(password: String) async -> Bool {
+        guard let token else { return false }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let _: MessageResponse = try await APIClient.shared.request(
+                "auth/me",
+                method: "DELETE",
+                token: token,
+                body: DeleteAccountBody(password: password, confirmation: "XOA TAI KHOAN")
+            )
+            signOut()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+}
 
-      if (document.getElementById('sukavina-ios-app-style')) return;
-      const style = document.createElement('style');
-      style.id = 'sukavina-ios-app-style';
-      style.textContent = `
-        html.sukavina-ios-app {
-          -webkit-text-size-adjust: 100%;
-          background: #121116;
-          overscroll-behavior-x: none;
+private struct SukavinaAppView: View {
+    @StateObject private var session = SessionStore()
+
+    var body: some View {
+        Group {
+            switch session.state {
+            case .restoring:
+                NativeLaunchView()
+            case .signedOut:
+                AuthenticationView()
+                    .environmentObject(session)
+            case .signedIn:
+                EmployeePortalView()
+                    .environmentObject(session)
+            }
         }
-        .sukavina-ios-app body {
-          min-height: 100dvh;
-          margin: 0;
-          max-width: 100vw;
-          overflow-x: hidden;
-          -webkit-tap-highlight-color: transparent;
+        .preferredColorScheme(.dark)
+        .task { await session.restore() }
+        .alert("Sukavina", isPresented: Binding(
+            get: { session.errorMessage != nil },
+            set: { if !$0 { session.errorMessage = nil } }
+        )) {
+            Button("Đóng", role: .cancel) {}
+        } message: {
+            Text(session.errorMessage ?? "")
         }
-        .sukavina-ios-app *,
-        .sukavina-ios-app *::before,
-        .sukavina-ios-app *::after { box-sizing: border-box; }
-        .sukavina-ios-app img,
-        .sukavina-ios-app video,
-        .sukavina-ios-app iframe { max-width: 100%; height: auto; }
-        .sukavina-ios-app input,
-        .sukavina-ios-app select,
-        .sukavina-ios-app textarea { font-size: 16px !important; }
-        .sukavina-ios-app button,
-        .sukavina-ios-app [role='button'],
-        .sukavina-ios-app a { touch-action: manipulation; }
-        .sukavina-ios-app button,
-        .sukavina-ios-app [role='button'] { min-height: 44px; }
-        .sukavina-ios-app ::-webkit-scrollbar { width: 0; height: 0; }
-        @media (max-width: 640px) {
-          .sukavina-ios-app table {
-            display: block;
-            max-width: 100%;
-            overflow-x: auto;
-          }
-          .sukavina-ios-app main,
-          .sukavina-ios-app [role='main'] {
-            width: 100%;
-            max-width: 100%;
-          }
+    }
+}
+
+private struct NativeLaunchView: View {
+    var body: some View {
+        ZStack {
+            AppTheme.ink.ignoresSafeArea()
+            VStack(spacing: 20) {
+                Image("AppIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 150, height: 150)
+                    .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+                ProgressView().tint(AppTheme.red)
+                Text("SUKAVINA USER")
+                    .font(.caption.weight(.semibold))
+                    .tracking(4)
+                    .foregroundColor(AppTheme.muted)
+            }
         }
-      `;
-      document.head.appendChild(style);
-    })();
-    """#
+    }
+}
+
+private struct AuthenticationView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var mode = 0
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                LinearGradient(
+                    colors: [AppTheme.ink, AppTheme.deepRed.opacity(0.72), AppTheme.ink],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ).ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("SUKAVINA GROUP")
+                                .font(.caption.weight(.bold))
+                                .tracking(3.5)
+                                .foregroundColor(.red.opacity(0.9))
+                            Text(mode == 0 ? "Chào mừng trở lại" : "Tạo tài khoản nhân viên")
+                                .font(.system(size: 34, weight: .bold, design: .rounded))
+                            Text(mode == 0
+                                 ? "Thông tin công việc của bạn, trong một ứng dụng native gọn gàng."
+                                 : "Xác minh Gmail và chờ quản trị viên duyệt trước khi đăng nhập.")
+                                .foregroundColor(AppTheme.muted)
+                        }
+
+                        Picker("Chế độ", selection: $mode) {
+                            Text("Đăng nhập").tag(0)
+                            Text("Đăng ký").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+
+                        Group {
+                            if mode == 0 { LoginForm() }
+                            else { RegistrationForm() }
+                        }
+                        .padding(20)
+                        .background(AppTheme.card.opacity(0.96))
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(Color.white.opacity(0.08))
+                        )
+                    }
+                    .padding(22)
+                }
+            }
+            .navigationBarHidden(true)
+        }
+        .navigationViewStyle(.stack)
+    }
+}
+
+private struct LoginForm: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var loginId = ""
+    @State private var password = ""
+
+    var body: some View {
+        VStack(spacing: 16) {
+            NativeField(title: "Mã nhân viên, Gmail hoặc số điện thoại", text: $loginId, icon: "person.text.rectangle")
+            NativeSecureField(title: "Mật khẩu", text: $password)
+            Button {
+                Task { _ = await session.signIn(loginId: loginId, password: password) }
+            } label: {
+                HStack {
+                    if session.isWorking { ProgressView().tint(.white) }
+                    Text("Đăng nhập").fontWeight(.bold)
+                    Spacer()
+                    Image(systemName: "arrow.right")
+                }
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity, minHeight: 54)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.white)
+            .background(AppTheme.red)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .disabled(loginId.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isWorking)
+            .opacity(loginId.isEmpty || password.isEmpty ? 0.55 : 1)
+        }
+    }
+}
+
+private struct RegistrationForm: View {
+    @State private var employeeCode = ""
+    @State private var fullName = ""
+    @State private var phone = ""
+    @State private var email = ""
+    @State private var password = ""
+    @State private var isWorking = false
+    @State private var verification: VerificationContext?
+    @State private var message: String?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            NativeField(title: "Mã nhân viên", text: $employeeCode, icon: "number")
+            NativeField(title: "Họ và tên", text: $fullName, icon: "person")
+            NativeField(title: "Số điện thoại (không bắt buộc)", text: $phone, icon: "phone", keyboard: .phonePad)
+            NativeField(title: "Địa chỉ Gmail", text: $email, icon: "envelope", keyboard: .emailAddress)
+            NativeSecureField(title: "Mật khẩu từ 6 ký tự", text: $password)
+
+            Button("Đăng ký và nhận mã") {
+                Task { await register() }
+            }
+            .font(.headline)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .foregroundColor(.white)
+            .background(AppTheme.red)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .disabled(!isValid || isWorking)
+            .opacity(isValid ? 1 : 0.55)
+
+            if let message {
+                Text(message).font(.footnote).foregroundColor(AppTheme.muted)
+            }
+        }
+        .sheet(item: $verification) { context in
+            VerificationView(context: context)
+        }
+    }
+
+    private var isValid: Bool {
+        !employeeCode.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !fullName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        email.lowercased().hasSuffix("@gmail.com") && password.count >= 6
+    }
+
+    private func register() async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let result: RegistrationResponse = try await APIClient.shared.request(
+                "auth/register",
+                method: "POST",
+                body: RegisterBody(
+                    employeeCode: employeeCode,
+                    fullName: fullName,
+                    phoneNumber: phone.isEmpty ? nil : phone,
+                    gmailEmail: email,
+                    password: password
+                )
+            )
+            message = result.message
+            verification = VerificationContext(employeeCode: result.employeeCode, email: email.lowercased())
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+}
+
+private struct VerificationContext: Identifiable {
+    let employeeCode: String
+    let email: String
+    var id: String { employeeCode + email }
+}
+
+private struct VerificationView: View {
+    let context: VerificationContext
+    @Environment(\.dismiss) private var dismiss
+    @State private var code = ""
+    @State private var message = "Nhập mã gồm 6 chữ số đã gửi tới \(context.email)."
+    @State private var isWorking = false
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Image(systemName: "envelope.badge.shield.half.filled")
+                    .font(.system(size: 48))
+                    .foregroundColor(AppTheme.red)
+                Text("Xác minh Gmail").font(.title.bold())
+                Text(message).multilineTextAlignment(.center).foregroundColor(AppTheme.muted)
+                TextField("000000", text: $code)
+                    .keyboardType(.numberPad)
+                    .multilineTextAlignment(.center)
+                    .font(.system(size: 30, weight: .bold, design: .monospaced))
+                    .padding()
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                Button("Xác minh") { Task { await verify() } }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(AppTheme.red)
+                    .foregroundColor(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .disabled(code.count != 6 || isWorking)
+                Button("Gửi lại mã") { Task { await resend() } }
+                    .foregroundColor(.white)
+                Spacer()
+            }
+            .padding(24)
+            .background(AppTheme.ink.ignoresSafeArea())
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func verify() async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let result: MessageResponse = try await APIClient.shared.request(
+                "auth/verify-email",
+                method: "POST",
+                body: VerifyBody(employeeCode: context.employeeCode, gmailEmail: context.email, code: code)
+            )
+            message = result.message
+            code = ""
+        } catch { message = error.localizedDescription }
+    }
+
+    private func resend() async {
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let result: MessageResponse = try await APIClient.shared.request(
+                "auth/resend-verification",
+                method: "POST",
+                body: ResendBody(employeeCode: context.employeeCode, gmailEmail: context.email)
+            )
+            message = result.message
+        } catch { message = error.localizedDescription }
+    }
+}
+
+private struct EmployeePortalView: View {
+    var body: some View {
+        TabView {
+            DashboardView()
+                .tabItem { Label("Trang chủ", systemImage: "house.fill") }
+            NewsView()
+                .tabItem { Label("Bài viết", systemImage: "newspaper.fill") }
+            ProfileView()
+                .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
+        }
+        .accentColor(AppTheme.red)
+    }
+}
+
+private struct DashboardView: View {
+    @EnvironmentObject private var session: SessionStore
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Xin chào,")
+                            .foregroundColor(AppTheme.muted)
+                        Text(session.dashboard?.name ?? session.profile?.name ?? "Nhân viên")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                        Text(session.dashboard?.employeeCode ?? session.profile?.employeeCode ?? "")
+                            .font(.subheadline.monospaced())
+                            .foregroundColor(AppTheme.red)
+                    }
+
+                    HStack(spacing: 12) {
+                        MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép", icon: "calendar.badge.clock")
+                        MetricCard(value: shortStatus(session.dashboard?.attendanceStatus), label: "Chấm công", icon: "checkmark.circle")
+                    }
+                    MetricWideCard(status: session.dashboard?.payrollStatus ?? "Chưa cập nhật")
+
+                    HStack {
+                        Text("Mới nhất").font(.title2.bold())
+                        Spacer()
+                        NavigationLink("Xem tất cả") { NewsView() }.foregroundColor(AppTheme.red)
+                    }
+
+                    ForEach(Array((session.dashboard?.contentItems ?? []).prefix(3))) { item in
+                        NavigationLink(destination: ArticleDetailView(item: item)) {
+                            ArticleRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(20)
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Sukavina")
+            .refreshable { await session.refreshDashboard() }
+        }
+        .navigationViewStyle(.stack)
+    }
+
+    private func shortStatus(_ value: String?) -> String {
+        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? "--" : text
+    }
+}
+
+private struct MetricCard: View {
+    let value: String
+    let label: String
+    let icon: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Image(systemName: icon).foregroundColor(AppTheme.red)
+            Text(value).font(.title2.bold()).lineLimit(1).minimumScaleFactor(0.65)
+            Text(label).font(.caption).foregroundColor(AppTheme.muted)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private struct MetricWideCard: View {
+    let status: String
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "banknote.fill")
+                .font(.title2)
+                .foregroundColor(AppTheme.red)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Bảng lương").font(.caption).foregroundColor(AppTheme.muted)
+                Text(status.isEmpty ? "Chưa cập nhật" : status).font(.headline)
+            }
+            Spacer()
+        }
+        .padding(18)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private struct NewsView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var query = ""
+
+    private var items: [ContentItem] {
+        let all = session.dashboard?.contentItems ?? []
+        guard !query.isEmpty else { return all }
+        return all.filter { $0.title.localizedCaseInsensitiveContains(query) || $0.plainBody.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                LazyVStack(spacing: 14) {
+                    ForEach(items) { item in
+                        NavigationLink(destination: ArticleDetailView(item: item)) {
+                            ArticleRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if items.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "newspaper").font(.largeTitle).foregroundColor(AppTheme.muted)
+                            Text("Chưa có bài viết phù hợp").foregroundColor(AppTheme.muted)
+                        }.padding(.top, 80)
+                    }
+                }
+                .padding(18)
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Bài viết nội bộ")
+            .searchable(text: $query, prompt: "Tìm bài viết")
+            .refreshable { await session.refreshDashboard() }
+        }
+        .navigationViewStyle(.stack)
+    }
+}
+
+private struct ArticleRow: View {
+    let item: ContentItem
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                Text(item.createdAt.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppTheme.red)
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundColor(AppTheme.muted)
+            }
+            Text(item.title).font(.headline).multilineTextAlignment(.leading)
+            Text(item.preview)
+                .font(.subheadline)
+                .foregroundColor(AppTheme.muted)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private struct ArticleDetailView: View {
+    let item: ContentItem
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text(item.createdAt.formatted(date: .long, time: .shortened))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppTheme.red)
+                Text(item.title)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Divider().overlay(Color.white.opacity(0.12))
+                Text(item.plainBody)
+                    .font(.body)
+                    .lineSpacing(7)
+                    .textSelection(.enabled)
+            }
+            .padding(22)
+        }
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct ProfileView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var showDelete = false
+    @State private var password = ""
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 22) {
+                    ZStack {
+                        Circle().fill(AppTheme.red.opacity(0.18)).frame(width: 96, height: 96)
+                        Text(initials).font(.title.bold()).foregroundColor(AppTheme.red)
+                    }
+                    Text(session.profile?.name ?? "Nhân viên").font(.title2.bold())
+                    Text(session.profile?.employeeCode ?? "").font(.subheadline.monospaced()).foregroundColor(AppTheme.muted)
+
+                    VStack(spacing: 0) {
+                        ProfileLine(label: "Vai trò", value: session.profile?.role ?? "")
+                        Divider().padding(.leading, 18)
+                        ProfileLine(label: "Loại tài khoản", value: accountType)
+                    }
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                    Button("Đăng xuất", role: .destructive) { session.signOut() }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(AppTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                    if session.profile?.protected != true && session.profile?.accountType != "SUPER_ADMIN" {
+                        Button("Yêu cầu xóa tài khoản", role: .destructive) { showDelete = true }
+                            .font(.footnote.weight(.semibold))
+                    }
+                }
+                .padding(22)
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Tài khoản")
+            .alert("Xóa tài khoản vĩnh viễn?", isPresented: $showDelete) {
+                SecureField("Mật khẩu", text: $password)
+                Button("Hủy", role: .cancel) { password = "" }
+                Button("Xóa vĩnh viễn", role: .destructive) {
+                    Task { if await session.deleteAccount(password: password) { password = "" } }
+                }
+            } message: {
+                Text("Toàn bộ tài khoản và dữ liệu cá nhân sẽ bị xóa. Hành động này không thể hoàn tác.")
+            }
+        }
+        .navigationViewStyle(.stack)
+    }
+
+    private var initials: String {
+        let words = (session.profile?.name ?? "NV").split(separator: " ")
+        return words.suffix(2).compactMap(\.first).map(String.init).joined().uppercased()
+    }
+    private var accountType: String {
+        switch session.profile?.accountType {
+        case "SUPER_ADMIN": return "Quản trị viên tổng"
+        case "ADMIN": return "Quản trị viên"
+        default: return "Nhân viên"
+        }
+    }
+}
+
+private struct ProfileLine: View {
+    let label: String
+    let value: String
+    var body: some View {
+        HStack {
+            Text(label).foregroundColor(AppTheme.muted)
+            Spacer()
+            Text(value).fontWeight(.medium)
+        }.padding(18)
+    }
+}
+
+private struct NativeField: View {
+    let title: String
+    @Binding var text: String
+    let icon: String
+    var keyboard: UIKeyboardType = .default
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).frame(width: 22).foregroundColor(AppTheme.muted)
+            TextField(title, text: $text)
+                .keyboardType(keyboard)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 52)
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+}
+
+private struct NativeSecureField: View {
+    let title: String
+    @Binding var text: String
+    @State private var visible = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock").frame(width: 22).foregroundColor(AppTheme.muted)
+            Group {
+                if visible { TextField(title, text: $text) }
+                else { SecureField(title, text: $text) }
+            }
+            Button { visible.toggle() } label: {
+                Image(systemName: visible ? "eye.slash" : "eye")
+            }.foregroundColor(AppTheme.muted)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 52)
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+    }
+}
+
+private extension String {
+    var htmlPlainText: String {
+        guard let data = data(using: .utf8),
+              let attributed = try? NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.html, .characterEncoding: String.Encoding.utf8.rawValue],
+                documentAttributes: nil
+              ) else {
+            return replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        }
+        return attributed.string
+            .replacingOccurrences(of: "\n{3,}", with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 }

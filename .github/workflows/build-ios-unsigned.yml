@@ -6,9 +6,6 @@ on:
     branches: [main, master]
     paths:
       - 'apps/web/ios/**'
-      - 'apps/web/capacitor.config.ts'
-      - 'apps/web/package.json'
-      - 'pnpm-lock.yaml'
       - '.github/workflows/build-ios-unsigned.yml'
 
 permissions:
@@ -22,16 +19,6 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install Capacitor dependencies
-        run: |
-          corepack enable
-          pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build iOS app without code signing
         run: |
