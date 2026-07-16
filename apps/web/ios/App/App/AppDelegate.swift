@@ -399,7 +399,6 @@ private final class SessionStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var isWorking = false
     @Published var unreadCount = 0
-    @Published var realTimeConnected = false
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
@@ -470,7 +469,6 @@ private final class SessionStore: ObservableObject {
     func signOut() {
         eventStreamTask?.cancel()
         eventStreamTask = nil
-        realTimeConnected = false
         KeychainStore.clear()
         token = nil
         profile = nil
@@ -493,19 +491,27 @@ private final class SessionStore: ObservableObject {
                           (200..<300).contains(http.statusCode) else {
                         throw NetworkError.invalidResponse
                     }
-                    realTimeConnected = true
                     for try await line in bytes.lines {
                         if Task.isCancelled { return }
-                        if line.hasPrefix("data:") && line.contains("content_changed") {
+                        if line.hasPrefix("data:") && line.contains("_changed") {
+                            await refreshProfile()
                             await refreshDashboard()
                         }
                     }
                 } catch {
-                    realTimeConnected = false
                     if Task.isCancelled { return }
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
                 }
             }
+        }
+    }
+
+    private func refreshProfile() async {
+        guard let token else { return }
+        do {
+            profile = try await APIClient.shared.request("auth/me", token: token)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -889,15 +895,6 @@ private struct DashboardView: View {
                         MetricCard(value: shortStatus(session.dashboard?.attendanceStatus), label: "Chấm công", icon: "checkmark.circle")
                     }
                     MetricWideCard(status: session.dashboard?.payrollStatus ?? "Chưa cập nhật")
-
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(session.realTimeConnected ? Color.green : Color.orange)
-                            .frame(width: 8, height: 8)
-                        Text(session.realTimeConnected ? "Đồng bộ trực tiếp đang hoạt động" : "Đang kết nối lại dữ liệu trực tiếp")
-                            .font(.caption)
-                            .foregroundColor(AppTheme.muted)
-                    }
 
                     HStack {
                         Text("Mới nhất").font(.title2.bold())
