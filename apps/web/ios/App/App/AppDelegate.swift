@@ -211,7 +211,7 @@ private struct ContentItem: Decodable, Identifiable {
     let published: Bool
     let createdAt: Date
     let plainBody: String
-    let bodyChunks: [String]
+    let articleBlocks: [ArticleBlock]
     let preview: String
 
     private enum CodingKeys: String, CodingKey {
@@ -231,8 +231,94 @@ private struct ContentItem: Decodable, Identifiable {
 
         let text = body.safeHTMLText
         plainBody = text
-        bodyChunks = text.readingChunks
+        articleBlocks = HTMLArticleParser.parse(body)
         preview = text.count > 145 ? String(text.prefix(145)) + "…" : text
+    }
+}
+
+private struct ArticleBlock: Identifiable {
+    enum Kind {
+        case heading(Int)
+        case paragraph
+        case listItem
+        case image(URL?, String)
+        case tableRow
+        case question
+    }
+
+    let id: Int
+    let kind: Kind
+    let text: String
+}
+
+private enum HTMLArticleParser {
+    private static let blockRegex = try! NSRegularExpression(
+        pattern: #"(?is)<(h[1-6]|p|li|blockquote|summary|tr)\b[^>]*>(.*?)</\1\s*>|<img\b[^>]*>"#
+    )
+    private static let sourceRegex = try! NSRegularExpression(pattern: #"(?i)\bsrc\s*=\s*["']([^"']+)["']"#)
+    private static let altRegex = try! NSRegularExpression(pattern: #"(?i)\b(?:alt|title)\s*=\s*["']([^"']+)["']"#)
+
+    static func parse(_ html: String) -> [ArticleBlock] {
+        let source = html.count > 750_000 ? String(html.prefix(750_000)) : html
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+        let matches = blockRegex.matches(in: source, range: range)
+        var blocks: [ArticleBlock] = []
+        blocks.reserveCapacity(matches.count)
+
+        for match in matches {
+            guard let fullRange = Range(match.range, in: source) else { continue }
+            let fragment = String(source[fullRange])
+            if fragment.lowercased().hasPrefix("<img") {
+                let src = attribute(in: fragment, regex: sourceRegex)
+                let alt = attribute(in: fragment, regex: altRegex) ?? "Hình ảnh bài viết"
+                blocks.append(ArticleBlock(id: blocks.count, kind: .image(articleURL(src), alt), text: alt))
+                continue
+            }
+
+            guard let tagRange = Range(match.range(at: 1), in: source),
+                  let bodyRange = Range(match.range(at: 2), in: source) else { continue }
+            let tag = source[tagRange].lowercased()
+            let text = String(source[bodyRange]).safeHTMLText
+            guard !text.isEmpty else { continue }
+            let kind: ArticleBlock.Kind
+            if tag.hasPrefix("h"), let level = Int(tag.dropFirst()) {
+                kind = .heading(level)
+            } else if tag == "li" {
+                kind = .listItem
+            } else if tag == "tr" {
+                kind = .tableRow
+            } else if tag == "summary" {
+                kind = .question
+            } else {
+                kind = .paragraph
+            }
+
+            for chunk in text.readingChunks {
+                blocks.append(ArticleBlock(id: blocks.count, kind: kind, text: chunk))
+            }
+        }
+
+        if blocks.isEmpty {
+            return source.safeHTMLText.readingChunks.enumerated().map {
+                ArticleBlock(id: $0.offset, kind: .paragraph, text: $0.element)
+            }
+        }
+        return blocks
+    }
+
+    private static func attribute(in source: String, regex: NSRegularExpression) -> String? {
+        let range = NSRange(source.startIndex..<source.endIndex, in: source)
+        guard let match = regex.firstMatch(in: source, range: range),
+              let valueRange = Range(match.range(at: 1), in: source) else { return nil }
+        return String(source[valueRange])
+            .replacingOccurrences(of: "&amp;", with: "&")
+    }
+
+    private static func articleURL(_ value: String?) -> URL? {
+        guard let value, !value.isEmpty else { return nil }
+        if value.hasPrefix("//") { return URL(string: "https:" + value) }
+        if let absolute = URL(string: value), absolute.scheme != nil { return absolute }
+        return URL(string: value, relativeTo: URL(string: "https://sukavinagroup.net"))?.absoluteURL
     }
 }
 
@@ -909,18 +995,123 @@ private struct ArticleDetailView: View {
                 Text(item.title)
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                 Divider().overlay(Color.white.opacity(0.12))
-                ForEach(Array(item.bodyChunks.enumerated()), id: \.offset) { _, chunk in
-                    Text(chunk)
-                        .font(.body)
-                        .lineSpacing(7)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(item.articleBlocks) { block in
+                    ArticleBlockView(block: block)
                 }
             }
             .padding(22)
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct ArticleBlockView: View {
+    let block: ArticleBlock
+
+    @ViewBuilder
+    var body: some View {
+        switch block.kind {
+        case .heading(let level):
+            VStack(alignment: .leading, spacing: 10) {
+                Text(block.text)
+                    .font(headingFont(level))
+                    .fontWeight(.bold)
+                    .foregroundColor(level <= 1 ? .white : Color(red: 0.52, green: 0.86, blue: 0.68))
+                    .frame(maxWidth: .infinity, alignment: level == 1 ? .center : .leading)
+                if level == 2 {
+                    Rectangle()
+                        .fill(Color(red: 0.18, green: 0.54, blue: 0.35))
+                        .frame(height: 2)
+                }
+            }
+            .padding(level == 1 ? 22 : 0)
+            .background(level == 1 ? Color(red: 0.08, green: 0.27, blue: 0.19) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+        case .paragraph:
+            Text(block.text)
+                .font(.body)
+                .lineSpacing(7)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+        case .listItem:
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(Color(red: 0.18, green: 0.54, blue: 0.35))
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 8)
+                Text(block.text)
+                    .lineSpacing(6)
+                    .textSelection(.enabled)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 6)
+
+        case .image(let url, let alt):
+            VStack(spacing: 10) {
+                if let url {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFit()
+                        case .failure:
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundColor(AppTheme.muted)
+                                .frame(maxWidth: .infinity, minHeight: 140)
+                        default:
+                            ProgressView()
+                                .tint(AppTheme.red)
+                                .frame(maxWidth: .infinity, minHeight: 180)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                if !alt.isEmpty {
+                    Text(alt)
+                        .font(.caption)
+                        .foregroundColor(AppTheme.muted)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(12)
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+        case .tableRow:
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(block.text.replacingOccurrences(of: "\n", with: "  |  "))
+                    .font(.system(.subheadline, design: .rounded))
+                    .textSelection(.enabled)
+                    .padding(14)
+            }
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+        case .question:
+            HStack(alignment: .top, spacing: 12) {
+                Text("Q")
+                    .font(.caption.bold())
+                    .frame(width: 28, height: 28)
+                    .background(Color(red: 0.18, green: 0.54, blue: 0.35))
+                    .clipShape(Circle())
+                Text(block.text).font(.headline)
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private func headingFont(_ level: Int) -> Font {
+        switch level {
+        case 1: return .system(size: 27, weight: .bold, design: .rounded)
+        case 2: return .system(size: 23, weight: .bold, design: .rounded)
+        default: return .system(size: 19, weight: .bold, design: .rounded)
+        }
     }
 }
 
@@ -1071,6 +1262,8 @@ private extension String {
                     if name.hasPrefix("br") || name.hasPrefix("/p") || name.hasPrefix("/div") ||
                         name.hasPrefix("/li") || name.hasPrefix("/h") || name.hasPrefix("hr") {
                         if output.last != "\n" { output.append("\n") }
+                    } else if name.hasPrefix("/td") || name.hasPrefix("/th") {
+                        output.append(" | ")
                     } else if name.hasPrefix("li") {
                         if output.last != "\n" { output.append("\n") }
                         output.append("• ")
