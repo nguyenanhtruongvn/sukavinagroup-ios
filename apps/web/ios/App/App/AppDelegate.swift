@@ -90,7 +90,10 @@ private final class APIClient {
         token: String? = nil,
         body: Body? = nil
     ) async throws -> Response {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        guard let url = URL(string: path, relativeTo: baseURL) else {
+            throw NetworkError.invalidResponse
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 25
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -363,7 +366,44 @@ private struct Dashboard: Decodable {
     let attendanceStatus: String
     let payrollStatus: String
     let name: String
+    let attendanceRecords: [AttendanceRecord]?
     let contentItems: [ContentItem]
+}
+
+private struct AttendanceRecord: Decodable, Identifiable {
+    let id: String
+    let punchedAt: String
+    let source: String
+    let originType: String?
+    let machineNo: Int
+}
+
+private struct AttendanceMonth: Decodable {
+    let month: String
+    let days: [AttendanceDay]
+}
+
+private struct AttendanceDay: Decodable, Identifiable {
+    let date: String
+    let checkIn: String?
+    let checkOut: String?
+    let punchCount: Int
+    let sources: [String]
+    let punches: [AttendancePunch]
+    var id: String { date }
+}
+
+private struct AttendancePunch: Decodable, Identifiable {
+    let id: String
+    let punchedAt: String
+    let source: String
+    let machineNo: Int
+}
+
+private struct AttendanceMonthOption: Identifiable {
+    let value: String
+    let label: String
+    var id: String { value }
 }
 
 private struct LoginBody: Encodable { let loginId: String; let password: String }
@@ -618,7 +658,6 @@ private struct NativeLaunchView: View {
 
 private struct AuthenticationView: View {
     @EnvironmentObject private var session: SessionStore
-    @State private var mode = 0
 
     var body: some View {
         NavigationView {
@@ -636,24 +675,13 @@ private struct AuthenticationView: View {
                                 .font(.caption.weight(.bold))
                                 .tracking(3.5)
                                 .foregroundColor(.red.opacity(0.9))
-                            Text(mode == 0 ? "Chào mừng trở lại" : "Tạo tài khoản nhân viên")
+                            Text("Chào mừng trở lại")
                                 .font(.system(size: 34, weight: .bold, design: .rounded))
-                            Text(mode == 0
-                                 ? "Thông tin công việc của bạn, trong một ứng dụng native gọn gàng."
-                                 : "Xác minh Gmail và chờ quản trị viên duyệt trước khi đăng nhập.")
+                            Text("Thông tin công việc của bạn, trong một ứng dụng native gọn gàng.")
                                 .foregroundColor(AppTheme.muted)
                         }
 
-                        Picker("Chế độ", selection: $mode) {
-                            Text("Đăng nhập").tag(0)
-                            Text("Đăng ký").tag(1)
-                        }
-                        .pickerStyle(.segmented)
-
-                        Group {
-                            if mode == 0 { LoginForm() }
-                            else { RegistrationForm() }
-                        }
+                        LoginForm()
                         .padding(20)
                         .background(AppTheme.card.opacity(0.96))
                         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -896,6 +924,21 @@ private struct DashboardView: View {
                     }
                     MetricWideCard(status: session.dashboard?.payrollStatus ?? "Chưa cập nhật")
 
+                    NavigationLink(destination: AttendanceHistoryView()) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            HStack {
+                                Text("Chấm công hôm nay").font(.headline)
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundColor(AppTheme.red)
+                            }
+                            HStack(spacing: 12) {
+                                MetricCard(value: checkInTime, label: "Giờ vào", icon: "rectangle.portrait.and.arrow.right")
+                                MetricCard(value: checkOutTime, label: "Giờ ra", icon: "rectangle.portrait.and.arrow.forward")
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+
                     HStack {
                         Text("Mới nhất").font(.title2.bold())
                         Spacer()
@@ -921,6 +964,142 @@ private struct DashboardView: View {
     private func shortStatus(_ value: String?) -> String {
         let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return text.isEmpty ? "--" : text
+    }
+
+    private func attendanceTime(_ value: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value) else {
+            return value
+        }
+        return date.formatted(date: .omitted, time: .standard)
+    }
+
+    private var checkInTime: String {
+        guard let record = session.dashboard?.attendanceRecords?.last else { return "--:--" }
+        return attendanceTime(record.punchedAt)
+    }
+
+    private var checkOutTime: String {
+        guard let records = session.dashboard?.attendanceRecords, records.count > 1,
+              let record = records.first else { return "--:--" }
+        return attendanceTime(record.punchedAt)
+    }
+}
+
+private struct AttendanceHistoryView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var selectedMonth = Self.monthValue(Date())
+    @State private var history: AttendanceMonth?
+    @State private var isLoading = false
+    @State private var message: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Picker("Tháng", selection: $selectedMonth) {
+                    ForEach(monthOptions) { option in
+                        Text(option.label).tag(option.value)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(AppTheme.red)
+
+                if isLoading {
+                    ProgressView("Đang tải bảng công...").tint(AppTheme.red)
+                } else if let days = history?.days, !days.isEmpty {
+                    ForEach(days) { day in
+                        HStack(spacing: 14) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(dayLabel(day.date)).font(.headline)
+                                Text("\(day.punchCount) lượt · \(day.sources.joined(separator: ", "))")
+                                    .font(.caption)
+                                    .foregroundColor(AppTheme.muted)
+                            }
+                            Spacer()
+                            timeColumn("Vào", day.checkIn)
+                            timeColumn("Ra", day.checkOut)
+                        }
+                        .padding(16)
+                        .background(AppTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        ForEach(day.punches) { punch in
+                            HStack {
+                                Text(timeLabel(punch.punchedAt)).font(.subheadline.bold())
+                                Spacer()
+                                Text("\(punch.source) · Máy \(punch.machineNo)")
+                                    .font(.caption)
+                                    .foregroundColor(AppTheme.muted)
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                } else {
+                    Text(message ?? "Không có dữ liệu trong tháng này.")
+                        .foregroundColor(AppTheme.muted)
+                }
+            }
+            .padding(20)
+        }
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationTitle("Bảng chấm công")
+        .task(id: selectedMonth) { await loadHistory() }
+    }
+
+    private var monthOptions: [AttendanceMonthOption] {
+        (0..<12).compactMap { offset in
+            guard let date = Calendar.current.date(byAdding: .month, value: -offset, to: Date()) else { return nil }
+            return AttendanceMonthOption(
+                value: Self.monthValue(date),
+                label: date.formatted(.dateTime.month(.wide).year())
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func timeColumn(_ title: String, _ value: String?) -> some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text(title).font(.caption2).foregroundColor(AppTheme.muted)
+            Text(timeLabel(value)).font(.subheadline.bold())
+        }
+        .frame(minWidth: 54)
+    }
+
+    private func loadHistory() async {
+        guard let token = session.token else { return }
+        isLoading = true
+        message = nil
+        defer { isLoading = false }
+        do {
+            history = try await APIClient.shared.request(
+                "me/attendance?month=\(selectedMonth)",
+                token: token
+            )
+        } catch {
+            history = nil
+            message = error.localizedDescription
+        }
+    }
+
+    private func timeLabel(_ value: String?) -> String {
+        guard let value else { return "--:--" }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) else { return "--:--" }
+        return date.formatted(date: .omitted, time: .shortened)
+    }
+
+    private func dayLabel(_ value: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: value) else { return value }
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+
+    private static func monthValue(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: date)
     }
 }
 
