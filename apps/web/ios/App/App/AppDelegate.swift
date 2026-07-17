@@ -1039,7 +1039,7 @@ private struct AttendanceHistoryView: View {
     }
 
     private var monthOptions: [AttendanceMonthOption] {
-        (0..<12).compactMap { offset in
+        (0..<2).compactMap { offset in
             guard let date = Calendar.current.date(byAdding: .month, value: -offset, to: Date()) else { return nil }
             return AttendanceMonthOption(
                 value: Self.monthValue(date),
