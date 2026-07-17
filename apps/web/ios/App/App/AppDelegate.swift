@@ -918,24 +918,26 @@ private struct DashboardView: View {
                             .foregroundColor(AppTheme.red)
                     }
 
-                    HStack(spacing: 12) {
-                        MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép", icon: "calendar.badge.clock")
-                        MetricCard(value: shortStatus(session.dashboard?.attendanceStatus), label: "Chấm công", icon: "checkmark.circle")
-                    }
+                    MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
                     MetricWideCard(status: session.dashboard?.payrollStatus ?? "Chưa cập nhật")
 
                     NavigationLink(destination: AttendanceHistoryView()) {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("Chấm công hôm nay").font(.headline)
                                 Spacer()
                                 Image(systemName: "chevron.right").foregroundColor(AppTheme.red)
                             }
-                            HStack(spacing: 12) {
-                                MetricCard(value: checkInTime, label: "Giờ vào", icon: "rectangle.portrait.and.arrow.right")
-                                MetricCard(value: checkOutTime, label: "Giờ ra", icon: "rectangle.portrait.and.arrow.forward")
+                            Divider().overlay(Color.white.opacity(0.08))
+                            HStack(spacing: 0) {
+                                attendanceMetric(title: "Giờ vào", value: checkInTime, color: .green)
+                                Divider().frame(height: 38).overlay(Color.white.opacity(0.08))
+                                attendanceMetric(title: "Giờ ra", value: checkOutTime, color: AppTheme.red)
                             }
                         }
+                        .padding(16)
+                        .background(AppTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
                     .buttonStyle(.plain)
 
@@ -961,9 +963,14 @@ private struct DashboardView: View {
         .navigationViewStyle(.stack)
     }
 
-    private func shortStatus(_ value: String?) -> String {
-        let text = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return text.isEmpty ? "--" : text
+    @ViewBuilder
+    private func attendanceMetric(title: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption).foregroundColor(AppTheme.muted)
+            Text(value).font(.title3.bold()).foregroundColor(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
     }
 
     private func attendanceTime(_ value: String) -> String {
@@ -1010,12 +1017,7 @@ private struct AttendanceHistoryView: View {
                 } else if let days = history?.days, !days.isEmpty {
                     ForEach(days) { day in
                         HStack(spacing: 14) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(dayLabel(day.date)).font(.headline)
-                                Text("\(day.punchCount) lượt · \(day.sources.joined(separator: ", "))")
-                                    .font(.caption)
-                                    .foregroundColor(AppTheme.muted)
-                            }
+                            Text(dayLabel(day.date)).font(.headline)
                             Spacer()
                             timeColumn("Vào", day.checkIn)
                             timeColumn("Ra", day.checkOut)
@@ -1023,16 +1025,6 @@ private struct AttendanceHistoryView: View {
                         .padding(16)
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        ForEach(day.punches) { punch in
-                            HStack {
-                                Text(timeLabel(punch.punchedAt)).font(.subheadline.bold())
-                                Spacer()
-                                Text("\(punch.source) · Máy \(punch.machineNo)")
-                                    .font(.caption)
-                                    .foregroundColor(AppTheme.muted)
-                            }
-                            .padding(.horizontal, 16)
-                        }
                     }
                 } else {
                     Text(message ?? "Không có dữ liệu trong tháng này.")
