@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-1.1.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ContentItem {
+  id          String   @id @default(cuid())
+  page        String
+  key         String
+  title       String
+  body        String
+  sortOrder   Int      @default(0)
+  published   Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+
+  @@unique([page, key])
+}
+
+model Employee {
+  id                String   @id @default(cuid())
+  employeeCode      String   @unique
+  fullName          String
+  jobTitle          String
+  department        String
+  phoneNumber       String?  @unique
+  gmailEmail        String?  @unique
+  gmailVerified     Boolean  @default(false)
+  emailVerificationCode String?
+  emailVerificationExpiresAt DateTime?
+  passwordHash      String?
+  authProvider      String   @default("phone_password")
+  role              String   @default("Nhân viên")
+  accountType       String   @default("EMPLOYEE")
+  permissions       String[] @default([])
+  protected         Boolean  @default(false)
+  remainingLeaveDays Int     @default(0)
+  attendanceStatus  String   @default("")
+  payrollStatus     String   @default("")
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model AppLog {
+  id        String   @id @default(cuid())
+  level     String
+  source    String
+  message   String
+  meta      String   @default("")
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AttendanceRecord {
+  id               String   @id @default(cuid())
+  userEnrollNumber String
+  punchedAt        DateTime
+  source           String
+  originType       String?
+  machineNo        Int      @default(0)
+  attendanceDate   String
+  createdAt        DateTime @default(now())
+
+  @@unique([userEnrollNumber, punchedAt, machineNo])
+  @@index([userEnrollNumber, punchedAt])
+  @@index([attendanceDate])
+}

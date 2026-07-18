@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo",
+    "outDir": "dist"
+  },
+  "exclude": ["**/*.spec.*", "**/*.test.*", "dist", "node_modules"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts"]
+}

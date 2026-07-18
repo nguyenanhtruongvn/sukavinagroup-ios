@@ -8,6 +8,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.sukavinagroup.user.data.*
 import okhttp3.Response
@@ -108,6 +109,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             }
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
                 events = null
+                viewModelScope.launch {
+                    delay(3_000)
+                    if (_state.value.token != null && events == null) startEvents()
+                }
             }
         })
     }

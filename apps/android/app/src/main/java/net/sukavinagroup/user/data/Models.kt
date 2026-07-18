@@ -3,7 +3,7 @@ package net.sukavinagroup.user.data
 import kotlinx.serialization.Serializable
 
 @Serializable data class LoginBody(val loginId: String, val password: String)
-@Serializable data class DeleteAccountBody(val password: String, val confirmation: String = "DELETE")
+@Serializable data class DeleteAccountBody(val password: String, val confirmation: String = "XOA TAI KHOAN")
 @Serializable data class MessageResponse(val message: String = "")
 @Serializable data class UserSummary(
     val employeeCode: String = "", val name: String = "", val role: String = "",

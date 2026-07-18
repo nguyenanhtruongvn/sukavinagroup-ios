@@ -27,6 +27,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
 import net.sukavinagroup.user.SessionUiState
@@ -43,13 +44,13 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), NEWS("Bài 
     Surface(Modifier.fillMaxSize(), color = SukavinaInk) {
         when {
             state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.token == null -> LoginScreen(state, session)
+            state.token == null -> LoginScreen(state, session::signIn)
             else -> MainScreen(state, session)
         }
     }
 }
 
-@Composable private fun LoginScreen(state: SessionUiState, session: SessionViewModel) {
+@Composable private fun LoginScreen(state: SessionUiState, signIn: (String, String) -> Unit) {
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     Column(
@@ -70,7 +71,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), NEWS("Bài 
             leadingIcon = { Icon(Icons.Default.Lock, null) }, visualTransformation = PasswordVisualTransformation(),
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
         state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp)) }
-        Button(onClick = { session.signIn(login, password) }, enabled = login.isNotBlank() && password.isNotBlank() && !state.working,
+        Button(onClick = { signIn(login, password) }, enabled = login.isNotBlank() && password.isNotBlank() && !state.working,
             modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = RoundedCornerShape(16.dp)) {
             if (state.working) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
             else Text("Đăng nhập", fontWeight = FontWeight.Bold)
@@ -101,7 +102,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), NEWS("Bài 
     }) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                MainTab.HOME -> HomeScreen(state, session, { attendanceOpen = true }, { article = it })
+                MainTab.HOME -> HomeScreen(state, session::refresh, { attendanceOpen = true }, { article = it })
                 MainTab.NEWS -> NewsScreen(state.dashboard?.contentItems.orEmpty()) { article = it }
                 MainTab.PROFILE -> ProfileScreen(state, session)
             }
@@ -109,7 +110,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), NEWS("Bài 
     }
 }
 
-@Composable private fun HomeScreen(state: SessionUiState, session: SessionViewModel, openAttendance: () -> Unit, openArticle: (ContentItem) -> Unit) {
+@Composable private fun HomeScreen(state: SessionUiState, refresh: () -> Unit, openAttendance: () -> Unit, openArticle: (ContentItem) -> Unit) {
     val dashboard = state.dashboard
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         item {
@@ -126,7 +127,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), NEWS("Bài 
         item { AttendanceTodayCard(dashboard, openAttendance) }
         item { Text("Mới nhất", fontSize = 21.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp)) }
         items(dashboard?.contentItems?.take(3).orEmpty(), key = { it.id }) { NewsCard(it) { openArticle(it) } }
-        item { OutlinedButton(onClick = session::refresh, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Làm mới dữ liệu") } }
+        item { OutlinedButton(onClick = refresh, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Làm mới dữ liệu") } }
     }
 }
 
@@ -242,3 +243,31 @@ private fun String.toDayLabel() = runCatching { LocalDate.parse(this).format(Dat
 private fun String.plainText() = Html.fromHtml(take(750_000), Html.FROM_HTML_MODE_LEGACY).toString().replace(Regex("\\s+"), " ").trim()
 private fun String?.initials() = this.orEmpty().split(" ").filter { it.isNotBlank() }.takeLast(2).joinToString("") { it.take(1).uppercase() }.ifBlank { "NV" }
 private fun String?.accountLabel() = when (this) { "SUPER_ADMIN" -> "Quản trị viên tổng"; "ADMIN" -> "Quản trị viên"; else -> "Nhân viên" }
+
+@Preview(name = "Đăng nhập", showBackground = true, backgroundColor = 0xFF111115, widthDp = 390, heightDp = 844)
+@Composable private fun LoginPreview() = SukavinaTheme {
+    LoginScreen(SessionUiState(restoring = false), { _, _ -> })
+}
+
+@Preview(name = "Trang chủ nhân viên", showBackground = true, backgroundColor = 0xFF111115, widthDp = 390, heightDp = 844)
+@Composable private fun DashboardPreview() = SukavinaTheme {
+    HomeScreen(
+        state = SessionUiState(
+            restoring = false,
+            profile = Profile(employeeCode = "SKV-001", name = "Nguyễn Văn A", role = "Nhân viên"),
+            dashboard = Dashboard(
+                employeeCode = "SKV-001", name = "Nguyễn Văn A", role = "Nhân sự vận hành",
+                remainingLeaveDays = 8,
+                attendanceRecords = listOf(
+                    AttendanceRecord("1", "2026-07-18T08:01:00.000Z"),
+                    AttendanceRecord("2", "2026-07-18T17:03:00.000Z"),
+                ),
+                contentItems = listOf(
+                    ContentItem("1", title = "Thông báo lịch nghỉ", body = "Cập nhật lịch nghỉ và kế hoạch làm việc trong tuần mới.", createdAt = "2026-07-18T08:00:00Z"),
+                    ContentItem("2", title = "Quy định nội bộ", body = "Những nội dung nhân viên cần lưu ý.", createdAt = "2026-07-17T08:00:00Z"),
+                ),
+            ),
+        ),
+        refresh = {}, openAttendance = {}, openArticle = {},
+    )
+}

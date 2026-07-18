@@ -1,0 +1,38 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+.nx/
+apps/android/.gradle/
+apps/android/**/build/
+apps/ios/**/DerivedData/
+apps/ios/**/*.xcuserstate
+apps/ios/**/xcuserdata/
+
+# Secrets and runtime data
+.env
+.env.*
+!.env.example
+/media/
+*.db
+*.sqlite*
+*.sql
+*.tar.gz
+*.log
+*.ipa
+*.apk
+
+# Local tools and migration snapshots
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+backend-reference/
+website-reference/
+server-config/
+
+# Temporary files
+tmp/
+out/
+*.tmp
+*.bak
