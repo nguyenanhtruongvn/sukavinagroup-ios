@@ -2,6 +2,7 @@ import UIKit
 import SwiftUI
 import Security
 import UserNotifications
+import Network
 
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -65,13 +66,31 @@ private enum NetworkError: LocalizedError {
     case invalidResponse
     case server(String)
     case offline
+    case unauthorized
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse: return "Máy chủ trả về dữ liệu không hợp lệ."
         case .server(let message): return message
         case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
+        case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
+    }
+}
+
+private enum NetworkSessions {
+    static let api: URLSession = makeSession(resourceTimeout: 90)
+    static let events: URLSession = makeSession(resourceTimeout: 24 * 60 * 60)
+
+    private static func makeSession(resourceTimeout: TimeInterval) -> URLSession {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.allowsCellularAccess = true
+        configuration.allowsExpensiveNetworkAccess = true
+        configuration.allowsConstrainedNetworkAccess = true
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = resourceTimeout
+        return URLSession(configuration: configuration)
     }
 }
 
@@ -108,7 +127,7 @@ private final class APIClient {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await NetworkSessions.api.data(for: request)
         } catch {
             throw NetworkError.offline
         }
@@ -117,6 +136,9 @@ private final class APIClient {
             throw NetworkError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw NetworkError.unauthorized
+            }
             let payload = try? decoder.decode(APIErrorPayload.self, from: data)
             throw NetworkError.server(payload?.message.text ?? "Yêu cầu không thành công (\(http.statusCode)).")
         }
@@ -444,6 +466,9 @@ private final class SessionStore: ObservableObject {
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
     private var eventStreamTask: Task<Void, Never>?
+    private let pathMonitor = NWPathMonitor()
+    private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
+    private var isMonitoringNetwork = false
 
     func restore() async {
         guard let savedToken = KeychainStore.loadToken() else {
@@ -452,14 +477,18 @@ private final class SessionStore: ObservableObject {
         }
         token = savedToken
         loadKnownArticles()
+        state = .signedIn
+        startNetworkMonitoring()
         do {
             profile = try await APIClient.shared.request("auth/me", token: savedToken)
-            state = .signedIn
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             startRealTimeUpdates()
-        } catch {
+        } catch NetworkError.unauthorized {
             signOut()
+        } catch {
+            errorMessage = error.localizedDescription
+            startRealTimeUpdates()
         }
     }
 
@@ -485,6 +514,7 @@ private final class SessionStore: ObservableObject {
                 protected: response.user.protected
             )
             state = .signedIn
+            startNetworkMonitoring()
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             startRealTimeUpdates()
@@ -526,7 +556,7 @@ private final class SessionStore: ObservableObject {
                     var request = URLRequest(url: URL(string: "https://sukavinagroup.net/api/public/news/events")!)
                     request.timeoutInterval = 60 * 60
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    let (bytes, response) = try await NetworkSessions.events.bytes(for: request)
                     guard let http = response as? HTTPURLResponse,
                           (200..<300).contains(http.statusCode) else {
                         throw NetworkError.invalidResponse
@@ -544,6 +574,21 @@ private final class SessionStore: ObservableObject {
                 }
             }
         }
+    }
+
+    private func startNetworkMonitoring() {
+        guard !isMonitoringNetwork else { return }
+        isMonitoringNetwork = true
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.token != nil else { return }
+                await self.refreshProfile()
+                await self.refreshDashboard()
+                self.startRealTimeUpdates()
+            }
+        }
+        pathMonitor.start(queue: pathMonitorQueue)
     }
 
     private func refreshProfile() async {
