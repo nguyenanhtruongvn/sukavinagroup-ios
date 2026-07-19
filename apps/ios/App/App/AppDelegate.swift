@@ -101,6 +101,7 @@ private enum NetworkSessions {
 private final class APIClient {
     static let shared = APIClient()
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")!
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -130,14 +131,24 @@ private final class APIClient {
             request.httpBody = try JSONEncoder().encode(body)
         }
 
-        let data: Data
-        let response: URLResponse
+        var data: Data
+        var response: URLResponse
         do {
             (data, response) = try await NetworkSessions.api.data(for: request)
         } catch let error as URLError where error.code == .dataNotAllowed || error.code == .internationalRoamingOff {
             throw NetworkError.cellularRestricted
         } catch {
-            throw NetworkError.offline
+            guard let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
+                throw NetworkError.offline
+            }
+            request.url = fallbackURL
+            do {
+                (data, response) = try await NetworkSessions.api.data(for: request)
+            } catch let fallbackError as URLError where fallbackError.code == .dataNotAllowed || fallbackError.code == .internationalRoamingOff {
+                throw NetworkError.cellularRestricted
+            } catch {
+                throw NetworkError.offline
+            }
         }
 
         guard let http = response as? HTTPURLResponse else {
