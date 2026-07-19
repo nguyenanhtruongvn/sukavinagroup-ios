@@ -3,6 +3,7 @@ import SwiftUI
 import Security
 import UserNotifications
 import Network
+import LocalAuthentication
 
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -123,7 +124,7 @@ private enum NetworkError: LocalizedError {
         case .invalidResponse: return "Máy chủ trả về dữ liệu không hợp lệ."
         case .server(let message): return message
         case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
-        case .cellularRestricted: return "iPhone đang không cấp đường truyền di động cho Sukavina. Vào Cài đặt > Di động, bật Sukavina User rồi mở lại ứng dụng."
+        case .cellularRestricted: return "iPhone đang không cấp đường truyền di động cho Sukavina. Vào Cài đặt > Di động, bật Sukavina rồi mở lại ứng dụng."
         case .invalidCredentials: return "Mã nhân viên hoặc mật khẩu không chính xác."
         case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
@@ -302,6 +303,65 @@ private enum KeychainStore {
             kSecAttrAccount as String: account
         ]
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+private enum BiometricKeychain {
+    private static let service = "net.sukavinagroup.biometric"
+    private static let account = "biometric-access-token"
+
+    static func save(token: String) -> Bool {
+        clear()
+        var error: Unmanaged<CFError>?
+        guard let access = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+            .biometryCurrentSet,
+            &error
+        ) else { return false }
+        let item: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecValueData as String: Data(token.utf8),
+            kSecAttrAccessControl as String: access
+        ]
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    static func load(prompt: String) -> String? {
+        let context = LAContext()
+        context.localizedCancelTitle = "Hủy"
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationContext as String: context,
+            kSecUseOperationPrompt as String: prompt
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func clear() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        SecItemDelete(query as CFDictionary)
+    }
+}
+
+private enum BiometricPreferences {
+    private static let key = "biometric-login-enabled"
+    static var enabled: Bool {
+        get { UserDefaults.standard.bool(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
     }
 }
 
@@ -566,6 +626,7 @@ private final class SessionStore: ObservableObject {
     @Published var errorOffersSettings = false
     @Published var isWorking = false
     @Published var unreadCount = 0
+    @Published var biometricsEnabled = BiometricPreferences.enabled
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
@@ -640,6 +701,70 @@ private final class SessionStore: ObservableObject {
             present(error)
             return false
         }
+    }
+
+    var biometricName: String {
+        let context = LAContext()
+        _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        return context.biometryType == .touchID ? "Touch ID" : "Face ID"
+    }
+
+    var biometricIcon: String {
+        biometricName == "Touch ID" ? "touchid" : "faceid"
+    }
+
+    func signInWithBiometrics() async -> Bool {
+        guard biometricsEnabled else { return false }
+        isWorking = true
+        defer { isWorking = false }
+        guard let savedToken = BiometricKeychain.load(prompt: "Đăng nhập Sukavina") else {
+            errorTitle = "Không thể xác thực"
+            errorMessage = "Không thể xác thực sinh trắc học. Vui lòng thử lại hoặc đăng nhập bằng mật khẩu."
+            return false
+        }
+        do {
+            let freshProfile: Profile = try await APIClient.shared.request("auth/me", token: savedToken)
+            token = savedToken
+            profile = freshProfile
+            state = .signedIn
+            startNetworkMonitoring()
+            await refreshDashboard()
+            startRealTimeUpdates()
+            return true
+        } catch NetworkError.unauthorized {
+            disableBiometricLogin()
+            errorTitle = "Cần đăng nhập lại"
+            errorMessage = "Phiên đăng nhập đã hết hạn. Hãy đăng nhập bằng mật khẩu rồi bật lại sinh trắc học."
+            return false
+        } catch {
+            present(error)
+            return false
+        }
+    }
+
+    func setBiometricLogin(enabled: Bool) {
+        if enabled {
+            let context = LAContext()
+            var evaluationError: NSError?
+            guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &evaluationError),
+                  let token,
+                  BiometricKeychain.save(token: token) else {
+                biometricsEnabled = false
+                errorTitle = "Không thể bật sinh trắc học"
+                errorMessage = "Thiết bị chưa thiết lập Face ID/Touch ID hoặc chưa bật mật mã màn hình."
+                return
+            }
+            BiometricPreferences.enabled = true
+            biometricsEnabled = true
+        } else {
+            disableBiometricLogin()
+        }
+    }
+
+    private func disableBiometricLogin() {
+        BiometricKeychain.clear()
+        BiometricPreferences.enabled = false
+        biometricsEnabled = false
     }
 
     func refreshDashboard() async {
@@ -794,6 +919,7 @@ private final class SessionStore: ObservableObject {
                 token: token,
                 body: DeleteAccountBody(password: password, confirmation: "XOA TAI KHOAN")
             )
+            disableBiometricLogin()
             signOut()
             return true
         } catch {
@@ -918,7 +1044,7 @@ private struct NativeLaunchView: View {
                     .frame(width: 150, height: 150)
                     .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
                 ProgressView().tint(AppTheme.red)
-                Text("SUKAVINA USER")
+                Text("SUKAVINA")
                     .font(.caption.weight(.semibold))
                     .tracking(4)
                     .foregroundColor(AppTheme.muted)
@@ -997,6 +1123,31 @@ private struct LoginForm: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .disabled(loginId.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isWorking)
             .opacity(loginId.isEmpty || password.isEmpty ? 0.55 : 1)
+
+            if session.biometricsEnabled {
+                HStack(spacing: 12) {
+                    Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                    Text("hoặc").font(.caption).foregroundColor(AppTheme.muted)
+                    Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                }
+
+                Button {
+                    Task { _ = await session.signInWithBiometrics() }
+                } label: {
+                    Label("Đăng nhập bằng \(session.biometricName)", systemImage: session.biometricIcon)
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.white)
+                .background(Color.white.opacity(0.075))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.1))
+                )
+                .disabled(session.isWorking)
+            }
         }
     }
 }
@@ -1621,6 +1772,30 @@ private struct ProfileView: View {
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                    HStack(spacing: 14) {
+                        Image(systemName: session.biometricIcon)
+                            .font(.title3)
+                            .foregroundColor(AppTheme.red)
+                            .frame(width: 30)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Đăng nhập bằng \(session.biometricName)")
+                                .font(.headline)
+                            Text("Dùng sinh trắc học thay cho mật khẩu ở lần đăng nhập sau.")
+                                .font(.caption)
+                                .foregroundColor(AppTheme.muted)
+                        }
+                        Spacer(minLength: 8)
+                        Toggle("", isOn: Binding(
+                            get: { session.biometricsEnabled },
+                            set: { session.setBiometricLogin(enabled: $0) }
+                        ))
+                        .labelsHidden()
+                        .tint(AppTheme.red)
+                    }
+                    .padding(18)
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     Button("Đăng xuất", role: .destructive) { session.signOut() }
                         .font(.headline)
