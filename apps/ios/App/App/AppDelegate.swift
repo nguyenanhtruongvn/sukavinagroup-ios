@@ -37,6 +37,65 @@ private enum AppTheme {
     static let muted = Color(red: 0.66, green: 0.65, blue: 0.68)
 }
 
+private struct AdaptiveGlassSurface: ViewModifier {
+    let cornerRadius: CGFloat
+    var tint: Color? = nil
+    var interactive = false
+    var legacyFill = AppTheme.card
+    var legacyOpacity = 1.0
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    .regular.tint(tint).interactive(interactive),
+                    in: .rect(cornerRadius: cornerRadius)
+                )
+        } else {
+            content
+                .background(legacyFill.opacity(legacyOpacity))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        }
+    }
+}
+
+private extension View {
+    func adaptiveGlassSurface(
+        cornerRadius: CGFloat,
+        tint: Color? = nil,
+        interactive: Bool = false,
+        legacyFill: Color = AppTheme.card,
+        legacyOpacity: Double = 1
+    ) -> some View {
+        modifier(
+            AdaptiveGlassSurface(
+                cornerRadius: cornerRadius,
+                tint: tint,
+                interactive: interactive,
+                legacyFill: legacyFill,
+                legacyOpacity: legacyOpacity
+            )
+        )
+    }
+
+    @ViewBuilder
+    func adaptivePrimaryAction() -> some View {
+        if #available(iOS 26.0, *) {
+            buttonStyle(.glassProminent)
+                .tint(AppTheme.red)
+        } else {
+            buttonStyle(.plain)
+                .background(AppTheme.red)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+}
+
 private struct APIErrorPayload: Decodable {
     let message: APIMessage
 }
@@ -853,15 +912,8 @@ private struct ElegantAppAlert: View {
                 .frame(maxWidth: .infinity, minHeight: offersSettings ? 28 : 48)
         }
         .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(AppTheme.card)
-                .shadow(color: .black.opacity(0.42), radius: 30, y: 16)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color.white.opacity(0.09), lineWidth: 1)
-        )
+        .adaptiveGlassSurface(cornerRadius: 28, tint: AppTheme.deepRed.opacity(0.22))
+        .shadow(color: .black.opacity(0.42), radius: 30, y: 16)
         .frame(maxWidth: 390)
     }
 }
@@ -913,12 +965,7 @@ private struct AuthenticationView: View {
 
                         LoginForm()
                         .padding(20)
-                        .background(AppTheme.card.opacity(0.96))
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(Color.white.opacity(0.08))
-                        )
+                        .adaptiveGlassSurface(cornerRadius: 24, tint: AppTheme.deepRed.opacity(0.16), legacyOpacity: 0.96)
                     }
                     .padding(22)
                 }
@@ -951,10 +998,8 @@ private struct LoginForm: View {
                 .padding(.horizontal, 18)
                 .frame(maxWidth: .infinity, minHeight: 54)
             }
-            .buttonStyle(.plain)
+            .adaptivePrimaryAction()
             .foregroundColor(.white)
-            .background(AppTheme.red)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .disabled(loginId.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isWorking)
             .opacity(loginId.isEmpty || password.isEmpty ? 0.55 : 1)
 
@@ -1268,8 +1313,7 @@ private struct DashboardView: View {
                             }
                         }
                         .padding(16)
-                        .background(AppTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .adaptiveGlassSurface(cornerRadius: 20, interactive: true)
                     }
                     .buttonStyle(.plain)
 
@@ -1440,8 +1484,7 @@ private struct MetricCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .adaptiveGlassSurface(cornerRadius: 20)
     }
 }
 
@@ -1459,8 +1502,7 @@ private struct MetricWideCard: View {
             Spacer()
         }
         .padding(18)
-        .background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .adaptiveGlassSurface(cornerRadius: 20)
     }
 }
 
@@ -1523,8 +1565,7 @@ private struct ArticleRow: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .adaptiveGlassSurface(cornerRadius: 20, interactive: true)
     }
 }
 
@@ -1752,8 +1793,7 @@ private struct NativeField: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .background(Color.white.opacity(0.055))
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .adaptiveGlassSurface(cornerRadius: 15, interactive: true, legacyFill: .white, legacyOpacity: 0.055)
     }
 }
 
@@ -1775,8 +1815,7 @@ private struct NativeSecureField: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .background(Color.white.opacity(0.055))
-        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .adaptiveGlassSurface(cornerRadius: 15, interactive: true, legacyFill: .white, legacyOpacity: 0.055)
     }
 }
 
