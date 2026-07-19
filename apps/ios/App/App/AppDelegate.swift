@@ -74,7 +74,7 @@ private enum NetworkError: LocalizedError {
         case .invalidResponse: return "Máy chủ trả về dữ liệu không hợp lệ."
         case .server(let message): return message
         case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
-        case .cellularRestricted: return "Ứng dụng chưa được phép sử dụng dữ liệu di động. Hãy bật Dữ liệu di động cho Sukavina trong Cài đặt."
+        case .cellularRestricted: return "iPhone đang không cấp đường truyền di động cho Sukavina. Vào Cài đặt > Di động, bật Sukavina User rồi mở lại ứng dụng."
         case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
     }
@@ -86,7 +86,7 @@ private enum NetworkSessions {
 
     private static func makeSession(resourceTimeout: TimeInterval) -> URLSession {
         let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
+        configuration.waitsForConnectivity = false
         configuration.allowsCellularAccess = true
         configuration.allowsExpensiveNetworkAccess = true
         configuration.allowsConstrainedNetworkAccess = true
@@ -539,6 +539,8 @@ private final class SessionStore: ObservableObject {
     private var lastPathWasCellular: Bool?
 
     func restore() async {
+        startNetworkMonitoring()
+        try? await Task.sleep(nanoseconds: 250_000_000)
         guard let savedToken = KeychainStore.loadToken() else {
             state = .signedOut
             return
@@ -564,6 +566,11 @@ private final class SessionStore: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         ConnectionDiagnostics.record("Sign-in started; identifierLength=\(loginId.count)")
+        if lastPathStatus == .unsatisfied && lastPathWasCellular == true {
+            ConnectionDiagnostics.record("Sign-in stopped: iOS reports an unsatisfied cellular path")
+            present(NetworkError.cellularRestricted)
+            return false
+        }
         do {
             let response: LoginResponse = try await APIClient.shared.request(
                 "auth/login",
