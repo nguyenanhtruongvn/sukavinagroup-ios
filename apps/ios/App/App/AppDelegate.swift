@@ -90,6 +90,8 @@ private enum NetworkSessions {
         configuration.allowsCellularAccess = true
         configuration.allowsExpensiveNetworkAccess = true
         configuration.allowsConstrainedNetworkAccess = true
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.urlCache = nil
         configuration.timeoutIntervalForRequest = 30
         configuration.timeoutIntervalForResource = resourceTimeout
         return URLSession(configuration: configuration)
@@ -116,8 +118,10 @@ private final class APIClient {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.timeoutInterval = 25
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -474,6 +478,8 @@ private final class SessionStore: ObservableObject {
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
     private var isMonitoringNetwork = false
+    private var lastPathStatus: NWPath.Status?
+    private var lastPathWasCellular: Bool?
 
     func restore() async {
         guard let savedToken = KeychainStore.loadToken() else {
@@ -600,9 +606,19 @@ private final class SessionStore: ObservableObject {
         guard !isMonitoringNetwork else { return }
         isMonitoringNetwork = true
         pathMonitor.pathUpdateHandler = { [weak self] path in
-            guard path.status == .satisfied else { return }
             Task { @MainActor [weak self] in
-                guard let self, self.token != nil else { return }
+                guard let self else { return }
+                let wasStatus = self.lastPathStatus
+                let wasCellular = self.lastPathWasCellular
+                let isCellular = path.usesInterfaceType(.cellular)
+                self.lastPathStatus = path.status
+                self.lastPathWasCellular = isCellular
+
+                // The first callback only records the current path. Refresh after a real reconnect or handoff.
+                guard wasStatus != nil,
+                      path.status == .satisfied,
+                      wasStatus != .satisfied || wasCellular != isCellular,
+                      self.token != nil else { return }
                 await self.refreshProfile()
                 await self.refreshDashboard()
                 self.startRealTimeUpdates()
