@@ -83,17 +83,6 @@ private extension View {
         )
     }
 
-    @ViewBuilder
-    func adaptivePrimaryAction() -> some View {
-        if #available(iOS 26.0, *) {
-            buttonStyle(.glassProminent)
-                .tint(AppTheme.red)
-        } else {
-            buttonStyle(.plain)
-                .background(AppTheme.red)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-    }
 }
 
 private struct APIErrorPayload: Decodable {
@@ -126,6 +115,7 @@ private enum NetworkError: LocalizedError {
     case server(String)
     case offline
     case cellularRestricted
+    case invalidCredentials
     case unauthorized
 
     var errorDescription: String? {
@@ -134,6 +124,7 @@ private enum NetworkError: LocalizedError {
         case .server(let message): return message
         case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
         case .cellularRestricted: return "iPhone đang không cấp đường truyền di động cho Sukavina. Vào Cài đặt > Di động, bật Sukavina User rồi mở lại ứng dụng."
+        case .invalidCredentials: return "Mã nhân viên, Gmail, số điện thoại hoặc mật khẩu không chính xác. Vui lòng kiểm tra và thử lại."
         case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
     }
@@ -171,21 +162,6 @@ private enum ConnectionDiagnostics {
         UserDefaults.standard.set(Array(entries.suffix(maximumEntries)), forKey: key)
     }
 
-    static func report() -> String {
-        lock.lock()
-        defer { lock.unlock() }
-        let entries = UserDefaults.standard.stringArray(forKey: key) ?? []
-        let device = "iOS \(UIDevice.current.systemVersion) | \(UIDevice.current.model)"
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
-        return (["SUKAVINA CONNECTION LOG", device, "Bundle: \(version) (\(build))", ""] + entries).joined(separator: "\n")
-    }
-
-    static func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-        UserDefaults.standard.removeObject(forKey: key)
-    }
 }
 
 private final class APIClient {
@@ -260,6 +236,9 @@ private final class APIClient {
         let responseHost = http.url?.host ?? "unknown"
         ConnectionDiagnostics.record("API response: \(http.statusCode) host=\(responseHost) path=\(path) bytes=\(data.count)")
         guard (200..<300).contains(http.statusCode) else {
+            if token == nil && path == "auth/login" && (http.statusCode == 401 || http.statusCode == 403) {
+                throw NetworkError.invalidCredentials
+            }
             if token != nil && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.unauthorized
             }
@@ -583,6 +562,7 @@ private final class SessionStore: ObservableObject {
     @Published var profile: Profile?
     @Published var dashboard: Dashboard?
     @Published var errorMessage: String?
+    @Published var errorTitle = "Chưa thể thực hiện"
     @Published var errorOffersSettings = false
     @Published var isWorking = false
     @Published var unreadCount = 0
@@ -686,6 +666,7 @@ private final class SessionStore: ObservableObject {
 
     func dismissError() {
         errorMessage = nil
+        errorTitle = "Chưa thể thực hiện"
         errorOffersSettings = false
     }
 
@@ -693,8 +674,14 @@ private final class SessionStore: ObservableObject {
         errorMessage = error.localizedDescription
         if let networkError = error as? NetworkError,
            case .cellularRestricted = networkError {
+            errorTitle = "Cần bật dữ liệu di động"
             errorOffersSettings = true
+        } else if let networkError = error as? NetworkError,
+                  case .invalidCredentials = networkError {
+            errorTitle = "Sai thông tin đăng nhập"
+            errorOffersSettings = false
         } else {
+            errorTitle = "Chưa thể thực hiện"
             errorOffersSettings = false
         }
     }
@@ -841,6 +828,7 @@ private struct SukavinaAppView: View {
                     .onTapGesture { session.dismissError() }
 
                 ElegantAppAlert(
+                    title: session.errorTitle,
                     message: message,
                     offersSettings: session.errorOffersSettings,
                     dismiss: { session.dismissError() }
@@ -856,6 +844,7 @@ private struct SukavinaAppView: View {
 }
 
 private struct ElegantAppAlert: View {
+    let title: String
     let message: String
     let offersSettings: Bool
     let dismiss: () -> Void
@@ -875,7 +864,7 @@ private struct ElegantAppAlert: View {
             }
             .padding(.bottom, 18)
 
-            Text(offersSettings ? "Cần bật dữ liệu di động" : "Chưa thể thực hiện")
+            Text(title)
                 .font(.system(size: 21, weight: .bold, design: .rounded))
                 .multilineTextAlignment(.center)
 
@@ -965,7 +954,12 @@ private struct AuthenticationView: View {
 
                         LoginForm()
                         .padding(20)
-                        .adaptiveGlassSurface(cornerRadius: 24, tint: AppTheme.deepRed.opacity(0.16), legacyOpacity: 0.96)
+                        .background(AppTheme.card.opacity(0.96))
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(Color.white.opacity(0.08))
+                        )
                     }
                     .padding(22)
                 }
@@ -980,7 +974,6 @@ private struct LoginForm: View {
     @EnvironmentObject private var session: SessionStore
     @State private var loginId = ""
     @State private var password = ""
-    @State private var showDiagnostics = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -998,113 +991,14 @@ private struct LoginForm: View {
                 .padding(.horizontal, 18)
                 .frame(maxWidth: .infinity, minHeight: 54)
             }
-            .adaptivePrimaryAction()
+            .buttonStyle(.plain)
             .foregroundColor(.white)
+            .background(AppTheme.red)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .disabled(loginId.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isWorking)
             .opacity(loginId.isEmpty || password.isEmpty ? 0.55 : 1)
-
-            Button {
-                showDiagnostics = true
-            } label: {
-                Label("Nhật ký kết nối", systemImage: "waveform.path.ecg.rectangle")
-                    .font(.footnote.weight(.semibold))
-            }
-            .buttonStyle(.plain)
-            .foregroundColor(AppTheme.muted)
         }
-        .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
     }
-}
-
-private struct ConnectionDiagnosticsView: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var report = ConnectionDiagnostics.report()
-    @State private var showShareSheet = false
-    @State private var copied = false
-
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 16) {
-                HStack(spacing: 12) {
-                    Image(systemName: "network.badge.shield.half.filled")
-                        .font(.system(size: 26, weight: .semibold))
-                        .foregroundColor(AppTheme.red)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Chẩn đoán kết nối").font(.headline)
-                        Text("Không chứa mật khẩu hoặc token đăng nhập.")
-                            .font(.caption)
-                            .foregroundColor(AppTheme.muted)
-                    }
-                    Spacer()
-                }
-
-                ScrollView {
-                    Text(report.isEmpty ? "Chưa có dữ liệu. Hãy thử đăng nhập rồi mở lại nhật ký." : report)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundColor(.white.opacity(0.82))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                }
-                .background(Color.black.opacity(0.28))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                HStack(spacing: 10) {
-                    Button {
-                        UIPasteboard.general.string = report
-                        copied = true
-                    } label: {
-                        Label(copied ? "Đã sao chép" : "Sao chép", systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .frame(maxWidth: .infinity, minHeight: 48)
-                    }
-                    .buttonStyle(.plain)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                    Button {
-                        showShareSheet = true
-                    } label: {
-                        Label("Chia sẻ", systemImage: "square.and.arrow.up")
-                            .frame(maxWidth: .infinity, minHeight: 48)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.white)
-                    .background(AppTheme.red)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-
-                Button("Xóa nhật ký cũ", role: .destructive) {
-                    ConnectionDiagnostics.clear()
-                    report = ConnectionDiagnostics.report()
-                    copied = false
-                }
-                .font(.footnote.weight(.semibold))
-            }
-            .padding(20)
-            .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle("Nhật ký kết nối")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Đóng") { dismiss() }
-                }
-            }
-            .sheet(isPresented: $showShareSheet) {
-                ActivityShareView(items: [report])
-            }
-        }
-        .preferredColorScheme(.dark)
-    }
-}
-
-private struct ActivityShareView: UIViewControllerRepresentable {
-    let items: [Any]
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct RegistrationForm: View {
@@ -1565,7 +1459,8 @@ private struct ArticleRow: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .adaptiveGlassSurface(cornerRadius: 20, interactive: true)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -1793,7 +1688,8 @@ private struct NativeField: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .adaptiveGlassSurface(cornerRadius: 15, interactive: true, legacyFill: .white, legacyOpacity: 0.055)
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 }
 
@@ -1815,7 +1711,8 @@ private struct NativeSecureField: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .adaptiveGlassSurface(cornerRadius: 15, interactive: true, legacyFill: .white, legacyOpacity: 0.055)
+        .background(Color.white.opacity(0.055))
+        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
     }
 }
 
