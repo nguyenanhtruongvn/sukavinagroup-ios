@@ -98,6 +98,35 @@ private enum NetworkSessions {
     }
 }
 
+private enum ConnectionDiagnostics {
+    private static let key = "connection-diagnostics-v1"
+    private static let lock = NSLock()
+    private static let maximumEntries = 160
+
+    static func record(_ message: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        var entries = UserDefaults.standard.stringArray(forKey: key) ?? []
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        entries.append("[\(timestamp)] \(message)")
+        UserDefaults.standard.set(Array(entries.suffix(maximumEntries)), forKey: key)
+    }
+
+    static func report() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        let entries = UserDefaults.standard.stringArray(forKey: key) ?? []
+        let device = "iOS \(UIDevice.current.systemVersion) | \(UIDevice.current.model)"
+        return (["SUKAVINA CONNECTION LOG", device, "Bundle: \(Bundle.main.infoDictionary?[\"CFBundleShortVersionString\"] as? String ?? \"?\") (\(Bundle.main.infoDictionary?[\"CFBundleVersion\"] as? String ?? \"?\"))", ""] + entries).joined(separator: "\n")
+    }
+
+    static func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        UserDefaults.standard.removeObject(forKey: key)
+    }
+}
+
 private final class APIClient {
     static let shared = APIClient()
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")!
@@ -133,27 +162,37 @@ private final class APIClient {
 
         var data: Data
         var response: URLResponse
+        ConnectionDiagnostics.record("API primary start: \(method) \(url.host ?? \"unknown\")/\(path)")
         do {
             (data, response) = try await NetworkSessions.api.data(for: request)
         } catch let error as URLError where error.code == .dataNotAllowed || error.code == .internationalRoamingOff {
+            ConnectionDiagnostics.record("API primary cellular denied: \(error.code.rawValue) \(error.localizedDescription)")
             throw NetworkError.cellularRestricted
         } catch {
+            let code = (error as? URLError)?.code.rawValue
+            ConnectionDiagnostics.record("API primary failed: code=\(code.map(String.init) ?? \"n/a\") \(error.localizedDescription)")
             guard let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
                 throw NetworkError.offline
             }
             request.url = fallbackURL
+            ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackURL.host ?? \"unknown\")/\(path)")
             do {
                 (data, response) = try await NetworkSessions.api.data(for: request)
             } catch let fallbackError as URLError where fallbackError.code == .dataNotAllowed || fallbackError.code == .internationalRoamingOff {
+                ConnectionDiagnostics.record("API fallback cellular denied: \(fallbackError.code.rawValue) \(fallbackError.localizedDescription)")
                 throw NetworkError.cellularRestricted
             } catch {
+                let code = (error as? URLError)?.code.rawValue
+                ConnectionDiagnostics.record("API fallback failed: code=\(code.map(String.init) ?? \"n/a\") \(error.localizedDescription)")
                 throw NetworkError.offline
             }
         }
 
         guard let http = response as? HTTPURLResponse else {
+            ConnectionDiagnostics.record("API invalid non-HTTP response: \(path)")
             throw NetworkError.invalidResponse
         }
+        ConnectionDiagnostics.record("API response: \(http.statusCode) host=\(http.url?.host ?? \"unknown\") path=\(path) bytes=\(data.count)")
         guard (200..<300).contains(http.statusCode) else {
             if token != nil && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.unauthorized
@@ -517,6 +556,7 @@ private final class SessionStore: ObservableObject {
     func signIn(loginId: String, password: String) async -> Bool {
         isWorking = true
         defer { isWorking = false }
+        ConnectionDiagnostics.record("Sign-in started; identifierLength=\(loginId.count)")
         do {
             let response: LoginResponse = try await APIClient.shared.request(
                 "auth/login",
@@ -540,8 +580,10 @@ private final class SessionStore: ObservableObject {
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             startRealTimeUpdates()
+            ConnectionDiagnostics.record("Sign-in completed successfully")
             return true
         } catch {
+            ConnectionDiagnostics.record("Sign-in failed: \(error.localizedDescription)")
             present(error)
             return false
         }
@@ -622,6 +664,8 @@ private final class SessionStore: ObservableObject {
                 let wasStatus = self.lastPathStatus
                 let wasCellular = self.lastPathWasCellular
                 let isCellular = path.usesInterfaceType(.cellular)
+                let isWiFi = path.usesInterfaceType(.wifi)
+                ConnectionDiagnostics.record("Network path: status=\(String(describing: path.status)) cellular=\(isCellular) wifi=\(isWiFi) expensive=\(path.isExpensive) constrained=\(path.isConstrained)")
                 self.lastPathStatus = path.status
                 self.lastPathWasCellular = isCellular
 
@@ -875,6 +919,7 @@ private struct LoginForm: View {
     @EnvironmentObject private var session: SessionStore
     @State private var loginId = ""
     @State private var password = ""
+    @State private var showDiagnostics = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -898,8 +943,109 @@ private struct LoginForm: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .disabled(loginId.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isWorking)
             .opacity(loginId.isEmpty || password.isEmpty ? 0.55 : 1)
+
+            Button {
+                showDiagnostics = true
+            } label: {
+                Label("Nhật ký kết nối", systemImage: "waveform.path.ecg.rectangle")
+                    .font(.footnote.weight(.semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(AppTheme.muted)
         }
+        .sheet(isPresented: $showDiagnostics) { ConnectionDiagnosticsView() }
     }
+}
+
+private struct ConnectionDiagnosticsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var report = ConnectionDiagnostics.report()
+    @State private var showShareSheet = false
+    @State private var copied = false
+
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 16) {
+                HStack(spacing: 12) {
+                    Image(systemName: "network.badge.shield.half.filled")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundColor(AppTheme.red)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Chẩn đoán kết nối").font(.headline)
+                        Text("Không chứa mật khẩu hoặc token đăng nhập.")
+                            .font(.caption)
+                            .foregroundColor(AppTheme.muted)
+                    }
+                    Spacer()
+                }
+
+                ScrollView {
+                    Text(report.isEmpty ? "Chưa có dữ liệu. Hãy thử đăng nhập rồi mở lại nhật ký." : report)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.82))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(14)
+                }
+                .background(Color.black.opacity(0.28))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                HStack(spacing: 10) {
+                    Button {
+                        UIPasteboard.general.string = report
+                        copied = true
+                    } label: {
+                        Label(copied ? "Đã sao chép" : "Sao chép", systemImage: copied ? "checkmark" : "doc.on.doc")
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    Button {
+                        showShareSheet = true
+                    } label: {
+                        Label("Chia sẻ", systemImage: "square.and.arrow.up")
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.white)
+                    .background(AppTheme.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+
+                Button("Xóa nhật ký cũ", role: .destructive) {
+                    ConnectionDiagnostics.clear()
+                    report = ConnectionDiagnostics.report()
+                    copied = false
+                }
+                .font(.footnote.weight(.semibold))
+            }
+            .padding(20)
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Nhật ký kết nối")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Đóng") { dismiss() }
+                }
+            }
+            .sheet(isPresented: $showShareSheet) {
+                ActivityShareView(items: [report])
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+}
+
+private struct ActivityShareView: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 private struct RegistrationForm: View {
