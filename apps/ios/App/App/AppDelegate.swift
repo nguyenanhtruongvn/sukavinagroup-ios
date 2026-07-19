@@ -66,6 +66,7 @@ private enum NetworkError: LocalizedError {
     case invalidResponse
     case server(String)
     case offline
+    case cellularRestricted
     case unauthorized
 
     var errorDescription: String? {
@@ -73,6 +74,7 @@ private enum NetworkError: LocalizedError {
         case .invalidResponse: return "Máy chủ trả về dữ liệu không hợp lệ."
         case .server(let message): return message
         case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
+        case .cellularRestricted: return "Ứng dụng chưa được phép sử dụng dữ liệu di động. Hãy bật Dữ liệu di động cho Sukavina trong Cài đặt."
         case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
     }
@@ -128,6 +130,8 @@ private final class APIClient {
         let response: URLResponse
         do {
             (data, response) = try await NetworkSessions.api.data(for: request)
+        } catch let error as URLError where error.code == .dataNotAllowed || error.code == .internationalRoamingOff {
+            throw NetworkError.cellularRestricted
         } catch {
             throw NetworkError.offline
         }
@@ -136,7 +140,7 @@ private final class APIClient {
             throw NetworkError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 401 || http.statusCode == 403 {
+            if token != nil && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.unauthorized
             }
             let payload = try? decoder.decode(APIErrorPayload.self, from: data)
@@ -459,6 +463,7 @@ private final class SessionStore: ObservableObject {
     @Published var profile: Profile?
     @Published var dashboard: Dashboard?
     @Published var errorMessage: String?
+    @Published var errorOffersSettings = false
     @Published var isWorking = false
     @Published var unreadCount = 0
 
@@ -487,7 +492,7 @@ private final class SessionStore: ObservableObject {
         } catch NetworkError.unauthorized {
             signOut()
         } catch {
-            errorMessage = error.localizedDescription
+            present(error)
             startRealTimeUpdates()
         }
     }
@@ -520,7 +525,7 @@ private final class SessionStore: ObservableObject {
             startRealTimeUpdates()
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            present(error)
             return false
         }
     }
@@ -532,7 +537,7 @@ private final class SessionStore: ObservableObject {
             processNewArticles(fresh.contentItems)
             dashboard = fresh
         } catch {
-            errorMessage = error.localizedDescription
+            present(error)
         }
     }
 
@@ -545,6 +550,21 @@ private final class SessionStore: ObservableObject {
         dashboard = nil
         unreadCount = 0
         state = .signedOut
+    }
+
+    func dismissError() {
+        errorMessage = nil
+        errorOffersSettings = false
+    }
+
+    private func present(_ error: Error) {
+        errorMessage = error.localizedDescription
+        if let networkError = error as? NetworkError,
+           case .cellularRestricted = networkError {
+            errorOffersSettings = true
+        } else {
+            errorOffersSettings = false
+        }
     }
 
     private func startRealTimeUpdates() {
@@ -596,7 +616,7 @@ private final class SessionStore: ObservableObject {
         do {
             profile = try await APIClient.shared.request("auth/me", token: token)
         } catch {
-            errorMessage = error.localizedDescription
+            present(error)
         }
     }
 
@@ -646,7 +666,7 @@ private final class SessionStore: ObservableObject {
             signOut()
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            present(error)
             return false
         }
     }
@@ -656,28 +676,108 @@ private struct SukavinaAppView: View {
     @StateObject private var session = SessionStore()
 
     var body: some View {
-        Group {
-            switch session.state {
-            case .restoring:
-                NativeLaunchView()
-            case .signedOut:
-                AuthenticationView()
-                    .environmentObject(session)
-            case .signedIn:
-                EmployeePortalView()
-                    .environmentObject(session)
+        ZStack {
+            Group {
+                switch session.state {
+                case .restoring:
+                    NativeLaunchView()
+                case .signedOut:
+                    AuthenticationView()
+                        .environmentObject(session)
+                case .signedIn:
+                    EmployeePortalView()
+                        .environmentObject(session)
+                }
+            }
+
+            if let message = session.errorMessage {
+                Color.black.opacity(0.62)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture { session.dismissError() }
+
+                ElegantAppAlert(
+                    message: message,
+                    offersSettings: session.errorOffersSettings,
+                    dismiss: { session.dismissError() }
+                )
+                .padding(24)
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
             }
         }
         .preferredColorScheme(.dark)
         .task { await session.restore() }
-        .alert("Sukavina", isPresented: Binding(
-            get: { session.errorMessage != nil },
-            set: { if !$0 { session.errorMessage = nil } }
-        )) {
-            Button("Đóng", role: .cancel) {}
-        } message: {
-            Text(session.errorMessage ?? "")
+        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.errorMessage)
+    }
+}
+
+private struct ElegantAppAlert: View {
+    let message: String
+    let offersSettings: Bool
+    let dismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.red.opacity(0.16))
+                    .frame(width: 68, height: 68)
+                Circle()
+                    .stroke(AppTheme.red.opacity(0.28), lineWidth: 1)
+                    .frame(width: 68, height: 68)
+                Image(systemName: offersSettings ? "antenna.radiowaves.left.and.right.slash" : "exclamationmark.shield.fill")
+                    .font(.system(size: 27, weight: .semibold))
+                    .foregroundColor(AppTheme.red)
+            }
+            .padding(.bottom, 18)
+
+            Text(offersSettings ? "Cần bật dữ liệu di động" : "Chưa thể thực hiện")
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .multilineTextAlignment(.center)
+
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(AppTheme.muted)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+                .padding(.top, 9)
+                .padding(.bottom, 22)
+
+            if offersSettings {
+                Button {
+                    dismiss()
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                } label: {
+                    Label("Mở Cài đặt", systemImage: "gearshape.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.white)
+                .background(
+                    LinearGradient(colors: [AppTheme.red, AppTheme.deepRed], startPoint: .leading, endPoint: .trailing)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+
+            Button("Đóng") { dismiss() }
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(AppTheme.muted)
+                .padding(.top, offersSettings ? 16 : 0)
+                .frame(maxWidth: .infinity, minHeight: offersSettings ? 28 : 48)
         }
+        .padding(24)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(AppTheme.card)
+                .shadow(color: .black.opacity(0.42), radius: 30, y: 16)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.white.opacity(0.09), lineWidth: 1)
+        )
+        .frame(maxWidth: 390)
     }
 }
 
