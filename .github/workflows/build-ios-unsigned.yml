@@ -69,10 +69,11 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${APP_VERSION}"
-          IPA_PATH="$GITHUB_WORKSPACE/build/Sukavina-Portal-unsigned.ipa"
+          IPA_PATH="$GITHUB_WORKSPACE/build/Sukavina.ipa"
+          cp "$GITHUB_WORKSPACE/build/Sukavina-Portal-unsigned.ipa" "$IPA_PATH"
           DOWNLOAD_URL="https://github.com/${SIDESTORE_REPO}/releases/download/${TAG}/Sukavina.ipa"
 
-          gh release create "$TAG" "$IPA_PATH#Sukavina.ipa" \
+          gh release create "$TAG" "$IPA_PATH" \
             --repo "$SIDESTORE_REPO" \
             --title "Sukavina ${APP_VERSION}" \
             --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
