@@ -117,7 +117,9 @@ private enum ConnectionDiagnostics {
         defer { lock.unlock() }
         let entries = UserDefaults.standard.stringArray(forKey: key) ?? []
         let device = "iOS \(UIDevice.current.systemVersion) | \(UIDevice.current.model)"
-        return (["SUKAVINA CONNECTION LOG", device, "Bundle: \(Bundle.main.infoDictionary?[\"CFBundleShortVersionString\"] as? String ?? \"?\") (\(Bundle.main.infoDictionary?[\"CFBundleVersion\"] as? String ?? \"?\"))", ""] + entries).joined(separator: "\n")
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return (["SUKAVINA CONNECTION LOG", device, "Bundle: \(version) (\(build))", ""] + entries).joined(separator: "\n")
     }
 
     static func clear() {
@@ -162,7 +164,8 @@ private final class APIClient {
 
         var data: Data
         var response: URLResponse
-        ConnectionDiagnostics.record("API primary start: \(method) \(url.host ?? \"unknown\")/\(path)")
+        let primaryHost = url.host ?? "unknown"
+        ConnectionDiagnostics.record("API primary start: \(method) \(primaryHost)/\(path)")
         do {
             (data, response) = try await NetworkSessions.api.data(for: request)
         } catch let error as URLError where error.code == .dataNotAllowed || error.code == .internationalRoamingOff {
@@ -170,12 +173,14 @@ private final class APIClient {
             throw NetworkError.cellularRestricted
         } catch {
             let code = (error as? URLError)?.code.rawValue
-            ConnectionDiagnostics.record("API primary failed: code=\(code.map(String.init) ?? \"n/a\") \(error.localizedDescription)")
+            let codeText = code.map(String.init) ?? "n/a"
+            ConnectionDiagnostics.record("API primary failed: code=\(codeText) \(error.localizedDescription)")
             guard let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
                 throw NetworkError.offline
             }
             request.url = fallbackURL
-            ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackURL.host ?? \"unknown\")/\(path)")
+            let fallbackHost = fallbackURL.host ?? "unknown"
+            ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackHost)/\(path)")
             do {
                 (data, response) = try await NetworkSessions.api.data(for: request)
             } catch let fallbackError as URLError where fallbackError.code == .dataNotAllowed || fallbackError.code == .internationalRoamingOff {
@@ -183,7 +188,8 @@ private final class APIClient {
                 throw NetworkError.cellularRestricted
             } catch {
                 let code = (error as? URLError)?.code.rawValue
-                ConnectionDiagnostics.record("API fallback failed: code=\(code.map(String.init) ?? \"n/a\") \(error.localizedDescription)")
+                let codeText = code.map(String.init) ?? "n/a"
+                ConnectionDiagnostics.record("API fallback failed: code=\(codeText) \(error.localizedDescription)")
                 throw NetworkError.offline
             }
         }
@@ -192,7 +198,8 @@ private final class APIClient {
             ConnectionDiagnostics.record("API invalid non-HTTP response: \(path)")
             throw NetworkError.invalidResponse
         }
-        ConnectionDiagnostics.record("API response: \(http.statusCode) host=\(http.url?.host ?? \"unknown\") path=\(path) bytes=\(data.count)")
+        let responseHost = http.url?.host ?? "unknown"
+        ConnectionDiagnostics.record("API response: \(http.statusCode) host=\(responseHost) path=\(path) bytes=\(data.count)")
         guard (200..<300).contains(http.statusCode) else {
             if token != nil && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.unauthorized
