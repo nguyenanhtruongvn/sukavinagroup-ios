@@ -124,7 +124,7 @@ private enum NetworkError: LocalizedError {
         case .server(let message): return message
         case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
         case .cellularRestricted: return "iPhone đang không cấp đường truyền di động cho Sukavina. Vào Cài đặt > Di động, bật Sukavina User rồi mở lại ứng dụng."
-        case .invalidCredentials: return "Mã nhân viên, Gmail, số điện thoại hoặc mật khẩu không chính xác. Vui lòng kiểm tra và thử lại."
+        case .invalidCredentials: return "Mã nhân viên hoặc mật khẩu không chính xác."
         case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
     }
@@ -1207,7 +1207,8 @@ private struct DashboardView: View {
                             }
                         }
                         .padding(16)
-                        .adaptiveGlassSurface(cornerRadius: 20, interactive: true)
+                        .background(AppTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
                     .buttonStyle(.plain)
 
@@ -1378,7 +1379,8 @@ private struct MetricCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .adaptiveGlassSurface(cornerRadius: 20)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -1396,7 +1398,8 @@ private struct MetricWideCard: View {
             Spacer()
         }
         .padding(18)
-        .adaptiveGlassSurface(cornerRadius: 20)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
