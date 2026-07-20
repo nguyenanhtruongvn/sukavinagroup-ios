@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "net.sukavinagroup.user"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "net.sukavinagroup.user"
-        minSdk = 26
-        targetSdk = 35
+        minSdk = 29
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
     }

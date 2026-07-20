@@ -259,11 +259,12 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     var reviewing by remember { mutableStateOf<EmployeeRequest?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
     val requests = (state.requests + state.approvals).associateBy { it.id }
+    val visibleArticles = state.dashboard?.contentItems.orEmpty().filterNot { it.id in state.hiddenArticleIds }
     val unread = state.unreadCount + state.requestNotifications.count { !it.read }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(18.dp, 20.dp, 18.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text("Thông báo", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold); Text(if (unread > 0) "$unread thông báo chưa đọc" else "Bạn đã đọc tất cả", color = SukavinaMuted) }
-            if (state.requestNotifications.isNotEmpty() || state.dashboard?.contentItems?.isNotEmpty() == true) TextButton(onClick = { confirmClear = true }) { Text("Xóa tất cả", color = MaterialTheme.colorScheme.error) }
+            if (state.requestNotifications.isNotEmpty() || visibleArticles.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text("Xóa tất cả", color = MaterialTheme.colorScheme.error) }
         }
         LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             items(state.requestNotifications, key = { it.id }) { item ->
@@ -277,10 +278,10 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
                     }
                 }
             }
-            items(state.dashboard?.contentItems.orEmpty(), key = { "article-${it.id}" }) { item ->
+            items(visibleArticles, key = { "article-${it.id}" }) { item ->
                 Card(onClick = { session.markArticlesRead(); openArticle(item) }) { Row(Modifier.padding(15.dp)) { Surface(Modifier.size(44.dp), RoundedCornerShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) } } }
             }
-            if (state.requestNotifications.isEmpty() && state.dashboard?.contentItems?.isEmpty() != false) item { Text("Chưa có thông báo.", color = SukavinaMuted, modifier = Modifier.padding(top = 50.dp)) }
+            if (state.requestNotifications.isEmpty() && visibleArticles.isEmpty()) item { Text("Chưa có thông báo.", color = SukavinaMuted, modifier = Modifier.padding(top = 50.dp)) }
         }
     }
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("Xóa tất cả thông báo?") }, text = { Text("Danh sách thông báo sẽ được dọn khỏi tài khoản này.") }, confirmButton = { TextButton(onClick = { session.clearNotifications(); confirmClear = false }) { Text("Xóa tất cả", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Hủy") } })

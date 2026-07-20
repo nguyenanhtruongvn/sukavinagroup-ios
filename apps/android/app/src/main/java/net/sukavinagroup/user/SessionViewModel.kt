@@ -22,6 +22,7 @@ data class SessionUiState(
     val approvals: List<EmployeeRequest> = emptyList(),
     val requestNotifications: List<RequestNotification> = emptyList(),
     val biometricEnabled: Boolean = false,
+    val hiddenArticleIds: Set<String> = emptySet(),
 )
 
 class SessionViewModel(application: Application) : AndroidViewModel(application) {
@@ -36,9 +37,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     val state = _state.asStateFlow()
     private var events: EventSource? = null
     private var knownArticles = preferences.getStringSet("known_articles", emptySet()).orEmpty()
+    private var hiddenArticles = preferences.getStringSet("hidden_notification_articles", emptySet()).orEmpty()
 
     init {
-        _state.value = _state.value.copy(biometricEnabled = preferences.getBoolean("biometric_enabled", false))
+        _state.value = _state.value.copy(biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
         restore()
     }
 
@@ -127,6 +129,9 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun clearNotifications() = viewModelScope.launch {
         val token = _state.value.token ?: return@launch
         runCatching { api.delete<UpdateCount>("me/requests/notifications", token) }
+        hiddenArticles = hiddenArticles + _state.value.dashboard?.contentItems.orEmpty().map { it.id }
+        preferences.edit().putStringSet("hidden_notification_articles", hiddenArticles).apply()
+        _state.value = _state.value.copy(hiddenArticleIds = hiddenArticles, requestNotifications = emptyList())
         markArticlesRead(); refreshRequests()
     }
 
@@ -170,7 +175,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun signOut() {
         events?.cancel(); events = null
         preferences.edit().remove("token").apply()
-        _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false))
+        _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
     }
 
     private fun startEvents() {
