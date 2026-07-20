@@ -1555,8 +1555,11 @@ private enum EmployeeRequestStatus: String, Codable, CaseIterable {
 }
 
 private enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
-    case leave = "Nghỉ phép", late = "Đi trễ", early = "Về sớm", overtime = "Làm thêm giờ", business = "Công tác"
+    case leave, late, early, overtime, business
     var id: String { rawValue }
+    var title: String {
+        switch self { case .leave: return "Nghỉ phép"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác" }
+    }
     var icon: String {
         switch self {
         case .leave: return "calendar.badge.minus"
@@ -1569,33 +1572,73 @@ private enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
 }
 
 private struct EmployeeRequest: Codable, Identifiable {
-    let id: UUID
+    struct EmployeeSummary: Codable { let fullName: String; let employeeCode: String }
+    let id: String
     let kind: EmployeeRequestKind
     let from: Date
     let to: Date
     let reason: String
     let status: EmployeeRequestStatus
     let createdAt: Date
+    let dueAt: Date
+    let decisionNote: String?
+    let autoApproved: Bool
+    let employee: EmployeeSummary?
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
+        case from = "startsAt"
+        case to = "endsAt"
+    }
 }
+
+private struct RequestBody: Encodable { let kind: String; let startsAt: Date; let endsAt: Date; let reason: String }
+private struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 
 @MainActor private final class EmployeeRequestStore: ObservableObject {
     @Published private(set) var requests: [EmployeeRequest] = []
-    private let key = "sukavina-employee-requests-v1"
-    init() {
-        if let data = UserDefaults.standard.data(forKey: key), let value = try? JSONDecoder().decode([EmployeeRequest].self, from: data) { requests = value }
+    @Published private(set) var approvals: [EmployeeRequest] = []
+    @Published var message: String?
+
+    func load(_ token: String?) async {
+        guard let token else { return }
+        do {
+            async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
+            async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
+            requests = try await mine
+            approvals = try await assigned
+        } catch { message = error.localizedDescription }
     }
-    func submit(kind: EmployeeRequestKind, from: Date, to: Date, reason: String) {
-        requests.insert(.init(id: UUID(), kind: kind, from: from, to: to, reason: reason, status: .pending, createdAt: Date()), at: 0)
-        save()
+
+    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String) async -> Bool {
+        guard let token else { return false }
+        do {
+            let _: EmployeeRequest = try await APIClient.shared.request("me/requests", method: "POST", token: token, body: RequestBody(kind: kind.rawValue, startsAt: from, endsAt: to, reason: reason))
+            await load(token); return true
+        } catch { message = error.localizedDescription; return false }
     }
-    func cancel(_ id: UUID) { requests.removeAll { $0.id == id && $0.status == .pending }; save() }
-    private func save() { if let data = try? JSONEncoder().encode(requests) { UserDefaults.standard.set(data, forKey: key) } }
+
+    func cancel(token: String?, id: String) async {
+        guard let token else { return }
+        do { let _: EmployeeRequest = try await APIClient.shared.request("me/requests/\(id)", method: "DELETE", token: token); await load(token) }
+        catch { message = error.localizedDescription }
+    }
+
+    func decide(token: String?, id: String, approved: Bool, note: String) async -> Bool {
+        guard let token else { return false }
+        do {
+            let _: EmployeeRequest = try await APIClient.shared.request("me/requests/\(id)/decision", method: "PATCH", token: token, body: RequestDecisionBody(status: approved ? "approved" : "rejected", note: note.isEmpty ? nil : note))
+            await load(token); return true
+        } catch { message = error.localizedDescription; return false }
+    }
 }
 
 private struct RequestsView: View {
+    @EnvironmentObject private var session: SessionStore
     @StateObject private var store = EmployeeRequestStore()
     @State private var filter: EmployeeRequestStatus?
     @State private var composing = false
+    @State private var reviewing: EmployeeRequest?
     private var visible: [EmployeeRequest] { filter.map { value in store.requests.filter { $0.status == value } } ?? store.requests }
 
     var body: some View {
@@ -1616,8 +1659,17 @@ private struct RequestsView: View {
                             LazyVStack(spacing: 12) {
                                 ForEach(visible) { request in
                                     RequestCard(request: request) {
-                                        store.cancel(request.id)
+                                        Task { await store.cancel(token: session.token, id: request.id) }
                                     }
+                                }
+                            }
+                        }
+                        if !store.approvals.filter({ $0.status == .pending }).isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Cần bạn duyệt").font(.title3.bold()).frame(maxWidth: .infinity, alignment: .leading)
+                                ForEach(store.approvals.filter { $0.status == .pending }) { request in
+                                    Button { reviewing = request } label: { RequestCard(request: request, cancel: {}) }
+                                        .buttonStyle(.plain)
                                 }
                             }
                         }
@@ -1639,10 +1691,20 @@ private struct RequestsView: View {
             }
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Đơn từ của tôi")
             .sheet(isPresented: $composing) {
-                RequestComposer { store.submit(kind: $0, from: $1, to: $2, reason: $3) }
+                RequestComposer { kind, from, to, reason in
+                    Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason) }
+                }
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
             }
+            .sheet(item: $reviewing) { request in
+                RequestDecisionView(request: request) { approved, note in
+                    await store.decide(token: session.token, id: request.id, approved: approved, note: note)
+                }
+            }
+            .task { await store.load(session.token) }
+            .refreshable { await store.load(session.token) }
+            .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
     }
 
@@ -1659,14 +1721,46 @@ private struct RequestCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: request.kind.icon).frame(width: 42, height: 42).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 13))
-                VStack(alignment: .leading, spacing: 3) { Text(request.kind.rawValue).font(.headline); Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted) }
+                VStack(alignment: .leading, spacing: 3) { Text(request.employee.map { "\($0.fullName) · \($0.employeeCode)" } ?? request.kind.title).font(.headline); Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted) }
                 Spacer()
                 Text(request.status.title).font(.caption.bold()).foregroundStyle(request.status.color).padding(.horizontal, 10).padding(.vertical, 6).background(request.status.color.opacity(0.14)).clipShape(Capsule())
             }
             Label("\(request.from.formatted(date: .abbreviated, time: .shortened)) – \(request.to.formatted(date: .abbreviated, time: .shortened))", systemImage: "calendar").font(.subheadline).foregroundStyle(AppTheme.muted)
             Text(request.reason).font(.subheadline)
+            if let note = request.decisionNote, !note.isEmpty { Label(note, systemImage: "text.bubble").font(.caption).foregroundStyle(AppTheme.muted) }
             if request.status == .pending { Button("Hủy đơn", role: .destructive, action: cancel).font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .trailing) }
         }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private struct RequestDecisionView: View {
+    let request: EmployeeRequest
+    let decide: (Bool, String) async -> Bool
+    @Environment(\.dismiss) private var dismiss
+    @State private var note = ""
+    @State private var working = false
+    @State private var rejecting = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                RequestCard(request: request, cancel: {})
+                Text(rejecting ? "Lý do từ chối" : "Ghi chú cho nhân viên (tùy chọn)").font(.headline)
+                TextEditor(text: $note).scrollContentBackground(.hidden).padding(12).frame(minHeight: 130)
+                    .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
+                if rejecting { Text("Lý do từ chối là bắt buộc, tối thiểu 5 ký tự.").font(.caption).foregroundStyle(AppTheme.red) }
+                HStack(spacing: 12) {
+                    Button("Từ chối") { rejecting = true }.buttonStyle(.bordered).tint(AppTheme.red)
+                    Button(rejecting ? "Xác nhận từ chối" : "Duyệt đơn") {
+                        Task { working = true; if await decide(!rejecting, note.trimmingCharacters(in: .whitespacesAndNewlines)) { dismiss() }; working = false }
+                    }
+                    .buttonStyle(.borderedProminent).tint(rejecting ? AppTheme.red : .green)
+                    .disabled(working || (rejecting && note.trimmingCharacters(in: .whitespacesAndNewlines).count < 5))
+                }.frame(maxWidth: .infinity, alignment: .trailing)
+                Spacer()
+            }.padding(20).background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Xử lý đơn")
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
+        }.preferredColorScheme(.dark)
     }
 }
 
@@ -1710,7 +1804,7 @@ private struct RequestComposer: View {
                                     HStack(spacing: 10) {
                                         Image(systemName: item.icon)
                                             .font(.system(size: 16, weight: .semibold))
-                                        Text(item.rawValue)
+                                        Text(item.title)
                                             .font(.subheadline.weight(.semibold))
                                             .lineLimit(1)
                                         Spacer(minLength: 0)
@@ -1840,8 +1934,18 @@ private struct RequestComposer: View {
     }
 }
 
+private struct RequestNotification: Decodable, Identifiable {
+    let id: String
+    let title: String
+    let message: String
+    let read: Bool
+    let createdAt: Date
+}
+private struct UpdateCount: Decodable { let count: Int }
+
 private struct NotificationsView: View {
     @EnvironmentObject private var session: SessionStore
+    @State private var requestNotifications: [RequestNotification] = []
     private var items: [ContentItem] { session.dashboard?.contentItems ?? [] }
     var body: some View {
         NavigationStack {
@@ -1851,6 +1955,18 @@ private struct NotificationsView: View {
                         Text(session.unreadCount == 0 ? "Bạn đã đọc tất cả thông báo" : "Bạn có \(session.unreadCount) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
                         if session.unreadCount > 0 { Button("Đọc tất cả") { session.markArticlesRead() }.font(.subheadline.bold()).foregroundStyle(AppTheme.red) }
+                    }
+                    ForEach(requestNotifications) { item in
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: "doc.text.fill").frame(width: 44, height: 44).background(Color.orange.opacity(0.16)).foregroundStyle(.orange).clipShape(RoundedRectangle(cornerRadius: 14))
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(item.title).font(.headline)
+                                Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
+                                Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
+                            }
+                            Spacer()
+                            if !item.read { Circle().fill(AppTheme.red).frame(width: 8, height: 8) }
+                        }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20))
                     }
                     ForEach(items) { item in
                         NavigationLink(destination: ArticleDetailView(item: item)) {
@@ -1868,7 +1984,16 @@ private struct NotificationsView: View {
                     if items.isEmpty { ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash").padding(.top, 70) }
                 }.padding(16)
             }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
-                .refreshable { await session.refreshDashboard() }.onAppear { session.markArticlesRead() }
+                .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
+                .task { await loadRequestNotifications(); session.markArticlesRead() }
+        }
+    }
+
+    private func loadRequestNotifications() async {
+        guard let token = session.token else { return }
+        if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
+            requestNotifications = values
+            let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/read", method: "PATCH", token: token)
         }
     }
 }

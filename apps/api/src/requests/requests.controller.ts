@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RequestsService } from './requests.service';
 
@@ -18,6 +18,30 @@ export class RequestsController {
     @Body() body: { kind?: string; startsAt?: string; endsAt?: string; reason?: string },
   ) {
     return this.requests.create(req.user.sub, body);
+  }
+
+  @Get('approvals')
+  approvals(@Req() req: { user: { sub: string } }) {
+    return this.requests.approvals(req.user.sub);
+  }
+
+  @Get('notifications')
+  notifications(@Req() req: { user: { sub: string } }) {
+    return this.requests.notifications(req.user.sub);
+  }
+
+  @Patch('notifications/read')
+  readNotifications(@Req() req: { user: { sub: string } }) {
+    return this.requests.readNotifications(req.user.sub);
+  }
+
+  @Patch(':id/decision')
+  decide(
+    @Req() req: { user: { sub: string } },
+    @Param('id') id: string,
+    @Body() body: { status?: string; note?: string },
+  ) {
+    return this.requests.decide(req.user.sub, id, body);
   }
 
   @Delete(':id')

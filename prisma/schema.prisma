@@ -59,12 +59,32 @@ model EmployeeRequest {
   endsAt     DateTime
   reason     String
   status     String   @default("pending")
+  managerEmployeeId String?
+  managerEmployeeCode String?
+  decisionNote String?
+  decidedAt  DateTime?
+  dueAt      DateTime
+  autoApproved Boolean @default(false)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, createdAt])
   @@index([status])
+}
+
+model UserNotification {
+  id          String   @id @default(cuid())
+  recipientId String
+  type        String
+  title       String
+  message     String
+  requestId   String?
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([recipientId, createdAt])
+  @@index([recipientId, read])
 }
 
 model AppLog {
