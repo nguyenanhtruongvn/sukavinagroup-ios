@@ -1682,37 +1682,6 @@ function App() {
           </form>
           )}
 
-          <section className="panel panel-wide auth-news">
-            <div className="panel-head">
-              <div>
-                <p className="panel-label">Bài viết mới</p>
-                <h2>Thông báo mới từ admin</h2>
-              </div>
-              <div className="pager">
-                <span>{visibleDisplayPosts.length} bài hiển thị</span>
-              </div>
-            </div>
-            <div className="news-list">
-              {visibleDisplayPosts.length ? (
-                visibleDisplayPosts.map((item) => (
-                  <article key={item.id} className="news-card">
-                    <div className="news-card-top">
-                      <div>
-                        <p className="content-meta">
-                          {item.page} / {item.key} / #{item.sortOrder}
-                        </p>
-                        <h3>{item.title}</h3>
-                      </div>
-                      <span className="status-pill status-on">Mới</span>
-                    </div>
-                    <p className="news-body">{item.cleanBody}</p>
-                  </article>
-                ))
-              ) : (
-                <p className="panel-note">Chưa có bài viết nào.</p>
-              )}
-            </div>
-          </section>
           <PublicFooter />
         </section>
       </main>
@@ -1764,18 +1733,6 @@ function App() {
         </div>
 
         <div className="topbar-actions">
-          {!isAdminRoute ? (
-            <button
-              type="button"
-              className="request-create-button"
-              onClick={openRequestComposer}
-              aria-label="Tạo đơn mới"
-              title="Tạo đơn mới"
-            >
-              <span>+</span>
-              <strong>Tạo đơn</strong>
-            </button>
-          ) : null}
           {isAdminRoute && canAccess('accounts.manage') ? (
             <div className="notification-wrap">
               <button
@@ -1966,72 +1923,6 @@ function App() {
           </p>
         </article>
 
-        <article className="panel panel-wide">
-          <div className="panel-head">
-            <div>
-              <p className="panel-label">Bài viết mới</p>
-              <h2>{isAdminRoute ? 'Thông báo từ admin' : 'Thông báo nội bộ'}</h2>
-              <p className="panel-note">
-                Hiển thị 3 bài mới nhất, các bài còn lại chuyển trang ở bên dưới.
-              </p>
-            </div>
-            <div className="pager">
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => setContentPage((current) => Math.max(1, current - 1))}
-                disabled={contentPage <= 1}
-              >
-                Trước
-              </button>
-              <span>
-                {contentPage} / {contentPageCount}
-              </span>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() =>
-                  setContentPage((current) => Math.min(contentPageCount, current + 1))
-                }
-                disabled={contentPage >= contentPageCount}
-              >
-                Sau
-              </button>
-            </div>
-          </div>
-
-          <div className="news-list">
-            {visibleDisplayPosts.length ? (
-              visibleDisplayPosts.map((item) => (
-                <article
-                  key={item.id}
-                  className="news-card news-card-clickable"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => openArticle(item)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') openArticle(item);
-                  }}
-                >
-                  <div className="news-card-top">
-                    <div>
-                      <p className="content-meta">
-                        {item.page} / {item.key} / #{item.sortOrder}
-                      </p>
-                      <h3>{item.title}</h3>
-                    </div>
-                    <span className="status-pill status-on">Mới</span>
-                  </div>
-                  <p className="news-body">{item.cleanBody}</p>
-                  <span className="news-read-more">Xem toàn bộ bài viết</span>
-                </article>
-              ))
-            ) : (
-              <p className="panel-note">Chưa có bài viết nào.</p>
-            )}
-          </div>
-        </article>
-
         <article className="panel panel-wide request-panel">
           <div className="panel-head request-panel-head">
             <div>
@@ -2039,9 +1930,6 @@ function App() {
               <h2>Đơn từ của tôi</h2>
               <p className="panel-note">Theo dõi nghỉ phép, đi trễ, về sớm, làm thêm giờ và công tác.</p>
             </div>
-            <button type="button" className="primary-button request-new-inline" onClick={openRequestComposer}>
-              <span>+</span> Tạo đơn mới
-            </button>
           </div>
           <div className="request-filters" role="group" aria-label="Lọc trạng thái đơn">
             {([
@@ -2103,30 +1991,40 @@ function App() {
             if (event.target === event.currentTarget && !requestSubmitting) setRequestComposerOpen(false);
           }}
         >
-          <form className="article-modal request-composer" role="dialog" aria-modal="true" onSubmit={submitRequest}>
-            <header className="article-modal-header">
-              <div><p className="panel-label">Đơn từ</p><h2>Tạo đơn mới</h2></div>
-              <button type="button" className="ghost-button" disabled={requestSubmitting} onClick={() => setRequestComposerOpen(false)}>Đóng</button>
+          <form className="article-modal request-composer" role="dialog" aria-modal="true" aria-labelledby="request-composer-title" onSubmit={submitRequest}>
+            <header className="request-composer-header">
+              <div className="request-composer-mark" aria-hidden="true">＋</div>
+              <div>
+                <p className="panel-label">Sukavina Portal</p>
+                <h2 id="request-composer-title">Tạo đơn mới</h2>
+                <p>Gửi yêu cầu đến bộ phận quản lý nhanh chóng và minh bạch.</p>
+              </div>
+              <button type="button" className="request-modal-close" disabled={requestSubmitting} onClick={() => setRequestComposerOpen(false)} aria-label="Đóng">×</button>
             </header>
             <div className="request-form-body">
+              <fieldset className="request-kind-picker">
+                <legend>Chọn loại đơn</legend>
+                <div>
+                  {(Object.keys(requestKindLabels) as EmployeeRequest['kind'][]).map((kind) => (
+                    <button type="button" className={requestForm.kind === kind ? 'active' : ''} onClick={() => setRequestForm((current) => ({ ...current, kind }))} key={kind}>
+                      <span aria-hidden="true">{kind === 'leave' ? '☀' : kind === 'late' ? '◷' : kind === 'early' ? '↗' : kind === 'overtime' ? '☾' : '✈'}</span>
+                      <strong>{requestKindLabels[kind]}</strong>
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <label className="request-field"><span><i>1</i> Từ ngày / giờ</span><input required type="datetime-local" value={requestForm.startsAt} onChange={(event) => setRequestForm((current) => ({ ...current, startsAt: event.target.value }))} /></label>
+              <label className="request-field"><span><i>2</i> Đến ngày / giờ</span><input required type="datetime-local" min={requestForm.startsAt} value={requestForm.endsAt} onChange={(event) => setRequestForm((current) => ({ ...current, endsAt: event.target.value }))} /></label>
               <label className="request-field request-field-wide">
-                <span>Loại đơn</span>
-                <select value={requestForm.kind} onChange={(event) => setRequestForm((current) => ({ ...current, kind: event.target.value as EmployeeRequest['kind'] }))}>
-                  {(Object.keys(requestKindLabels) as EmployeeRequest['kind'][]).map((kind) => <option value={kind} key={kind}>{requestKindLabels[kind]}</option>)}
-                </select>
-              </label>
-              <label className="request-field"><span>Từ ngày / giờ</span><input required type="datetime-local" value={requestForm.startsAt} onChange={(event) => setRequestForm((current) => ({ ...current, startsAt: event.target.value }))} /></label>
-              <label className="request-field"><span>Đến ngày / giờ</span><input required type="datetime-local" min={requestForm.startsAt} value={requestForm.endsAt} onChange={(event) => setRequestForm((current) => ({ ...current, endsAt: event.target.value }))} /></label>
-              <label className="request-field request-field-wide">
-                <span>Lý do</span>
+                <span><i>3</i> Lý do</span>
                 <textarea required minLength={10} maxLength={1000} rows={4} placeholder="Nhập lý do, tối thiểu 10 ký tự..." value={requestForm.reason} onChange={(event) => setRequestForm((current) => ({ ...current, reason: event.target.value }))} />
-                <small>{requestForm.reason.trim().length}/1000 ký tự</small>
+                <small className={requestForm.reason.trim().length >= 10 ? 'valid' : ''}>{requestForm.reason.trim().length}/1000 ký tự · Tối thiểu 10 ký tự</small>
               </label>
             </div>
             <footer className="request-form-actions">
               <button type="button" className="ghost-button" disabled={requestSubmitting} onClick={() => setRequestComposerOpen(false)}>Hủy</button>
               <button type="submit" className="primary-button" disabled={requestSubmitting || requestForm.reason.trim().length < 10 || !requestForm.startsAt || !requestForm.endsAt}>
-                {requestSubmitting ? 'Đang gửi...' : 'Gửi đơn'}
+                {requestSubmitting ? 'Đang gửi...' : 'Gửi đơn →'}
               </button>
             </footer>
           </form>
@@ -2134,7 +2032,9 @@ function App() {
       ) : null}
 
       {!isAdminRoute && isLoggedIn ? (
-        <button type="button" className="request-fab" onClick={openRequestComposer} aria-label="Tạo đơn mới" title="Tạo đơn mới">+</button>
+        <button type="button" className="request-fab" onClick={openRequestComposer} aria-label="Tạo đơn mới">
+          <span className="request-fab-icon">+</span><span className="request-fab-label">Tạo đơn</span>
+        </button>
       ) : null}
 
       {attendanceOpen ? (
