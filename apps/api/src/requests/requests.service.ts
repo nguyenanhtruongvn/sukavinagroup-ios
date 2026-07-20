@@ -50,9 +50,28 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  notifications(employeeId: string) {
-    return this.prisma.userNotification.findMany({
+  async notifications(employeeId: string) {
+    const notifications = await this.prisma.userNotification.findMany({
       where: { recipientId: employeeId }, orderBy: [{ read: 'asc' }, { createdAt: 'desc' }], take: 100,
+    });
+    const pendingRequestIds = notifications
+      .filter((item) => item.type === 'request_pending' && item.requestId)
+      .map((item) => item.requestId as string);
+    if (!pendingRequestIds.length) return notifications;
+    const requests = await this.prisma.employeeRequest.findMany({
+      where: { id: { in: pendingRequestIds } },
+      include: { employee: { select: { fullName: true } } },
+    });
+    const requestById = new Map(requests.map((request) => [request.id, request]));
+    return notifications.map((notification) => {
+      if (notification.type !== 'request_pending' || !notification.requestId) return notification;
+      const request = requestById.get(notification.requestId);
+      if (!request) return notification;
+      return {
+        ...notification,
+        title: request.employee.fullName,
+        message: `Lý do: ${request.reason}. Cần xử lý trước ${request.dueAt.toLocaleString('vi-VN')}.`,
+      };
     });
   }
 
@@ -101,8 +120,8 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
       } });
       await tx.userNotification.create({ data: {
         id: randomUUID(), recipientId: manager.id, type: 'request_pending', requestId: created.id,
-        title: `${requestKindLabels[kind]} · ${employee.fullName}`,
-        message: `Loại đơn: ${requestKindLabels[kind]}. Cần xử lý trước ${dueAt.toLocaleString('vi-VN')}.`,
+        title: employee.fullName,
+        message: `Lý do: ${reason}. Cần xử lý trước ${dueAt.toLocaleString('vi-VN')}.`,
       } });
       return created;
     });
