@@ -958,6 +958,19 @@ function App() {
     setSourceCode('');
   };
 
+  useEffect(() => {
+    if (!contentComposerOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !loading) closeContentComposer();
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    document.body.classList.add('article-modal-open');
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.body.classList.remove('article-modal-open');
+    };
+  }, [contentComposerOpen, loading]);
+
   const deleteContent = async (id: string) => {
     if (!token) return;
     setLoading(true);
@@ -2687,8 +2700,14 @@ function App() {
             {adminTab === 'content' && canAccess('content.manage') ? (
               <>
                 {contentComposerOpen ? (
-                  <div className="article-modal-backdrop content-composer-backdrop" role="presentation">
-                  <form className="admin-form content-composer" onSubmit={saveContent} role="dialog" aria-modal="true" aria-labelledby="content-composer-title">
+                  <div
+                    className="article-modal-backdrop content-composer-backdrop"
+                    role="presentation"
+                    onMouseDown={(event) => {
+                      if (event.target === event.currentTarget) closeContentComposer();
+                    }}
+                  >
+                  <form className="admin-form content-composer" onSubmit={saveContent} onMouseDown={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="content-composer-title">
                     <header className="content-composer-header">
                       <div className="content-composer-mark" aria-hidden="true">✦</div>
                       <div>
@@ -2885,7 +2904,19 @@ function App() {
                   </p>
                   <div className="content-items">
                     {contents.map((item) => (
-                      <article key={item.id} className="content-item">
+                      <article
+                        key={item.id}
+                        className="content-item content-item-clickable"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openArticle(item)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            openArticle(item);
+                          }
+                        }}
+                      >
                         <div>
                           <p className="content-meta">
                             {item.page} / {item.key} / #{item.sortOrder}{' '}
@@ -2893,15 +2924,16 @@ function App() {
                           </p>
                           <h3>{item.title}</h3>
                           <p>{stripHtml(item.body)}</p>
+                          <span className="content-open-hint">Xem toàn bộ nội dung →</span>
                         </div>
                         <div className="content-actions">
-                          <button type="button" onClick={() => editContent(item)}>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); editContent(item); }}>
                             Sửa
                           </button>
                           <button
                             type="button"
                             className="ghost-button"
-                            onClick={() => deleteContent(item.id)}
+                            onClick={(event) => { event.stopPropagation(); void deleteContent(item.id); }}
                           >
                             Xóa
                           </button>

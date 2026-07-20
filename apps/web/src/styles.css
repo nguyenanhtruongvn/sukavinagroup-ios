@@ -2608,6 +2608,11 @@ h1 {
 .content-save-button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(190,31,28,.38); }
 .content-list .content-item { border-radius: 17px; transition: border-color .18s ease, background .18s ease, transform .18s ease; }
 .content-list .content-item:hover { transform: translateY(-2px); border-color: rgba(255,101,92,.2); background: rgba(255,255,255,.045); }
+.content-list .content-item-clickable { cursor: pointer; outline: none; }
+.content-list .content-item-clickable:focus-visible { border-color: rgba(255,101,92,.55); box-shadow: 0 0 0 4px rgba(217,45,39,.12); }
+.content-list .content-item-clickable > div:first-child { min-width: 0; }
+.content-list .content-item-clickable > div:first-child > p:not(.content-meta) { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 3; color: var(--muted); line-height: 1.55; }
+.content-open-hint { display: inline-flex; margin-top: 11px; color: #ff847c; font-size: .8rem; font-weight: 780; }
 .content-list .content-actions { gap: 7px; }
 .content-list .content-actions button { min-height: 37px; padding: 8px 13px; border-radius: 10px; font-size: .82rem; font-weight: 780; }
 .content-list .content-actions button:first-child { border: 1px solid rgba(255,104,95,.28); background: rgba(217,45,39,.12); color: #ff867f; }
