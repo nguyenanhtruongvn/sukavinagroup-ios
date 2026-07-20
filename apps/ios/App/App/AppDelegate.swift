@@ -1306,8 +1306,10 @@ private struct EmployeePortalView: View {
         TabView {
             DashboardView()
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
-            NewsView()
-                .tabItem { Label("Bài viết", systemImage: "newspaper.fill") }
+            RequestsView()
+                .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
+            NotificationsView()
+                .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount)
             ProfileView()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
@@ -1551,6 +1553,164 @@ private struct MetricWideCard: View {
         .padding(18)
         .background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private enum EmployeeRequestStatus: String, Codable, CaseIterable {
+    case pending, approved, rejected
+    var title: String {
+        switch self { case .pending: return "Chờ duyệt"; case .approved: return "Đã duyệt"; case .rejected: return "Từ chối" }
+    }
+    var color: Color {
+        switch self { case .pending: return .orange; case .approved: return .green; case .rejected: return AppTheme.red }
+    }
+}
+
+private enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
+    case leave = "Nghỉ phép", late = "Đi trễ", early = "Về sớm", overtime = "Làm thêm giờ", business = "Công tác"
+    var id: String { rawValue }
+    var icon: String {
+        switch self {
+        case .leave: return "calendar.badge.minus"
+        case .late: return "clock.badge.exclamationmark"
+        case .early: return "figure.walk.departure"
+        case .overtime: return "moon.stars.fill"
+        case .business: return "airplane"
+        }
+    }
+}
+
+private struct EmployeeRequest: Codable, Identifiable {
+    let id: UUID
+    let kind: EmployeeRequestKind
+    let from: Date
+    let to: Date
+    let reason: String
+    let status: EmployeeRequestStatus
+    let createdAt: Date
+}
+
+@MainActor private final class EmployeeRequestStore: ObservableObject {
+    @Published private(set) var requests: [EmployeeRequest] = []
+    private let key = "sukavina-employee-requests-v1"
+    init() {
+        if let data = UserDefaults.standard.data(forKey: key), let value = try? JSONDecoder().decode([EmployeeRequest].self, from: data) { requests = value }
+    }
+    func submit(kind: EmployeeRequestKind, from: Date, to: Date, reason: String) {
+        requests.insert(.init(id: UUID(), kind: kind, from: from, to: to, reason: reason, status: .pending, createdAt: Date()), at: 0)
+        save()
+    }
+    func cancel(_ id: UUID) { requests.removeAll { $0.id == id && $0.status == .pending }; save() }
+    private func save() { if let data = try? JSONEncoder().encode(requests) { UserDefaults.standard.set(data, forKey: key) } }
+}
+
+private struct RequestsView: View {
+    @StateObject private var store = EmployeeRequestStore()
+    @State private var filter: EmployeeRequestStatus?
+    @State private var composing = false
+    private var visible: [EmployeeRequest] { filter.map { value in store.requests.filter { $0.status == value } } ?? store.requests }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            filterButton("Tất cả", nil)
+                            ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
+                        }
+                    }
+                    if visible.isEmpty {
+                        ContentUnavailableView("Chưa có đơn", systemImage: "doc.text", description: Text("Các đơn đã gửi sẽ xuất hiện tại đây."))
+                            .padding(.top, 70)
+                    } else {
+                        LazyVStack(spacing: 12) { ForEach(visible) { RequestCard(request: $0) { store.cancel($0.id) } } }
+                    }
+                }.padding(16)
+            }
+            .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Đơn từ của tôi")
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { composing = true } label: { Image(systemName: "plus").fontWeight(.bold) }.tint(AppTheme.red) } }
+            .sheet(isPresented: $composing) { RequestComposer { store.submit(kind: $0, from: $1, to: $2, reason: $3) } }
+        }
+    }
+
+    private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
+        Button(title) { filter = value }.font(.subheadline.bold()).padding(.horizontal, 14).padding(.vertical, 9)
+            .background(filter == value ? AppTheme.red : AppTheme.card).foregroundStyle(.white).clipShape(Capsule())
+    }
+}
+
+private struct RequestCard: View {
+    let request: EmployeeRequest
+    let cancel: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: request.kind.icon).frame(width: 42, height: 42).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 13))
+                VStack(alignment: .leading, spacing: 3) { Text(request.kind.rawValue).font(.headline); Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted) }
+                Spacer()
+                Text(request.status.title).font(.caption.bold()).foregroundStyle(request.status.color).padding(.horizontal, 10).padding(.vertical, 6).background(request.status.color.opacity(0.14)).clipShape(Capsule())
+            }
+            Label("\(request.from.formatted(date: .abbreviated, time: .shortened)) – \(request.to.formatted(date: .abbreviated, time: .shortened))", systemImage: "calendar").font(.subheadline).foregroundStyle(AppTheme.muted)
+            Text(request.reason).font(.subheadline)
+            if request.status == .pending { Button("Hủy đơn", role: .destructive, action: cancel).font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .trailing) }
+        }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private struct RequestComposer: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var kind = EmployeeRequestKind.leave
+    @State private var from = Date()
+    @State private var to = Calendar.current.date(byAdding: .hour, value: 8, to: Date()) ?? Date()
+    @State private var reason = ""
+    let submit: (EmployeeRequestKind, Date, Date, String) -> Void
+    private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Loại đơn") { Picker("Loại đơn", selection: $kind) { ForEach(EmployeeRequestKind.allCases) { Text($0.rawValue).tag($0) } } }
+                Section("Thời gian") { DatePicker("Từ", selection: $from); DatePicker("Đến", selection: $to, in: from...) }
+                Section("Lý do") { TextEditor(text: $reason).frame(minHeight: 100); Text("Tối thiểu 10 ký tự").font(.caption).foregroundStyle(cleanReason.count >= 10 ? .green : .secondary) }
+            }.navigationTitle("Tạo đơn mới").navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Hủy") { dismiss() } }
+                    ToolbarItem(placement: .confirmationAction) { Button("Gửi đơn") { submit(kind, from, to, cleanReason); dismiss() }.disabled(cleanReason.count < 10 || to < from) }
+                }
+        }
+    }
+}
+
+private struct NotificationsView: View {
+    @EnvironmentObject private var session: SessionStore
+    private var items: [ContentItem] { session.dashboard?.contentItems ?? [] }
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    HStack {
+                        Text(session.unreadCount == 0 ? "Bạn đã đọc tất cả thông báo" : "Bạn có \(session.unreadCount) thông báo chưa đọc").font(.subheadline.bold())
+                        Spacer()
+                        if session.unreadCount > 0 { Button("Đọc tất cả") { session.markArticlesRead() }.font(.subheadline.bold()).foregroundStyle(AppTheme.red) }
+                    }
+                    ForEach(items) { item in
+                        NavigationLink(destination: ArticleDetailView(item: item)) {
+                            HStack(alignment: .top, spacing: 14) {
+                                Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(item.title).font(.headline).multilineTextAlignment(.leading)
+                                    Text(item.preview).font(.subheadline).foregroundStyle(AppTheme.muted).lineLimit(2).multilineTextAlignment(.leading)
+                                    Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
+                                }
+                                Spacer(minLength: 0)
+                            }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }.buttonStyle(.plain)
+                    }
+                    if items.isEmpty { ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash").padding(.top, 70) }
+                }.padding(16)
+            }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
+                .refreshable { await session.refreshDashboard() }.onAppear { session.markArticlesRead() }
+        }
     }
 }
 
