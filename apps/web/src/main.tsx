@@ -77,8 +77,7 @@ const formatAttendanceTime = (value?: string | null) =>
 type PermissionKey =
   | 'content.manage'
   | 'employees.manage'
-  | 'accounts.manage'
-  | 'logs.view';
+  | 'accounts.manage';
 
 type AccessProfile = {
   id?: string;
@@ -94,7 +93,6 @@ const permissionOptions: Array<{ key: PermissionKey; label: string; description:
   { key: 'content.manage', label: 'Quản lý bài viết', description: 'Thêm, sửa, xóa và xuất bản nội dung.' },
   { key: 'employees.manage', label: 'Quản lý nhân viên', description: 'Thêm, sửa, xóa hồ sơ nhân viên.' },
   { key: 'accounts.manage', label: 'Phân quyền tài khoản', description: 'Nâng cấp tài khoản và gán quyền admin.' },
-  { key: 'logs.view', label: 'Xem nhật ký', description: 'Truy cập menu Logs hệ thống.' },
 ];
 
 type ContentItem = Dashboard['contentItems'][number];
@@ -328,13 +326,10 @@ function App() {
   const [employeePage, setEmployeePage] = useState(1);
   const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
   const [contentPage, setContentPage] = useState(1);
-  const [logs, setLogs] = useState<any[]>([]);
-  const [media, setMedia] = useState<MediaItem[]>([]);
   const [mediaUploading, setMediaUploading] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteAccountForm, setDeleteAccountForm] = useState({ password: '', confirmation: '' });
-  const [logPage, setLogPage] = useState(1);
-  const [adminTab, setAdminTab] = useState<'content' | 'media' | 'employees' | 'accounts' | 'logs'>(
+  const [adminTab, setAdminTab] = useState<'content' | 'employees' | 'accounts'>(
     'content',
   );
   const [employeeForm, setEmployeeForm] = useState({
@@ -368,7 +363,6 @@ function App() {
   const [sourceCode, setSourceCode] = useState('');
   const editorRef = React.useRef<HTMLDivElement | null>(null);
   const imageInputRef = React.useRef<HTMLInputElement | null>(null);
-  const mediaInputRef = React.useRef<HTMLInputElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState<{
@@ -744,14 +738,6 @@ function App() {
     setContentPage(1);
   };
 
-  const refreshMedia = async () => {
-    const response = await fetch('/api/admin/media', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error('Không tải được thư viện media');
-    setMedia((await response.json()) as MediaItem[]);
-  };
-
   const uploadMedia = async (file: File) => {
     if (!token) throw new Error('Phiên đăng nhập đã hết hạn');
     const formData = new FormData();
@@ -764,17 +750,6 @@ function App() {
     const result = (await response.json().catch(() => null)) as MediaItem | { message?: string } | null;
     if (!response.ok) throw new Error((result as { message?: string })?.message || 'Không tải media lên được');
     return result as MediaItem;
-  };
-
-  const deleteMedia = async (item: MediaItem) => {
-    if (!window.confirm(`Xóa ${item.name}?`)) return;
-    const response = await fetch(`/api/admin/media/${encodeURIComponent(item.name)}`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error('Không xóa được media');
-    setMedia((current) => current.filter((entry) => entry.name !== item.name));
-    setToast({ type: 'success', message: 'Đã xóa media.' });
   };
 
   const refreshSharedContent = async () => {
@@ -869,16 +844,6 @@ function App() {
     const timeout = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(timeout);
   }, [toast]);
-
-  const refreshLogs = async () => {
-    if (!token) return;
-    const response = await fetch('/api/admin/logs', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok) throw new Error('Không tải được logs');
-    setLogs((await response.json()) as any[]);
-    setLogPage(1);
-  };
 
   const saveContent = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1088,12 +1053,10 @@ function App() {
 
   useEffect(() => {
     if (!isAdminRoute || !currentUser) return;
-    const availableTabs: Array<'content' | 'media' | 'employees' | 'accounts' | 'logs'> = [];
+    const availableTabs: Array<'content' | 'employees' | 'accounts'> = [];
     if (canAccess('content.manage')) availableTabs.push('content');
-    if (canAccess('content.manage')) availableTabs.push('media');
     if (canAccess('employees.manage')) availableTabs.push('employees');
     if (canAccess('accounts.manage')) availableTabs.push('accounts');
-    if (canAccess('logs.view')) availableTabs.push('logs');
     if (availableTabs.length && !availableTabs.includes(adminTab)) {
       setAdminTab(availableTabs[0]);
     }
@@ -1105,9 +1068,7 @@ function App() {
       try {
         if (adminTab === 'employees' && canAccess('employees.manage')) await refreshEmployees();
         if (adminTab === 'accounts' && canAccess('accounts.manage')) await refreshAccounts();
-        if (adminTab === 'logs' && canAccess('logs.view')) await refreshLogs();
         if (adminTab === 'content' && canAccess('content.manage')) await refreshContent();
-        if (adminTab === 'media' && canAccess('content.manage')) await refreshMedia();
       } catch (tabError) {
         setError(tabError instanceof Error ? tabError.message : 'Không tải được dữ liệu quản trị');
       }
@@ -1472,24 +1433,6 @@ function App() {
     (contentPage - 1) * pageSize,
     contentPage * pageSize,
   );
-
-  const logsPerPage = 10;
-  const sortedLogs = useMemo(
-    () =>
-      [...logs].sort(
-        (a, b) => safeDateValue(b.createdAt) - safeDateValue(a.createdAt),
-      ),
-    [logs],
-  );
-  const logPageCount = Math.max(1, Math.ceil(sortedLogs.length / logsPerPage));
-  const visibleLogs = sortedLogs.slice(
-    (logPage - 1) * logsPerPage,
-    logPage * logsPerPage,
-  );
-
-  useEffect(() => {
-    setLogPage((current) => Math.min(current, logPageCount));
-  }, [logPageCount]);
 
   const toggleEmployeeSelection = (id: string) => {
     setSelectedEmployees((current) =>
@@ -2146,15 +2089,6 @@ function App() {
               Bài viết
             </button>
             ) : null}
-            {canAccess('content.manage') ? (
-              <button
-                type="button"
-                className={adminTab === 'media' ? 'active' : ''}
-                onClick={() => setAdminTab('media')}
-              >
-                Thư viện media
-              </button>
-            ) : null}
             {canAccess('employees.manage') ? (
             <button
               type="button"
@@ -2175,15 +2109,6 @@ function App() {
                   <span className="admin-nav-badge">{pendingAccounts.length}</span>
                 ) : null}
               </button>
-            ) : null}
-            {canAccess('logs.view') ? (
-            <button
-              type="button"
-              className={adminTab === 'logs' ? 'active' : ''}
-              onClick={() => setAdminTab('logs')}
-            >
-              Logs
-            </button>
             ) : null}
             {!isSuperAdmin && currentUser && currentUser.permissions.length === 0 ? (
               <p className="panel-note">Tài khoản chưa được cấp chức năng quản trị.</p>
@@ -2990,146 +2915,6 @@ function App() {
               </>
             ) : null}
 
-            {adminTab === 'media' && canAccess('content.manage') ? (
-              <section className="panel media-panel">
-                <div className="panel-head media-toolbar">
-                  <div>
-                    <p className="panel-label">Thư viện media</p>
-                    <h2>Hình ảnh và video</h2>
-                    <p className="panel-note">
-                      Ảnh tự chuyển sang WebP, video tự chuyển sang WebM để tiết kiệm dung lượng.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={mediaUploading}
-                    onClick={() => mediaInputRef.current?.click()}
-                  >
-                    {mediaUploading ? 'Đang xử lý...' : 'Tải media lên'}
-                  </button>
-                  <input
-                    ref={mediaInputRef}
-                    type="file"
-                    accept="image/*,video/*"
-                    hidden
-                    onChange={async (event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = '';
-                      if (!file) return;
-                      setMediaUploading(true);
-                      try {
-                        await uploadMedia(file);
-                        await refreshMedia();
-                        setToast({ type: 'success', message: 'Media đã được tối ưu và tải lên.' });
-                      } catch (uploadError) {
-                        setToast({ type: 'error', message: uploadError instanceof Error ? uploadError.message : 'Tải lên thất bại' });
-                      } finally {
-                        setMediaUploading(false);
-                      }
-                    }}
-                  />
-                </div>
-                <div className="media-grid">
-                  {media.map((item) => (
-                    <article className="media-card" key={item.name}>
-                      <div className="media-preview">
-                        {item.type === 'video' ? (
-                          <video src={item.url} controls preload="metadata" />
-                        ) : (
-                          <img src={item.url} alt={item.name} loading="lazy" />
-                        )}
-                      </div>
-                      <div className="media-card-body">
-                        <strong title={item.name}>{item.name}</strong>
-                        <span>{(item.size / 1024 / 1024).toFixed(2)} MB</span>
-                        <div className="media-actions">
-                          <button
-                            type="button"
-                            className="ghost-button"
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(`${window.location.origin}${item.url}`);
-                                setToast({ type: 'success', message: 'Đã sao chép liên kết.' });
-                              } catch {
-                                setToast({ type: 'error', message: 'Không thể sao chép liên kết.' });
-                              }
-                            }}
-                          >
-                            Sao chép link
-                          </button>
-                          <button type="button" className="ghost-button" onClick={() => void deleteMedia(item)}>Xóa</button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                  {!media.length ? <p className="panel-note">Chưa có media nào.</p> : null}
-                </div>
-              </section>
-            ) : null}
-
-            {adminTab === 'logs' && canAccess('logs.view') ? (
-              <section className="panel logs-panel">
-                <div className="panel-head logs-toolbar">
-                  <div>
-                    <p className="panel-label">Logs</p>
-                    <h2>Nhật ký hệ thống</h2>
-                    <p className="panel-note">
-                      Hiển thị 10 log mỗi trang, sắp xếp từ mới nhất đến cũ nhất.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    onClick={async () => {
-                      await refreshLogs();
-                    }}
-                  >
-                    Tải lại logs
-                  </button>
-                </div>
-                <div className="content-items">
-                  {visibleLogs.map((entry) => (
-                    <article key={entry.id} className="content-item log-item">
-                      <div>
-                        <p className="content-meta">
-                          {entry.level} • {entry.source} • {entry.createdAt}
-                        </p>
-                        <h3>{entry.message}</h3>
-                        <p>{entry.meta}</p>
-                      </div>
-                    </article>
-                  ))}
-                  {!visibleLogs.length ? (
-                    <p className="panel-note">Chưa có log hệ thống.</p>
-                  ) : null}
-                </div>
-                <div className="logs-pagination" aria-label="Phân trang logs">
-                  <span>
-                    {sortedLogs.length} log • Trang {logPage} / {logPageCount}
-                  </span>
-                  <div className="pager">
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      disabled={logPage <= 1}
-                      onClick={() => setLogPage((current) => Math.max(1, current - 1))}
-                    >
-                      Trước
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      disabled={logPage >= logPageCount}
-                      onClick={() =>
-                        setLogPage((current) => Math.min(logPageCount, current + 1))
-                      }
-                    >
-                      Sau
-                    </button>
-                  </div>
-                </div>
-              </section>
-            ) : null}
           </section>
         </section>
       ) : null}
