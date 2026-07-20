@@ -5,6 +5,7 @@ package net.sukavinagroup.user.ui
 import android.text.Html
 import android.widget.TextView
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,7 +53,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("�
 }
 
 @Composable private fun LoginScreen(state: SessionUiState, signIn: (String, String) -> Unit, biometricSignIn: () -> Unit = {}) {
-    val activity = LocalContext.current as? MainActivity
+    val activity = LocalActivity.current as? MainActivity
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     Column(
@@ -342,7 +343,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 
 @Composable private fun ProfileScreen(state: SessionUiState, session: SessionViewModel) {
     var deleteOpen by remember { mutableStateOf(false) }; var password by remember { mutableStateOf("") }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }
-    val activity = LocalContext.current as? MainActivity
+    val activity = LocalActivity.current as? MainActivity
     val profile = state.profile
     Column(Modifier.fillMaxSize().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Spacer(Modifier.height(30.dp)); Surface(Modifier.size(92.dp), CircleShape, color = SukavinaRed.copy(alpha = .15f)) { Box(contentAlignment = Alignment.Center) { Text(profile?.name.initials(), color = SukavinaRed, fontSize = 26.sp, fontWeight = FontWeight.Bold) } }
