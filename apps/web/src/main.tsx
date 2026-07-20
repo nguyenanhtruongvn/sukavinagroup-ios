@@ -358,6 +358,7 @@ function App() {
     published: true,
   });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [contentComposerOpen, setContentComposerOpen] = useState(false);
   const [autoSortOrder, setAutoSortOrder] = useState(true);
   const [editorMode, setEditorMode] = useState<'visual' | 'source'>('visual');
   const [sourceCode, setSourceCode] = useState('');
@@ -902,6 +903,7 @@ function App() {
       }
       await refreshContent();
       await refreshSharedContent();
+      setContentComposerOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không lưu được dữ liệu');
     } finally {
@@ -910,6 +912,7 @@ function App() {
   };
 
   const editContent = (item: ContentItem) => {
+    setContentComposerOpen(true);
     setEditingId(item.id);
     setEditorMode('visual');
     setSourceCode(item.body);
@@ -926,6 +929,33 @@ function App() {
         editorRef.current.innerHTML = item.body;
       }
     });
+  };
+
+  const openContentComposer = () => {
+    setEditingId(null);
+    setAdminForm({
+      page: 'employee',
+      key: '',
+      title: '',
+      body: '',
+      sortOrder: nextContentSortOrder,
+      published: true,
+    });
+    setAutoSortOrder(true);
+    setEditorMode('visual');
+    setSourceCode('');
+    setContentComposerOpen(true);
+    requestAnimationFrame(() => {
+      if (editorRef.current) editorRef.current.innerHTML = '';
+    });
+  };
+
+  const closeContentComposer = () => {
+    if (loading) return;
+    setContentComposerOpen(false);
+    setEditingId(null);
+    setEditorMode('visual');
+    setSourceCode('');
   };
 
   const deleteContent = async (id: string) => {
@@ -1822,6 +1852,12 @@ function App() {
         </div>
       ) : null}
 
+      {isAdminRoute && adminTab === 'content' && canAccess('content.manage') && !contentComposerOpen ? (
+        <button type="button" className="content-fab" onClick={openContentComposer} aria-label="Tạo bài viết mới">
+          <span className="content-fab-icon">+</span><span className="content-fab-label">Tạo bài viết</span>
+        </button>
+      ) : null}
+
       {!isAdminRoute ? (
       <section className="dashboard-grid">
         <article className="panel panel-accent">
@@ -2650,42 +2686,32 @@ function App() {
 
             {adminTab === 'content' && canAccess('content.manage') ? (
               <>
-                  <form className="admin-form panel" onSubmit={saveContent}>
-                    <p className="panel-label">
-                      {editingId ? 'Sửa nội dung' : 'Thêm nội dung'}
-                    </p>
-                    <p className="panel-note">
-                      Dùng để soạn nội dung bài viết nội bộ. Bạn có thể chèn ảnh bằng nút bên dưới.
-                    </p>
-                  <label>
-                    <span>Trang</span>
+                {contentComposerOpen ? (
+                  <div className="article-modal-backdrop content-composer-backdrop" role="presentation">
+                  <form className="admin-form content-composer" onSubmit={saveContent} role="dialog" aria-modal="true" aria-labelledby="content-composer-title">
+                    <header className="content-composer-header">
+                      <div className="content-composer-mark" aria-hidden="true">✦</div>
+                      <div>
+                        <p className="panel-label">Sukavina Admin</p>
+                        <h2 id="content-composer-title">{editingId ? 'Chỉnh sửa bài viết' : 'Tạo bài viết mới'}</h2>
+                        <p>Soạn nội dung nội bộ rõ ràng, trực quan và chuyên nghiệp.</p>
+                      </div>
+                      <button type="button" className="content-composer-close" onClick={closeContentComposer} disabled={loading} aria-label="Đóng">×</button>
+                    </header>
+                    <div className="content-composer-body">
+                  <label className="content-title-field">
+                    <span>Tiêu đề bài viết</span>
                     <input
-                      value={adminForm.page}
+                      value={adminForm.title}
                       onChange={(event) =>
-                        setAdminForm((current) => {
-                          const page = event.target.value;
-                          const pageItems = contents.filter((item) => item.page === page);
-                          const maxSort = pageItems.reduce(
-                            (currentMax, item) => Math.max(currentMax, Number(item.sortOrder) || 0),
-                            0,
-                          );
-                          return {
-                            ...current,
-                            page,
-                            sortOrder:
-                              current.sortOrder > 0 && !autoSortOrder
-                                ? current.sortOrder
-                                : maxSort > 0
-                                  ? maxSort + 1
-                                  : 1,
-                          };
-                        })
+                        setAdminForm((current) => ({ ...current, title: event.target.value }))
                       }
-                      placeholder="employee"
+                      placeholder="Nhập tiêu đề ngắn gọn và dễ hiểu..."
+                      required
                     />
                   </label>
                   <label>
-                    <span>Khóa</span>
+                    <span>Mã bài viết</span>
                     <input
                       value={adminForm.key}
                       onChange={(event) =>
@@ -2694,20 +2720,8 @@ function App() {
                           key: event.target.value,
                         }))
                       }
-                      placeholder="hero"
-                    />
-                  </label>
-                  <label>
-                    <span>Tiêu đề</span>
-                    <input
-                      value={adminForm.title}
-                      onChange={(event) =>
-                        setAdminForm((current) => ({
-                          ...current,
-                          title: event.target.value,
-                        }))
-                      }
-                      placeholder="Thông tin nội bộ"
+                      placeholder="Ví dụ: thong-bao-thang-7"
+                      required
                     />
                   </label>
                   <div className="editor-field">
@@ -2852,32 +2866,16 @@ function App() {
                     />
                     <span>Hiển thị trên web thường</span>
                   </label>
-                  <div className="form-actions">
-                    <button type="submit" disabled={loading}>
-                      {editingId ? 'Cập nhật' : 'Thêm mới'}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      onClick={() => {
-                        setEditingId(null);
-                        setAdminForm({
-                          page: 'employee',
-                          key: '',
-                          title: '',
-                          body: '',
-                          sortOrder: nextContentSortOrder,
-                          published: true,
-                        });
-                        setAutoSortOrder(true);
-                        setEditorMode('visual');
-                        setSourceCode('');
-                      }}
-                    >
-                      Làm mới
+                  <div className="form-actions content-composer-actions">
+                    <button type="button" className="ghost-button" onClick={closeContentComposer} disabled={loading}>Hủy</button>
+                    <button type="submit" className="content-save-button" disabled={loading}>
+                      {loading ? 'Đang lưu...' : editingId ? 'Lưu thay đổi' : 'Đăng bài viết'}
                     </button>
                   </div>
+                    </div>
                 </form>
+                  </div>
+                ) : null}
 
                 <section className="content-list panel">
                   <p className="panel-label">Bài viết</p>
