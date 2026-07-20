@@ -174,6 +174,11 @@ private final class APIClient {
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }()
+    private let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
 
     func request<Response: Decodable, Body: Encodable>(
         _ path: String,
@@ -195,7 +200,7 @@ private final class APIClient {
         }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(body)
+            request.httpBody = try encoder.encode(body)
         }
 
         var data: Data
@@ -1929,6 +1934,12 @@ private struct RequestComposer: View {
                 .background(.ultraThinMaterial)
             }
             .preferredColorScheme(.dark)
+            .onChange(of: from) { oldValue, newValue in
+                if to < newValue {
+                    let previousDuration = max(to.timeIntervalSince(oldValue), 60 * 60)
+                    to = newValue.addingTimeInterval(previousDuration)
+                }
+            }
         }
     }
 
