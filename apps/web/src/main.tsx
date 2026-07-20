@@ -401,6 +401,8 @@ function App() {
   const [attendanceMonth, setAttendanceMonth] = useState(
     new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit' }).format(new Date()),
   );
+  const [adminAccountPickerOpen, setAdminAccountPickerOpen] = useState(false);
+  const [adminAccountQuery, setAdminAccountQuery] = useState('');
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceMonth | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [requests, setRequests] = useState<EmployeeRequest[]>([]);
@@ -875,6 +877,12 @@ function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const promoteAccountToAdmin = async (account: EmployeeRecord) => {
+    await saveAccountAccess({ ...account, accountType: 'ADMIN', permissions: [] });
+    setAdminAccountPickerOpen(false);
+    setAdminAccountQuery('');
   };
 
   useEffect(() => {
@@ -1826,7 +1834,7 @@ function App() {
         </div>
 
         <div className="topbar-actions">
-          {isAdminRoute && canAccess('accounts.manage') ? (
+          {false && isAdminRoute && canAccess('accounts.manage') ? (
             <div className="notification-wrap">
               <button
                 type="button"
@@ -2297,9 +2305,6 @@ function App() {
                 onClick={() => setAdminTab('accounts')}
               >
                 Phân quyền
-                {pendingAccounts.length > 0 ? (
-                  <span className="admin-nav-badge">{pendingAccounts.length}</span>
-                ) : null}
               </button>
             ) : null}
             {!isSuperAdmin && currentUser && currentUser.permissions.length === 0 ? (
@@ -2734,33 +2739,16 @@ function App() {
                 <div className="panel-head">
                   <div>
                     <p className="panel-label">Phân quyền tài khoản</p>
-                    <h2>Admin và nhân viên</h2>
+                    <h2>Tài khoản quản trị</h2>
                     <p className="panel-note">
                       Admin tổng luôn có toàn quyền và không thể xóa hoặc hạ cấp.
                       Admin thường chỉ thấy các menu đã được cấp.
                     </p>
                   </div>
-                  <button type="button" className="ghost-button" onClick={() => refreshAccounts()}>
-                    Tải lại
-                  </button>
+                  <div className="access-head-actions"><button type="button" className="primary-button" onClick={() => setAdminAccountPickerOpen(true)}>＋ Thêm tài khoản admin</button><button type="button" className="ghost-button" onClick={() => refreshAccounts()}>Tải lại</button></div>
                 </div>
 
                 {[
-                  {
-                    title: 'Tài khoản chờ duyệt',
-                    className: 'access-group-pending',
-                    emptyMessage: 'Không có tài khoản nào đang chờ admin duyệt.',
-                    items: accounts.filter(
-                      (account) =>
-                        !account.active && account.gmailVerified && !account.protected,
-                    ),
-                  },
-                  {
-                    title: 'Chưa xác minh Gmail',
-                    className: 'access-group-unverified',
-                    emptyMessage: 'Không có tài khoản nào đang chờ xác minh Gmail.',
-                    items: accounts.filter((account) => !account.gmailVerified),
-                  },
                   {
                     title: 'Tài khoản Admin',
                     className: '',
@@ -2768,19 +2756,7 @@ function App() {
                     items: accounts.filter(
                       (account) =>
                         account.active &&
-                        account.gmailVerified &&
                         account.savedAccountType !== 'EMPLOYEE',
-                    ),
-                  },
-                  {
-                    title: 'Tài khoản Nhân viên',
-                    className: '',
-                    emptyMessage: 'Chưa có tài khoản nhân viên đang hoạt động.',
-                    items: accounts.filter(
-                      (account) =>
-                        account.active &&
-                        account.gmailVerified &&
-                        account.savedAccountType === 'EMPLOYEE',
                     ),
                   },
                 ].map((group) => (
@@ -2830,9 +2806,7 @@ function App() {
                                   })
                                 }
                               >
-                                {account.protected ? <option value="SUPER_ADMIN">Admin tổng</option> : null}
-                                <option value="ADMIN">Admin thường</option>
-                                <option value="EMPLOYEE">Nhân viên</option>
+                                {account.protected ? <option value="SUPER_ADMIN">Admin tổng</option> : <option value="ADMIN">Admin thường</option>}
                               </select>
                             </label>
                           </div>
@@ -2865,15 +2839,6 @@ function App() {
                           </div>
 
                           <div className="access-actions">
-                            {!account.protected && !account.active && account.gmailVerified ? (
-                              <button
-                                type="button"
-                                disabled={loading}
-                                onClick={() => saveAccountAccess(account, true)}
-                              >
-                                Duyệt tài khoản
-                              </button>
-                            ) : null}
                             <button
                               type="button"
                               disabled={loading || account.protected}
@@ -3141,6 +3106,23 @@ function App() {
                   </div>
                 </section>
               </>
+            ) : null}
+
+            {adminAccountPickerOpen ? createPortal(
+              <div className="article-modal-backdrop admin-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !loading) setAdminAccountPickerOpen(false); }}>
+                <section className="article-modal admin-account-picker" role="dialog" aria-modal="true" aria-labelledby="admin-picker-title">
+                  <header className="admin-picker-head"><div><p className="panel-label">Phân quyền</p><h2 id="admin-picker-title">Thêm tài khoản admin</h2><p>Chọn một nhân viên hiện có để cấp quyền quản trị.</p></div><button type="button" className="request-modal-close" onClick={() => setAdminAccountPickerOpen(false)}>×</button></header>
+                  <div className="admin-picker-body">
+                    <div className="search-box"><input autoFocus value={adminAccountQuery} onChange={(event) => setAdminAccountQuery(event.target.value)} placeholder="Tìm theo tên, mã nhân viên hoặc phòng ban..." /></div>
+                    <div className="admin-picker-list">
+                      {accounts.filter((account) => account.savedAccountType === 'EMPLOYEE' && account.active && `${account.fullName} ${account.employeeCode} ${account.department}`.toLocaleLowerCase('vi').includes(adminAccountQuery.trim().toLocaleLowerCase('vi'))).map((account) => (
+                        <article key={account.id} className="admin-picker-item"><div className="employee-avatar">{(account.fullName || '?').split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase()}</div><div><strong>{account.fullName}</strong><p>{account.employeeCode} · {account.department || 'Chưa cập nhật phòng ban'}</p></div><button type="button" disabled={loading} onClick={() => void promoteAccountToAdmin(account)}>{loading ? 'Đang thêm...' : 'Chọn làm Admin'}</button></article>
+                      ))}
+                      {!accounts.some((account) => account.savedAccountType === 'EMPLOYEE' && account.active && `${account.fullName} ${account.employeeCode} ${account.department}`.toLocaleLowerCase('vi').includes(adminAccountQuery.trim().toLocaleLowerCase('vi'))) ? <div className="access-empty-state"><p>Không tìm thấy nhân viên phù hợp.</p></div> : null}
+                    </div>
+                  </div>
+                </section>
+              </div>, document.body
             ) : null}
 
           </section>
