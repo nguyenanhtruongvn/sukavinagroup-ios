@@ -188,6 +188,8 @@ class AppErrorBoundary extends React.Component<
 
 const notificationStorageKey = (employeeCode: string) =>
   `sukavina_employee_news_seen_${employeeCode.toLowerCase()}`;
+const hiddenNotificationStorageKey = (employeeCode: string) =>
+  `sukavina_hidden_news_${employeeCode.toLowerCase()}`;
 
 function safeDateValue(value?: string) {
   const time = value ? new Date(value).getTime() : 0;
@@ -396,6 +398,8 @@ function App() {
     message: string;
   } | null>(null);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const notificationWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [hiddenNotificationArticleIds, setHiddenNotificationArticleIds] = useState<Set<string>>(new Set());
   const [selectedArticle, setSelectedArticle] = useState<ContentItem | null>(null);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
   const [attendanceMonth, setAttendanceMonth] = useState(
@@ -1391,15 +1395,28 @@ function App() {
 
   const currentEmployeeCode =
     dashboard?.employeeCode || loginId || 'guest';
+  const hiddenNewsKey = hiddenNotificationStorageKey(currentEmployeeCode);
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(hiddenNewsKey) || '[]') as string[];
+      setHiddenNotificationArticleIds(new Set(stored));
+    } catch {
+      setHiddenNotificationArticleIds(new Set());
+    }
+  }, [hiddenNewsKey]);
+  const visibleEmployeeNews = useMemo(
+    () => employeeNews.filter((item) => !hiddenNotificationArticleIds.has(item.id)),
+    [employeeNews, hiddenNotificationArticleIds],
+  );
   const lastSeenKey = notificationStorageKey(currentEmployeeCode);
   const lastSeenAt = Number(localStorage.getItem(lastSeenKey) || '0');
   const unreadArticleCount = useMemo(
     () =>
       isAdminRoute
         ? 0
-        : employeeNews.filter((item) => safeDateValue(item.createdAt) > lastSeenAt)
+        : visibleEmployeeNews.filter((item) => safeDateValue(item.createdAt) > lastSeenAt)
             .length,
-    [employeeNews, isAdminRoute, lastSeenAt],
+    [visibleEmployeeNews, isAdminRoute, lastSeenAt],
   );
   const unreadRequestCount = requestNotifications.filter((item) => !item.read).length;
   const unreadCount = unreadArticleCount + unreadRequestCount;
@@ -1449,13 +1466,30 @@ function App() {
 
   const clearAllNotifications = async () => {
     if (!token) return;
-    await fetch('/api/me/requests/notifications', {
+    const response = await fetch('/api/me/requests/notifications', {
       method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
     });
+    if (!response.ok) {
+      setToast({ type: 'error', message: 'Không thể xóa thông báo. Vui lòng thử lại.' });
+      return;
+    }
+    const hiddenIds = new Set([...hiddenNotificationArticleIds, ...employeeNews.map((item) => item.id)]);
+    localStorage.setItem(hiddenNewsKey, JSON.stringify([...hiddenIds]));
+    setHiddenNotificationArticleIds(hiddenIds);
     acknowledgeNews();
     setRequestNotifications([]);
     setNotificationOpen(false);
+    setToast({ type: 'success', message: 'Đã xóa tất cả thông báo.' });
   };
+
+  useEffect(() => {
+    if (!notificationOpen || isAdminRoute) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!notificationWrapRef.current?.contains(event.target as Node)) setNotificationOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [notificationOpen, isAdminRoute]);
 
   const decideNotificationRequest = async () => {
     if (!token || !notificationRequest) return;
@@ -1899,7 +1933,7 @@ function App() {
             </div>
           ) : null}
           {!isAdminRoute ? (
-            <div className="notification-wrap">
+            <div className="notification-wrap" ref={notificationWrapRef}>
               <button
                 type="button"
                 className="notification-button"
@@ -1925,7 +1959,7 @@ function App() {
                       Đóng
                     </button>
                   </div>
-                  {requestNotifications.length || employeeNews.length ? (
+                  {requestNotifications.length || visibleEmployeeNews.length ? (
                     <div className="notification-list">
                       {requestNotifications.map((item) => {
                         const request = linkedNotificationRequest(item);
@@ -1943,7 +1977,7 @@ function App() {
                           {!item.read ? <i className="notification-unread-dot" /> : null}
                         </article>
                       )})}
-                      {employeeNews.map((item) => (
+                      {visibleEmployeeNews.map((item) => (
                         <article
                           key={item.id}
                           className={`notification-item notification-item-clickable notification-news ${safeDateValue(item.createdAt) > lastSeenAt ? 'notification-unread' : ''}`}
