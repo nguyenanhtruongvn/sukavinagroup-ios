@@ -1578,6 +1578,15 @@ private enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .business: return "airplane"
         }
     }
+    var color: Color {
+        switch self {
+        case .leave: return .blue
+        case .late: return .orange
+        case .early: return .purple
+        case .overtime: return .indigo
+        case .business: return .teal
+        }
+    }
 }
 
 private struct EmployeeRequest: Codable, Identifiable {
@@ -1648,7 +1657,13 @@ private struct RequestsView: View {
     @State private var filter: EmployeeRequestStatus?
     @State private var composing = false
     @State private var reviewing: EmployeeRequest?
-    private var visible: [EmployeeRequest] { filter.map { value in store.requests.filter { $0.status == value } } ?? store.requests }
+    private var combinedRequests: [EmployeeRequest] {
+        var seen = Set<String>()
+        return (store.approvals + store.requests)
+            .filter { seen.insert($0.id).inserted }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+    private var visible: [EmployeeRequest] { filter.map { value in combinedRequests.filter { $0.status == value } } ?? combinedRequests }
 
     var body: some View {
         NavigationStack {
@@ -1667,18 +1682,11 @@ private struct RequestsView: View {
                         } else {
                             LazyVStack(spacing: 12) {
                                 ForEach(visible) { request in
-                                    RequestCard(request: request) {
-                                        Task { await store.cancel(token: session.token, id: request.id) }
+                                    if store.approvals.contains(where: { $0.id == request.id && $0.status == .pending }) {
+                                        Button { reviewing = request } label: { RequestCard(request: request, cancel: {}) }.buttonStyle(.plain)
+                                    } else {
+                                        RequestCard(request: request) { Task { await store.cancel(token: session.token, id: request.id) } }
                                     }
-                                }
-                            }
-                        }
-                        if !store.approvals.filter({ $0.status == .pending }).isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Cần bạn duyệt").font(.title3.bold()).frame(maxWidth: .infinity, alignment: .leading)
-                                ForEach(store.approvals.filter { $0.status == .pending }) { request in
-                                    Button { reviewing = request } label: { RequestCard(request: request, cancel: {}) }
-                                        .buttonStyle(.plain)
                                 }
                             }
                         }
@@ -1729,7 +1737,7 @@ private struct RequestCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: request.kind.icon).frame(width: 42, height: 42).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 13))
+                Image(systemName: request.kind.icon).frame(width: 42, height: 42).background(request.kind.color.opacity(0.16)).foregroundStyle(request.kind.color).clipShape(RoundedRectangle(cornerRadius: 13))
                 VStack(alignment: .leading, spacing: 3) { Text(request.employee.map { "\($0.fullName) · \($0.employeeCode)" } ?? request.kind.title).font(.headline); Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted) }
                 Spacer()
                 Text(request.status.title).font(.caption.bold()).foregroundStyle(request.status.color).padding(.horizontal, 10).padding(.vertical, 6).background(request.status.color.opacity(0.14)).clipShape(Capsule())
@@ -1820,11 +1828,11 @@ private struct RequestComposer: View {
                                     }
                                     .padding(.horizontal, 13)
                                     .frame(maxWidth: .infinity, minHeight: 48)
-                                    .background(kind == item ? AppTheme.red.opacity(0.18) : Color.white.opacity(0.045))
-                                    .foregroundStyle(kind == item ? AppTheme.red : .white)
+                                    .background(kind == item ? item.color.opacity(0.2) : Color.white.opacity(0.045))
+                                    .foregroundStyle(kind == item ? item.color : .white)
                                     .overlay {
                                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .stroke(kind == item ? AppTheme.red.opacity(0.7) : Color.white.opacity(0.08), lineWidth: 1)
+                                            .stroke(kind == item ? item.color.opacity(0.75) : Color.white.opacity(0.08), lineWidth: 1)
                                     }
                                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 }
@@ -2005,6 +2013,7 @@ private struct NotificationsView: View {
             }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
+                .onChange(of: session.requestUnreadCount) { _, _ in Task { await loadRequestNotifications() } }
                 .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }

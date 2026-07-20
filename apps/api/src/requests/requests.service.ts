@@ -49,7 +49,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
 
   notifications(employeeId: string) {
     return this.prisma.userNotification.findMany({
-      where: { recipientId: employeeId }, orderBy: { createdAt: 'desc' }, take: 100,
+      where: { recipientId: employeeId }, orderBy: [{ read: 'asc' }, { createdAt: 'desc' }], take: 100,
     });
   }
 
