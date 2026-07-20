@@ -1683,7 +1683,7 @@ private struct RequestsView: View {
                             LazyVStack(spacing: 12) {
                                 ForEach(visible) { request in
                                     if store.approvals.contains(where: { $0.id == request.id && $0.status == .pending }) {
-                                        Button { reviewing = request } label: { RequestCard(request: request, cancel: {}) }.buttonStyle(.plain)
+                                        Button { reviewing = request } label: { RequestCard(request: request, canCancel: false, cancel: {}) }.buttonStyle(.plain)
                                     } else {
                                         RequestCard(request: request) { Task { await store.cancel(token: session.token, id: request.id) } }
                                     }
@@ -1733,20 +1733,27 @@ private struct RequestsView: View {
 
 private struct RequestCard: View {
     let request: EmployeeRequest
+    var canCancel = true
     let cancel: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: request.kind.icon).frame(width: 42, height: 42).background(request.kind.color.opacity(0.16)).foregroundStyle(request.kind.color).clipShape(RoundedRectangle(cornerRadius: 13))
-                VStack(alignment: .leading, spacing: 3) { Text(request.employee.map { "\($0.fullName) · \(request.kind.title)" } ?? request.kind.title).font(.headline); Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted) }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(request.employee?.fullName ?? "Đơn của tôi").font(.headline)
+                    HStack(spacing: 7) {
+                        Text(request.kind.title).font(.caption.bold()).foregroundStyle(request.kind.color).padding(.horizontal, 9).padding(.vertical, 4).background(request.kind.color.opacity(0.14)).clipShape(Capsule())
+                        Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted)
+                    }
+                }
                 Spacer()
                 Text(request.status.title).font(.caption.bold()).foregroundStyle(request.status.color).padding(.horizontal, 10).padding(.vertical, 6).background(request.status.color.opacity(0.14)).clipShape(Capsule())
             }
             Label("\(request.from.formatted(date: .abbreviated, time: .shortened)) – \(request.to.formatted(date: .abbreviated, time: .shortened))", systemImage: "calendar").font(.subheadline).foregroundStyle(AppTheme.muted)
             Text(request.reason).font(.subheadline)
             if let note = request.decisionNote, !note.isEmpty { Label(note, systemImage: "text.bubble").font(.caption).foregroundStyle(AppTheme.muted) }
-            if request.status == .pending { Button("Hủy đơn", role: .destructive, action: cancel).font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .trailing) }
-        }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            if canCancel && request.status == .pending { Button("Hủy đơn", role: .destructive, action: cancel).font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .trailing) }
+        }.padding(16).background(LinearGradient(colors: [request.kind.color.opacity(0.09), AppTheme.card], startPoint: .topLeading, endPoint: .bottomTrailing)).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(request.kind.color.opacity(0.22), lineWidth: 1))
     }
 }
 
@@ -1761,7 +1768,7 @@ private struct RequestDecisionView: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
-                RequestCard(request: request, cancel: {})
+                RequestCard(request: request, canCancel: false, cancel: {})
                 Text(rejecting ? "Lý do từ chối" : "Ghi chú cho nhân viên (tùy chọn)").font(.headline)
                 TextEditor(text: $note).scrollContentBackground(.hidden).padding(12).frame(minHeight: 130)
                     .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
@@ -2076,7 +2083,7 @@ private struct NotificationsView: View {
 private struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
-    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } }.preferredColorScheme(.dark) }
+    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } }.preferredColorScheme(.dark) }
 }
 
 private struct NewsView: View {

@@ -115,7 +115,7 @@ type EmployeeRequest = {
   startsAt: string;
   endsAt: string;
   reason: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   createdAt: string;
 };
 
@@ -131,6 +131,11 @@ const requestStatusLabels: Record<EmployeeRequest['status'], string> = {
   pending: 'Chờ duyệt',
   approved: 'Đã duyệt',
   rejected: 'Từ chối',
+  cancelled: 'Đã hủy',
+};
+
+const requestKindIcons: Record<EmployeeRequest['kind'], string> = {
+  leave: '◷', late: '↘', early: '↗', overtime: '☾', business: '✈',
 };
 
 class AppErrorBoundary extends React.Component<
@@ -1948,6 +1953,7 @@ function App() {
               ['pending', 'Chờ duyệt'],
               ['approved', 'Đã duyệt'],
               ['rejected', 'Từ chối'],
+              ['cancelled', 'Đã hủy'],
             ] as const).map(([value, label]) => (
               <button
                 type="button"
@@ -1964,14 +1970,14 @@ function App() {
               requests
                 .filter((item) => requestFilter === 'all' || item.status === requestFilter)
                 .map((item) => (
-                  <article className="request-item" key={item.id}>
+                  <article className={`request-item request-item-${item.kind}`} key={item.id}>
                     <div className="request-item-main">
                       <div className={`request-kind-icon request-kind-${item.kind}`} aria-hidden="true">
-                        {item.kind === 'leave' ? '☀' : item.kind === 'late' ? '◷' : item.kind === 'early' ? '↗' : item.kind === 'overtime' ? '☾' : '✈'}
+                        {requestKindIcons[item.kind]}
                       </div>
                       <div>
                         <div className="request-title-line">
-                          <h3>{requestKindLabels[item.kind]}</h3>
+                          <h3 className={`request-kind-label request-kind-label-${item.kind}`}>{requestKindLabels[item.kind]}</h3>
                           <span className={`request-status request-status-${item.status}`}>{requestStatusLabels[item.status]}</span>
                         </div>
                         <p className="request-time">

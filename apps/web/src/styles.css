@@ -2504,18 +2504,32 @@ h1 {
   border-radius: 18px;
   background: linear-gradient(120deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
 }
+.request-item-leave { border-left: 3px solid #4f9cff; }
+.request-item-late { border-left: 3px solid #f2a33b; }
+.request-item-early { border-left: 3px solid #b689ff; }
+.request-item-overtime { border-left: 3px solid #7c6fff; }
+.request-item-business { border-left: 3px solid #42c7b4; }
 .request-item-main { display: flex; align-items: flex-start; gap: 13px; min-width: 0; }
 .request-kind-icon { display: grid; flex: 0 0 44px; width: 44px; height: 44px; place-items: center; border-radius: 14px; background: rgba(255,90,80,.14); color: #ff766f; font-size: 1.25rem; }
+.request-kind-leave { background: rgba(79,156,255,.15); color: #78b4ff; }
+.request-kind-late { background: rgba(242,163,59,.15); color: #ffc167; }
+.request-kind-early { background: rgba(182,137,255,.15); color: #c9a9ff; }
 .request-kind-overtime { background: rgba(124,111,255,.15); color: #aaa0ff; }
-.request-kind-business { background: rgba(72,166,255,.15); color: #6eb6ff; }
+.request-kind-business { background: rgba(66,199,180,.15); color: #68dbc9; }
 .request-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
-.request-title-line h3 { margin: 0; font-size: 1rem; }
+.request-title-line h3 { margin: 0; font-size: .78rem; padding: 6px 10px; border-radius: 999px; }
+.request-kind-label-leave { background: rgba(79,156,255,.15); color: #78b4ff; }
+.request-kind-label-late { background: rgba(242,163,59,.15); color: #ffc167; }
+.request-kind-label-early { background: rgba(182,137,255,.15); color: #c9a9ff; }
+.request-kind-label-overtime { background: rgba(124,111,255,.15); color: #aaa0ff; }
+.request-kind-label-business { background: rgba(66,199,180,.15); color: #68dbc9; }
 .request-time { margin: 5px 0; color: var(--muted); font-size: .82rem; }
 .request-reason { margin: 0; color: #eee6e1; font-size: .9rem; }
 .request-status { padding: 5px 9px; border-radius: 999px; font-size: .7rem; font-weight: 850; }
 .request-status-pending { background: rgba(244,163,55,.14); color: #ffc46d; }
 .request-status-approved { background: rgba(52,190,101,.14); color: #63db8c; }
 .request-status-rejected { background: rgba(230,67,60,.14); color: #ff7d77; }
+.request-status-cancelled { background: rgba(148,156,170,.14); color: #b9c0cb; }
 .request-cancel { flex: 0 0 auto; padding: 8px 11px; border: 1px solid rgba(255,95,86,.25); border-radius: 10px; background: transparent; color: #ff7770; font-weight: 750; }
 .request-empty { display: grid; justify-items: center; gap: 5px; padding: 42px 20px; color: var(--muted); text-align: center; }
 .request-empty span { color: #ff7068; font-size: 2rem; }

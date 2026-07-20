@@ -135,7 +135,10 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async cancel(employeeId: string, id: string) {
-    const request = await this.prisma.employeeRequest.findFirst({ where: { id, employeeId } });
+    const request = await this.prisma.employeeRequest.findFirst({
+      where: { id, employeeId },
+      include: { employee: { select: { fullName: true } } },
+    });
     if (!request) throw new NotFoundException('Không tìm thấy đơn');
     if (request.status !== 'pending') throw new BadRequestException('Chỉ có thể hủy đơn đang chờ duyệt');
     const cancelled = await this.prisma.$transaction(async (tx) => {
@@ -144,8 +147,8 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
       });
       if (request.managerEmployeeId) await tx.userNotification.create({ data: {
         id: randomUUID(), recipientId: request.managerEmployeeId, type: 'request_cancelled', requestId: id,
-        title: `${requestKindLabels[request.kind] ?? 'Đơn từ'} đã bị hủy`,
-        message: `Người tạo đã hủy đơn ${requestKindLabels[request.kind] ?? ''}.`,
+        title: `${request.employee.fullName} đã hủy đơn`,
+        message: `${request.employee.fullName} đã hủy đơn ${requestKindLabels[request.kind] ?? ''}.`,
       } });
       return item;
     });
