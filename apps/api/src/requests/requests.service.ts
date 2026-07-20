@@ -11,6 +11,9 @@ import { ContentEventsService } from '../dashboard/content-events.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const requestKinds = ['leave', 'late', 'early', 'overtime', 'business'] as const;
+const requestKindLabels: Record<string, string> = {
+  leave: 'Nghỉ phép', late: 'Đi trễ', early: 'Về sớm', overtime: 'Làm thêm giờ', business: 'Công tác',
+};
 
 @Injectable()
 export class RequestsService implements OnModuleInit, OnModuleDestroy {
@@ -98,8 +101,8 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
       } });
       await tx.userNotification.create({ data: {
         id: randomUUID(), recipientId: manager.id, type: 'request_pending', requestId: created.id,
-        title: `Đơn mới từ ${employee.fullName}`,
-        message: `Đơn cần được xử lý trước ${dueAt.toLocaleString('vi-VN')}.`,
+        title: `${requestKindLabels[kind]} · ${employee.fullName}`,
+        message: `Loại đơn: ${requestKindLabels[kind]}. Cần xử lý trước ${dueAt.toLocaleString('vi-VN')}.`,
       } });
       return created;
     });
@@ -135,7 +138,17 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     const request = await this.prisma.employeeRequest.findFirst({ where: { id, employeeId } });
     if (!request) throw new NotFoundException('Không tìm thấy đơn');
     if (request.status !== 'pending') throw new BadRequestException('Chỉ có thể hủy đơn đang chờ duyệt');
-    const cancelled = await this.prisma.employeeRequest.delete({ where: { id } });
+    const cancelled = await this.prisma.$transaction(async (tx) => {
+      const item = await tx.employeeRequest.update({
+        where: { id }, data: { status: 'cancelled', decisionNote: 'Người tạo đã hủy đơn.', decidedAt: new Date() },
+      });
+      if (request.managerEmployeeId) await tx.userNotification.create({ data: {
+        id: randomUUID(), recipientId: request.managerEmployeeId, type: 'request_cancelled', requestId: id,
+        title: `${requestKindLabels[request.kind] ?? 'Đơn từ'} đã bị hủy`,
+        message: `Người tạo đã hủy đơn ${requestKindLabels[request.kind] ?? ''}.`,
+      } });
+      return item;
+    });
     this.events.notify('request_changed');
     return cancelled;
   }

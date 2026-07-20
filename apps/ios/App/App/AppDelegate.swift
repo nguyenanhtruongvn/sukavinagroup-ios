@@ -1554,12 +1554,12 @@ private struct MetricWideCard: View {
 }
 
 private enum EmployeeRequestStatus: String, Codable, CaseIterable {
-    case pending, approved, rejected
+    case pending, approved, rejected, cancelled
     var title: String {
-        switch self { case .pending: return "Chờ duyệt"; case .approved: return "Đã duyệt"; case .rejected: return "Từ chối" }
+        switch self { case .pending: return "Chờ duyệt"; case .approved: return "Đã duyệt"; case .rejected: return "Từ chối"; case .cancelled: return "Đã hủy" }
     }
     var color: Color {
-        switch self { case .pending: return .orange; case .approved: return .green; case .rejected: return AppTheme.red }
+        switch self { case .pending: return .orange; case .approved: return .green; case .rejected: return AppTheme.red; case .cancelled: return .gray }
     }
 }
 
@@ -1738,7 +1738,7 @@ private struct RequestCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 Image(systemName: request.kind.icon).frame(width: 42, height: 42).background(request.kind.color.opacity(0.16)).foregroundStyle(request.kind.color).clipShape(RoundedRectangle(cornerRadius: 13))
-                VStack(alignment: .leading, spacing: 3) { Text(request.employee.map { "\($0.fullName) · \($0.employeeCode)" } ?? request.kind.title).font(.headline); Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted) }
+                VStack(alignment: .leading, spacing: 3) { Text(request.employee.map { "\($0.fullName) · \(request.kind.title)" } ?? request.kind.title).font(.headline); Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted) }
                 Spacer()
                 Text(request.status.title).font(.caption.bold()).foregroundStyle(request.status.color).padding(.horizontal, 10).padding(.vertical, 6).background(request.status.color.opacity(0.14)).clipShape(Capsule())
             }
@@ -1984,15 +1984,18 @@ private struct NotificationsView: View {
                     ForEach(requestNotifications) { item in
                         Button { Task { await open(item) } } label: {
                           HStack(alignment: .top, spacing: 14) {
-                            Image(systemName: notificationIcon(item.type)).frame(width: 44, height: 44).background(notificationColor(item.type).opacity(0.16)).foregroundStyle(notificationColor(item.type)).clipShape(RoundedRectangle(cornerRadius: 14))
+                            Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(item.title).font(.headline)
+                                if let request = linkedRequest(item) {
+                                    Text(request.kind.title).font(.caption.bold()).foregroundStyle(request.kind.color).padding(.horizontal, 9).padding(.vertical, 4).background(request.kind.color.opacity(0.13)).clipShape(Capsule())
+                                }
                                 Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
                                 Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
                             }
                             Spacer()
                             if !item.read { Circle().fill(AppTheme.red).frame(width: 8, height: 8) }
-                          }.padding(16).background(item.read ? AppTheme.card : Color.white.opacity(0.115)).overlay { RoundedRectangle(cornerRadius: 20).stroke(item.read ? Color.clear : notificationColor(item.type).opacity(0.32)) }.clipShape(RoundedRectangle(cornerRadius: 20))
+                          }.padding(16).background(item.read ? AppTheme.card : Color.white.opacity(0.115)).overlay { RoundedRectangle(cornerRadius: 20).stroke(item.read ? Color.clear : notificationColor(item).opacity(0.32)) }.clipShape(RoundedRectangle(cornerRadius: 20))
                         }.buttonStyle(.plain)
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -2025,6 +2028,7 @@ private struct NotificationsView: View {
         if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
             requestNotifications = values
             session.requestUnreadCount = values.filter { !$0.read }.count
+            await requestStore.load(token)
         }
     }
 
@@ -2046,8 +2050,27 @@ private struct NotificationsView: View {
         session.markArticlesRead(); await loadRequestNotifications()
     }
 
-    private func notificationIcon(_ type: String) -> String { type == "request_pending" ? "clock.badge.exclamationmark.fill" : type.contains("rejected") ? "xmark.circle.fill" : "checkmark.seal.fill" }
-    private func notificationColor(_ type: String) -> Color { type == "request_pending" ? .orange : type.contains("rejected") ? AppTheme.red : .green }
+    private func linkedRequest(_ item: RequestNotification) -> EmployeeRequest? {
+        guard let id = item.requestId else { return nil }
+        return (requestStore.requests + requestStore.approvals).first { $0.id == id }
+    }
+    private func notificationIcon(_ item: RequestNotification) -> String {
+        let type = item.type
+        if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
+        if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
+        if type.contains("rejected") { return "xmark.circle.fill" }
+        if type.contains("cancelled") { return "minus.circle.fill" }
+        if type.contains("auto_approved") { return "timer.circle.fill" }
+        return "checkmark.seal.fill"
+    }
+    private func notificationColor(_ item: RequestNotification) -> Color {
+        let type = item.type
+        if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
+        if type == "request_pending" { return .orange }
+        if type.contains("rejected") { return AppTheme.red }
+        if type.contains("cancelled") { return .gray }
+        return .green
+    }
 }
 
 private struct RequestNotificationDetail: View {
