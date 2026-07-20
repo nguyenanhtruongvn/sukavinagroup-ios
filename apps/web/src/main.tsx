@@ -107,6 +107,30 @@ type MediaItem = {
   createdAt: string;
 };
 
+type EmployeeRequest = {
+  id: string;
+  kind: 'leave' | 'late' | 'early' | 'overtime' | 'business';
+  startsAt: string;
+  endsAt: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+};
+
+const requestKindLabels: Record<EmployeeRequest['kind'], string> = {
+  leave: 'Nghỉ phép',
+  late: 'Đi trễ',
+  early: 'Về sớm',
+  overtime: 'Làm thêm giờ',
+  business: 'Công tác',
+};
+
+const requestStatusLabels: Record<EmployeeRequest['status'], string> = {
+  pending: 'Chờ duyệt',
+  approved: 'Đã duyệt',
+  rejected: 'Từ chối',
+};
+
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string }
@@ -359,6 +383,16 @@ function App() {
   );
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceMonth | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [requests, setRequests] = useState<EmployeeRequest[]>([]);
+  const [requestFilter, setRequestFilter] = useState<'all' | EmployeeRequest['status']>('all');
+  const [requestComposerOpen, setRequestComposerOpen] = useState(false);
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestForm, setRequestForm] = useState({
+    kind: 'leave' as EmployeeRequest['kind'],
+    startsAt: '',
+    endsAt: '',
+    reason: '',
+  });
   const pageSize = 3;
 
   const isLoggedIn = Boolean(token);
@@ -423,6 +457,79 @@ function App() {
       active = false;
     };
   }, [attendanceOpen, attendanceMonth, token]);
+
+  const refreshRequests = async () => {
+    if (!token || isAdminRoute) return;
+    const response = await fetch('/api/me/requests', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('Không tải được danh sách đơn từ');
+    setRequests((await response.json()) as EmployeeRequest[]);
+  };
+
+  useEffect(() => {
+    if (!token || isAdminRoute) {
+      setRequests([]);
+      return;
+    }
+    void refreshRequests().catch((requestError) => {
+      setError(requestError instanceof Error ? requestError.message : 'Không tải được đơn từ');
+    });
+  }, [token, isAdminRoute]);
+
+  const openRequestComposer = () => {
+    const now = new Date();
+    const later = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+    const localValue = (date: Date) => {
+      const offset = date.getTimezoneOffset() * 60_000;
+      return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+    };
+    setRequestForm({ kind: 'leave', startsAt: localValue(now), endsAt: localValue(later), reason: '' });
+    setRequestComposerOpen(true);
+  };
+
+  const submitRequest = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token || requestForm.reason.trim().length < 10) return;
+    setRequestSubmitting(true);
+    try {
+      const response = await fetch('/api/me/requests', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...requestForm,
+          startsAt: new Date(requestForm.startsAt).toISOString(),
+          endsAt: new Date(requestForm.endsAt).toISOString(),
+          reason: requestForm.reason.trim(),
+        }),
+      });
+      const result = await response.json().catch(() => null) as { message?: string } | null;
+      if (!response.ok) throw new Error(result?.message || 'Không gửi được đơn');
+      await refreshRequests();
+      setRequestComposerOpen(false);
+      setToast({ type: 'success', message: 'Đã gửi đơn thành công.' });
+    } catch (requestError) {
+      setToast({ type: 'error', message: requestError instanceof Error ? requestError.message : 'Không gửi được đơn' });
+    } finally {
+      setRequestSubmitting(false);
+    }
+  };
+
+  const cancelRequest = async (id: string) => {
+    if (!token) return;
+    const response = await fetch(`/api/me/requests/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const result = await response.json().catch(() => null) as { message?: string } | null;
+    if (!response.ok) {
+      setToast({ type: 'error', message: result?.message || 'Không hủy được đơn' });
+      return;
+    }
+    await refreshRequests();
+    setToast({ type: 'success', message: 'Đã hủy đơn.' });
+  };
 
   const fallback = useMemo(
     () => ({
@@ -531,6 +638,7 @@ function App() {
             if (!dataLine) continue;
             const payload = JSON.parse(dataLine.slice(5).trim()) as { type?: string };
             if (payload.type === 'attendance_changed') void refreshRealtimeDashboard();
+            if (payload.type === 'request_changed') void refreshRequests();
           }
         }
       } catch {
@@ -1656,6 +1764,18 @@ function App() {
         </div>
 
         <div className="topbar-actions">
+          {!isAdminRoute ? (
+            <button
+              type="button"
+              className="request-create-button"
+              onClick={openRequestComposer}
+              aria-label="Tạo đơn mới"
+              title="Tạo đơn mới"
+            >
+              <span>+</span>
+              <strong>Tạo đơn</strong>
+            </button>
+          ) : null}
           {isAdminRoute && canAccess('accounts.manage') ? (
             <div className="notification-wrap">
               <button
@@ -1912,7 +2032,109 @@ function App() {
           </div>
         </article>
 
+        <article className="panel panel-wide request-panel">
+          <div className="panel-head request-panel-head">
+            <div>
+              <p className="panel-label">Đơn từ</p>
+              <h2>Đơn từ của tôi</h2>
+              <p className="panel-note">Theo dõi nghỉ phép, đi trễ, về sớm, làm thêm giờ và công tác.</p>
+            </div>
+            <button type="button" className="primary-button request-new-inline" onClick={openRequestComposer}>
+              <span>+</span> Tạo đơn mới
+            </button>
+          </div>
+          <div className="request-filters" role="group" aria-label="Lọc trạng thái đơn">
+            {([
+              ['all', 'Tất cả'],
+              ['pending', 'Chờ duyệt'],
+              ['approved', 'Đã duyệt'],
+              ['rejected', 'Từ chối'],
+            ] as const).map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                className={requestFilter === value ? 'active' : ''}
+                onClick={() => setRequestFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="request-list">
+            {requests.filter((item) => requestFilter === 'all' || item.status === requestFilter).length ? (
+              requests
+                .filter((item) => requestFilter === 'all' || item.status === requestFilter)
+                .map((item) => (
+                  <article className="request-item" key={item.id}>
+                    <div className="request-item-main">
+                      <div className={`request-kind-icon request-kind-${item.kind}`} aria-hidden="true">
+                        {item.kind === 'leave' ? '☀' : item.kind === 'late' ? '◷' : item.kind === 'early' ? '↗' : item.kind === 'overtime' ? '☾' : '✈'}
+                      </div>
+                      <div>
+                        <div className="request-title-line">
+                          <h3>{requestKindLabels[item.kind]}</h3>
+                          <span className={`request-status request-status-${item.status}`}>{requestStatusLabels[item.status]}</span>
+                        </div>
+                        <p className="request-time">
+                          {new Date(item.startsAt).toLocaleString('vi-VN')} – {new Date(item.endsAt).toLocaleString('vi-VN')}
+                        </p>
+                        <p className="request-reason">{item.reason}</p>
+                      </div>
+                    </div>
+                    {item.status === 'pending' ? (
+                      <button type="button" className="request-cancel" onClick={() => void cancelRequest(item.id)}>Hủy đơn</button>
+                    ) : null}
+                  </article>
+                ))
+            ) : (
+              <div className="request-empty"><span>▤</span><strong>Chưa có đơn trong mục này</strong><p>Nhấn dấu + để tạo đơn mới.</p></div>
+            )}
+          </div>
+        </article>
+
       </section>
+      ) : null}
+
+      {requestComposerOpen ? (
+        <div
+          className="article-modal-backdrop request-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !requestSubmitting) setRequestComposerOpen(false);
+          }}
+        >
+          <form className="article-modal request-composer" role="dialog" aria-modal="true" onSubmit={submitRequest}>
+            <header className="article-modal-header">
+              <div><p className="panel-label">Đơn từ</p><h2>Tạo đơn mới</h2></div>
+              <button type="button" className="ghost-button" disabled={requestSubmitting} onClick={() => setRequestComposerOpen(false)}>Đóng</button>
+            </header>
+            <div className="request-form-body">
+              <label className="request-field request-field-wide">
+                <span>Loại đơn</span>
+                <select value={requestForm.kind} onChange={(event) => setRequestForm((current) => ({ ...current, kind: event.target.value as EmployeeRequest['kind'] }))}>
+                  {(Object.keys(requestKindLabels) as EmployeeRequest['kind'][]).map((kind) => <option value={kind} key={kind}>{requestKindLabels[kind]}</option>)}
+                </select>
+              </label>
+              <label className="request-field"><span>Từ ngày / giờ</span><input required type="datetime-local" value={requestForm.startsAt} onChange={(event) => setRequestForm((current) => ({ ...current, startsAt: event.target.value }))} /></label>
+              <label className="request-field"><span>Đến ngày / giờ</span><input required type="datetime-local" min={requestForm.startsAt} value={requestForm.endsAt} onChange={(event) => setRequestForm((current) => ({ ...current, endsAt: event.target.value }))} /></label>
+              <label className="request-field request-field-wide">
+                <span>Lý do</span>
+                <textarea required minLength={10} maxLength={1000} rows={4} placeholder="Nhập lý do, tối thiểu 10 ký tự..." value={requestForm.reason} onChange={(event) => setRequestForm((current) => ({ ...current, reason: event.target.value }))} />
+                <small>{requestForm.reason.trim().length}/1000 ký tự</small>
+              </label>
+            </div>
+            <footer className="request-form-actions">
+              <button type="button" className="ghost-button" disabled={requestSubmitting} onClick={() => setRequestComposerOpen(false)}>Hủy</button>
+              <button type="submit" className="primary-button" disabled={requestSubmitting || requestForm.reason.trim().length < 10 || !requestForm.startsAt || !requestForm.endsAt}>
+                {requestSubmitting ? 'Đang gửi...' : 'Gửi đơn'}
+              </button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
+
+      {!isAdminRoute && isLoggedIn ? (
+        <button type="button" className="request-fab" onClick={openRequestComposer} aria-label="Tạo đơn mới" title="Tạo đơn mới">+</button>
       ) : null}
 
       {attendanceOpen ? (

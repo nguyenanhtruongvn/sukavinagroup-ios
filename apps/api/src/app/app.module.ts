@@ -11,6 +11,7 @@ import { AccountsModule } from '../accounts/accounts.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MediaModule } from '../media/media.module';
+import { RequestsModule } from '../requests/requests.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { MediaModule } from '../media/media.module';
     LogsModule,
     AccountsModule,
     MediaModule,
+    RequestsModule,
     SeedModule,
   ],
   controllers: [AppController],

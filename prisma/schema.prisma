@@ -45,6 +45,23 @@ model Employee {
   active            Boolean  @default(true)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+  requests          EmployeeRequest[]
+}
+
+model EmployeeRequest {
+  id         String   @id @default(cuid())
+  employeeId String
+  kind       String
+  startsAt   DateTime
+  endsAt     DateTime
+  reason     String
+  status     String   @default("pending")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, createdAt])
+  @@index([status])
 }
 
 model AppLog {
