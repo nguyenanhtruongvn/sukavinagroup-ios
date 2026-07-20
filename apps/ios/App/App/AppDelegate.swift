@@ -626,6 +626,7 @@ private final class SessionStore: ObservableObject {
     @Published var errorOffersSettings = false
     @Published var isWorking = false
     @Published var unreadCount = 0
+    @Published var requestUnreadCount = 0
     @Published var biometricsEnabled = BiometricPreferences.enabled
 
     private(set) var token: String?
@@ -773,6 +774,7 @@ private final class SessionStore: ObservableObject {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
             processNewArticles(fresh.contentItems)
             dashboard = fresh
+            await refreshRequestNotificationCount()
         } catch {
             present(error)
         }
@@ -786,7 +788,14 @@ private final class SessionStore: ObservableObject {
         profile = nil
         dashboard = nil
         unreadCount = 0
+        requestUnreadCount = 0
         state = .signedOut
+    }
+
+    func refreshRequestNotificationCount() async {
+        guard let token,
+              let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) else { return }
+        requestUnreadCount = values.filter { !$0.read }.count
     }
 
     func dismissError() {
@@ -1310,7 +1319,7 @@ private struct EmployeePortalView: View {
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             NotificationsView()
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
-                .badge(session.unreadCount)
+                .badge(session.unreadCount + session.requestUnreadCount)
             ProfileView()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
@@ -1936,8 +1945,10 @@ private struct RequestComposer: View {
 
 private struct RequestNotification: Decodable, Identifiable {
     let id: String
+    let type: String
     let title: String
     let message: String
+    let requestId: String?
     let read: Bool
     let createdAt: Date
 }
@@ -1945,20 +1956,27 @@ private struct UpdateCount: Decodable { let count: Int }
 
 private struct NotificationsView: View {
     @EnvironmentObject private var session: SessionStore
+    @StateObject private var requestStore = EmployeeRequestStore()
     @State private var requestNotifications: [RequestNotification] = []
-    private var items: [ContentItem] { session.dashboard?.contentItems ?? [] }
+    @State private var reviewing: EmployeeRequest?
+    @State private var viewing: EmployeeRequest?
+    @State private var confirmClear = false
+    @State private var hiddenArticleIDs = Set<String>()
+    private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
+    private var totalUnread: Int { session.unreadCount + requestNotifications.filter { !$0.read }.count }
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 12) {
                     HStack {
-                        Text(session.unreadCount == 0 ? "Bạn đã đọc tất cả thông báo" : "Bạn có \(session.unreadCount) thông báo chưa đọc").font(.subheadline.bold())
+                        Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
-                        if session.unreadCount > 0 { Button("Đọc tất cả") { session.markArticlesRead() }.font(.subheadline.bold()).foregroundStyle(AppTheme.red) }
+                        if !requestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
                     }
                     ForEach(requestNotifications) { item in
-                        HStack(alignment: .top, spacing: 14) {
-                            Image(systemName: "doc.text.fill").frame(width: 44, height: 44).background(Color.orange.opacity(0.16)).foregroundStyle(.orange).clipShape(RoundedRectangle(cornerRadius: 14))
+                        Button { Task { await open(item) } } label: {
+                          HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: notificationIcon(item.type)).frame(width: 44, height: 44).background(notificationColor(item.type).opacity(0.16)).foregroundStyle(notificationColor(item.type)).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(item.title).font(.headline)
                                 Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
@@ -1966,9 +1984,10 @@ private struct NotificationsView: View {
                             }
                             Spacer()
                             if !item.read { Circle().fill(AppTheme.red).frame(width: 8, height: 8) }
-                        }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20))
+                          }.padding(16).background(item.read ? AppTheme.card : Color.white.opacity(0.115)).overlay { RoundedRectangle(cornerRadius: 20).stroke(item.read ? Color.clear : notificationColor(item.type).opacity(0.32)) }.clipShape(RoundedRectangle(cornerRadius: 20))
+                        }.buttonStyle(.plain)
                     }
-                    ForEach(items) { item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1978,14 +1997,17 @@ private struct NotificationsView: View {
                                     Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
                                 }
                                 Spacer(minLength: 0)
-                            }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        }.buttonStyle(.plain)
+                            }.padding(16).background(index < session.unreadCount ? Color.white.opacity(0.115) : AppTheme.card).overlay { RoundedRectangle(cornerRadius: 20).stroke(index < session.unreadCount ? AppTheme.red.opacity(0.3) : Color.clear) }.clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
                     }
-                    if items.isEmpty { ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash").padding(.top, 70) }
+                    if items.isEmpty && requestNotifications.isEmpty { ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash").padding(.top, 70) }
                 }.padding(16)
             }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
-                .task { await loadRequestNotifications(); session.markArticlesRead() }
+                .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
+                .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
+                .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
+                .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
         }
     }
 
@@ -1993,9 +2015,36 @@ private struct NotificationsView: View {
         guard let token = session.token else { return }
         if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
             requestNotifications = values
-            let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/read", method: "PATCH", token: token)
+            session.requestUnreadCount = values.filter { !$0.read }.count
         }
     }
+
+    private func open(_ item: RequestNotification) async {
+        guard let token = session.token else { return }
+        let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/\(item.id)/read", method: "PATCH", token: token)
+        await requestStore.load(token)
+        if let id = item.requestId {
+            if item.type == "request_pending", let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) { reviewing = request }
+            else { viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id }) }
+        }
+        await loadRequestNotifications()
+    }
+
+    private func clearAll() async {
+        guard let token = session.token else { return }
+        let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications", method: "DELETE", token: token)
+        hiddenArticleIDs.formUnion(items.map(\.id)); UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+        session.markArticlesRead(); await loadRequestNotifications()
+    }
+
+    private func notificationIcon(_ type: String) -> String { type == "request_pending" ? "clock.badge.exclamationmark.fill" : type.contains("rejected") ? "xmark.circle.fill" : "checkmark.seal.fill" }
+    private func notificationColor(_ type: String) -> Color { type == "request_pending" ? .orange : type.contains("rejected") ? AppTheme.red : .green }
+}
+
+private struct RequestNotificationDetail: View {
+    let request: EmployeeRequest
+    @Environment(\.dismiss) private var dismiss
+    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } }.preferredColorScheme(.dark) }
 }
 
 private struct NewsView: View {

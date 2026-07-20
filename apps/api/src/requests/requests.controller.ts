@@ -35,6 +35,19 @@ export class RequestsController {
     return this.requests.readNotifications(req.user.sub);
   }
 
+  @Patch('notifications/:notificationId/read')
+  readNotification(
+    @Req() req: { user: { sub: string } },
+    @Param('notificationId') notificationId: string,
+  ) {
+    return this.requests.readNotification(req.user.sub, notificationId);
+  }
+
+  @Delete('notifications')
+  clearNotifications(@Req() req: { user: { sub: string } }) {
+    return this.requests.clearNotifications(req.user.sub);
+  }
+
   @Patch(':id/decision')
   decide(
     @Req() req: { user: { sub: string } },
