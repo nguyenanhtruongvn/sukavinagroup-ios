@@ -35,6 +35,9 @@ type EmployeeRecord = {
   fullName?: string;
   jobTitle?: string;
   department?: string;
+  managerEmployeeCode?: string;
+  hireDate?: string;
+  contractType?: string;
   phoneNumber?: string;
   gmailEmail?: string;
   authProvider?: string;
@@ -338,6 +341,9 @@ function App() {
     fullName: '',
     jobTitle: '',
     department: '',
+    managerEmployeeCode: '',
+    hireDate: '',
+    contractType: '',
     phoneNumber: '',
     gmailEmail: '',
     password: '',
@@ -1036,6 +1042,9 @@ function App() {
         fullName: '',
         jobTitle: '',
         department: '',
+        managerEmployeeCode: '',
+        hireDate: '',
+        contractType: '',
         phoneNumber: '',
         gmailEmail: '',
         password: '',
@@ -1061,6 +1070,9 @@ function App() {
       fullName: employee.fullName ?? '',
       jobTitle: employee.jobTitle ?? '',
       department: employee.department ?? '',
+      managerEmployeeCode: employee.managerEmployeeCode ?? '',
+      hireDate: employee.hireDate?.slice(0, 10) ?? '',
+      contractType: employee.contractType ?? '',
       phoneNumber: employee.phoneNumber ?? '',
       gmailEmail: employee.gmailEmail ?? '',
       password: '',
@@ -1246,6 +1258,8 @@ function App() {
         employee.fullName,
         employee.jobTitle,
         employee.department,
+        employee.managerEmployeeCode,
+        employee.contractType,
         employee.phoneNumber,
         employee.gmailEmail,
       ]
@@ -1286,15 +1300,19 @@ function App() {
   const exportEmployees = () => {
     const escapeCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const rows = [
-      ['STT', 'Họ và tên', 'Mã nhân viên', 'Gmail', 'Số điện thoại', 'Phòng ban', 'Chức vụ', 'Trạng thái'],
+      ['STT', 'Mã nhân viên', 'Họ và tên', 'Phòng ban', 'Mã nhân viên quản lý', 'Chức danh', 'Ngày vào làm', 'Loại hợp đồng', 'Email', 'Số điện thoại', 'Số ngày phép còn lại', 'Trạng thái'],
       ...filteredEmployees.map((employee, index) => [
         index + 1,
-        employee.fullName,
         employee.employeeCode,
+        employee.fullName,
+        employee.department,
+        employee.managerEmployeeCode,
+        employee.jobTitle,
+        employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('vi-VN') : '',
+        employee.contractType,
         employee.gmailEmail,
         employee.phoneNumber,
-        employee.department,
-        employee.jobTitle,
+        employee.remainingLeaveDays ?? 0,
         employee.active ? 'Đang làm việc' : 'Tạm nghỉ',
       ]),
     ];
@@ -2264,19 +2282,6 @@ function App() {
                         />
                       </label>
                       <label>
-                        <span>Chức danh</span>
-                        <input
-                          value={employeeForm.jobTitle}
-                          onChange={(event) =>
-                            setEmployeeForm((current) => ({
-                              ...current,
-                              jobTitle: event.target.value,
-                            }))
-                          }
-                          placeholder="Nhân sự"
-                        />
-                      </label>
-                      <label>
                         <span>Phòng ban</span>
                         <input
                           value={employeeForm.department}
@@ -2290,20 +2295,64 @@ function App() {
                         />
                       </label>
                       <label>
-                        <span>Số điện thoại</span>
+                        <span>Mã nhân viên quản lý</span>
                         <input
-                          value={employeeForm.phoneNumber}
+                          value={employeeForm.managerEmployeeCode}
                           onChange={(event) =>
                             setEmployeeForm((current) => ({
                               ...current,
-                              phoneNumber: event.target.value,
+                              managerEmployeeCode: event.target.value,
                             }))
                           }
-                          placeholder="0900000002"
+                          placeholder="SKV-001"
                         />
                       </label>
                       <label>
-                        <span>Gmail</span>
+                        <span>Chức danh</span>
+                        <input
+                          value={employeeForm.jobTitle}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              jobTitle: event.target.value,
+                            }))
+                          }
+                          placeholder="Nhân viên"
+                        />
+                      </label>
+                      <label>
+                        <span>Ngày vào làm</span>
+                        <input
+                          type="date"
+                          value={employeeForm.hireDate}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              hireDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Loại hợp đồng</span>
+                        <select
+                          value={employeeForm.contractType}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              contractType: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Chọn loại hợp đồng</option>
+                          <option value="Thử việc">Thử việc</option>
+                          <option value="Xác định thời hạn">Xác định thời hạn</option>
+                          <option value="Không xác định thời hạn">Không xác định thời hạn</option>
+                          <option value="Thời vụ">Thời vụ</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Email</span>
                         <input
                           type="email"
                           value={employeeForm.gmailEmail}
@@ -2317,17 +2366,17 @@ function App() {
                         />
                       </label>
                       <label>
-                        <span>Mật khẩu đăng nhập</span>
+                        <span>Số điện thoại</span>
                         <input
-                          type="password"
-                          value={employeeForm.password}
+                          type="tel"
+                          value={employeeForm.phoneNumber}
                           onChange={(event) =>
                             setEmployeeForm((current) => ({
                               ...current,
-                              password: event.target.value,
+                              phoneNumber: event.target.value,
                             }))
                           }
-                          placeholder="••••••••"
+                          placeholder="0900000002"
                         />
                       </label>
                       <label>
@@ -2344,6 +2393,20 @@ function App() {
                             }))
                           }
                           placeholder="0"
+                        />
+                      </label>
+                      <label>
+                        <span>Mật khẩu đăng nhập</span>
+                        <input
+                          type="password"
+                          value={employeeForm.password}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              password: event.target.value,
+                            }))
+                          }
+                          placeholder={editingEmployeeId ? 'Để trống nếu không đổi' : 'Nhập mật khẩu'}
                         />
                       </label>
                     </div>
@@ -2376,6 +2439,9 @@ function App() {
                             fullName: '',
                             jobTitle: '',
                             department: '',
+                            managerEmployeeCode: '',
+                            hireDate: '',
+                            contractType: '',
                             phoneNumber: '',
                             gmailEmail: '',
                             password: '',
@@ -2479,6 +2545,11 @@ function App() {
                               </div>
                               <div className="employee-cell employee-muted" data-label="Chức vụ">
                                 <span>{employee.jobTitle || 'Chưa cập nhật'}</span>
+                                <small>
+                                  {employee.contractType || 'Chưa có hợp đồng'}
+                                  {' · '}
+                                  {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('vi-VN') : 'Chưa có ngày vào làm'}
+                                </small>
                               </div>
                               <div className="employee-cell employee-status-cell" data-label="Trạng thái">
                                 <span
@@ -2490,6 +2561,7 @@ function App() {
                                 >
                                   {employee.active ? 'Đang làm việc' : 'Tạm nghỉ'}
                                 </span>
+                                <small>{employee.remainingLeaveDays ?? 0} ngày phép</small>
                               </div>
                               <div className="employee-cell employee-actions-row employee-row-actions">
                                 <button type="button" onClick={() => editEmployee(employee)}>

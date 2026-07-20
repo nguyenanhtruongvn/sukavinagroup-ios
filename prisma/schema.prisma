@@ -28,6 +28,9 @@ model Employee {
   fullName          String
   jobTitle          String
   department        String
+  managerEmployeeCode String?
+  hireDate          DateTime?
+  contractType      String?
   phoneNumber       String?  @unique
   gmailEmail        String?  @unique
   gmailVerified     Boolean  @default(false)

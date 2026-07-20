@@ -1,0 +1,4 @@
+ALTER TABLE "Employee"
+  ADD COLUMN IF NOT EXISTS "managerEmployeeCode" TEXT,
+  ADD COLUMN IF NOT EXISTS "hireDate" TIMESTAMP(3),
+  ADD COLUMN IF NOT EXISTS "contractType" TEXT;

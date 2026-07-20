@@ -1893,6 +1893,20 @@ h1 {
   color: rgba(244, 241, 234, 0.84);
 }
 
+.employee-muted small,
+.employee-status-cell small {
+  display: block;
+  margin-top: 5px;
+  color: rgba(244, 241, 234, 0.48);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.employee-status-cell {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
 .employee-row-actions {
   justify-content: flex-end;
   flex-wrap: wrap;
