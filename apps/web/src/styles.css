@@ -66,6 +66,61 @@ input {
   font: inherit;
 }
 
+/* Shared button feedback stays low-specificity so component motion can override it. */
+:where(button, [role='button']) {
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 180ms cubic-bezier(.22, 1, .36, 1),
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease,
+    filter 180ms ease,
+    opacity 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :where(button, [role='button']):hover:not(:disabled):not([aria-disabled='true']) {
+    transform: translateY(-2px);
+    filter: brightness(1.08) saturate(1.04);
+    border-color: rgba(255, 139, 129, .38);
+    box-shadow:
+      0 10px 24px rgba(0, 0, 0, .2),
+      0 0 0 1px rgba(255, 255, 255, .045) inset;
+  }
+}
+
+:where(button, [role='button']):active:not(:disabled):not([aria-disabled='true']) {
+  transform: translateY(0) scale(.975);
+  filter: brightness(.98);
+  transition-duration: 80ms;
+}
+
+:where(button, [role='button']):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(15, 15, 16, .9),
+    0 0 0 6px rgba(255, 102, 92, .42);
+}
+
+:where(button, [role='button']):disabled,
+:where(button, [role='button'])[aria-disabled='true'] {
+  cursor: not-allowed;
+  filter: grayscale(.15);
+  opacity: .55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(button, [role='button']) {
+    scroll-behavior: auto;
+    transition-duration: 1ms !important;
+  }
+  :where(button, [role='button']):hover,
+  :where(button, [role='button']):active {
+    transform: none !important;
+  }
+}
+
 .auth-shell,
 .dashboard-shell {
   min-height: 100vh;
