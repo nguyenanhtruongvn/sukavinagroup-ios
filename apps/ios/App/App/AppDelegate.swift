@@ -1365,18 +1365,6 @@ private struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
 
-                    HStack {
-                        Text("Mới nhất").font(.title2.bold())
-                        Spacer()
-                        NavigationLink("Xem tất cả") { NewsView() }.foregroundColor(AppTheme.red)
-                    }
-
-                    ForEach(Array((session.dashboard?.contentItems ?? []).prefix(3))) { item in
-                        NavigationLink(destination: ArticleDetailView(item: item)) {
-                            ArticleRow(item: item)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
                 .padding(20)
             }
@@ -1612,31 +1600,49 @@ private struct RequestsView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            filterButton("Tất cả", nil)
-                            ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
+            ZStack(alignment: .bottomTrailing) {
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                filterButton("Tất cả", nil)
+                                ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
+                            }
                         }
-                    }
-                    if visible.isEmpty {
-                        ContentUnavailableView("Chưa có đơn", systemImage: "doc.text", description: Text("Các đơn đã gửi sẽ xuất hiện tại đây."))
-                            .padding(.top, 70)
-                    } else {
-                        LazyVStack(spacing: 12) {
-                            ForEach(visible) { request in
-                                RequestCard(request: request) {
-                                    store.cancel(request.id)
+                        if visible.isEmpty {
+                            ContentUnavailableView("Chưa có đơn", systemImage: "doc.text", description: Text("Các đơn đã gửi sẽ xuất hiện tại đây."))
+                                .padding(.top, 70)
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(visible) { request in
+                                    RequestCard(request: request) {
+                                        store.cancel(request.id)
+                                    }
                                 }
                             }
                         }
-                    }
-                }.padding(16)
+                    }.padding(16).padding(.bottom, 82)
+                }
+
+                Button { composing = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .bold))
+                        .frame(width: 58, height: 58)
+                        .background(AppTheme.red)
+                        .foregroundStyle(.white)
+                        .clipShape(Circle())
+                        .shadow(color: AppTheme.red.opacity(0.38), radius: 18, y: 9)
+                }
+                .accessibilityLabel("Tạo đơn mới")
+                .padding(.trailing, 20)
+                .padding(.bottom, 18)
             }
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Đơn từ của tôi")
-            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button { composing = true } label: { Image(systemName: "plus").fontWeight(.bold) }.tint(AppTheme.red) } }
-            .sheet(isPresented: $composing) { RequestComposer { store.submit(kind: $0, from: $1, to: $2, reason: $3) } }
+            .sheet(isPresented: $composing) {
+                RequestComposer { store.submit(kind: $0, from: $1, to: $2, reason: $3) }
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+            }
         }
     }
 
@@ -1670,20 +1676,167 @@ private struct RequestComposer: View {
     @State private var from = Date()
     @State private var to = Calendar.current.date(byAdding: .hour, value: 8, to: Date()) ?? Date()
     @State private var reason = ""
+    @FocusState private var reasonFocused: Bool
     let submit: (EmployeeRequestKind, Date, Date, String) -> Void
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var canSubmit: Bool { cleanReason.count >= 10 && to >= from }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Loại đơn") { Picker("Loại đơn", selection: $kind) { ForEach(EmployeeRequestKind.allCases) { Text($0.rawValue).tag($0) } } }
-                Section("Thời gian") { DatePicker("Từ", selection: $from); DatePicker("Đến", selection: $to, in: from...) }
-                Section("Lý do") { TextEditor(text: $reason).frame(minHeight: 100); Text("Tối thiểu 10 ký tự").font(.caption).foregroundStyle(cleanReason.count >= 10 ? .green : .secondary) }
-            }.navigationTitle("Tạo đơn mới").navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("Hủy") { dismiss() } }
-                    ToolbarItem(placement: .confirmationAction) { Button("Gửi đơn") { submit(kind, from, to, cleanReason); dismiss() }.disabled(cleanReason.count < 10 || to < from) }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(AppTheme.red.opacity(0.16))
+                            Image(systemName: "doc.badge.plus")
+                                .font(.system(size: 25, weight: .semibold))
+                                .foregroundStyle(AppTheme.red)
+                        }
+                        .frame(width: 52, height: 52)
+
+                        Text("Tạo đơn mới")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                        Text("Điền thông tin rõ ràng để đơn được xử lý nhanh hơn.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.muted)
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        composerLabel("Loại đơn", icon: "square.grid.2x2")
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(EmployeeRequestKind.allCases) { item in
+                                Button { kind = item } label: {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: item.icon)
+                                            .font(.system(size: 16, weight: .semibold))
+                                        Text(item.rawValue)
+                                            .font(.subheadline.weight(.semibold))
+                                            .lineLimit(1)
+                                        Spacer(minLength: 0)
+                                    }
+                                    .padding(.horizontal, 13)
+                                    .frame(maxWidth: .infinity, minHeight: 48)
+                                    .background(kind == item ? AppTheme.red.opacity(0.18) : Color.white.opacity(0.045))
+                                    .foregroundStyle(kind == item ? AppTheme.red : .white)
+                                    .overlay {
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(kind == item ? AppTheme.red.opacity(0.7) : Color.white.opacity(0.08), lineWidth: 1)
+                                    }
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        composerLabel("Thời gian", icon: "calendar")
+                        VStack(spacing: 0) {
+                            dateRow("Bắt đầu", selection: $from)
+                            Divider().overlay(Color.white.opacity(0.08)).padding(.leading, 44)
+                            dateRow("Kết thúc", selection: $to, range: from...)
+                        }
+                        .padding(.horizontal, 14)
+                        .background(AppTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        composerLabel("Nội dung đơn", icon: "text.alignleft")
+                        ZStack(alignment: .topLeading) {
+                            if reason.isEmpty {
+                                Text("Mô tả lý do và thông tin cần người duyệt lưu ý...")
+                                    .font(.body)
+                                    .foregroundStyle(AppTheme.muted.opacity(0.72))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 17)
+                                    .allowsHitTesting(false)
+                            }
+                            TextEditor(text: $reason)
+                                .focused($reasonFocused)
+                                .scrollContentBackground(.hidden)
+                                .padding(11)
+                                .frame(minHeight: 150)
+                                .background(Color.clear)
+                        }
+                        .background(AppTheme.card)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(reasonFocused ? AppTheme.red.opacity(0.78) : Color.white.opacity(0.08), lineWidth: 1)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                        HStack {
+                            Label(cleanReason.count >= 10 ? "Nội dung hợp lệ" : "Tối thiểu 10 ký tự", systemImage: cleanReason.count >= 10 ? "checkmark.circle.fill" : "info.circle")
+                                .foregroundStyle(cleanReason.count >= 10 ? Color.green : AppTheme.muted)
+                            Spacer()
+                            Text("\(reason.count) ký tự").foregroundStyle(AppTheme.muted)
+                        }
+                        .font(.caption.weight(.medium))
+                    }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 120)
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Hủy") { dismiss() }
+                        .foregroundStyle(AppTheme.muted)
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    submit(kind, from, to, cleanReason)
+                    dismiss()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "paperplane.fill")
+                        Text("Gửi đơn")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+                    .background(canSubmit ? AppTheme.red : Color.white.opacity(0.08))
+                    .foregroundStyle(canSubmit ? Color.white : AppTheme.muted)
+                    .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                    .shadow(color: canSubmit ? AppTheme.red.opacity(0.28) : .clear, radius: 16, y: 7)
+                }
+                .disabled(!canSubmit)
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+                .background(.ultraThinMaterial)
+            }
+            .preferredColorScheme(.dark)
         }
+    }
+
+    private func composerLabel(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon)
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.white)
+    }
+
+    @ViewBuilder
+    private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: title == "Bắt đầu" ? "arrow.right.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(title == "Bắt đầu" ? AppTheme.red : Color.green)
+                .font(.system(size: 20))
+            Text(title).font(.subheadline.weight(.semibold))
+            Spacer()
+            if let range {
+                DatePicker("", selection: selection, in: range)
+                    .labelsHidden()
+            } else {
+                DatePicker("", selection: selection)
+                    .labelsHidden()
+            }
+        }
+        .frame(minHeight: 58)
     }
 }
 
