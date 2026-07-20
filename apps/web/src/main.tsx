@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
 
@@ -2699,7 +2700,7 @@ function App() {
 
             {adminTab === 'content' && canAccess('content.manage') ? (
               <>
-                {contentComposerOpen ? (
+                {contentComposerOpen ? createPortal(
                   <div
                     className="article-modal-backdrop content-composer-backdrop"
                     role="presentation"
@@ -2893,7 +2894,8 @@ function App() {
                   </div>
                     </div>
                 </form>
-                  </div>
+                  </div>,
+                  document.body,
                 ) : null}
 
                 <section className="content-list panel">

@@ -6,6 +6,43 @@
   background:
     radial-gradient(circle at top, rgba(194, 38, 36, 0.42), transparent 32%),
     linear-gradient(135deg, #0f0f10 0%, #17111d 48%, #1c2a2b 100%);
+  scrollbar-color: rgba(224, 91, 82, 0.56) rgba(255, 255, 255, 0.035);
+  scrollbar-width: thin;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+* {
+  scrollbar-color: rgba(224, 91, 82, 0.56) rgba(255, 255, 255, 0.035);
+  scrollbar-width: thin;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+*::-webkit-scrollbar-thumb {
+  min-width: 38px;
+  min-height: 38px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(224, 91, 82, 0.56);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(245, 108, 98, 0.78);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 html,
@@ -2568,12 +2605,28 @@ h1 {
 .content-fab:hover .content-fab-label,
 .content-fab:focus-visible .content-fab-label { opacity: 1; transform: translateX(0); }
 
-.content-composer-backdrop { z-index: 70; padding: 22px; overflow-y: auto; backdrop-filter: blur(14px); background: rgba(6,7,11,.82); }
+.content-composer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: flex;
+  width: 100vw;
+  height: 100dvh;
+  padding: 22px;
+  overflow: auto;
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+  backdrop-filter: blur(14px);
+  background: rgba(6,7,11,.82);
+}
 .content-composer {
-  width: min(1160px, calc(100vw - 32px));
-  max-height: calc(100vh - 44px);
+  flex: 0 1 1160px;
+  width: calc(100vw - 44px);
+  max-width: 1160px;
+  max-height: calc(100dvh - 44px);
   margin: auto;
   padding: 0;
+  box-sizing: border-box;
   overflow-y: auto;
   border: 1px solid rgba(255,110,100,.22);
   border-radius: 28px;
@@ -2621,7 +2674,7 @@ h1 {
 @media (max-width: 760px) {
   .content-fab { right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); }
   .content-composer-backdrop { padding: 8px; }
-  .content-composer { width: calc(100vw - 16px); max-height: calc(100vh - 16px); border-radius: 21px; }
+  .content-composer { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 21px; }
   .content-composer-header { gap: 11px; padding: 17px 16px; }
   .content-composer-header p:last-child { display: none; }
   .content-composer-mark { width: 41px; height: 41px; border-radius: 13px; }
