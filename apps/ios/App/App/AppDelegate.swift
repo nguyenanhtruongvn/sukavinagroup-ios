@@ -1624,7 +1624,13 @@ private struct RequestsView: View {
                         ContentUnavailableView("Chưa có đơn", systemImage: "doc.text", description: Text("Các đơn đã gửi sẽ xuất hiện tại đây."))
                             .padding(.top, 70)
                     } else {
-                        LazyVStack(spacing: 12) { ForEach(visible) { RequestCard(request: $0) { store.cancel($0.id) } } }
+                        LazyVStack(spacing: 12) {
+                            ForEach(visible) { request in
+                                RequestCard(request: request) {
+                                    store.cancel(request.id)
+                                }
+                            }
+                        }
                     }
                 }.padding(16)
             }
