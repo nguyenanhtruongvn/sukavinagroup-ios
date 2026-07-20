@@ -117,6 +117,19 @@ type EmployeeRequest = {
   reason: string;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   createdAt: string;
+  decisionNote?: string | null;
+  autoApproved?: boolean;
+  employee?: { fullName: string; employeeCode: string };
+};
+
+type RequestNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  requestId?: string | null;
+  read: boolean;
+  createdAt: string;
 };
 
 const requestKindLabels: Record<EmployeeRequest['kind'], string> = {
@@ -391,6 +404,12 @@ function App() {
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceMonth | null>(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const [requests, setRequests] = useState<EmployeeRequest[]>([]);
+  const [approvalRequests, setApprovalRequests] = useState<EmployeeRequest[]>([]);
+  const [requestNotifications, setRequestNotifications] = useState<RequestNotification[]>([]);
+  const [notificationRequest, setNotificationRequest] = useState<EmployeeRequest | null>(null);
+  const [notificationDecision, setNotificationDecision] = useState<'approved' | 'rejected'>('approved');
+  const [notificationDecisionNote, setNotificationDecisionNote] = useState('');
+  const [notificationWorking, setNotificationWorking] = useState(false);
   const [requestFilter, setRequestFilter] = useState<'all' | EmployeeRequest['status']>('all');
   const [requestComposerOpen, setRequestComposerOpen] = useState(false);
   const [requestSubmitting, setRequestSubmitting] = useState(false);
@@ -467,17 +486,23 @@ function App() {
 
   const refreshRequests = async () => {
     if (!token || isAdminRoute) return;
-    const response = await fetch('/api/me/requests', {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    });
-    if (!response.ok) throw new Error('Không tải được danh sách đơn từ');
-    setRequests((await response.json()) as EmployeeRequest[]);
+    const options = { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' as RequestCache };
+    const [mineResponse, approvalsResponse, notificationsResponse] = await Promise.all([
+      fetch('/api/me/requests', options),
+      fetch('/api/me/requests/approvals', options),
+      fetch('/api/me/requests/notifications', options),
+    ]);
+    if (!mineResponse.ok || !approvalsResponse.ok || !notificationsResponse.ok) throw new Error('Không tải được dữ liệu đơn từ');
+    setRequests((await mineResponse.json()) as EmployeeRequest[]);
+    setApprovalRequests((await approvalsResponse.json()) as EmployeeRequest[]);
+    setRequestNotifications((await notificationsResponse.json()) as RequestNotification[]);
   };
 
   useEffect(() => {
     if (!token || isAdminRoute) {
       setRequests([]);
+      setApprovalRequests([]);
+      setRequestNotifications([]);
       return;
     }
     void refreshRequests().catch((requestError) => {
@@ -1360,7 +1385,7 @@ function App() {
     dashboard?.employeeCode || loginId || 'guest';
   const lastSeenKey = notificationStorageKey(currentEmployeeCode);
   const lastSeenAt = Number(localStorage.getItem(lastSeenKey) || '0');
-  const unreadCount = useMemo(
+  const unreadArticleCount = useMemo(
     () =>
       isAdminRoute
         ? 0
@@ -1368,6 +1393,8 @@ function App() {
             .length,
     [employeeNews, isAdminRoute, lastSeenAt],
   );
+  const unreadRequestCount = requestNotifications.filter((item) => !item.read).length;
+  const unreadCount = unreadArticleCount + unreadRequestCount;
   const pendingAccounts = useMemo(
     () =>
       accounts.filter(
@@ -1390,6 +1417,62 @@ function App() {
 
   const acknowledgeNews = () => {
     localStorage.setItem(lastSeenKey, String(Date.now()));
+  };
+
+  const linkedNotificationRequest = (item: RequestNotification) => {
+    if (!item.requestId) return undefined;
+    return [...requests, ...approvalRequests].find((request) => request.id === item.requestId);
+  };
+
+  const openRequestNotification = async (item: RequestNotification) => {
+    if (!token) return;
+    const request = linkedNotificationRequest(item);
+    await fetch(`/api/me/requests/notifications/${encodeURIComponent(item.id)}/read`, {
+      method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
+    });
+    await refreshRequests();
+    if (request) {
+      setNotificationRequest(request);
+      setNotificationDecision('approved');
+      setNotificationDecisionNote('');
+    }
+    setNotificationOpen(false);
+  };
+
+  const clearAllNotifications = async () => {
+    if (!token) return;
+    await fetch('/api/me/requests/notifications', {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    });
+    acknowledgeNews();
+    setRequestNotifications([]);
+    setNotificationOpen(false);
+  };
+
+  const decideNotificationRequest = async () => {
+    if (!token || !notificationRequest) return;
+    const note = notificationDecisionNote.trim();
+    if (notificationDecision === 'rejected' && note.length < 5) {
+      setToast({ type: 'error', message: 'Lý do từ chối phải có ít nhất 5 ký tự.' });
+      return;
+    }
+    setNotificationWorking(true);
+    try {
+      const response = await fetch(`/api/me/requests/${encodeURIComponent(notificationRequest.id)}/decision`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: notificationDecision, note: note || undefined }),
+      });
+      const result = await response.json().catch(() => null) as { message?: string } | null;
+      if (!response.ok) throw new Error(result?.message || 'Không xử lý được đơn');
+      await refreshRequests();
+      setNotificationRequest(null);
+      setToast({ type: 'success', message: notificationDecision === 'approved' ? 'Đã duyệt đơn.' : 'Đã từ chối đơn.' });
+    } catch (decisionError) {
+      setToast({ type: 'error', message: decisionError instanceof Error ? decisionError.message : 'Không xử lý được đơn' });
+    } finally {
+      setNotificationWorking(false);
+    }
   };
 
   const openArticle = (item: ContentItem) => {
@@ -1825,7 +1908,7 @@ function App() {
               {notificationOpen ? (
                 <div className="notification-popover">
                   <div className="notification-popover-head">
-                    <strong>Thông báo nội bộ</strong>
+                    <div><strong>Thông báo</strong><small>{unreadCount ? `${unreadCount} chưa đọc` : 'Đã đọc tất cả'}</small></div>
                     <button
                       type="button"
                       className="ghost-button notification-close"
@@ -1834,17 +1917,28 @@ function App() {
                       Đóng
                     </button>
                   </div>
-                  <p className="panel-note">
-                    {unreadCount > 0
-                      ? `Bạn có ${unreadCount} bài viết nội bộ mới.`
-                      : 'Không có thông báo mới.'}
-                  </p>
-                  {employeeNews.length ? (
+                  {requestNotifications.length || employeeNews.length ? (
                     <div className="notification-list">
-                      {employeeNews.slice(0, 3).map((item) => (
+                      {requestNotifications.map((item) => {
+                        const request = linkedNotificationRequest(item);
+                        const tone = request?.kind || (item.type.includes('rejected') ? 'rejected' : item.type.includes('cancelled') ? 'cancelled' : 'approved');
+                        return (
                         <article
                           key={item.id}
-                          className="notification-item notification-item-clickable"
+                          className={`notification-item notification-item-clickable notification-request notification-tone-${tone} ${item.read ? '' : 'notification-unread'}`}
+                          role="button" tabIndex={0}
+                          onClick={() => void openRequestNotification(item)}
+                          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') void openRequestNotification(item); }}
+                        >
+                          <span className="notification-type-icon">{request ? requestKindIcons[request.kind] : item.type.includes('rejected') ? '×' : item.type.includes('cancelled') ? '−' : '✓'}</span>
+                          <div><strong>{item.title}</strong>{request ? <span className={`notification-kind request-kind-label-${request.kind}`}>{requestKindLabels[request.kind]}</span> : null}<p>{item.message}</p><time>{new Date(item.createdAt).toLocaleString('vi-VN')}</time></div>
+                          {!item.read ? <i className="notification-unread-dot" /> : null}
+                        </article>
+                      )})}
+                      {employeeNews.map((item) => (
+                        <article
+                          key={item.id}
+                          className={`notification-item notification-item-clickable notification-news ${safeDateValue(item.createdAt) > lastSeenAt ? 'notification-unread' : ''}`}
                           role="button"
                           tabIndex={0}
                           onClick={() => openArticle(item)}
@@ -1852,19 +1946,18 @@ function App() {
                             if (event.key === 'Enter' || event.key === ' ') openArticle(item);
                           }}
                         >
-                          <strong>{item.title}</strong>
-                          <p>{item.summary}</p>
+                          <span className="notification-type-icon">◆</span><div><strong>{item.title}</strong><span className="notification-kind notification-kind-news">Bài viết</span><p>{item.summary}</p><time>{new Date(item.createdAt).toLocaleString('vi-VN')}</time></div>
                         </article>
                       ))}
                     </div>
-                  ) : null}
+                  ) : <div className="notification-empty">Không có thông báo.</div>}
                   <div className="notification-popover-actions">
                     <button
                       type="button"
                       className="ghost-button"
-                      onClick={acknowledgeNews}
+                      onClick={() => void clearAllNotifications()}
                     >
-                      Đánh dấu đã xem
+                      Xóa tất cả thông báo
                     </button>
                   </div>
                 </div>
@@ -1998,6 +2091,31 @@ function App() {
         </article>
 
       </section>
+      ) : null}
+
+      {notificationRequest ? (
+        <div className="article-modal-backdrop request-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !notificationWorking) setNotificationRequest(null); }}>
+          <section className="article-modal request-notification-modal" role="dialog" aria-modal="true" aria-labelledby="request-notification-title">
+            <header className="request-notification-header">
+              <span className={`request-kind-icon request-kind-${notificationRequest.kind}`}>{requestKindIcons[notificationRequest.kind]}</span>
+              <div><span className={`notification-kind request-kind-label-${notificationRequest.kind}`}>{requestKindLabels[notificationRequest.kind]}</span><h2 id="request-notification-title">{notificationRequest.employee?.fullName || 'Chi tiết đơn từ'}</h2></div>
+              <button type="button" className="request-modal-close" onClick={() => setNotificationRequest(null)}>×</button>
+            </header>
+            <div className="request-notification-body">
+              <div className="request-notification-meta"><span><small>Từ</small>{new Date(notificationRequest.startsAt).toLocaleString('vi-VN')}</span><span><small>Đến</small>{new Date(notificationRequest.endsAt).toLocaleString('vi-VN')}</span></div>
+              <div className="request-notification-reason"><small>Lý do</small><p>{notificationRequest.reason}</p></div>
+              {notificationRequest.decisionNote ? <div className="request-notification-note"><small>Ghi chú xử lý</small><p>{notificationRequest.decisionNote}</p></div> : null}
+              <span className={`request-status request-status-${notificationRequest.status}`}>{requestStatusLabels[notificationRequest.status]}</span>
+              {notificationRequest.status === 'pending' && approvalRequests.some((item) => item.id === notificationRequest.id) ? (
+                <div className="request-decision-box">
+                  <div className="request-decision-tabs"><button type="button" className={notificationDecision === 'approved' ? 'active approved' : ''} onClick={() => setNotificationDecision('approved')}>Duyệt đơn</button><button type="button" className={notificationDecision === 'rejected' ? 'active rejected' : ''} onClick={() => setNotificationDecision('rejected')}>Từ chối</button></div>
+                  <label><span>{notificationDecision === 'rejected' ? 'Lý do từ chối (bắt buộc)' : 'Ghi chú cho nhân viên (tùy chọn)'}</span><textarea value={notificationDecisionNote} onChange={(event) => setNotificationDecisionNote(event.target.value)} placeholder={notificationDecision === 'rejected' ? 'Nhập lý do từ chối...' : 'Thêm ghi chú nếu cần...'} /></label>
+                  <button type="button" className={`request-decision-submit ${notificationDecision}`} disabled={notificationWorking} onClick={() => void decideNotificationRequest()}>{notificationWorking ? 'Đang xử lý...' : notificationDecision === 'approved' ? 'Xác nhận duyệt' : 'Xác nhận từ chối'}</button>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {requestComposerOpen ? (
