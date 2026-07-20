@@ -28,5 +28,14 @@ object NotificationHelper {
         NotificationManagerCompat.from(context).notify(1001, notification)
     }
 
+    fun showRequestNotification(context: Context, title: String, count: Int) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.app_icon).setContentTitle("Thông báo đơn từ")
+            .setContentText(title).setNumber(count).setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH).build()
+        NotificationManagerCompat.from(context).notify(1002, notification)
+    }
+
     fun clear(context: Context) = NotificationManagerCompat.from(context).cancel(1001)
 }

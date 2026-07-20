@@ -36,6 +36,17 @@ class ApiClient {
         }.build())
     }
 
+    suspend inline fun <reified T, reified B> patch(path: String, body: B? = null, token: String): T {
+        val payload = body?.let { json.encodeToString(it).toRequestBody("application/json".toMediaType()) }
+            ?: ByteArray(0).toRequestBody("application/json".toMediaType())
+        return execute(Request.Builder().url(BASE_URL + path).patch(payload)
+            .header("Authorization", "Bearer $token").header("Accept", "application/json").build())
+    }
+
+    suspend inline fun <reified T> delete(path: String, token: String): T =
+        execute(Request.Builder().url(BASE_URL + path).delete()
+            .header("Authorization", "Bearer $token").header("Accept", "application/json").build())
+
     suspend inline fun <reified T> delete(path: String, body: DeleteAccountBody, token: String): T {
         val payload = json.encodeToString(body).toRequestBody("application/json".toMediaType())
         return execute(Request.Builder().url(BASE_URL + path).delete(payload)

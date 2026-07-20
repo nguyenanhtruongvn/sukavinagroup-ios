@@ -42,3 +42,18 @@ import kotlinx.serialization.Serializable
 )
 @Serializable data class AttendanceMonth(val month: String, val days: List<AttendanceDay> = emptyList())
 @Serializable data class ApiError(val message: String = "Yêu cầu không thành công")
+
+@Serializable data class EmployeeSummary(val fullName: String = "", val employeeCode: String = "")
+@Serializable data class EmployeeRequest(
+    val id: String, val kind: String, val startsAt: String, val endsAt: String,
+    val reason: String, val status: String, val createdAt: String, val dueAt: String = "",
+    val decisionNote: String? = null, val autoApproved: Boolean = false,
+    val employee: EmployeeSummary? = null,
+)
+@Serializable data class CreateRequestBody(val kind: String, val startsAt: String, val endsAt: String, val reason: String)
+@Serializable data class RequestDecisionBody(val status: String, val note: String? = null)
+@Serializable data class RequestNotification(
+    val id: String, val type: String, val title: String, val message: String,
+    val requestId: String? = null, val read: Boolean = false, val createdAt: String,
+)
+@Serializable data class UpdateCount(val count: Int = 0)

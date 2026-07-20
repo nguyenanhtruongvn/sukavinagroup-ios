@@ -18,7 +18,10 @@ import okhttp3.sse.EventSourceListener
 data class SessionUiState(
     val restoring: Boolean = true, val token: String? = null, val profile: Profile? = null,
     val dashboard: Dashboard? = null, val working: Boolean = false, val error: String? = null,
-    val unreadCount: Int = 0,
+    val unreadCount: Int = 0, val requests: List<EmployeeRequest> = emptyList(),
+    val approvals: List<EmployeeRequest> = emptyList(),
+    val requestNotifications: List<RequestNotification> = emptyList(),
+    val biometricEnabled: Boolean = false,
 )
 
 class SessionViewModel(application: Application) : AndroidViewModel(application) {
@@ -34,7 +37,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private var events: EventSource? = null
     private var knownArticles = preferences.getStringSet("known_articles", emptySet()).orEmpty()
 
-    init { restore() }
+    init {
+        _state.value = _state.value.copy(biometricEnabled = preferences.getBoolean("biometric_enabled", false))
+        restore()
+    }
 
     private fun restore() = viewModelScope.launch {
         val token = preferences.getString("token", null)
@@ -42,7 +48,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         runCatching { api.get<Profile>("auth/me", token) }
             .onSuccess { profile ->
                 _state.value = _state.value.copy(restoring = false, token = token, profile = profile)
-                refresh(); startEvents()
+                refresh(); refreshRequests(); startEvents()
             }.onFailure { signOut() }
     }
 
@@ -50,14 +56,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         update(working = true, error = null)
         runCatching { api.post<LoginResponse, LoginBody>("auth/login", LoginBody(loginId.trim(), password)) }
             .onSuccess { response ->
-                preferences.edit().putString("token", response.accessToken).apply()
+                preferences.edit().putString("token", response.accessToken).putString("last_login", loginId.trim()).apply()
                 _state.value = SessionUiState(
                     restoring = false, token = response.accessToken,
                     profile = Profile(employeeCode = response.user.employeeCode, name = response.user.name,
                         role = response.user.role, accountType = response.user.accountType,
                         permissions = response.user.permissions, protected = response.user.protected),
                 )
-                refresh(); startEvents()
+                refresh(); refreshRequests(); startEvents()
             }.onFailure { update(working = false, error = it.message) }
     }
 
@@ -73,6 +79,72 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             _state.value = _state.value.copy(profile = profile, dashboard = dashboard, working = false, unreadCount = unread, error = null)
             if (unread > 0) NotificationHelper.showArticleNotification(getApplication(), dashboard.contentItems.first().title, unread)
         }.onFailure { update(working = false, error = it.message) }
+    }
+
+    fun refreshRequests() = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        runCatching {
+            Triple(
+                api.get<List<EmployeeRequest>>("me/requests", token),
+                api.get<List<EmployeeRequest>>("me/requests/approvals", token),
+                api.get<List<RequestNotification>>("me/requests/notifications", token),
+            )
+        }.onSuccess { (requests, approvals, notifications) ->
+            _state.value = _state.value.copy(requests = requests, approvals = approvals, requestNotifications = notifications)
+            val unread = notifications.count { !it.read }
+            if (unread > 0) NotificationHelper.showRequestNotification(getApplication(), notifications.first { !it.read }.title, unread)
+        }.onFailure { update(error = it.message) }
+    }
+
+    fun createRequest(kind: String, startsAt: String, endsAt: String, reason: String, done: (Boolean) -> Unit = {}) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        update(working = true, error = null)
+        runCatching { api.post<EmployeeRequest, CreateRequestBody>("me/requests", CreateRequestBody(kind, startsAt, endsAt, reason), token) }
+            .onSuccess { refreshRequests(); update(working = false); done(true) }
+            .onFailure { update(working = false, error = it.message); done(false) }
+    }
+
+    fun cancelRequest(id: String) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        runCatching { api.delete<EmployeeRequest>("me/requests/$id", token) }
+            .onSuccess { refreshRequests() }.onFailure { update(error = it.message) }
+    }
+
+    fun decideRequest(id: String, approved: Boolean, note: String, done: (Boolean) -> Unit = {}) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        update(working = true, error = null)
+        runCatching { api.patch<EmployeeRequest, RequestDecisionBody>("me/requests/$id/decision", RequestDecisionBody(if (approved) "approved" else "rejected", note.ifBlank { null }), token) }
+            .onSuccess { refreshRequests(); update(working = false); done(true) }
+            .onFailure { update(working = false, error = it.message); done(false) }
+    }
+
+    fun openNotification(id: String) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        runCatching { api.patch<UpdateCount, MessageResponse>("me/requests/notifications/$id/read", null, token) }
+        refreshRequests()
+    }
+
+    fun clearNotifications() = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        runCatching { api.delete<UpdateCount>("me/requests/notifications", token) }
+        markArticlesRead(); refreshRequests()
+    }
+
+    fun enableBiometric(password: String, enabled: Boolean, done: (Boolean) -> Unit = {}) = viewModelScope.launch {
+        if (!enabled) {
+            preferences.edit().putBoolean("biometric_enabled", false).remove("biometric_password").apply()
+            _state.value = _state.value.copy(biometricEnabled = false); done(true); return@launch
+        }
+        val login = preferences.getString("last_login", null).orEmpty()
+        runCatching { api.post<LoginResponse, LoginBody>("auth/login", LoginBody(login, password)) }
+            .onSuccess { preferences.edit().putBoolean("biometric_enabled", true).putString("biometric_password", password).apply(); _state.value = _state.value.copy(biometricEnabled = true); done(true) }
+            .onFailure { update(error = "Mật khẩu không chính xác."); done(false) }
+    }
+
+    fun biometricSignIn() {
+        val login = preferences.getString("last_login", null).orEmpty()
+        val password = preferences.getString("biometric_password", null).orEmpty()
+        if (login.isNotBlank() && password.isNotBlank()) signIn(login, password)
     }
 
     suspend fun attendance(month: String): Result<AttendanceMonth> {
@@ -98,14 +170,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun signOut() {
         events?.cancel(); events = null
         preferences.edit().remove("token").apply()
-        _state.value = SessionUiState(restoring = false)
+        _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false))
     }
 
     private fun startEvents() {
         events?.cancel()
         events = api.events(object : EventSourceListener() {
             override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
-                if (data.contains("_changed")) refresh()
+                if (data.contains("request_changed")) refreshRequests() else if (data.contains("_changed")) refresh()
             }
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
                 events = null
