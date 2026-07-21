@@ -2269,7 +2269,7 @@ function App() {
                               : 0,
                           )}</small>
                           <div className="attendance-punches">
-                            {attendanceDay.punches.map((punch) => <span key={punch.id}>{formatAttendanceTime(punch.punchedAt)} · {punch.source}</span>)}
+                            {(attendanceDay.punches ?? []).map((punch) => <span key={punch.id}>{formatAttendanceTime(punch.punchedAt)} · {punch.source}</span>)}
                           </div>
                         </>
                       ) : (
