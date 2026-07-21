@@ -35,7 +35,10 @@ export class DashboardController {
     @Req() req: { user: { sub: string } },
     @Query('month') month?: string,
   ) {
-    await this.attendanceSync.syncMonth(month);
+    // Serve persisted punches immediately; refresh WiseEye in the background.
+    void this.attendanceSync.syncMonth(month).catch((error) => {
+      console.error(`Background attendance sync failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
     return this.dashboardService.getMonthlyAttendance(req.user.sub, month);
   }
 }

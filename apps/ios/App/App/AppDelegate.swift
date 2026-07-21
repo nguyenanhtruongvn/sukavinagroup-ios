@@ -604,8 +604,8 @@ private struct AttendanceDay: Decodable, Identifiable {
     let checkIn: String?
     let checkOut: String?
     let punchCount: Int
-    let sources: [String]
-    let punches: [AttendancePunch]
+    let sources: [String]?
+    let punches: [AttendancePunch]?
     var id: String { date }
 }
 
@@ -1491,6 +1491,7 @@ private struct AttendanceHistoryView: View {
     @State private var history: AttendanceMonth?
     @State private var isLoading = false
     @State private var message: String?
+    @State private var monthCache: [String: AttendanceMonth] = [:]
 
     var body: some View {
         ScrollView {
@@ -1506,6 +1507,7 @@ private struct AttendanceHistoryView: View {
                 if isLoading {
                     ProgressView("Đang tải bảng công...").tint(AppTheme.red)
                 } else if let days = history?.days, !days.isEmpty {
+                    LazyVStack(spacing: 12) {
                     ForEach(days) { day in
                         HStack(spacing: 14) {
                             Text(dayLabel(day.date)).font(.headline)
@@ -1516,6 +1518,7 @@ private struct AttendanceHistoryView: View {
                         .padding(16)
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
                     }
                 } else {
                     Text(message ?? "Không có dữ liệu trong tháng này.")
@@ -1550,14 +1553,21 @@ private struct AttendanceHistoryView: View {
 
     private func loadHistory() async {
         guard let token = session.token else { return }
+        if let cached = monthCache[selectedMonth] {
+            history = cached
+            message = nil
+            return
+        }
         isLoading = true
         message = nil
         defer { isLoading = false }
         do {
-            history = try await APIClient.shared.request(
+            let loaded: AttendanceMonth = try await APIClient.shared.request(
                 "me/attendance?month=\(selectedMonth)",
                 token: token
             )
+            history = loaded
+            monthCache[selectedMonth] = loaded
         } catch {
             history = nil
             message = error.localizedDescription

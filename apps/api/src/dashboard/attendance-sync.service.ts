@@ -37,7 +37,10 @@ export class AttendanceSyncService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    void this.pruneOldRecords().then(() => this.syncToday());
+    void this.pruneOldRecords().then(async () => {
+      await this.syncToday();
+      await Promise.allSettled(this.allowedMonths().map((month) => this.syncMonth(month)));
+    });
     const intervalMs = Math.max(5000, Number(process.env.WISEEYE_SYNC_INTERVAL_MS ?? 10000));
     this.timer = setInterval(() => void this.syncToday(), intervalMs);
   }

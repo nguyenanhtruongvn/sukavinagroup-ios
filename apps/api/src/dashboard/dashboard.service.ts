@@ -110,11 +110,8 @@ export class DashboardService {
       },
       orderBy: { punchedAt: 'asc' },
       select: {
-        id: true,
         attendanceDate: true,
         punchedAt: true,
-        source: true,
-        machineNo: true,
       },
     });
 
@@ -131,13 +128,6 @@ export class DashboardService {
         checkIn: punches[0]?.punchedAt ?? null,
         checkOut: punches.length > 1 ? punches[punches.length - 1].punchedAt : null,
         punchCount: punches.length,
-        sources: [...new Set(punches.map((record) => record.source))],
-        punches: punches.map((record) => ({
-          id: record.id,
-          punchedAt: record.punchedAt,
-          source: record.source,
-          machineNo: record.machineNo,
-        })),
       }))
       .sort((left, right) => right.date.localeCompare(left.date));
 

@@ -114,5 +114,6 @@ model AttendanceRecord {
 
   @@unique([userEnrollNumber, punchedAt, machineNo])
   @@index([userEnrollNumber, punchedAt])
+  @@index([userEnrollNumber, attendanceDate, punchedAt])
   @@index([attendanceDate])
 }
