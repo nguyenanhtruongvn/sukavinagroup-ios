@@ -1736,7 +1736,10 @@ private struct RequestsView: View {
 
     private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
         Button(title) { filter = value }.font(.subheadline.bold()).padding(.horizontal, 14).padding(.vertical, 9)
-            .background(filter == value ? AppTheme.red : AppTheme.card).foregroundStyle(.white).clipShape(Capsule())
+            .background(filter == value ? AppTheme.red : AppTheme.card)
+            .foregroundStyle(filter == value ? Color.white : Color.primary)
+            .overlay(Capsule().stroke(filter == value ? Color.clear : Color.primary.opacity(0.12), lineWidth: 1))
+            .clipShape(Capsule())
     }
 }
 
@@ -1844,11 +1847,11 @@ private struct RequestComposer: View {
                                     }
                                     .padding(.horizontal, 13)
                                     .frame(maxWidth: .infinity, minHeight: 48)
-                                    .background(kind == item ? item.color.opacity(0.2) : Color.white.opacity(0.045))
-                                    .foregroundStyle(kind == item ? item.color : .white)
+                                    .background(kind == item ? item.color.opacity(0.2) : AppTheme.card)
+                                    .foregroundStyle(kind == item ? item.color : Color.primary)
                                     .overlay {
                                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .stroke(kind == item ? item.color.opacity(0.75) : Color.white.opacity(0.08), lineWidth: 1)
+                                            .stroke(kind == item ? item.color.opacity(0.75) : Color.primary.opacity(0.12), lineWidth: 1)
                                     }
                                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 }
@@ -1949,7 +1952,7 @@ private struct RequestComposer: View {
     private func composerLabel(_ title: String, icon: String) -> some View {
         Label(title, systemImage: icon)
             .font(.subheadline.weight(.bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
     }
 
     @ViewBuilder

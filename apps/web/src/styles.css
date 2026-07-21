@@ -2975,3 +2975,174 @@ h1 {
   .content-composer-actions { grid-column: auto; margin: 4px -16px -22px; padding: 14px 16px; }
   .content-list .content-item { align-items: flex-start; flex-direction: column; }
 }
+
+/* Final light-mode contrast pass; kept last so feature-specific dark styles cannot win. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --muted: #625a56;
+    color: #201b19;
+    background: linear-gradient(145deg, #fbf8f4 0%, #f2ece6 54%, #edf3f0 100%);
+  }
+
+  body,
+  .dashboard-shell,
+  .auth-shell { color: #201b19; }
+
+  .panel,
+  .auth-card,
+  .admin-nav,
+  .access-card,
+  .employee-form-card,
+  .employee-list-card,
+  .employee-row-modern,
+  .request-item,
+  .content-item,
+  .news-card {
+    color: #201b19;
+    border-color: #d7ccc5;
+    background: #fff;
+    box-shadow: 0 12px 32px rgba(66, 47, 40, .1);
+  }
+
+  .panel-accent,
+  .stat-card-primary {
+    background: linear-gradient(145deg, #fff3f0, #fff 64%);
+    border-color: #e7c2bd;
+  }
+
+  .employee-table-head,
+  .employee-filter-bar,
+  .request-filters button,
+  .permission-option,
+  .admin-picker-item,
+  .access-empty-state {
+    color: #322b28;
+    border-color: #d8cec8;
+    background: #f5f1ed;
+  }
+
+  .employee-row-modern:hover,
+  .content-list .content-item:hover {
+    color: #201b19;
+    border-color: #cda9a4;
+    background: #fff9f7;
+  }
+
+  .panel-note,
+  .lead,
+  .content-meta,
+  .request-time,
+  .employee-muted small,
+  .employee-status-cell small,
+  .access-identity p,
+  .admin-picker-item p,
+  .notification-item p,
+  .notification-item time,
+  .news-card p { color: #625a56; }
+
+  .employee-muted span,
+  .employee-code,
+  .request-reason,
+  .access-identity h3,
+  .employee-person h3,
+  .content-item h3,
+  .news-card h3 { color: #29221f; }
+
+  .auth-form,
+  .notification-item,
+  .request-notification-meta span,
+  .request-notification-reason,
+  .request-notification-note {
+    color: #29221f;
+    border-color: #d8cec8;
+    background: #f7f3ef;
+  }
+
+  .notification-item.notification-unread {
+    color: #201b19;
+    border-color: #dc8f88;
+    background: #fff2ef;
+    box-shadow: inset 4px 0 0 #d93a33;
+  }
+
+  .notification-popover,
+  .article-modal,
+  .request-composer,
+  .request-notification-modal,
+  .admin-account-picker,
+  .content-composer {
+    color: #201b19;
+    border-color: #cfc2ba;
+    background: #fff;
+    box-shadow: 0 30px 80px rgba(57, 40, 35, .22);
+  }
+
+  .notification-popover-head,
+  .request-composer-header,
+  .request-notification-header,
+  .admin-picker-head,
+  .content-composer-header {
+    color: #201b19;
+    border-color: #ded4ce;
+    background: #faf6f2;
+  }
+
+  .auth-form label,
+  .admin-form label,
+  .request-field > span,
+  .request-kind-picker legend,
+  .checkbox-row,
+  .permission-option strong,
+  .notification-item > div { color: #29221f; }
+
+  .auth-form input,
+  .admin-form input,
+  .admin-form textarea,
+  .admin-form select,
+  .request-field input,
+  .request-field textarea,
+  .request-decision-box textarea,
+  .search-box input,
+  .employee-filter-bar select {
+    color: #201b19;
+    border-color: #cfc3bc;
+    background: #fff;
+    box-shadow: inset 0 1px 2px rgba(58, 42, 36, .06);
+  }
+
+  .ghost-button,
+  .notification-button,
+  .admin-nav button:not(.active),
+  .employee-actions-row button,
+  .request-modal-close,
+  .content-composer-close {
+    color: #332b28;
+    border-color: #d2c6bf;
+    background: #eee8e3;
+  }
+
+  .request-kind-picker button {
+    color: #4f4743;
+    border-color: #d6cbc5;
+    background: #f3eeea;
+  }
+
+  .request-kind-picker button.active,
+  .admin-nav button.active,
+  .primary-button,
+  .content-save-button { color: #fff; }
+
+  .content-composer .editor-toolbar {
+    border-color: #d8cec8;
+    background: #eee9e4;
+  }
+  .content-composer .editor-toolbar button,
+  .content-composer .editor-toolbar select { color: #302925; }
+  .content-composer .editor-canvas-doc { border-top: 1px solid #d8cec8; }
+  .content-composer .editor-source { color-scheme: dark; color: #d8e2e8; background: #101319; }
+  .content-composer-actions { border-color: #d8cec8; background: rgba(250, 247, 243, .96); }
+
+  .article-modal-backdrop,
+  .request-modal-backdrop,
+  .content-composer-backdrop { background: rgba(42, 31, 27, .42); }
+}
