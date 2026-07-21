@@ -42,6 +42,18 @@ private enum AppTheme {
     static let muted = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(red: 0.66, green: 0.65, blue: 0.68, alpha: 1) : UIColor(red: 0.36, green: 0.35, blue: 0.38, alpha: 1)
     })
+    static let loginAccent = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.45, green: 0.04, blue: 0.07, alpha: 0.72) : UIColor(red: 0.96, green: 0.84, blue: 0.82, alpha: 1)
+    })
+    static let field = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.055) : UIColor(red: 0.94, green: 0.92, blue: 0.89, alpha: 1)
+    })
+    static let fieldBorder = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.75, green: 0.68, blue: 0.65, alpha: 0.48)
+    })
+    static let cardBorder = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.55, green: 0.13, blue: 0.15, alpha: 0.15)
+    })
 }
 
 private struct AdaptiveGlassSurface: ViewModifier {
@@ -1120,7 +1132,7 @@ private struct AuthenticationView: View {
         NavigationView {
             ZStack {
                 LinearGradient(
-                    colors: [AppTheme.ink, AppTheme.deepRed.opacity(0.72), AppTheme.ink],
+                    colors: [AppTheme.ink, AppTheme.loginAccent, AppTheme.ink],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ).ignoresSafeArea()
@@ -1144,8 +1156,9 @@ private struct AuthenticationView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                         .overlay(
                             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(Color.white.opacity(0.08))
+                                .stroke(AppTheme.cardBorder, lineWidth: 1)
                         )
+                        .shadow(color: AppTheme.deepRed.opacity(0.14), radius: 24, y: 12)
                     }
                     .padding(22)
                 }
@@ -2534,8 +2547,9 @@ private struct NativeField: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .background(Color.white.opacity(0.055))
+        .background(AppTheme.field)
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(AppTheme.fieldBorder, lineWidth: 1))
     }
 }
 
@@ -2557,8 +2571,9 @@ private struct NativeSecureField: View {
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)
-        .background(Color.white.opacity(0.055))
+        .background(AppTheme.field)
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(AppTheme.fieldBorder, lineWidth: 1))
     }
 }
 
