@@ -1294,6 +1294,151 @@ h1 {
   }
 }
 
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --muted: #6f6864;
+    color: #241f1d;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(220, 49, 43, .13), transparent 30%),
+      radial-gradient(circle at 92% 18%, rgba(35, 112, 103, .1), transparent 32%),
+      linear-gradient(145deg, #faf7f2, #f2eee9 55%, #edf3f0);
+    scrollbar-color: rgba(202, 62, 53, .46) rgba(72, 54, 48, .07);
+  }
+
+  body { color: #241f1d; }
+  * { scrollbar-color: rgba(202, 62, 53, .46) rgba(72, 54, 48, .07); }
+  *::-webkit-scrollbar-track { background: rgba(72, 54, 48, .07); }
+
+  .auth-card,
+  .panel,
+  .admin-nav,
+  .notification-popover,
+  .article-modal,
+  .request-composer,
+  .request-notification-modal,
+  .admin-account-picker,
+  .access-card,
+  .employee-row,
+  .content-item,
+  .news-card,
+  .request-item {
+    color: #241f1d;
+    border-color: rgba(72, 54, 48, .13);
+    background: rgba(255, 255, 255, .88);
+    box-shadow: 0 16px 44px rgba(67, 46, 39, .1);
+  }
+
+  .auth-form,
+  .notification-item,
+  .request-notification-meta span,
+  .request-notification-reason,
+  .request-notification-note,
+  .admin-picker-item,
+  .employee-filter-bar,
+  .employee-table-head,
+  .request-filters button,
+  .permission-option,
+  .access-empty-state {
+    color: #312b28;
+    border-color: rgba(72, 54, 48, .12);
+    background: rgba(78, 58, 51, .045);
+  }
+
+  .notification-item.notification-unread {
+    background: #fff7f4;
+    border-color: rgba(210, 54, 47, .24);
+  }
+
+  .auth-form label,
+  .admin-form label,
+  .request-field > span,
+  .request-kind-picker legend,
+  .access-role-row label,
+  .checkbox-row,
+  .employee-form-grid label span,
+  .notification-item > div,
+  .request-reason {
+    color: #312b28;
+  }
+
+  .lead,
+  .panel-note,
+  .notification-item p,
+  .notification-item time,
+  .employee-muted small,
+  .employee-status-cell small,
+  .access-identity p,
+  .admin-picker-item p,
+  .content-meta,
+  .request-time,
+  .request-empty,
+  .news-card p {
+    color: #6f6864;
+  }
+
+  .auth-form input,
+  .admin-form input,
+  .admin-form textarea,
+  .admin-form select,
+  .request-field input,
+  .request-field textarea,
+  .request-decision-box textarea,
+  .search-box input,
+  select {
+    color: #241f1d;
+    border-color: rgba(72, 54, 48, .16);
+    background: rgba(255, 255, 255, .9);
+  }
+
+  input::placeholder,
+  textarea::placeholder { color: #918985; }
+
+  .ghost-button,
+  .notification-button,
+  .admin-nav button,
+  .employee-actions-row button,
+  .request-modal-close,
+  .content-composer-close {
+    color: #3d3531;
+    border-color: rgba(72, 54, 48, .12);
+    background: rgba(72, 54, 48, .07);
+  }
+
+  .admin-nav button.active,
+  .primary-button,
+  .auth-form button:not(.auth-switch-button) { color: #fff; }
+
+  .notification-popover,
+  .content-composer-header,
+  .request-composer-header,
+  .request-notification-header,
+  .admin-picker-head {
+    background: rgba(255, 252, 248, .96);
+    backdrop-filter: blur(18px);
+  }
+
+  .content-composer {
+    background: linear-gradient(145deg, #fffaf6, #f6f2ee 58%, #eef5f2);
+  }
+
+  .content-composer .editor-toolbar {
+    background: #eee9e4;
+  }
+  .content-composer .editor-toolbar button,
+  .content-composer .editor-toolbar select { color: #332c29; }
+
+  .content-composer .editor-source {
+    color-scheme: dark;
+    background: #101319;
+    color: #d8e2e8;
+  }
+
+  .article-modal-backdrop,
+  .content-composer-backdrop,
+  .request-modal-backdrop { background: rgba(54, 43, 39, .35); }
+}
+
 .media-toolbar {
   align-items: center;
   gap: 20px;

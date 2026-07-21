@@ -43,7 +43,7 @@ import java.util.Locale
 private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
 
 @Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
-    Surface(Modifier.fillMaxSize(), color = SukavinaInk) {
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
             state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn)
@@ -92,7 +92,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("�
     if (attendanceOpen) return AttendanceScreen(session) { attendanceOpen = false }
 
     Scaffold(bottomBar = {
-        NavigationBar(containerColor = Color(0xFF18181D)) {
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
             MainTab.entries.forEach { item ->
                 NavigationBarItem(selected = tab == item, onClick = {
                     tab = item
@@ -141,7 +141,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("�
 
 @Composable private fun AttendanceTodayCard(dashboard: Dashboard?, onClick: () -> Unit) {
     val records = dashboard?.attendanceRecords.orEmpty()
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = Color(0xFF4A2024))) {
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
         Column(Modifier.padding(20.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Schedule, null, tint = SukavinaRed); Spacer(Modifier.width(10.dp))
@@ -201,7 +201,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 
 @Composable private fun RequestCard(request: EmployeeRequest, canCancel: Boolean, onCancel: () -> Unit, onClick: () -> Unit = {}) {
     val kind = requestKind(request.kind); val status = requestStatus(request.status)
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = kind.color.copy(alpha = .075f)), border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .25f))) {
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .32f))) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(Modifier.size(44.dp), RoundedCornerShape(14.dp), color = kind.color.copy(alpha = .16f)) { Icon(kind.icon, null, tint = kind.color, modifier = Modifier.padding(11.dp)) }
@@ -270,7 +270,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
             items(state.requestNotifications, key = { it.id }) { item ->
                 val request = item.requestId?.let(requests::get); val kind = request?.let { requestKind(it.kind) }
                 val tone = kind?.color ?: when { item.type.contains("rejected") -> Color(0xFFFF6F67); item.type.contains("cancelled") -> Color(0xFFAAB1BD); else -> Color(0xFF55D881) }
-                Card(onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } }, colors = CardDefaults.cardColors(containerColor = if (item.read) Color(0xFF202027) else Color.White.copy(alpha = .115f)), border = androidx.compose.foundation.BorderStroke(1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .35f))) {
+                Card(onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } }, colors = CardDefaults.cardColors(containerColor = if (item.read) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant), border = androidx.compose.foundation.BorderStroke(1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .35f))) {
                     Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
                         Surface(Modifier.size(44.dp), RoundedCornerShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
                         Column(Modifier.padding(horizontal = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(item.title, fontWeight = FontWeight.Bold); kind?.let { Text(it.title, color = it.color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }; Text(item.message, color = SukavinaMuted, fontSize = 13.sp); Text(item.createdAt.toDateTimeLabel(), color = tone, fontSize = 11.sp) }

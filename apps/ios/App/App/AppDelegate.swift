@@ -33,9 +33,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
 private enum AppTheme {
     static let red = Color(red: 0.91, green: 0.12, blue: 0.16)
     static let deepRed = Color(red: 0.45, green: 0.04, blue: 0.07)
-    static let ink = Color(red: 0.07, green: 0.07, blue: 0.09)
-    static let card = Color(red: 0.12, green: 0.12, blue: 0.15)
-    static let muted = Color(red: 0.66, green: 0.65, blue: 0.68)
+    static let ink = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1) : UIColor(red: 0.96, green: 0.95, blue: 0.93, alpha: 1)
+    })
+    static let card = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.12, green: 0.12, blue: 0.15, alpha: 1) : UIColor.white
+    })
+    static let muted = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.66, green: 0.65, blue: 0.68, alpha: 1) : UIColor(red: 0.36, green: 0.35, blue: 0.38, alpha: 1)
+    })
 }
 
 private struct AdaptiveGlassSurface: ViewModifier {
@@ -977,7 +983,6 @@ private struct SukavinaAppView: View {
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
             }
         }
-        .preferredColorScheme(.dark)
         .task { await session.restore() }
         .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.errorMessage)
     }
@@ -1281,7 +1286,6 @@ private struct VerificationView: View {
             .background(AppTheme.ink.ignoresSafeArea())
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
         }
-        .preferredColorScheme(.dark)
     }
 
     private func verify() async {
@@ -1789,7 +1793,7 @@ private struct RequestDecisionView: View {
                 Spacer()
             }.padding(20).background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Xử lý đơn")
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
-        }.preferredColorScheme(.dark)
+        }
     }
 }
 
@@ -1933,7 +1937,6 @@ private struct RequestComposer: View {
                 .padding(.bottom, 8)
                 .background(.ultraThinMaterial)
             }
-            .preferredColorScheme(.dark)
             .onChange(of: from) { oldValue, newValue in
                 if to < newValue {
                     let previousDuration = max(to.timeIntervalSince(oldValue), 60 * 60)
@@ -2094,7 +2097,7 @@ private struct NotificationsView: View {
 private struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
-    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } }.preferredColorScheme(.dark) }
+    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
 }
 
 private struct NewsView: View {
@@ -2549,7 +2552,6 @@ private struct SukavinaPreviewContainer: View {
             case .signedIn: EmployeePortalView().environmentObject(session)
             }
         }
-        .preferredColorScheme(.dark)
     }
 }
 
