@@ -54,6 +54,12 @@ private enum AppTheme {
     static let cardBorder = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.55, green: 0.13, blue: 0.15, alpha: 0.15)
     })
+    static let biometricFill = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.075) : UIColor(red: 0.98, green: 0.90, blue: 0.89, alpha: 1)
+    })
+    static let biometricForeground = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white : UIColor(red: 0.68, green: 0.07, blue: 0.10, alpha: 1)
+    })
 }
 
 private struct AdaptiveGlassSurface: ViewModifier {
@@ -1199,9 +1205,9 @@ private struct LoginForm: View {
 
             if session.biometricsEnabled {
                 HStack(spacing: 12) {
-                    Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                    Rectangle().fill(AppTheme.fieldBorder).frame(height: 1)
                     Text("hoặc").font(.caption).foregroundColor(AppTheme.muted)
-                    Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+                    Rectangle().fill(AppTheme.fieldBorder).frame(height: 1)
                 }
 
                 Button {
@@ -1212,13 +1218,14 @@ private struct LoginForm: View {
                         .frame(maxWidth: .infinity, minHeight: 52)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.white)
-                .background(Color.white.opacity(0.075))
+                .foregroundColor(AppTheme.biometricForeground)
+                .background(AppTheme.biometricFill)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.1))
+                        .stroke(AppTheme.biometricForeground.opacity(0.22), lineWidth: 1)
                 )
+                .shadow(color: AppTheme.deepRed.opacity(0.08), radius: 10, y: 4)
                 .disabled(session.isWorking)
             }
         }
