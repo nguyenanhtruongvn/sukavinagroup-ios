@@ -691,6 +691,7 @@ private final class SessionStore: ObservableObject {
             profile = try await APIClient.shared.request("auth/me", token: savedToken)
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
+            await refreshProfile()
             startRealTimeUpdates()
         } catch NetworkError.unauthorized {
             signOut()
@@ -733,6 +734,7 @@ private final class SessionStore: ObservableObject {
             startNetworkMonitoring()
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
+            await refreshProfile()
             startRealTimeUpdates()
             ConnectionDiagnostics.record("Sign-in completed successfully")
             return true
@@ -1000,6 +1002,7 @@ private final class SessionStore: ObservableObject {
                 body: PasswordChangeConfirmBody(code: code, newPassword: newPassword)
             )
             disableBiometricLogin()
+            await refreshProfile()
             return true
         } catch {
             present(error)
@@ -2374,6 +2377,7 @@ private struct ProfileView: View {
     @State private var showDelete = false
     @State private var password = ""
     @State private var showPasswordChange = false
+    @State private var showPasswordChangeLimit = false
 
     var body: some View {
         NavigationView {
@@ -2424,7 +2428,10 @@ private struct ProfileView: View {
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    Button { showPasswordChange = true } label: {
+                    Button {
+                        if passwordChangedThisMonth { showPasswordChangeLimit = true }
+                        else { showPasswordChange = true }
+                    } label: {
                         HStack(spacing: 14) {
                             Image(systemName: "key.fill").foregroundColor(AppTheme.red).frame(width: 30)
                             VStack(alignment: .leading, spacing: 3) {
@@ -2462,6 +2469,11 @@ private struct ProfileView: View {
         .sheet(isPresented: $showPasswordChange) {
             PasswordChangeView().environmentObject(session)
         }
+        .alert("Chưa thể đổi mật khẩu", isPresented: $showPasswordChangeLimit) {
+            Button("Đã hiểu", role: .cancel) {}
+        } message: {
+            Text("Bạn chỉ được đổi mật khẩu một lần mỗi tháng. Bạn có thể đổi lại từ ngày 01/\(nextPasswordChangeMonth).")
+        }
     }
 
     private var initials: String {
@@ -2474,6 +2486,18 @@ private struct ProfileView: View {
         case "ADMIN": return "Quản trị viên"
         default: return "Nhân viên"
         }
+    }
+    private var passwordChangedThisMonth: Bool {
+        guard let changedAt = session.profile?.passwordChangedAt else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        return calendar.isDate(changedAt, equalTo: Date(), toGranularity: .month)
+    }
+    private var nextPasswordChangeMonth: String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let next = calendar.date(byAdding: .month, value: 1, to: Date()) ?? Date()
+        return next.formatted(.dateTime.month(.twoDigits).year())
     }
 }
 
@@ -2489,42 +2513,80 @@ private struct PasswordChangeView: View {
 
     var body: some View {
         NavigationView {
-            Form {
-                Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .fill(AppTheme.red.opacity(0.14)).frame(width: 58, height: 58)
+                            Image(systemName: "key.fill").font(.title2).foregroundColor(AppTheme.red)
+                        }
+                        Text("Bảo vệ tài khoản").font(.title2.bold())
+                        Text("Xác minh email trước khi thiết lập mật khẩu mới.")
+                            .font(.subheadline).foregroundColor(AppTheme.muted)
+                    }
+
+                    HStack(spacing: 10) {
+                        stepBadge(number: 1, title: "Nhận OTP", active: true)
+                        Rectangle().fill(otpSent ? AppTheme.red : AppTheme.fieldBorder).frame(height: 2)
+                        stepBadge(number: 2, title: "Mật khẩu mới", active: otpSent)
+                    }
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        Label(otpSent ? "OTP đã gửi tới \(email)" : "Xác minh qua email", systemImage: "envelope.badge.fill")
+                            .font(.headline).foregroundColor(AppTheme.red)
+                        Text(otpSent
+                             ? "Mã gồm 6 số và có hiệu lực trong 10 phút."
+                             : "Mã OTP sẽ được gửi tới email liên kết. Nếu chưa có email, vui lòng liên hệ Nhân sự để cập nhật.")
+                            .font(.subheadline).foregroundColor(AppTheme.muted)
+                    }
+                    .padding(18).background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(AppTheme.cardBorder))
+
                     if otpSent {
-                        Label("Mã OTP đã được gửi tới \(email)", systemImage: "envelope.badge.fill")
-                            .foregroundColor(AppTheme.red)
-                    } else {
-                        Text("Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
+                        VStack(spacing: 14) {
+                            NativeField(title: "Mã OTP gồm 6 số", text: $code, icon: "number", keyboard: .numberPad)
+                            NativeSecureField(title: "Mật khẩu mới, ít nhất 6 ký tự", text: $newPassword)
+                            NativeSecureField(title: "Nhập lại mật khẩu mới", text: $confirmPassword)
+                            if !confirmPassword.isEmpty && newPassword != confirmPassword {
+                                Label("Mật khẩu nhập lại chưa khớp", systemImage: "exclamationmark.circle.fill")
+                                    .font(.caption).foregroundColor(AppTheme.red).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                        .padding(18).background(AppTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
-                }
-                if otpSent {
-                    Section("Xác minh") {
-                        TextField("Mã OTP gồm 6 số", text: $code).keyboardType(.numberPad)
-                        SecureField("Mật khẩu mới, ít nhất 6 ký tự", text: $newPassword)
-                        SecureField("Nhập lại mật khẩu mới", text: $confirmPassword)
-                    }
-                    Section {
-                        Button("Xác nhận đổi mật khẩu") {
+
+                    Button {
+                        if otpSent {
                             Task {
                                 if await session.confirmPasswordChange(code: code, newPassword: newPassword) { completed = true }
                             }
-                        }
-                        .disabled(code.count != 6 || newPassword.count < 6 || newPassword != confirmPassword || session.isWorking)
-                    }
-                } else {
-                    Section {
-                        Button("Gửi mã OTP") {
+                        } else {
                             Task {
                                 if let response = await session.requestPasswordChange() {
                                     email = response.email
                                     otpSent = true
                                 }
                             }
-                        }.disabled(session.isWorking)
+                        }
+                    } label: {
+                        HStack {
+                            if session.isWorking { ProgressView().tint(.white) }
+                            Text(otpSent ? "Xác nhận đổi mật khẩu" : "Gửi mã OTP").fontWeight(.bold)
+                            Spacer()
+                            Image(systemName: otpSent ? "checkmark.shield.fill" : "arrow.right")
+                        }.padding(.horizontal, 18).frame(maxWidth: .infinity, minHeight: 54)
                     }
+                    .buttonStyle(.plain).foregroundColor(.white).background(AppTheme.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .disabled(session.isWorking || (otpSent && !canConfirm))
+                    .opacity(session.isWorking || (otpSent && !canConfirm) ? 0.55 : 1)
                 }
+                .padding(22)
             }
+            .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Đổi mật khẩu")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
             .alert("Đổi mật khẩu thành công", isPresented: $completed) {
@@ -2533,6 +2595,20 @@ private struct PasswordChangeView: View {
                 Text("Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
             }
         }.navigationViewStyle(.stack)
+    }
+
+    private var canConfirm: Bool {
+        code.count == 6 && code.allSatisfy(\.isNumber) && newPassword.count >= 6 && newPassword == confirmPassword
+    }
+
+    @ViewBuilder
+    private func stepBadge(number: Int, title: String, active: Bool) -> some View {
+        HStack(spacing: 7) {
+            Text("\(number)").font(.caption.bold()).foregroundColor(active ? .white : AppTheme.muted)
+                .frame(width: 25, height: 25).background(active ? AppTheme.red : AppTheme.field)
+                .clipShape(Circle())
+            Text(title).font(.caption.weight(.semibold)).foregroundColor(active ? .primary : AppTheme.muted)
+        }.fixedSize()
     }
 }
 
