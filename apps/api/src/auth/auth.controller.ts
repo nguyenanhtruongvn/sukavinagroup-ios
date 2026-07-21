@@ -19,6 +19,21 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('password-change/request')
+  requestPasswordChange(@Req() req: { user: { sub: string } }) {
+    return this.authService.requestPasswordChange(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('password-change/confirm')
+  confirmPasswordChange(
+    @Req() req: { user: { sub: string } },
+    @Body() body: { code: string; newPassword: string },
+  ) {
+    return this.authService.confirmPasswordChange(req.user.sub, body.code, body.newPassword);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Delete('me')
   deleteMyAccount(
     @Req() req: { user: { sub: string } },

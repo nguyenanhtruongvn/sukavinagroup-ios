@@ -30,6 +30,20 @@ export class MailService {
     }
   }
 
+  async sendPasswordChangeCode(recipient: string, code: string) {
+    try {
+      await this.transporter.sendMail({
+        from: `Sukavina <${this.fromAddress}>`,
+        to: recipient,
+        subject: 'Mã OTP đổi mật khẩu Sukavina',
+        text: `Mã OTP đổi mật khẩu của bạn là ${code}. Mã có hiệu lực trong 10 phút.`,
+        html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#202124"><h2>Đổi mật khẩu Sukavina</h2><p>Mã OTP của bạn:</p><p style="font-size:30px;font-weight:700;letter-spacing:8px">${code}</p><p>Mã có hiệu lực trong 10 phút. Không chia sẻ mã này với người khác.</p></div>`,
+      });
+    } catch {
+      throw new ServiceUnavailableException('Chưa gửi được mã OTP. Vui lòng thử lại sau.');
+    }
+  }
+
   async sendAccountApproved(recipient: string, employeeCode: string) {
     try {
       await this.transporter.sendMail({

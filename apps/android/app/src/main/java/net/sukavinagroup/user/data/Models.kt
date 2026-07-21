@@ -4,6 +4,8 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class LoginBody(val loginId: String, val password: String)
 @Serializable data class DeleteAccountBody(val password: String, val confirmation: String = "XOA TAI KHOAN")
+@Serializable data class PasswordChangeConfirmBody(val code: String, val newPassword: String)
+@Serializable data class PasswordChangeRequestResponse(val message: String = "", val email: String = "", val expiresInMinutes: Int = 10)
 @Serializable data class MessageResponse(val message: String = "")
 @Serializable data class UserSummary(
     val employeeCode: String = "", val name: String = "", val role: String = "",
@@ -15,6 +17,7 @@ import kotlinx.serialization.Serializable
     val id: String = "", val employeeCode: String = "", val name: String = "",
     val role: String = "", val accountType: String = "EMPLOYEE",
     val permissions: List<String> = emptyList(), val protected: Boolean = false,
+    val email: String? = null, val passwordChangedAt: String? = null,
 )
 @Serializable data class ContentItem(
     val id: String, val page: String = "", val key: String = "", val title: String,

@@ -398,6 +398,8 @@ private struct Profile: Decodable {
     let accountType: String
     let permissions: [String]
     let protected: Bool
+    let email: String?
+    let passwordChangedAt: Date?
 }
 
 private struct ContentItem: Decodable, Identifiable {
@@ -613,7 +615,13 @@ private struct RegisterBody: Encodable {
 private struct VerifyBody: Encodable { let employeeCode: String; let gmailEmail: String; let code: String }
 private struct ResendBody: Encodable { let employeeCode: String; let gmailEmail: String }
 private struct DeleteAccountBody: Encodable { let password: String; let confirmation: String }
+private struct PasswordChangeConfirmBody: Encodable { let code: String; let newPassword: String }
 private struct MessageResponse: Decodable { let message: String }
+private struct PasswordChangeRequestResponse: Decodable {
+    let message: String
+    let email: String
+    let expiresInMinutes: Int
+}
 private struct RegistrationResponse: Decodable {
     let id: String
     let employeeCode: String
@@ -699,7 +707,9 @@ private final class SessionStore: ObservableObject {
                 role: response.user.role,
                 accountType: response.user.accountType,
                 permissions: response.user.permissions,
-                protected: response.user.protected
+                protected: response.user.protected,
+                email: nil,
+                passwordChangedAt: nil
             )
             state = .signedIn
             startNetworkMonitoring()
@@ -941,6 +951,37 @@ private final class SessionStore: ObservableObject {
             )
             disableBiometricLogin()
             signOut()
+            return true
+        } catch {
+            present(error)
+            return false
+        }
+    }
+
+    func requestPasswordChange() async -> PasswordChangeRequestResponse? {
+        guard let token else { return nil }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            return try await APIClient.shared.request(
+                "auth/password-change/request", method: "POST", token: token
+            )
+        } catch {
+            present(error)
+            return nil
+        }
+    }
+
+    func confirmPasswordChange(code: String, newPassword: String) async -> Bool {
+        guard let token else { return false }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let _: MessageResponse = try await APIClient.shared.request(
+                "auth/password-change/confirm", method: "POST", token: token,
+                body: PasswordChangeConfirmBody(code: code, newPassword: newPassword)
+            )
+            disableBiometricLogin()
             return true
         } catch {
             present(error)
@@ -2302,6 +2343,7 @@ private struct ProfileView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var showDelete = false
     @State private var password = ""
+    @State private var showPasswordChange = false
 
     var body: some View {
         NavigationView {
@@ -2352,6 +2394,21 @@ private struct ProfileView: View {
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
 
+                    Button { showPasswordChange = true } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "key.fill").foregroundColor(AppTheme.red).frame(width: 30)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Đổi mật khẩu").font(.headline).foregroundColor(.primary)
+                                Text("Xác thực OTP qua email, tối đa một lần mỗi tháng.")
+                                    .font(.caption).foregroundColor(AppTheme.muted)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundColor(AppTheme.muted)
+                        }.padding(18)
+                    }
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
                     if session.profile?.protected != true && session.profile?.accountType != "SUPER_ADMIN" {
                         Button("Yêu cầu xóa tài khoản", role: .destructive) { showDelete = true }
                             .font(.footnote.weight(.semibold))
@@ -2372,6 +2429,9 @@ private struct ProfileView: View {
             }
         }
         .navigationViewStyle(.stack)
+        .sheet(isPresented: $showPasswordChange) {
+            PasswordChangeView().environmentObject(session)
+        }
     }
 
     private var initials: String {
@@ -2384,6 +2444,65 @@ private struct ProfileView: View {
         case "ADMIN": return "Quản trị viên"
         default: return "Nhân viên"
         }
+    }
+}
+
+private struct PasswordChangeView: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var email = ""
+    @State private var code = ""
+    @State private var newPassword = ""
+    @State private var confirmPassword = ""
+    @State private var otpSent = false
+    @State private var completed = false
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section {
+                    if otpSent {
+                        Label("Mã OTP đã được gửi tới \(email)", systemImage: "envelope.badge.fill")
+                            .foregroundColor(AppTheme.red)
+                    } else {
+                        Text("Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
+                    }
+                }
+                if otpSent {
+                    Section("Xác minh") {
+                        TextField("Mã OTP gồm 6 số", text: $code).keyboardType(.numberPad)
+                        SecureField("Mật khẩu mới, ít nhất 6 ký tự", text: $newPassword)
+                        SecureField("Nhập lại mật khẩu mới", text: $confirmPassword)
+                    }
+                    Section {
+                        Button("Xác nhận đổi mật khẩu") {
+                            Task {
+                                if await session.confirmPasswordChange(code: code, newPassword: newPassword) { completed = true }
+                            }
+                        }
+                        .disabled(code.count != 6 || newPassword.count < 6 || newPassword != confirmPassword || session.isWorking)
+                    }
+                } else {
+                    Section {
+                        Button("Gửi mã OTP") {
+                            Task {
+                                if let response = await session.requestPasswordChange() {
+                                    email = response.email
+                                    otpSent = true
+                                }
+                            }
+                        }.disabled(session.isWorking)
+                    }
+                }
+            }
+            .navigationTitle("Đổi mật khẩu")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
+            .alert("Đổi mật khẩu thành công", isPresented: $completed) {
+                Button("Hoàn tất") { dismiss() }
+            } message: {
+                Text("Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
+            }
+        }.navigationViewStyle(.stack)
     }
 }
 

@@ -227,7 +227,75 @@ export class AuthService {
       accountType: user.accountType,
       permissions: user.permissions,
       protected: user.protected,
+      email: user.gmailEmail,
+      passwordChangedAt: user.passwordChangedAt,
     };
+  }
+
+  async requestPasswordChange(id: string) {
+    const user = await this.prisma.employee.findUnique({ where: { id } });
+    if (!user || !user.active) throw new UnauthorizedException('Tài khoản không tồn tại');
+    if (!user.gmailEmail) {
+      throw new BadRequestException('Tài khoản chưa có email. Vui lòng liên hệ Nhân sự để cập nhật email.');
+    }
+    this.ensurePasswordChangeAllowed(user.passwordChangedAt);
+    if (user.passwordChangeRequestedAt && Date.now() - user.passwordChangeRequestedAt.getTime() < 60_000) {
+      throw new BadRequestException('Vui lòng chờ 60 giây trước khi yêu cầu mã OTP mới.');
+    }
+    const code = String(randomInt(100000, 1000000));
+    await this.prisma.employee.update({
+      where: { id },
+      data: {
+        passwordChangeCode: await hash(code, 10),
+        passwordChangeExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        passwordChangeRequestedAt: new Date(),
+      },
+    });
+    await this.mailService.sendPasswordChangeCode(user.gmailEmail, code);
+    return {
+      message: `Mã OTP đã được gửi tới ${user.gmailEmail}.`,
+      email: user.gmailEmail,
+      expiresInMinutes: 10,
+    };
+  }
+
+  async confirmPasswordChange(id: string, code: string, newPassword: string) {
+    if (!newPassword || newPassword.length < 6) {
+      throw new BadRequestException('Mật khẩu mới phải có ít nhất 6 ký tự.');
+    }
+    const user = await this.prisma.employee.findUnique({ where: { id } });
+    if (!user || !user.active) throw new UnauthorizedException('Tài khoản không tồn tại');
+    this.ensurePasswordChangeAllowed(user.passwordChangedAt);
+    if (!user.passwordChangeCode || !user.passwordChangeExpiresAt) {
+      throw new BadRequestException('Vui lòng yêu cầu mã OTP mới.');
+    }
+    if (user.passwordChangeExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới.');
+    }
+    if (!(await compare(code.trim(), user.passwordChangeCode))) {
+      throw new BadRequestException('Mã OTP không chính xác.');
+    }
+    await this.prisma.employee.update({
+      where: { id },
+      data: {
+        passwordHash: await hash(newPassword, 10),
+        passwordChangedAt: new Date(),
+        passwordChangeCode: null,
+        passwordChangeExpiresAt: null,
+        passwordChangeRequestedAt: null,
+      },
+    });
+    return { message: 'Đổi mật khẩu thành công.' };
+  }
+
+  private ensurePasswordChangeAllowed(changedAt: Date | null) {
+    if (!changedAt) return;
+    const vietnamOffset = 7 * 60 * 60 * 1000;
+    const now = new Date(Date.now() + vietnamOffset);
+    const changed = new Date(changedAt.getTime() + vietnamOffset);
+    if (changed.getUTCFullYear() === now.getUTCFullYear() && changed.getUTCMonth() === now.getUTCMonth()) {
+      throw new BadRequestException('Bạn chỉ được đổi mật khẩu một lần mỗi tháng.');
+    }
   }
 
   async deleteMyAccount(id: string, password: string, confirmation: string) {

@@ -343,7 +343,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 }
 
 @Composable private fun ProfileScreen(state: SessionUiState, session: SessionViewModel) {
-    var deleteOpen by remember { mutableStateOf(false) }; var password by remember { mutableStateOf("") }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }
+    var deleteOpen by remember { mutableStateOf(false) }; var password by remember { mutableStateOf("") }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }; var passwordChangeOpen by remember { mutableStateOf(false) }
     val activity = LocalActivity.current as? MainActivity
     val profile = state.profile
     Column(Modifier.fillMaxSize().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -351,10 +351,31 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
         Text(profile?.name ?: "Nhân viên", fontSize = 25.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp)); Text(profile?.employeeCode.orEmpty(), color = SukavinaMuted)
         Card(Modifier.fillMaxWidth().padding(top = 24.dp)) { Column { ProfileLine("Vai trò", profile?.role.orEmpty()); HorizontalDivider(); ProfileLine("Loại tài khoản", profile?.accountType.accountLabel()); HorizontalDivider(); Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Fingerprint, null, tint = SukavinaRed); Text("Đăng nhập sinh trắc học", Modifier.padding(start = 10.dp).weight(1f)); Switch(state.biometricEnabled, onCheckedChange = { enabled -> if (enabled) activity?.authenticateBiometric { biometricPasswordOpen = true } else session.enableBiometric("", false) }) } } }
         OutlinedButton(onClick = session::signOut, modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(52.dp)) { Icon(Icons.Default.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
+        OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp)) { Icon(Icons.Default.Key, null); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
         if (profile?.protected != true && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
     }
     if (deleteOpen) AlertDialog(onDismissRequest = { deleteOpen = false }, title = { Text("Xóa tài khoản vĩnh viễn?") }, text = { OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { TextButton(onClick = { session.deleteAccount(password); deleteOpen = false }) { Text("Xóa vĩnh viễn", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { deleteOpen = false }) { Text("Hủy") } })
     if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
+    if (passwordChangeOpen) PasswordChangeDialog(state, session) { passwordChangeOpen = false }
+}
+
+@Composable private fun PasswordChangeDialog(state: SessionUiState, session: SessionViewModel, dismiss: () -> Unit) {
+    var email by remember { mutableStateOf("") }; var otpSent by remember { mutableStateOf(false) }; var code by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }; var confirmPassword by remember { mutableStateOf("") }; var completed by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = dismiss, icon = { Icon(Icons.Default.Key, null, tint = SukavinaRed) },
+        title = { Text(if (completed) "Đổi mật khẩu thành công" else "Đổi mật khẩu") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (completed) Text("Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
+            else if (!otpSent) Text("Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
+            else { Text("Mã OTP đã được gửi tới $email", color = SukavinaRed, fontWeight = FontWeight.SemiBold)
+                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, label = { Text("Mã OTP gồm 6 số") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Mật khẩu mới, ít nhất 6 ký tự") }, visualTransformation = PasswordVisualTransformation())
+                OutlinedTextField(confirmPassword, { confirmPassword = it }, label = { Text("Nhập lại mật khẩu mới") }, visualTransformation = PasswordVisualTransformation()) }
+        } },
+        confirmButton = { when { completed -> Button(onClick = dismiss) { Text("Hoàn tất") }
+            !otpSent -> Button(onClick = { session.requestPasswordChange { if (it != null) { email = it.email; otpSent = true } } }, enabled = !state.working) { Text("Gửi mã OTP") }
+            else -> Button(onClick = { session.confirmPasswordChange(code, newPassword) { if (it) completed = true } }, enabled = code.length == 6 && newPassword.length >= 6 && newPassword == confirmPassword && !state.working) { Text("Xác nhận") } } },
+        dismissButton = { if (!completed) TextButton(onClick = dismiss) { Text("Hủy") } })
 }
 
 @Composable private fun ProfileLine(label: String, value: String) = Row(Modifier.fillMaxWidth().padding(18.dp)) { Text(label, color = SukavinaMuted); Spacer(Modifier.weight(1f)); Text(value, fontWeight = FontWeight.Medium) }

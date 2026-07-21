@@ -171,6 +171,26 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             .onSuccess { signOut() }.onFailure { update(working = false, error = it.message) }
     }
 
+    fun requestPasswordChange(done: (PasswordChangeRequestResponse?) -> Unit) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch done(null)
+        update(working = true, error = null)
+        runCatching { api.post<PasswordChangeRequestResponse, MessageResponse>("auth/password-change/request", MessageResponse(), token) }
+            .onSuccess { update(working = false); done(it) }
+            .onFailure { update(working = false, error = it.message); done(null) }
+    }
+
+    fun confirmPasswordChange(code: String, newPassword: String, done: (Boolean) -> Unit) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch done(false)
+        update(working = true, error = null)
+        runCatching { api.post<MessageResponse, PasswordChangeConfirmBody>("auth/password-change/confirm", PasswordChangeConfirmBody(code, newPassword), token) }
+            .onSuccess {
+                preferences.edit().putBoolean("biometric_enabled", false).remove("biometric_password").apply()
+                _state.value = _state.value.copy(working = false, biometricEnabled = false)
+                done(true)
+            }
+            .onFailure { update(working = false, error = it.message); done(false) }
+    }
+
     fun clearError() = update(error = null)
     fun signOut() {
         events?.cancel(); events = null

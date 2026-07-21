@@ -36,6 +36,10 @@ model Employee {
   gmailVerified     Boolean  @default(false)
   emailVerificationCode String?
   emailVerificationExpiresAt DateTime?
+  passwordChangeCode String?
+  passwordChangeExpiresAt DateTime?
+  passwordChangeRequestedAt DateTime?
+  passwordChangedAt DateTime?
   passwordHash      String?
   authProvider      String   @default("phone_password")
   role              String   @default("Nhân viên")
