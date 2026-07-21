@@ -288,7 +288,7 @@ function LegalPage({ page }: { page: 'privacy' | 'support' }) {
             </section>
             <section>
               <h2>6. Liên hệ</h2>
-              <p>Mọi câu hỏi về quyền riêng tư gửi tới <a href="mailto:sukavina01@gmail.com">sukavina01@gmail.com</a>.</p>
+              <p>Mọi câu hỏi về quyền riêng tư gửi tới <a href="mailto:group@sukavina.com">group@sukavina.com</a>.</p>
             </section>
           </>
         ) : (
@@ -298,7 +298,7 @@ function LegalPage({ page }: { page: 'privacy' | 'support' }) {
               <p>Nếu gặp lỗi đăng nhập, xác minh Gmail, thông báo hoặc dữ liệu tài khoản, hãy liên hệ đội ngũ Sukavina.</p>
               <div className="support-contact">
                 <span>Email hỗ trợ</span>
-                <a href="mailto:sukavina01@gmail.com">sukavina01@gmail.com</a>
+                <a href="mailto:group@sukavina.com">group@sukavina.com</a>
               </div>
             </section>
             <section>
