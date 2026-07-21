@@ -1294,7 +1294,7 @@ h1 {
   }
 }
 
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: light) and (max-width: 0px) {
   :root {
     color-scheme: light;
     --muted: #6f6864;
@@ -2977,7 +2977,7 @@ h1 {
 }
 
 /* Final light-mode contrast pass; kept last so feature-specific dark styles cannot win. */
-@media (prefers-color-scheme: light) {
+@media (prefers-color-scheme: light) and (max-width: 0px) {
   :root {
     --muted: #625a56;
     color: #201b19;

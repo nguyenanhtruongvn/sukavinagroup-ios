@@ -3,6 +3,7 @@ import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class MailService {
+  private readonly fromAddress = process.env.SMTP_FROM ?? process.env.SMTP_USER;
   private readonly transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
     port: Number(process.env.SMTP_PORT ?? 465),
@@ -16,7 +17,7 @@ export class MailService {
   async sendVerificationCode(recipient: string, code: string) {
     try {
       await this.transporter.sendMail({
-        from: `Sukavina Portal <${process.env.SMTP_USER}>`,
+        from: `Sukavina Portal <${this.fromAddress}>`,
         to: recipient,
         subject: 'Mã xác minh tài khoản Sukavina',
         text: `Mã xác minh của bạn là ${code}. Mã có hiệu lực trong 10 phút.`,
@@ -32,7 +33,7 @@ export class MailService {
   async sendAccountApproved(recipient: string, employeeCode: string) {
     try {
       await this.transporter.sendMail({
-        from: `Sukavina Portal <${process.env.SMTP_USER}>`,
+        from: `Sukavina Portal <${this.fromAddress}>`,
         to: recipient,
         subject: 'Tài khoản Sukavina đã được phê duyệt',
         text: `Tài khoản ${employeeCode} đã được quản trị viên phê duyệt. Bạn có thể đăng nhập vào Sukavina Portal ngay bây giờ.`,
