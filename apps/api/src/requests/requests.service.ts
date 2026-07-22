@@ -40,6 +40,27 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async adminList(user: { sub: string; accountType?: string }) {
+    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.accountType ?? '')) {
+      throw new ForbiddenException('Chỉ tài khoản quản trị được xem danh sách đơn từ');
+    }
+    await this.autoApproveExpired();
+    return this.prisma.employeeRequest.findMany({
+      include: {
+        employee: {
+          select: {
+            fullName: true,
+            employeeCode: true,
+            department: true,
+            jobTitle: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+  }
+
   async approvals(managerEmployeeId: string) {
     await this.autoApproveExpired();
     return this.prisma.employeeRequest.findMany({

@@ -111,6 +111,9 @@ type MediaItem = {
   type: 'image' | 'video';
   size: number;
   createdAt: string;
+  dueAt?: string;
+  decidedAt?: string | null;
+  managerEmployeeCode?: string | null;
 };
 
 type EmployeeRequest = {
@@ -123,7 +126,7 @@ type EmployeeRequest = {
   createdAt: string;
   decisionNote?: string | null;
   autoApproved?: boolean;
-  employee?: { fullName: string; employeeCode: string };
+  employee?: { fullName: string; employeeCode: string; department?: string; jobTitle?: string };
 };
 
 type RequestNotification = {
@@ -357,9 +360,15 @@ function App() {
   const [mediaUploading, setMediaUploading] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteAccountForm, setDeleteAccountForm] = useState({ password: '', confirmation: '' });
-  const [adminTab, setAdminTab] = useState<'content' | 'employees' | 'accounts'>(
+  const [adminTab, setAdminTab] = useState<'content' | 'employees' | 'requests' | 'accounts'>(
     'content',
   );
+  const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
+  const [adminRequestQuery, setAdminRequestQuery] = useState('');
+  const [adminRequestKind, setAdminRequestKind] = useState<'all' | EmployeeRequest['kind']>('all');
+  const [adminRequestStatus, setAdminRequestStatus] = useState<'all' | EmployeeRequest['status']>('all');
+  const [adminRequestPage, setAdminRequestPage] = useState(1);
+  const [adminRequestDetail, setAdminRequestDetail] = useState<EmployeeRequest | null>(null);
   const [employeeForm, setEmployeeForm] = useState({
     employeeCode: '',
     fullName: '',
@@ -514,6 +523,19 @@ function App() {
     setRequests((await mineResponse.json()) as EmployeeRequest[]);
     setApprovalRequests((await approvalsResponse.json()) as EmployeeRequest[]);
     setRequestNotifications((await notificationsResponse.json()) as RequestNotification[]);
+  };
+
+  const refreshAdminRequests = async () => {
+    if (!token || !isAdminRoute) return;
+    const response = await fetch('/api/me/requests/admin/all', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    const result = (await response.json().catch(() => null)) as EmployeeRequest[] | { message?: string } | null;
+    if (!response.ok || !Array.isArray(result)) {
+      throw new Error(!Array.isArray(result) ? result?.message || 'Không tải được danh sách đơn từ' : 'Không tải được danh sách đơn từ');
+    }
+    setAdminRequests(result);
   };
 
   useEffect(() => {
@@ -1225,9 +1247,10 @@ function App() {
 
   useEffect(() => {
     if (!isAdminRoute || !currentUser) return;
-    const availableTabs: Array<'content' | 'employees' | 'accounts'> = [];
+    const availableTabs: Array<'content' | 'employees' | 'requests' | 'accounts'> = [];
     if (canAccess('content.manage')) availableTabs.push('content');
     if (canAccess('employees.manage')) availableTabs.push('employees');
+    availableTabs.push('requests');
     if (canAccess('accounts.manage')) availableTabs.push('accounts');
     if (availableTabs.length && !availableTabs.includes(adminTab)) {
       setAdminTab(availableTabs[0]);
@@ -1241,6 +1264,7 @@ function App() {
         if (adminTab === 'employees' && canAccess('employees.manage')) await refreshEmployees();
         if (adminTab === 'accounts' && canAccess('accounts.manage')) await refreshAccounts();
         if (adminTab === 'content' && canAccess('content.manage')) await refreshContent();
+        if (adminTab === 'requests' && isAdminRoute) await refreshAdminRequests();
       } catch (tabError) {
         setError(tabError instanceof Error ? tabError.message : 'Không tải được dữ liệu quản trị');
       }
@@ -2017,6 +2041,21 @@ function App() {
     const next = attendanceMonthOptions[selectedAttendanceMonthIndex - 1];
     if (next) setAttendanceMonth(next.value);
   };
+  const normalizedAdminRequestQuery = adminRequestQuery.trim().toLocaleLowerCase('vi-VN');
+  const filteredAdminRequests = adminRequests.filter((request) => {
+    if (adminRequestKind !== 'all' && request.kind !== adminRequestKind) return false;
+    if (adminRequestStatus !== 'all' && request.status !== adminRequestStatus) return false;
+    if (!normalizedAdminRequestQuery) return true;
+    return [request.employee?.fullName, request.employee?.employeeCode, request.employee?.department, request.reason]
+      .filter(Boolean)
+      .some((value) => String(value).toLocaleLowerCase('vi-VN').includes(normalizedAdminRequestQuery));
+  });
+  const adminRequestsPerPage = 12;
+  const adminRequestPageCount = Math.max(1, Math.ceil(filteredAdminRequests.length / adminRequestsPerPage));
+  const visibleAdminRequests = filteredAdminRequests.slice(
+    (Math.min(adminRequestPage, adminRequestPageCount) - 1) * adminRequestsPerPage,
+    Math.min(adminRequestPage, adminRequestPageCount) * adminRequestsPerPage,
+  );
 
   return (
     <main className="dashboard-shell">
@@ -2356,6 +2395,19 @@ function App() {
         </div>
       ) : null}
 
+      {adminRequestDetail ? (
+        <div className="article-modal-backdrop admin-request-detail-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setAdminRequestDetail(null); }}>
+          <article className="admin-request-detail" role="dialog" aria-modal="true" aria-labelledby="admin-request-detail-title">
+            <header><span className={`request-kind-icon request-kind-${adminRequestDetail.kind}`}>{requestKindIcons[adminRequestDetail.kind]}</span><div><p className="panel-label">Chi tiết chỉ đọc</p><h2 id="admin-request-detail-title">{requestKindLabels[adminRequestDetail.kind]}</h2></div><button type="button" onClick={() => setAdminRequestDetail(null)} aria-label="Đóng">×</button></header>
+            <div className="admin-request-detail-person"><span>{(adminRequestDetail.employee?.fullName || 'NV').split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase()}</span><div><strong>{adminRequestDetail.employee?.fullName || 'Không rõ nhân viên'}</strong><small>{adminRequestDetail.employee?.employeeCode} · {adminRequestDetail.employee?.department || 'Chưa cập nhật phòng ban'}</small></div><b className={`request-status request-status-${adminRequestDetail.status}`}>{requestStatusLabels[adminRequestDetail.status]}</b></div>
+            <div className="admin-request-detail-grid"><span><small>Bắt đầu</small><strong>{new Date(adminRequestDetail.startsAt).toLocaleString('vi-VN')}</strong></span><span><small>Kết thúc</small><strong>{new Date(adminRequestDetail.endsAt).toLocaleString('vi-VN')}</strong></span><span><small>Ngày tạo</small><strong>{new Date(adminRequestDetail.createdAt).toLocaleString('vi-VN')}</strong></span><span><small>Quản lý phụ trách</small><strong>{adminRequestDetail.managerEmployeeCode || 'Chưa gán'}</strong></span></div>
+            <section><small>Lý do tạo đơn</small><p>{adminRequestDetail.reason}</p></section>
+            {adminRequestDetail.decisionNote ? <section><small>Ghi chú xử lý</small><p>{adminRequestDetail.decisionNote}</p></section> : null}
+            <footer><span>Biểu mẫu này chỉ dùng để xem dữ liệu.</span><button type="button" className="ghost-button" onClick={() => setAdminRequestDetail(null)}>Đóng</button></footer>
+          </article>
+        </div>
+      ) : null}
+
       {requestComposerOpen ? (
         <div
           className="article-modal-backdrop request-modal-backdrop"
@@ -2531,6 +2583,13 @@ function App() {
               Nhân viên
             </button>
             ) : null}
+            <button
+              type="button"
+              className={adminTab === 'requests' ? 'active' : ''}
+              onClick={() => setAdminTab('requests')}
+            >
+              Đơn từ
+            </button>
             {canAccess('accounts.manage') ? (
               <button
                 type="button"
@@ -2546,6 +2605,37 @@ function App() {
           </aside>
 
           <section className="admin-main">
+            {adminTab === 'requests' ? (
+              <section className="admin-requests-panel panel">
+                <header className="admin-requests-head">
+                  <div><p className="panel-label">Tổng hợp toàn công ty</p><h2>Danh sách đơn từ</h2><p className="panel-note">Theo dõi đơn của tất cả nhân viên. Khu vực này chỉ cho phép xem dữ liệu.</p></div>
+                  <div className="admin-requests-total"><small>Tổng số đơn</small><strong>{adminRequests.length}</strong></div>
+                </header>
+                <div className="admin-request-stats">
+                  {(['pending', 'approved', 'rejected', 'cancelled'] as EmployeeRequest['status'][]).map((status) => <button type="button" className={adminRequestStatus === status ? 'active' : ''} onClick={() => { setAdminRequestStatus(status); setAdminRequestPage(1); }} key={status}><span className={`request-status request-status-${status}`}>{requestStatusLabels[status]}</span><strong>{adminRequests.filter((item) => item.status === status).length}</strong></button>)}
+                </div>
+                <div className="admin-request-filters">
+                  <label className="admin-request-search"><span>⌕</span><input value={adminRequestQuery} onChange={(event) => { setAdminRequestQuery(event.target.value); setAdminRequestPage(1); }} placeholder="Tìm tên, mã nhân viên, phòng ban hoặc lý do..." /></label>
+                  <select value={adminRequestKind} onChange={(event) => { setAdminRequestKind(event.target.value as 'all' | EmployeeRequest['kind']); setAdminRequestPage(1); }}><option value="all">Tất cả loại đơn</option>{(Object.keys(requestKindLabels) as EmployeeRequest['kind'][]).map((kind) => <option value={kind} key={kind}>{requestKindLabels[kind]}</option>)}</select>
+                  <select value={adminRequestStatus} onChange={(event) => { setAdminRequestStatus(event.target.value as 'all' | EmployeeRequest['status']); setAdminRequestPage(1); }}><option value="all">Tất cả trạng thái</option>{(Object.keys(requestStatusLabels) as EmployeeRequest['status'][]).map((status) => <option value={status} key={status}>{requestStatusLabels[status]}</option>)}</select>
+                  <button type="button" className="ghost-button" onClick={() => void refreshAdminRequests()}>Tải lại</button>
+                </div>
+                <div className="admin-request-table">
+                  <div className="admin-request-table-head"><span>Nhân viên</span><span>Loại đơn</span><span>Thời gian</span><span>Trạng thái</span><span>Ngày tạo</span><span /></div>
+                  {visibleAdminRequests.length ? visibleAdminRequests.map((request) => (
+                    <button type="button" className="admin-request-row" onClick={() => setAdminRequestDetail(request)} key={request.id}>
+                      <span className="admin-request-employee"><i>{(request.employee?.fullName || 'NV').split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase()}</i><span><strong>{request.employee?.fullName || 'Không rõ'}</strong><small>{request.employee?.employeeCode} · {request.employee?.department || 'Chưa cập nhật'}</small></span></span>
+                      <span><b className={`notification-kind request-kind-label-${request.kind}`}>{requestKindLabels[request.kind]}</b></span>
+                      <span className="admin-request-period"><strong>{new Date(request.startsAt).toLocaleDateString('vi-VN')}</strong><small>{new Date(request.startsAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} – {new Date(request.endsAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</small></span>
+                      <span><b className={`request-status request-status-${request.status}`}>{requestStatusLabels[request.status]}</b></span>
+                      <span className="admin-request-created">{new Date(request.createdAt).toLocaleDateString('vi-VN')}</span>
+                      <span className="admin-request-view">Xem ›</span>
+                    </button>
+                  )) : <div className="admin-request-empty"><strong>Không tìm thấy đơn phù hợp</strong><p>Hãy thử thay đổi từ khóa hoặc bộ lọc.</p></div>}
+                </div>
+                <footer className="admin-request-pagination"><span>Hiển thị {visibleAdminRequests.length} trong {filteredAdminRequests.length} đơn</span><div><button type="button" disabled={adminRequestPage <= 1} onClick={() => setAdminRequestPage((page) => page - 1)}>‹</button><strong>{Math.min(adminRequestPage, adminRequestPageCount)} / {adminRequestPageCount}</strong><button type="button" disabled={adminRequestPage >= adminRequestPageCount} onClick={() => setAdminRequestPage((page) => page + 1)}>›</button></div></footer>
+              </section>
+            ) : null}
             {adminTab === 'employees' && canAccess('employees.manage') ? (
               <section className="employee-hub panel panel-employee-hub">
                 <div className="employee-hero">

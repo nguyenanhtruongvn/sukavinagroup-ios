@@ -12,6 +12,13 @@ export class RequestsController {
     return this.requests.list(req.user.sub);
   }
 
+  @Get('admin/all')
+  adminList(
+    @Req() req: { user: { sub: string; accountType?: string } },
+  ) {
+    return this.requests.adminList(req.user);
+  }
+
   @Post()
   create(
     @Req() req: { user: { sub: string } },
