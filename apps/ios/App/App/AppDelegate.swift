@@ -1070,7 +1070,7 @@ private struct SukavinaAppView: View {
             }
 
             if let message = session.errorMessage {
-                Color.black.opacity(0.62)
+                Color.black.opacity(0.38)
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .onTapGesture { session.dismissError() }
@@ -1081,8 +1081,8 @@ private struct SukavinaAppView: View {
                     offersSettings: session.errorOffersSettings,
                     dismiss: { session.dismissError() }
                 )
-                .padding(24)
-                .transition(.scale(scale: 0.92).combined(with: .opacity))
+                .padding(.horizontal, 22)
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
         }
         .task { await session.restore() }
@@ -1097,31 +1097,40 @@ private struct ElegantAppAlert: View {
     let dismiss: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.red.opacity(0.16))
-                    .frame(width: 68, height: 68)
-                Circle()
-                    .stroke(AppTheme.red.opacity(0.28), lineWidth: 1)
-                    .frame(width: 68, height: 68)
-                Image(systemName: alertIcon)
-                    .font(.system(size: 27, weight: .semibold))
-                    .foregroundColor(AppTheme.red)
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(AppTheme.red.opacity(0.12))
+                    Image(systemName: alertIcon)
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundColor(AppTheme.red)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(.primary)
+                    Text(message)
+                        .font(.system(size: 14.5, weight: .regular))
+                        .foregroundColor(AppTheme.muted)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(AppTheme.muted)
+                        .frame(width: 30, height: 30)
+                        .background(AppTheme.field)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Đóng")
             }
-            .padding(.bottom, 18)
-
-            Text(title)
-                .font(.system(size: 21, weight: .bold, design: .rounded))
-                .multilineTextAlignment(.center)
-
-            Text(message)
-                .font(.subheadline)
-                .foregroundColor(AppTheme.muted)
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .padding(.top, 9)
-                .padding(.bottom, 22)
 
             if offersSettings {
                 Button {
@@ -1130,27 +1139,29 @@ private struct ElegantAppAlert: View {
                     UIApplication.shared.open(url)
                 } label: {
                     Label("Mở Cài đặt", systemImage: "gearshape.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 48)
                 }
                 .buttonStyle(.plain)
                 .foregroundColor(.white)
                 .background(
                     LinearGradient(colors: [AppTheme.red, AppTheme.deepRed], startPoint: .leading, endPoint: .trailing)
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                Button("Đã hiểu", action: dismiss)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(AppTheme.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .buttonStyle(.plain)
             }
-
-            Button("Đóng") { dismiss() }
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(AppTheme.muted)
-                .padding(.top, offersSettings ? 16 : 0)
-                .frame(maxWidth: .infinity, minHeight: offersSettings ? 28 : 48)
         }
-        .padding(24)
-        .adaptiveGlassSurface(cornerRadius: 28, tint: AppTheme.deepRed.opacity(0.22))
-        .shadow(color: .black.opacity(0.42), radius: 30, y: 16)
-        .frame(maxWidth: 390)
+        .padding(20)
+        .adaptiveGlassSurface(cornerRadius: 24, tint: AppTheme.red.opacity(0.06))
+        .shadow(color: .black.opacity(0.24), radius: 22, y: 10)
+        .frame(maxWidth: 370)
     }
 
     private var alertIcon: String {
