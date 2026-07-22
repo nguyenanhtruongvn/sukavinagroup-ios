@@ -388,9 +388,14 @@ private enum BiometricKeychain {
 
 private enum BiometricPreferences {
     private static let key = "biometric-login-enabled"
+    private static let employeeCodeKey = "biometric-login-employee-code"
     static var enabled: Bool {
         get { UserDefaults.standard.bool(forKey: key) }
         set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+    static var employeeCode: String? {
+        get { UserDefaults.standard.string(forKey: employeeCodeKey) }
+        set { UserDefaults.standard.set(newValue, forKey: employeeCodeKey) }
     }
 }
 
@@ -716,6 +721,7 @@ private final class SessionStore: ObservableObject {
                 method: "POST",
                 body: LoginBody(loginId: loginId, password: password)
             )
+            resetBiometricsWhenAccountChanges(to: response.user.employeeCode)
             token = response.accessToken
             KeychainStore.save(token: response.accessToken)
             loadKnownArticles()
@@ -766,6 +772,12 @@ private final class SessionStore: ObservableObject {
         }
         do {
             let freshProfile: Profile = try await APIClient.shared.request("auth/me", token: savedToken)
+            guard BiometricPreferences.employeeCode == freshProfile.employeeCode else {
+                disableBiometricLogin()
+                errorTitle = "Cần thiết lập lại sinh trắc học"
+                errorMessage = "Sinh trắc học chưa được liên kết với tài khoản này. Hãy đăng nhập bằng mật khẩu và bật lại trong tab Tài khoản."
+                return false
+            }
             token = savedToken
             profile = freshProfile
             state = .signedIn
@@ -788,7 +800,8 @@ private final class SessionStore: ObservableObject {
         if enabled {
             let context = LAContext()
             var evaluationError: NSError?
-            guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &evaluationError),
+            guard let employeeCode = profile?.employeeCode,
+                  context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &evaluationError),
                   let token,
                   BiometricKeychain.save(token: token) else {
                 biometricsEnabled = false
@@ -797,6 +810,7 @@ private final class SessionStore: ObservableObject {
                 return
             }
             BiometricPreferences.enabled = true
+            BiometricPreferences.employeeCode = employeeCode
             biometricsEnabled = true
         } else {
             disableBiometricLogin()
@@ -806,7 +820,16 @@ private final class SessionStore: ObservableObject {
     private func disableBiometricLogin() {
         BiometricKeychain.clear()
         BiometricPreferences.enabled = false
+        BiometricPreferences.employeeCode = nil
         biometricsEnabled = false
+    }
+
+    private func resetBiometricsWhenAccountChanges(to employeeCode: String) {
+        guard biometricsEnabled else { return }
+        guard BiometricPreferences.employeeCode == employeeCode else {
+            disableBiometricLogin()
+            return
+        }
     }
 
     func refreshDashboard() async {
