@@ -536,6 +536,7 @@ function App() {
       throw new Error(!Array.isArray(result) ? result?.message || 'Không tải được danh sách đơn từ' : 'Không tải được danh sách đơn từ');
     }
     setAdminRequests(result);
+    setAdminRequestDetail((current) => current ? result.find((item) => item.id === current.id) ?? current : null);
   };
 
   useEffect(() => {
@@ -1271,6 +1272,81 @@ function App() {
     };
     void loadTab();
   }, [adminTab, token, currentUser]);
+
+  useEffect(() => {
+    if (!token || !currentUser || !isAdminRoute) return;
+    let active = true;
+    let reconnectTimer = 0;
+    let refreshInFlight = false;
+    let refreshQueued = false;
+    const controller = new AbortController();
+
+    const syncAdminRequests = async () => {
+      if (!active) return;
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+      refreshInFlight = true;
+      try {
+        await refreshAdminRequests();
+      } catch {
+        // Keep the current list visible while the stream reconnects.
+      } finally {
+        refreshInFlight = false;
+        if (refreshQueued && active) {
+          refreshQueued = false;
+          void syncAdminRequests();
+        }
+      }
+    };
+
+    const connect = async () => {
+      try {
+        const response = await fetch('/api/public/news/events', {
+          headers: { Accept: 'text/event-stream' },
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (!response.ok || !response.body) throw new Error('Realtime unavailable');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (active) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() ?? '';
+          for (const event of events) {
+            const dataLine = event.split('\n').find((line) => line.startsWith('data:'));
+            if (!dataLine) continue;
+            const payload = JSON.parse(dataLine.slice(5).trim()) as { type?: string };
+            if (payload.type === 'request_changed') void syncAdminRequests();
+          }
+        }
+      } catch {
+        // Reconnect below without polling or clearing the current data.
+      }
+      if (active) reconnectTimer = window.setTimeout(() => void connect(), 2000);
+    };
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void syncAdminRequests();
+    };
+
+    void syncAdminRequests();
+    void connect();
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(reconnectTimer);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [token, currentUser, isAdminRoute]);
 
   useEffect(() => {
     if (!token || !currentUser || !isAdminRoute || !canAccess('accounts.manage')) return;
