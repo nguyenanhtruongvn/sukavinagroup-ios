@@ -2390,6 +2390,7 @@ private struct ProfileView: View {
                     Text(session.profile?.name ?? "Nhân viên").font(.title2.bold())
                     Text(session.profile?.employeeCode ?? "").font(.subheadline.monospaced()).foregroundColor(AppTheme.muted)
 
+                    accountSectionTitle("THÔNG TIN TÀI KHOẢN")
                     VStack(spacing: 0) {
                         ProfileLine(label: "Vai trò", value: session.profile?.role ?? "")
                         Divider().padding(.leading, 18)
@@ -2397,6 +2398,26 @@ private struct ProfileView: View {
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                    accountSectionTitle("BẢO MẬT")
+                    Button {
+                        if passwordChangedThisMonth { showPasswordChangeLimit = true }
+                        else { showPasswordChange = true }
+                    } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "key.fill").foregroundColor(AppTheme.red).frame(width: 30)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Đổi mật khẩu").font(.headline).foregroundColor(.primary)
+                                Text(passwordChangeDescription)
+                                    .font(.caption).foregroundColor(AppTheme.muted)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.right").foregroundColor(AppTheme.muted)
+                        }.padding(18)
+                    }
+                    .buttonStyle(.plain)
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     HStack(spacing: 14) {
                         Image(systemName: session.biometricIcon)
@@ -2422,31 +2443,15 @@ private struct ProfileView: View {
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
+                    accountSectionTitle("PHIÊN ĐĂNG NHẬP")
                     Button("Đăng xuất", role: .destructive) { session.signOut() }
                         .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: 52)
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    Button {
-                        if passwordChangedThisMonth { showPasswordChangeLimit = true }
-                        else { showPasswordChange = true }
-                    } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: "key.fill").foregroundColor(AppTheme.red).frame(width: 30)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Đổi mật khẩu").font(.headline).foregroundColor(.primary)
-                                Text("Xác thực OTP qua email, tối đa một lần mỗi tháng.")
-                                    .font(.caption).foregroundColor(AppTheme.muted)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right").foregroundColor(AppTheme.muted)
-                        }.padding(18)
-                    }
-                    .background(AppTheme.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-
                     if session.profile?.protected != true && session.profile?.accountType != "SUPER_ADMIN" {
+                        accountSectionTitle("VÙNG NGUY HIỂM")
                         Button("Yêu cầu xóa tài khoản", role: .destructive) { showDelete = true }
                             .font(.footnote.weight(.semibold))
                     }
@@ -2488,10 +2493,27 @@ private struct ProfileView: View {
         }
     }
     private var passwordChangedThisMonth: Bool {
+        if isAdminAccount { return false }
         guard let changedAt = session.profile?.passwordChangedAt else { return false }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
         return calendar.isDate(changedAt, equalTo: Date(), toGranularity: .month)
+    }
+    private var isAdminAccount: Bool {
+        session.profile?.accountType == "ADMIN" || session.profile?.accountType == "SUPER_ADMIN"
+    }
+    private var passwordChangeDescription: String {
+        isAdminAccount
+            ? "Xác thực OTP qua email, không giới hạn số lần đổi."
+            : "Xác thực OTP qua email, tối đa một lần mỗi tháng."
+    }
+    private func accountSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.bold))
+            .tracking(1.2)
+            .foregroundColor(AppTheme.muted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 2)
     }
     private var nextPasswordChangeMonth: String {
         var calendar = Calendar(identifier: .gregorian)

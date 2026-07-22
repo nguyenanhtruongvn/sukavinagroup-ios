@@ -238,7 +238,7 @@ export class AuthService {
     if (!user.gmailEmail) {
       throw new BadRequestException('Tài khoản chưa có email. Vui lòng liên hệ Nhân sự để cập nhật email.');
     }
-    this.ensurePasswordChangeAllowed(user.passwordChangedAt);
+    this.ensurePasswordChangeAllowed(user.passwordChangedAt, user.accountType);
     if (user.passwordChangeRequestedAt && Date.now() - user.passwordChangeRequestedAt.getTime() < 60_000) {
       throw new BadRequestException('Vui lòng chờ 60 giây trước khi yêu cầu mã OTP mới.');
     }
@@ -265,7 +265,7 @@ export class AuthService {
     }
     const user = await this.prisma.employee.findUnique({ where: { id } });
     if (!user || !user.active) throw new UnauthorizedException('Tài khoản không tồn tại');
-    this.ensurePasswordChangeAllowed(user.passwordChangedAt);
+    this.ensurePasswordChangeAllowed(user.passwordChangedAt, user.accountType);
     if (!user.passwordChangeCode || !user.passwordChangeExpiresAt) {
       throw new BadRequestException('Vui lòng yêu cầu mã OTP mới.');
     }
@@ -288,7 +288,8 @@ export class AuthService {
     return { message: 'Đổi mật khẩu thành công.' };
   }
 
-  private ensurePasswordChangeAllowed(changedAt: Date | null) {
+  private ensurePasswordChangeAllowed(changedAt: Date | null, accountType: string) {
+    if (accountType === 'ADMIN' || accountType === 'SUPER_ADMIN') return;
     if (!changedAt) return;
     const vietnamOffset = 7 * 60 * 60 * 1000;
     const now = new Date(Date.now() + vietnamOffset);
