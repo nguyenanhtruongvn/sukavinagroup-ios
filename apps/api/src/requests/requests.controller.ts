@@ -14,7 +14,7 @@ export class RequestsController {
 
   @Get('admin/all')
   adminList(
-    @Req() req: { user: { sub: string; accountType?: string } },
+    @Req() req: { user: { sub: string; employeeCode?: string; accountType?: string; permissions?: string[] } },
   ) {
     return this.requests.adminList(req.user);
   }

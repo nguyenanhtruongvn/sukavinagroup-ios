@@ -82,6 +82,7 @@ const formatAttendanceTime = (value?: string | null) =>
 type PermissionKey =
   | 'content.manage'
   | 'employees.manage'
+  | 'requests.view'
   | 'accounts.manage';
 
 type AccessProfile = {
@@ -100,6 +101,7 @@ type AccessProfile = {
 const permissionOptions: Array<{ key: PermissionKey; label: string; description: string }> = [
   { key: 'content.manage', label: 'Quản lý bài viết', description: 'Thêm, sửa, xóa và xuất bản nội dung.' },
   { key: 'employees.manage', label: 'Quản lý nhân viên', description: 'Thêm, sửa, xóa hồ sơ nhân viên.' },
+  { key: 'requests.view', label: 'Xem đơn từ', description: 'Xem danh sách và chi tiết đơn của toàn bộ nhân viên.' },
   { key: 'accounts.manage', label: 'Phân quyền tài khoản', description: 'Nâng cấp tài khoản và gán quyền admin.' },
 ];
 
@@ -1274,7 +1276,7 @@ function App() {
     const availableTabs: Array<'content' | 'employees' | 'requests' | 'accounts'> = [];
     if (canAccess('content.manage')) availableTabs.push('content');
     if (canAccess('employees.manage')) availableTabs.push('employees');
-    availableTabs.push('requests');
+    if (canAccess('requests.view')) availableTabs.push('requests');
     if (canAccess('accounts.manage')) availableTabs.push('accounts');
     if (availableTabs.length && !availableTabs.includes(adminTab)) {
       setAdminTab(availableTabs[0]);
@@ -1288,7 +1290,7 @@ function App() {
         if (adminTab === 'employees' && canAccess('employees.manage')) await refreshEmployees();
         if (adminTab === 'accounts' && canAccess('accounts.manage')) await refreshAccounts();
         if (adminTab === 'content' && canAccess('content.manage')) await refreshContent();
-        if (adminTab === 'requests' && isAdminRoute) await refreshAdminRequests();
+        if (adminTab === 'requests' && canAccess('requests.view')) await refreshAdminRequests();
       } catch (tabError) {
         setError(tabError instanceof Error ? tabError.message : 'Không tải được dữ liệu quản trị');
       }
@@ -1297,7 +1299,7 @@ function App() {
   }, [adminTab, token, currentUser]);
 
   useEffect(() => {
-    if (!token || !currentUser || !isAdminRoute) return;
+    if (!token || !currentUser || !isAdminRoute || !canAccess('requests.view')) return;
     let active = true;
     let reconnectTimer = 0;
     let refreshInFlight = false;
@@ -2692,13 +2694,13 @@ function App() {
               Nhân viên
             </button>
             ) : null}
-            <button
+            {canAccess('requests.view') ? <button
               type="button"
               className={adminTab === 'requests' ? 'active' : ''}
               onClick={() => setAdminTab('requests')}
             >
               Đơn từ
-            </button>
+            </button> : null}
             {canAccess('accounts.manage') ? (
               <button
                 type="button"
@@ -2714,7 +2716,7 @@ function App() {
           </aside>
 
           <section className="admin-main">
-            {adminTab === 'requests' ? (
+            {adminTab === 'requests' && canAccess('requests.view') ? (
               <section className="admin-requests-panel panel">
                 <header className="admin-requests-head">
                   <div><p className="panel-label">Tổng hợp toàn công ty</p><h2>Danh sách đơn từ</h2><p className="panel-note">Theo dõi đơn của tất cả nhân viên. Khu vực này chỉ cho phép xem dữ liệu.</p></div>
@@ -3224,6 +3226,7 @@ function App() {
                             )}
                           </div>
 
+                          <div className="access-configuration">
                           <div className="access-role-row">
                             <label>
                               <span>Loại tài khoản</span>
@@ -3268,6 +3271,7 @@ function App() {
                                 </span>
                               </label>
                             ))}
+                          </div>
                           </div>
 
                           <div className="access-actions">

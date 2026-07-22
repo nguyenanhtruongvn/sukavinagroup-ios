@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'crypto';
 import { ContentEventsService } from '../dashboard/content-events.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { assertPermission, AuthUser } from '../auth/permissions';
 
 const requestKinds = ['leave', 'late', 'early', 'overtime', 'business'] as const;
 const requestKindLabels: Record<string, string> = {
@@ -40,10 +41,8 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  async adminList(user: { sub: string; accountType?: string }) {
-    if (!['ADMIN', 'SUPER_ADMIN'].includes(user.accountType ?? '')) {
-      throw new ForbiddenException('Chỉ tài khoản quản trị được xem danh sách đơn từ');
-    }
+  async adminList(user: AuthUser) {
+    assertPermission(user, 'requests.view');
     await this.autoApproveExpired();
     return this.prisma.employeeRequest.findMany({
       include: {
