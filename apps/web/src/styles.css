@@ -2950,6 +2950,130 @@ h1 {
   .attendance-day > small { margin-top: 1px; }
 }
 
+/* Unified select controls. Native pickers keep a polished fallback while newer
+   browsers receive a fully styled dropdown surface. */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;
+  padding-right: 40px !important;
+  background-color: #24252b !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #ff8179 50%),
+    linear-gradient(135deg, #ff8179 50%, transparent 50%),
+    linear-gradient(to right, rgba(255,255,255,.08), rgba(255,255,255,.08)) !important;
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%,
+    calc(100% - 36px) 50% !important;
+  background-size: 5px 5px, 5px 5px, 1px 22px !important;
+  background-repeat: no-repeat !important;
+  border-color: rgba(255,255,255,.11) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 5px 14px rgba(0,0,0,.08);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+select:not([multiple]):hover:not(:disabled) {
+  border-color: rgba(255,129,121,.34) !important;
+  background-color: #292a31 !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 8px 20px rgba(0,0,0,.14);
+}
+
+select:not([multiple]):focus,
+select:not([multiple]):focus-visible {
+  border-color: rgba(255,112,104,.62) !important;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(232,62,57,.13), 0 10px 24px rgba(0,0,0,.16);
+}
+
+select:not([multiple]):disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  filter: saturate(.65);
+}
+
+select option,
+select optgroup {
+  background: #1c1d22;
+  color: #f5f1ed;
+  font: inherit;
+}
+
+select option { padding: 10px 12px; }
+select option:checked { background: #a82a2d; color: #fff; }
+
+@supports (appearance: base-select) {
+  select:not([multiple]),
+  select:not([multiple])::picker(select) {
+    appearance: base-select;
+  }
+
+  select:not([multiple]) {
+    background-image: none !important;
+    padding-right: 12px !important;
+  }
+
+  select:not([multiple])::picker-icon {
+    color: #ff8179;
+    transition: rotate 180ms ease;
+  }
+
+  select:not([multiple]):open::picker-icon { rotate: 180deg; }
+
+  select:not([multiple])::picker(select) {
+    margin-top: 7px;
+    padding: 6px;
+    border: 1px solid rgba(255,255,255,.11);
+    border-radius: 15px;
+    background: rgba(25,26,31,.98);
+    box-shadow: 0 22px 55px rgba(0,0,0,.48);
+    backdrop-filter: blur(18px);
+    opacity: 0;
+    transform: translateY(-6px) scale(.98);
+    transition: opacity 150ms ease, transform 150ms ease, display 150ms allow-discrete;
+  }
+
+  select:not([multiple])::picker(select):popover-open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  select:not([multiple]) option {
+    min-height: 40px;
+    margin: 2px 0;
+    padding: 9px 11px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: #ddd8d4;
+    cursor: pointer;
+    transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+  }
+
+  select:not([multiple]) option:hover,
+  select:not([multiple]) option:focus-visible {
+    background: rgba(255,255,255,.075);
+    color: #fff;
+    transform: translateX(2px);
+    outline: none;
+  }
+
+  select:not([multiple]) option:checked {
+    background: linear-gradient(135deg,rgba(211,48,45,.95),rgba(151,28,33,.95));
+    color: #fff;
+    font-weight: 800;
+  }
+
+  select:not([multiple]) option::checkmark {
+    order: 1;
+    margin-left: auto;
+    color: #fff;
+  }
+}
+
 .request-panel { overflow: hidden; }
 .request-panel-head { align-items: flex-start; }
 
