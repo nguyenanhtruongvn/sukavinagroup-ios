@@ -623,6 +623,7 @@ private struct AttendancePunch: Decodable, Identifiable {
 
 private struct AttendanceMonthOption: Identifiable {
     let value: String
+    let title: String
     let label: String
     var id: String { value }
 }
@@ -1556,13 +1557,18 @@ private struct AttendanceHistoryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Picker("Tháng", selection: $selectedMonth) {
+                HStack(spacing: 6) {
                     ForEach(monthOptions) { option in
-                        Text(option.label).tag(option.value)
+                        monthTab(option)
                     }
                 }
-                .pickerStyle(.menu)
-                .tint(AppTheme.red)
+                .padding(5)
+                .background(AppTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .stroke(AppTheme.muted.opacity(0.18), lineWidth: 1)
+                }
 
                 if isLoading {
                     ProgressView("Đang tải bảng công...").tint(AppTheme.red)
@@ -1597,9 +1603,36 @@ private struct AttendanceHistoryView: View {
             guard let date = Calendar.current.date(byAdding: .month, value: -offset, to: Date()) else { return nil }
             return AttendanceMonthOption(
                 value: Self.monthValue(date),
-                label: date.formatted(.dateTime.month(.wide).year())
+                title: offset == 0 ? "Tháng này" : "Tháng trước",
+                label: Self.monthLabel(date)
             )
         }
+    }
+
+    private func monthTab(_ option: AttendanceMonthOption) -> some View {
+        let isSelected = selectedMonth == option.value
+        return Button {
+            withAnimation(.easeOut(duration: 0.2)) {
+                selectedMonth = option.value
+            }
+        } label: {
+            VStack(spacing: 3) {
+                Text(option.title)
+                    .font(.subheadline.weight(.semibold))
+                Text(option.label)
+                    .font(.caption2.weight(.medium))
+                    .opacity(isSelected ? 0.82 : 0.7)
+            }
+            .foregroundStyle(isSelected ? Color.white : AppTheme.muted)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(isSelected ? AppTheme.red : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(option.title), \(option.label)")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -1652,6 +1685,13 @@ private struct AttendanceHistoryView: View {
     private static func monthValue(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: date)
+    }
+
+    private static func monthLabel(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.dateFormat = "'Tháng' M, yyyy"
         return formatter.string(from: date)
     }
 }
