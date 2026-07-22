@@ -325,6 +325,7 @@ h1 {
 .account-popover-actions { display: grid; gap: 7px; margin-top: 12px; }
 .account-popover-actions button { display: grid; grid-template-columns: 38px 1fr auto; gap: 10px; align-items: center; width: 100%; padding: 10px; border: 0; border-radius: 13px; background: transparent; color: #f5f1ed; text-align: left; cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
 .account-popover-actions button:hover { transform: translateX(2px); background: rgba(255,255,255,.065); }
+.account-popover-actions button:disabled { opacity: .55; cursor: wait; }
 .account-popover-actions button > span { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: rgba(239,75,69,.12); color: #ff7770; font-size: 1.15rem; }
 .account-popover-actions button div { display: grid; gap: 3px; }
 .account-popover-actions button strong { font-size: .87rem; }
@@ -355,6 +356,12 @@ h1 {
 .password-field-error { margin: -3px 0 0; color: #ff8c86; font-size: .75rem; }
 .password-submit { width: 100%; min-height: 50px; margin-top: 17px; border: 0; border-radius: 14px; background: linear-gradient(135deg,#ec3c37,#bd2025); color: #fff; font-weight: 850; cursor: pointer; box-shadow: 0 12px 30px rgba(190,32,37,.22); }
 .password-submit:disabled { opacity: .48; cursor: not-allowed; box-shadow: none; }
+
+.auth-divider { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: .72rem; }
+.auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: rgba(255,255,255,.09); }
+.passkey-login-button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; border: 1px solid rgba(255,255,255,.12) !important; background: rgba(255,255,255,.065) !important; color: #f7f3ef !important; box-shadow: none !important; }
+.passkey-login-button svg { width: 23px; fill: none; stroke: #ff7770; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.passkey-login-button:hover { border-color: rgba(255,119,112,.42) !important; background: rgba(255,255,255,.1) !important; }
 
 .notification-button {
   position: relative;

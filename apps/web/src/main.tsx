@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactDOM from 'react-dom/client';
+import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import './styles.css';
 
 type Dashboard = {
@@ -93,6 +94,7 @@ type AccessProfile = {
   protected?: boolean;
   email?: string | null;
   passwordChangedAt?: string | null;
+  passkeyEnabled?: boolean;
 };
 
 const permissionOptions: Array<{ key: PermissionKey; label: string; description: string }> = [
@@ -408,6 +410,7 @@ function App() {
   const [passwordEmail, setPasswordEmail] = useState('');
   const [passwordForm, setPasswordForm] = useState({ code: '', password: '', confirmation: '' });
   const [passwordWorking, setPasswordWorking] = useState(false);
+  const [passkeyWorking, setPasskeyWorking] = useState(false);
   const [hiddenNotificationArticleIds, setHiddenNotificationArticleIds] = useState<Set<string>>(new Set());
   const [selectedArticle, setSelectedArticle] = useState<ContentItem | null>(null);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
@@ -749,6 +752,68 @@ function App() {
     setContents([]);
     setNotificationOpen(false);
     setError('');
+  };
+
+  const signInWithPasskey = async () => {
+    setPasskeyWorking(true);
+    setError('');
+    try {
+      const optionsResponse = await fetch('/api/auth/passkeys/login/options', { method: 'POST' });
+      const optionsResult = (await optionsResponse.json()) as { options: Parameters<typeof startAuthentication>[0]['optionsJSON']; challengeToken: string; message?: string };
+      if (!optionsResponse.ok) throw new Error(optionsResult.message || 'Không thể bắt đầu xác thực sinh trắc học.');
+      const credential = await startAuthentication({ optionsJSON: optionsResult.options });
+      const verifyResponse = await fetch('/api/auth/passkeys/login/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken: optionsResult.challengeToken, response: credential }),
+      });
+      const result = (await verifyResponse.json().catch(() => null)) as ({ accessToken?: string; user?: AccessProfile; message?: string } | null);
+      if (!verifyResponse.ok || !result?.accessToken || !result.user) throw new Error(result?.message || 'Không thể xác minh sinh trắc học.');
+      if (isAdminRoute && result.user.accountType === 'EMPLOYEE') throw new Error('Tài khoản nhân viên không có quyền truy cập trang quản trị');
+      localStorage.setItem('sukavina_token', result.accessToken);
+      setCurrentUser(result.user);
+      setToken(result.accessToken);
+    } catch (passkeyError) {
+      const name = passkeyError instanceof DOMException ? passkeyError.name : '';
+      if (name !== 'NotAllowedError') setError(passkeyError instanceof Error ? passkeyError.message : 'Không thể đăng nhập bằng sinh trắc học.');
+    } finally {
+      setPasskeyWorking(false);
+    }
+  };
+
+  const setWebsitePasskey = async (enabled: boolean) => {
+    if (!token) return;
+    setPasskeyWorking(true);
+    try {
+      if (enabled) {
+        const optionsResponse = await fetch('/api/auth/passkeys/register/options', {
+          method: 'POST', headers: { Authorization: `Bearer ${token}` },
+        });
+        const optionsResult = (await optionsResponse.json()) as { options: Parameters<typeof startRegistration>[0]['optionsJSON']; challengeToken: string; message?: string };
+        if (!optionsResponse.ok) throw new Error(optionsResult.message || 'Không thể bật sinh trắc học.');
+        const credential = await startRegistration({ optionsJSON: optionsResult.options });
+        const verifyResponse = await fetch('/api/auth/passkeys/register/verify', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ challengeToken: optionsResult.challengeToken, response: credential }),
+        });
+        const result = (await verifyResponse.json().catch(() => null)) as { message?: string } | null;
+        if (!verifyResponse.ok) throw new Error(result?.message || 'Không thể bật sinh trắc học.');
+        setCurrentUser((current) => current ? { ...current, passkeyEnabled: true } : current);
+        setToast({ type: 'success', message: result?.message || 'Đã bật đăng nhập bằng sinh trắc học.' });
+      } else {
+        const response = await fetch('/api/auth/passkeys', { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+        const result = (await response.json().catch(() => null)) as { message?: string } | null;
+        if (!response.ok) throw new Error(result?.message || 'Không thể tắt sinh trắc học.');
+        setCurrentUser((current) => current ? { ...current, passkeyEnabled: false } : current);
+        setToast({ type: 'success', message: result?.message || 'Đã tắt đăng nhập bằng sinh trắc học.' });
+      }
+    } catch (passkeyError) {
+      const name = passkeyError instanceof DOMException ? passkeyError.name : '';
+      if (name !== 'NotAllowedError') setToast({ type: 'error', message: passkeyError instanceof Error ? passkeyError.message : 'Không thể cập nhật sinh trắc học.' });
+    } finally {
+      setPasskeyWorking(false);
+    }
   };
 
   const deleteMyAccount = async () => {
@@ -1879,6 +1944,11 @@ function App() {
             <button type="submit" disabled={loading}>
               {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </button>
+            <div className="auth-divider"><span>hoặc</span></div>
+            <button type="button" className="passkey-login-button" disabled={loading || passkeyWorking} onClick={() => void signInWithPasskey()}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 11.5a4.5 4.5 0 1 1 4.1 4.48M8.5 8.5v3h3M15 16.5h6m-2-2v4" /></svg>
+              <span>{passkeyWorking ? 'Đang xác thực...' : 'Đăng nhập bằng sinh trắc học'}</span>
+            </button>
             {false ? (
               <button
                 type="button"
@@ -2108,6 +2178,7 @@ function App() {
                   {!currentUser?.email ? <p className="account-email-warning">Cần cập nhật email để đổi mật khẩu và bảo vệ tài khoản.</p> : null}
                   <div className="account-popover-actions">
                     <button type="button" onClick={openPasswordChange}><span>⌁</span><div><strong>Đổi mật khẩu</strong><small>Xác thực bằng mã OTP qua email</small></div><b>›</b></button>
+                    <button type="button" disabled={passkeyWorking} onClick={() => void setWebsitePasskey(!currentUser?.passkeyEnabled)}><span>◎</span><div><strong>{currentUser?.passkeyEnabled ? 'Tắt sinh trắc học' : 'Bật sinh trắc học'}</strong><small>{currentUser?.passkeyEnabled ? 'Passkey đang hoạt động trên website' : 'Dùng Face ID, Touch ID hoặc Windows Hello'}</small></div><b>{passkeyWorking ? '…' : currentUser?.passkeyEnabled ? '✓' : '›'}</b></button>
                     <button type="button" onClick={signOut}><span>↪</span><div><strong>Đăng xuất</strong><small>Kết thúc phiên trên thiết bị này</small></div><b>›</b></button>
                   </div>
                 </aside>

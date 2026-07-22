@@ -53,6 +53,21 @@ model Employee {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   requests          EmployeeRequest[]
+  passkeys          WebAuthnCredential[]
+}
+
+model WebAuthnCredential {
+  id           String   @id
+  employeeId   String
+  publicKey    Bytes
+  counter      BigInt   @default(0)
+  transports   String[] @default([])
+  deviceType   String
+  backedUp     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
 }
 
 model EmployeeRequest {
