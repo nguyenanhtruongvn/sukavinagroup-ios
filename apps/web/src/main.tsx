@@ -2412,7 +2412,7 @@ function App() {
 
       {attendanceOpen ? (
         <div
-          className="article-modal-backdrop"
+          className="article-modal-backdrop attendance-modal-backdrop"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setAttendanceOpen(false);
@@ -2445,7 +2445,10 @@ function App() {
                   ['Thứ 6', 'T6'], ['Thứ 7', 'T7'], ['Chủ nhật', 'CN'],
                 ].map(([weekday, short]) => <strong key={weekday}><span>{weekday}</span><i>{short}</i></strong>)}
               </div>
-              <div className="attendance-calendar-grid">
+              <div
+                className="attendance-calendar-grid"
+                style={{ '--attendance-weeks': Math.ceil(calendarDays.length / 7) } as React.CSSProperties}
+              >
                 {calendarDays.map((day, index) => {
                   if (!day) return <div className="attendance-day attendance-day-empty" key={`empty-${index}`} />;
                   const date = `${attendanceMonth}-${String(day).padStart(2, '0')}`;
