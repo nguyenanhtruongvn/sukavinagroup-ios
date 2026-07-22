@@ -670,6 +670,7 @@ private final class SessionStore: ObservableObject {
     @Published var unreadCount = 0
     @Published var requestUnreadCount = 0
     @Published var biometricsEnabled = BiometricPreferences.enabled
+    @Published var passwordChangeRequiresEmail = false
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
@@ -1003,6 +1004,7 @@ private final class SessionStore: ObservableObject {
 
     func requestPasswordChange() async -> PasswordChangeRequestResponse? {
         guard let token else { return nil }
+        passwordChangeRequiresEmail = false
         isWorking = true
         defer { isWorking = false }
         do {
@@ -1010,9 +1012,24 @@ private final class SessionStore: ObservableObject {
                 "auth/password-change/request", method: "POST", token: token
             )
         } catch {
-            present(error)
+            if error.localizedDescription.localizedCaseInsensitiveContains("email") {
+                presentMissingEmailForPasswordChange()
+            } else {
+                present(error)
+            }
             return nil
         }
+    }
+
+    var hasLinkedEmail: Bool {
+        !(profile?.email?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+    }
+
+    func presentMissingEmailForPasswordChange() {
+        passwordChangeRequiresEmail = true
+        errorTitle = "Cần cập nhật email"
+        errorMessage = "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email trước khi đổi mật khẩu."
+        errorOffersSettings = false
     }
 
     func confirmPasswordChange(code: String, newPassword: String) async -> Bool {
@@ -1088,7 +1105,7 @@ private struct ElegantAppAlert: View {
                 Circle()
                     .stroke(AppTheme.red.opacity(0.28), lineWidth: 1)
                     .frame(width: 68, height: 68)
-                Image(systemName: offersSettings ? "antenna.radiowaves.left.and.right.slash" : "exclamationmark.shield.fill")
+                Image(systemName: alertIcon)
                     .font(.system(size: 27, weight: .semibold))
                     .foregroundColor(AppTheme.red)
             }
@@ -1134,6 +1151,12 @@ private struct ElegantAppAlert: View {
         .adaptiveGlassSurface(cornerRadius: 28, tint: AppTheme.deepRed.opacity(0.22))
         .shadow(color: .black.opacity(0.42), radius: 30, y: 16)
         .frame(maxWidth: 390)
+    }
+
+    private var alertIcon: String {
+        if offersSettings { return "antenna.radiowaves.left.and.right.slash" }
+        if title == "Cần cập nhật email" { return "envelope.badge.fill" }
+        return "exclamationmark.shield.fill"
     }
 }
 
@@ -2424,7 +2447,8 @@ private struct ProfileView: View {
 
                     accountSectionTitle("BẢO MẬT")
                     Button {
-                        if passwordChangedThisMonth { showPasswordChangeLimit = true }
+                        if !session.hasLinkedEmail { session.presentMissingEmailForPasswordChange() }
+                        else if passwordChangedThisMonth { showPasswordChangeLimit = true }
                         else { showPasswordChange = true }
                     } label: {
                         HStack(spacing: 14) {
@@ -2613,6 +2637,8 @@ private struct PasswordChangeView: View {
                                 if let response = await session.requestPasswordChange() {
                                     email = response.email
                                     otpSent = true
+                                } else if session.passwordChangeRequiresEmail {
+                                    dismiss()
                                 }
                             }
                         }
