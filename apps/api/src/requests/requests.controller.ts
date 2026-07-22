@@ -19,6 +19,14 @@ export class RequestsController {
     return this.requests.adminList(req.user);
   }
 
+  @Delete('admin/:id')
+  adminDelete(
+    @Req() req: { user: { sub: string; accountType?: string } },
+    @Param('id') id: string,
+  ) {
+    return this.requests.adminDelete(req.user, id);
+  }
+
   @Post()
   create(
     @Req() req: { user: { sub: string } },

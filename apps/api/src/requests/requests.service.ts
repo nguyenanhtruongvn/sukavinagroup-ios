@@ -61,6 +61,20 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async adminDelete(user: { sub: string; accountType?: string }, id: string) {
+    if (user.accountType !== 'SUPER_ADMIN') {
+      throw new ForbiddenException('Chỉ tài khoản Admin tổng được xóa đơn từ');
+    }
+    const request = await this.prisma.employeeRequest.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException('Không tìm thấy đơn');
+    await this.prisma.$transaction([
+      this.prisma.userNotification.deleteMany({ where: { requestId: id } }),
+      this.prisma.employeeRequest.delete({ where: { id } }),
+    ]);
+    this.events.notify('request_changed');
+    return { message: 'Đã xóa đơn từ khỏi hệ thống.' };
+  }
+
   async approvals(managerEmployeeId: string) {
     await this.autoApproveExpired();
     return this.prisma.employeeRequest.findMany({

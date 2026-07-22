@@ -369,6 +369,8 @@ function App() {
   const [adminRequestStatus, setAdminRequestStatus] = useState<'all' | EmployeeRequest['status']>('all');
   const [adminRequestPage, setAdminRequestPage] = useState(1);
   const [adminRequestDetail, setAdminRequestDetail] = useState<EmployeeRequest | null>(null);
+  const [adminRequestDeleteConfirm, setAdminRequestDeleteConfirm] = useState<EmployeeRequest | null>(null);
+  const [adminRequestDeleting, setAdminRequestDeleting] = useState(false);
   const [employeeForm, setEmployeeForm] = useState({
     employeeCode: '',
     fullName: '',
@@ -537,6 +539,27 @@ function App() {
     }
     setAdminRequests(result);
     setAdminRequestDetail((current) => current ? result.find((item) => item.id === current.id) ?? current : null);
+  };
+
+  const deleteAdminRequest = async () => {
+    if (!token || !adminRequestDeleteConfirm || !isSuperAdmin) return;
+    setAdminRequestDeleting(true);
+    try {
+      const response = await fetch(`/api/me/requests/admin/${encodeURIComponent(adminRequestDeleteConfirm.id)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(result?.message || 'Không thể xóa đơn từ');
+      setAdminRequestDeleteConfirm(null);
+      setAdminRequestDetail(null);
+      await refreshAdminRequests();
+      setToast({ type: 'success', message: result?.message || 'Đã xóa đơn từ.' });
+    } catch (deleteError) {
+      setToast({ type: 'error', message: deleteError instanceof Error ? deleteError.message : 'Không thể xóa đơn từ' });
+    } finally {
+      setAdminRequestDeleting(false);
+    }
   };
 
   useEffect(() => {
@@ -2479,8 +2502,18 @@ function App() {
             <div className="admin-request-detail-grid"><span><small>Bắt đầu</small><strong>{new Date(adminRequestDetail.startsAt).toLocaleString('vi-VN')}</strong></span><span><small>Kết thúc</small><strong>{new Date(adminRequestDetail.endsAt).toLocaleString('vi-VN')}</strong></span><span><small>Ngày tạo</small><strong>{new Date(adminRequestDetail.createdAt).toLocaleString('vi-VN')}</strong></span><span><small>Quản lý phụ trách</small><strong>{adminRequestDetail.managerEmployeeCode || 'Chưa gán'}</strong></span></div>
             <section><small>Lý do tạo đơn</small><p>{adminRequestDetail.reason}</p></section>
             {adminRequestDetail.decisionNote ? <section><small>Ghi chú xử lý</small><p>{adminRequestDetail.decisionNote}</p></section> : null}
-            <footer><span>Biểu mẫu này chỉ dùng để xem dữ liệu.</span><button type="button" className="ghost-button" onClick={() => setAdminRequestDetail(null)}>Đóng</button></footer>
+            <footer><span>{isSuperAdmin ? 'Admin tổng có thể xóa vĩnh viễn đơn này.' : 'Biểu mẫu này chỉ dùng để xem dữ liệu.'}</span><div>{isSuperAdmin ? <button type="button" className="admin-request-delete-button" onClick={() => setAdminRequestDeleteConfirm(adminRequestDetail)}>Xóa đơn</button> : null}<button type="button" className="ghost-button" onClick={() => setAdminRequestDetail(null)}>Đóng</button></div></footer>
           </article>
+        </div>
+      ) : null}
+
+      {adminRequestDeleteConfirm ? (
+        <div className="article-modal-backdrop admin-request-delete-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !adminRequestDeleting) setAdminRequestDeleteConfirm(null); }}>
+          <section className="admin-request-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="admin-request-delete-title">
+            <span className="admin-request-delete-icon">!</span>
+            <div><p className="panel-label">Xác nhận thao tác</p><h2 id="admin-request-delete-title">Xóa vĩnh viễn đơn từ?</h2><p>Đơn <strong>{requestKindLabels[adminRequestDeleteConfirm.kind]}</strong> của <strong>{adminRequestDeleteConfirm.employee?.fullName || adminRequestDeleteConfirm.employee?.employeeCode}</strong> và các thông báo liên quan sẽ bị xóa khỏi toàn bộ hệ thống. Thao tác này không thể hoàn tác.</p></div>
+            <footer><button type="button" className="ghost-button" disabled={adminRequestDeleting} onClick={() => setAdminRequestDeleteConfirm(null)}>Giữ lại</button><button type="button" className="admin-request-confirm-delete" disabled={adminRequestDeleting} onClick={() => void deleteAdminRequest()}>{adminRequestDeleting ? 'Đang xóa...' : 'Xác nhận xóa'}</button></footer>
+          </section>
         </div>
       ) : null}
 

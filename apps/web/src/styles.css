@@ -407,6 +407,20 @@ h1 {
 .admin-request-detail > section { margin: 10px 22px; padding: 13px 14px; border-left: 3px solid rgba(255,112,104,.7); border-radius: 0 13px 13px 0; background: rgba(255,255,255,.035); }
 .admin-request-detail > section p { margin: 6px 0 0; line-height: 1.55; }
 .admin-request-detail > footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 18px; padding: 14px 22px; border-top: 1px solid rgba(255,255,255,.08); color: var(--muted); font-size: .75rem; }
+.admin-request-detail > footer > div { display: flex; gap: 8px; }
+.admin-request-delete-button, .admin-request-confirm-delete { border: 1px solid rgba(255,99,92,.28); border-radius: 11px; background: rgba(197,38,40,.12); color: #ff8a83; font-weight: 800; cursor: pointer; }
+.admin-request-delete-button { padding: 9px 12px; }
+.admin-request-delete-button:hover { background: rgba(197,38,40,.2); }
+.admin-request-delete-backdrop { z-index: 1500; }
+.admin-request-delete-dialog { display: grid; grid-template-columns: 52px 1fr; gap: 16px; width: min(520px,calc(100vw - 28px)); padding: 22px; border: 1px solid rgba(255,112,104,.2); border-radius: 22px; background: #18171b; box-shadow: 0 30px 90px rgba(0,0,0,.62); }
+.admin-request-delete-icon { display: grid; width: 52px; height: 52px; place-items: center; border-radius: 16px; background: rgba(220,49,47,.13); color: #ff766f; font-size: 1.5rem; font-weight: 900; }
+.admin-request-delete-dialog .panel-label { margin-bottom: 5px; }
+.admin-request-delete-dialog h2 { margin: 0; font-size: 1.3rem; }
+.admin-request-delete-dialog p:not(.panel-label) { margin: 10px 0 0; color: var(--muted); line-height: 1.6; }
+.admin-request-delete-dialog p strong { color: #f6f0ec; }
+.admin-request-delete-dialog footer { display: flex; justify-content: flex-end; gap: 9px; grid-column: 1/-1; padding-top: 3px; }
+.admin-request-confirm-delete { min-width: 130px; padding: 10px 14px; background: linear-gradient(135deg,#d83a35,#9f1d23); color: #fff; }
+.admin-request-confirm-delete:disabled { opacity: .5; cursor: wait; }
 
 @media (max-width: 900px) {
   .admin-request-filters { grid-template-columns: 1fr 1fr; }
@@ -2956,7 +2970,8 @@ select:not([multiple]) {
   appearance: none;
   -webkit-appearance: none;
   color-scheme: dark;
-  padding-right: 40px !important;
+  min-height: 38px;
+  padding: 7px 38px 7px 11px !important;
   background-color: #24252b !important;
   background-image:
     linear-gradient(45deg, transparent 50%, #ff8179 50%),
@@ -2972,6 +2987,7 @@ select:not([multiple]) {
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 5px 14px rgba(0,0,0,.08);
   cursor: pointer;
   font: inherit;
+  font-size: .79rem;
   font-weight: 650;
   transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
@@ -3002,7 +3018,7 @@ select optgroup {
   font: inherit;
 }
 
-select option { padding: 10px 12px; }
+select option { padding: 7px 10px; }
 select option:checked { background: #a82a2d; color: #fff; }
 
 @supports (appearance: base-select) {
@@ -3013,7 +3029,7 @@ select option:checked { background: #a82a2d; color: #fff; }
 
   select:not([multiple]) {
     background-image: none !important;
-    padding-right: 12px !important;
+    padding: 7px 10px !important;
   }
 
   select:not([multiple])::picker-icon {
@@ -3024,10 +3040,10 @@ select option:checked { background: #a82a2d; color: #fff; }
   select:not([multiple]):open::picker-icon { rotate: 180deg; }
 
   select:not([multiple])::picker(select) {
-    margin-top: 7px;
-    padding: 6px;
+    margin-top: 5px;
+    padding: 4px;
     border: 1px solid rgba(255,255,255,.11);
-    border-radius: 15px;
+    border-radius: 12px;
     background: rgba(25,26,31,.98);
     box-shadow: 0 22px 55px rgba(0,0,0,.48);
     backdrop-filter: blur(18px);
@@ -3042,11 +3058,11 @@ select option:checked { background: #a82a2d; color: #fff; }
   }
 
   select:not([multiple]) option {
-    min-height: 40px;
-    margin: 2px 0;
-    padding: 9px 11px;
+    min-height: 34px;
+    margin: 1px 0;
+    padding: 6px 9px;
     border: 0;
-    border-radius: 10px;
+    border-radius: 8px;
     background: transparent;
     color: #ddd8d4;
     cursor: pointer;
@@ -3072,6 +3088,12 @@ select option:checked { background: #a82a2d; color: #fff; }
     margin-left: auto;
     color: #fff;
   }
+}
+
+.editor-toolbar select:not([multiple]) {
+  min-height: 32px;
+  padding-block: 4px !important;
+  font-size: .74rem;
 }
 
 .request-panel { overflow: hidden; }
