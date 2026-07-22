@@ -1991,6 +1991,15 @@ function App() {
   const effectiveAttendanceDays =
     attendanceHistory?.month === attendanceMonth ? attendanceHistory.days : [];
   const attendanceByDate = new Map(effectiveAttendanceDays.map((day) => [day.date, day]));
+  const restOrMissingDayCount = Array.from({ length: calendarDayCount }, (_, index) => index + 1)
+    .filter((day) => {
+      const date = `${attendanceMonth}-${String(day).padStart(2, '0')}`;
+      if (attendanceByDate.has(date)) return false;
+      const dayDate = new Date(calendarYear, calendarMonthNumber - 1, day, 23, 59, 59);
+      const isSunday = dayDate.getDay() === 0;
+      const isFuture = dayDate.getTime() > Date.now() && dayDate.toDateString() !== new Date().toDateString();
+      return isSunday || !isFuture;
+    }).length;
   const workedMinutes = effectiveAttendanceDays.reduce((total, day) => {
     if (!day.checkIn || !day.checkOut) return total;
     return total + Math.max(0, Math.round((new Date(day.checkOut).getTime() - new Date(day.checkIn).getTime()) / 60000));
@@ -1999,6 +2008,15 @@ function App() {
   const averageMinutes = effectiveAttendanceDays.length
     ? Math.round(workedMinutes / effectiveAttendanceDays.length)
     : 0;
+  const selectedAttendanceMonthIndex = attendanceMonthOptions.findIndex((option) => option.value === attendanceMonth);
+  const showPreviousAttendanceMonth = () => {
+    const previous = attendanceMonthOptions[selectedAttendanceMonthIndex + 1];
+    if (previous) setAttendanceMonth(previous.value);
+  };
+  const showNextAttendanceMonth = () => {
+    const next = attendanceMonthOptions[selectedAttendanceMonthIndex - 1];
+    if (next) setAttendanceMonth(next.value);
+  };
 
   return (
     <main className="dashboard-shell">
@@ -2409,23 +2427,23 @@ function App() {
               <button type="button" className="ghost-button" onClick={() => setAttendanceOpen(false)}>Đóng</button>
             </header>
             <div className="article-modal-content attendance-calendar-content">
-              <label className="attendance-month-picker">
-                <span>Chọn tháng</span>
-                <select value={attendanceMonth} onChange={(event) => setAttendanceMonth(event.target.value)}>
-                  {attendanceMonthOptions.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
+              <nav className="attendance-month-nav" aria-label="Chọn tháng chấm công">
+                <button type="button" onClick={showPreviousAttendanceMonth} disabled={selectedAttendanceMonthIndex >= attendanceMonthOptions.length - 1} aria-label="Xem tháng trước"><span>‹</span><small>Tháng trước</small></button>
+                <div><small>Đang xem</small><strong>{attendanceMonthOptions[selectedAttendanceMonthIndex]?.label || attendanceMonth}</strong></div>
+                <button type="button" onClick={showNextAttendanceMonth} disabled={selectedAttendanceMonthIndex <= 0} aria-label="Xem tháng sau"><small>Tháng sau</small><span>›</span></button>
+              </nav>
               {attendanceLoading ? <p className="loading">Đang tải bảng công...</p> : null}
               <div className="attendance-summary-grid">
                 <div className="attendance-summary-card"><span>Tổng giờ làm việc</span><strong>{formatMinutes(workedMinutes)}</strong></div>
                 <div className="attendance-summary-card"><span>Số ngày công</span><strong>{effectiveAttendanceDays.length} ngày</strong></div>
                 <div className="attendance-summary-card"><span>Trung bình/ngày</span><strong>{formatMinutes(averageMinutes)}</strong></div>
-                <div className="attendance-summary-card"><span>Ngày không ghi nhận</span><strong>{calendarDayCount - effectiveAttendanceDays.length} ngày</strong></div>
+                <div className="attendance-summary-card"><span>Nghỉ / chưa ghi nhận</span><strong>{restOrMissingDayCount} ngày</strong></div>
               </div>
               <div className="attendance-weekdays">
-                {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map((weekday) => <strong key={weekday}>{weekday}</strong>)}
+                {[
+                  ['Thứ 2', 'T2'], ['Thứ 3', 'T3'], ['Thứ 4', 'T4'], ['Thứ 5', 'T5'],
+                  ['Thứ 6', 'T6'], ['Thứ 7', 'T7'], ['Chủ nhật', 'CN'],
+                ].map(([weekday, short]) => <strong key={weekday}><span>{weekday}</span><i>{short}</i></strong>)}
               </div>
               <div className="attendance-calendar-grid">
                 {calendarDays.map((day, index) => {
@@ -2433,10 +2451,13 @@ function App() {
                   const date = `${attendanceMonth}-${String(day).padStart(2, '0')}`;
                   const attendanceDay = attendanceByDate.get(date);
                   const weekdayIndex = index % 7;
-                  const isWeekend = weekdayIndex >= 5;
+                  const isSunday = weekdayIndex === 6;
+                  const dayDate = new Date(calendarYear, calendarMonthNumber - 1, day, 23, 59, 59);
+                  const isFuture = dayDate.getTime() > Date.now() && dayDate.toDateString() !== new Date().toDateString();
+                  const isRestOrMissing = !attendanceDay && (isSunday || !isFuture);
                   return (
-                    <div className={`attendance-day${isWeekend ? ' attendance-day-weekend' : ''}`} key={date}>
-                      <div className="attendance-day-head"><strong>{day}</strong><span>{attendanceDay?.punchCount ?? 0} lượt</span></div>
+                    <div className={`attendance-day${isSunday ? ' attendance-day-sunday' : ''}${isRestOrMissing ? ' attendance-day-missing' : ''}${isFuture && !isSunday ? ' attendance-day-future' : ''}`} key={date}>
+                      <div className="attendance-day-head"><strong>{day}</strong>{attendanceDay ? <span>{attendanceDay.punchCount} lượt</span> : null}</div>
                       {attendanceDay ? (
                         <>
                           <div className="attendance-time attendance-time-in"><span>Vào</span><strong>{formatAttendanceTime(attendanceDay.checkIn)}</strong></div>
@@ -2446,12 +2467,9 @@ function App() {
                               ? Math.max(0, Math.round((new Date(attendanceDay.checkOut).getTime() - new Date(attendanceDay.checkIn).getTime()) / 60000))
                               : 0,
                           )}</small>
-                          <div className="attendance-punches">
-                            {(attendanceDay.punches ?? []).map((punch) => <span key={punch.id}>{formatAttendanceTime(punch.punchedAt)} · {punch.source}</span>)}
-                          </div>
                         </>
                       ) : (
-                        <p>{isWeekend ? 'Nghỉ' : 'Chưa ghi nhận'}</p>
+                        <p>{isSunday ? 'Nghỉ' : isFuture ? 'Chưa tới' : 'Chưa ghi nhận'}</p>
                       )}
                     </div>
                   );
