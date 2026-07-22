@@ -91,6 +91,8 @@ type AccessProfile = {
   accountType: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE';
   permissions: string[];
   protected?: boolean;
+  email?: string | null;
+  passwordChangedAt?: string | null;
 };
 
 const permissionOptions: Array<{ key: PermissionKey; label: string; description: string }> = [
@@ -399,6 +401,13 @@ function App() {
   } | null>(null);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const notificationWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  const [passwordOtpSent, setPasswordOtpSent] = useState(false);
+  const [passwordEmail, setPasswordEmail] = useState('');
+  const [passwordForm, setPasswordForm] = useState({ code: '', password: '', confirmation: '' });
+  const [passwordWorking, setPasswordWorking] = useState(false);
   const [hiddenNotificationArticleIds, setHiddenNotificationArticleIds] = useState<Set<string>>(new Set());
   const [selectedArticle, setSelectedArticle] = useState<ContentItem | null>(null);
   const [attendanceOpen, setAttendanceOpen] = useState(false);
@@ -1430,6 +1439,7 @@ function App() {
 
   const openAccountApprovals = () => {
     setNotificationOpen(false);
+    setAccountOpen(false);
     setAdminTab('accounts');
     setError('');
     window.setTimeout(() => {
@@ -1438,6 +1448,61 @@ function App() {
         block: 'start',
       });
     }, 80);
+  };
+
+  const openPasswordChange = () => {
+    setAccountOpen(false);
+    if (!currentUser?.email?.trim()) {
+      setToast({ type: 'error', message: 'Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email.' });
+      return;
+    }
+    setPasswordOtpSent(false);
+    setPasswordEmail(currentUser.email);
+    setPasswordForm({ code: '', password: '', confirmation: '' });
+    setPasswordDialogOpen(true);
+  };
+
+  const requestPasswordOtp = async () => {
+    if (!token) return;
+    setPasswordWorking(true);
+    try {
+      const response = await fetch('/api/auth/password-change/request', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = (await response.json().catch(() => null)) as { email?: string; message?: string } | null;
+      if (!response.ok) throw new Error(result?.message || 'Không thể gửi mã OTP.');
+      setPasswordEmail(result?.email || currentUser?.email || 'email liên kết');
+      setPasswordOtpSent(true);
+      setToast({ type: 'success', message: `Mã OTP đã được gửi tới ${result?.email || currentUser?.email}.` });
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Không thể gửi mã OTP.';
+      setPasswordDialogOpen(false);
+      setToast({ type: 'error', message });
+    } finally {
+      setPasswordWorking(false);
+    }
+  };
+
+  const confirmPasswordChange = async () => {
+    if (!token || passwordForm.password.length < 6 || passwordForm.password !== passwordForm.confirmation) return;
+    setPasswordWorking(true);
+    try {
+      const response = await fetch('/api/auth/password-change/confirm', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: passwordForm.code.trim(), newPassword: passwordForm.password }),
+      });
+      const result = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(result?.message || 'Không thể đổi mật khẩu.');
+      setPasswordDialogOpen(false);
+      setPasswordForm({ code: '', password: '', confirmation: '' });
+      setToast({ type: 'success', message: result?.message || 'Đổi mật khẩu thành công.' });
+    } catch (confirmError) {
+      setToast({ type: 'error', message: confirmError instanceof Error ? confirmError.message : 'Không thể đổi mật khẩu.' });
+    } finally {
+      setPasswordWorking(false);
+    }
   };
 
   const acknowledgeNews = () => {
@@ -1490,6 +1555,15 @@ function App() {
     document.addEventListener('pointerdown', closeOutside);
     return () => document.removeEventListener('pointerdown', closeOutside);
   }, [notificationOpen, isAdminRoute]);
+
+  useEffect(() => {
+    if (!accountOpen || isAdminRoute) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!accountWrapRef.current?.contains(event.target as Node)) setAccountOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [accountOpen, isAdminRoute]);
 
   const decideNotificationRequest = async () => {
     if (!token || !notificationRequest) return;
@@ -2006,9 +2080,42 @@ function App() {
               ) : null}
             </div>
           ) : null}
-          <button className="ghost-button" onClick={signOut}>
-            Đăng xuất
-          </button>
+          {!isAdminRoute ? (
+            <div className="account-menu-wrap" ref={accountWrapRef}>
+              <button
+                type="button"
+                className={`account-menu-button ${accountOpen ? 'active' : ''}`}
+                onClick={() => {
+                  setNotificationOpen(false);
+                  setAccountOpen((current) => !current);
+                }}
+                aria-label="Mở tài khoản"
+                aria-expanded={accountOpen}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5Zm-7.25 8.5c.55-3.4 3.3-5.75 7.25-5.75s6.7 2.35 7.25 5.75" /></svg>
+              </button>
+              {accountOpen ? (
+                <aside className="account-popover" aria-label="Tài khoản cá nhân">
+                  <header className="account-popover-profile">
+                    <span className="account-avatar">{(currentUser?.name || 'NV').split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase()}</span>
+                    <div><strong>{currentUser?.name || data.name}</strong><small>{currentUser?.employeeCode}</small></div>
+                    <button type="button" className="account-popover-close" onClick={() => setAccountOpen(false)} aria-label="Đóng">×</button>
+                  </header>
+                  <div className="account-popover-details">
+                    <span><small>Vai trò</small><strong>{currentUser?.role || data.role}</strong></span>
+                    <span><small>Email</small><strong>{currentUser?.email || 'Chưa cập nhật'}</strong></span>
+                  </div>
+                  {!currentUser?.email ? <p className="account-email-warning">Cần cập nhật email để đổi mật khẩu và bảo vệ tài khoản.</p> : null}
+                  <div className="account-popover-actions">
+                    <button type="button" onClick={openPasswordChange}><span>⌁</span><div><strong>Đổi mật khẩu</strong><small>Xác thực bằng mã OTP qua email</small></div><b>›</b></button>
+                    <button type="button" onClick={signOut}><span>↪</span><div><strong>Đăng xuất</strong><small>Kết thúc phiên trên thiết bị này</small></div><b>›</b></button>
+                  </div>
+                </aside>
+              ) : null}
+            </div>
+          ) : (
+            <button className="ghost-button" onClick={signOut}>Đăng xuất</button>
+          )}
         </div>
       </header>
 
@@ -3176,6 +3283,40 @@ function App() {
             <button type="button" className="danger-button" onClick={() => setDeleteAccountOpen(true)}>Xóa tài khoản</button>
           </div>
         </section>
+      ) : null}
+
+      {passwordDialogOpen && !isAdminRoute ? (
+        <div className="dialog-backdrop account-dialog-backdrop" role="presentation" onMouseDown={() => { if (!passwordWorking) setPasswordDialogOpen(false); }}>
+          <section className="password-dialog" role="dialog" aria-modal="true" aria-labelledby="password-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="password-dialog-head">
+              <span className="password-dialog-icon">⌁</span>
+              <div><p className="panel-label">Bảo mật tài khoản</p><h2 id="password-dialog-title">Đổi mật khẩu</h2></div>
+              <button type="button" onClick={() => setPasswordDialogOpen(false)} disabled={passwordWorking} aria-label="Đóng">×</button>
+            </header>
+            <div className="password-steps" aria-label="Tiến trình đổi mật khẩu">
+              <span className="active"><i>1</i>Nhận OTP</span><b className={passwordOtpSent ? 'active' : ''} /><span className={passwordOtpSent ? 'active' : ''}><i>2</i>Mật khẩu mới</span>
+            </div>
+            <div className="password-email-card">
+              <span>✉</span><div><strong>{passwordOtpSent ? `OTP đã gửi tới ${passwordEmail}` : 'Xác minh qua email'}</strong><p>{passwordOtpSent ? 'Mã gồm 6 số và có hiệu lực trong 10 phút.' : `Mã xác nhận sẽ được gửi tới ${passwordEmail}.`}</p></div>
+            </div>
+            {passwordOtpSent ? (
+              <div className="password-fields">
+                <label><span>Mã OTP gồm 6 số</span><input inputMode="numeric" maxLength={6} autoComplete="one-time-code" value={passwordForm.code} onChange={(event) => setPasswordForm((current) => ({ ...current, code: event.target.value.replace(/\D/g, '') }))} /></label>
+                <label><span>Mật khẩu mới</span><input type="password" autoComplete="new-password" placeholder="Ít nhất 6 ký tự" value={passwordForm.password} onChange={(event) => setPasswordForm((current) => ({ ...current, password: event.target.value }))} /></label>
+                <label><span>Nhập lại mật khẩu</span><input type="password" autoComplete="new-password" value={passwordForm.confirmation} onChange={(event) => setPasswordForm((current) => ({ ...current, confirmation: event.target.value }))} /></label>
+                {passwordForm.confirmation && passwordForm.password !== passwordForm.confirmation ? <p className="password-field-error">Mật khẩu nhập lại chưa khớp.</p> : null}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className="password-submit"
+              disabled={passwordWorking || (passwordOtpSent && (passwordForm.code.length !== 6 || passwordForm.password.length < 6 || passwordForm.password !== passwordForm.confirmation))}
+              onClick={() => void (passwordOtpSent ? confirmPasswordChange() : requestPasswordOtp())}
+            >
+              {passwordWorking ? 'Đang xử lý...' : passwordOtpSent ? 'Xác nhận đổi mật khẩu' : 'Gửi mã OTP'}
+            </button>
+          </section>
+        </div>
       ) : null}
 
       {deleteAccountOpen && !isAdminRoute ? (
