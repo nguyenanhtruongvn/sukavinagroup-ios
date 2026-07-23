@@ -4,6 +4,7 @@ import Security
 import UserNotifications
 import Network
 import LocalAuthentication
+import WidgetKit
 
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -599,6 +600,39 @@ private struct AttendanceRecord: Decodable, Identifiable {
     let machineNo: Int
 }
 
+private enum AttendanceWidgetBridge {
+    static let appGroup = "group.net.sukavinagroup.portal"
+    static let kind = "SukavinaAttendanceWidget"
+    private static let stateKey = "attendance-widget-state"
+
+    private struct State: Codable {
+        let employeeName: String
+        let status: String
+        let checkIn: String?
+        let checkOut: String?
+        let updatedAt: Date
+    }
+
+    static func update(from dashboard: Dashboard) {
+        let records = dashboard.attendanceRecords ?? []
+        let state = State(
+            employeeName: dashboard.name,
+            status: dashboard.attendanceStatus,
+            checkIn: records.last?.punchedAt,
+            checkOut: records.count > 1 ? records.first?.punchedAt : nil,
+            updatedAt: Date()
+        )
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        UserDefaults(suiteName: appGroup)?.set(data, forKey: stateKey)
+        WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
+
+    static func clear() {
+        UserDefaults(suiteName: appGroup)?.removeObject(forKey: stateKey)
+        WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
+}
+
 private struct AttendanceMonth: Decodable {
     let month: String
     let days: [AttendanceDay]
@@ -840,6 +874,7 @@ private final class SessionStore: ObservableObject {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
             processNewArticles(fresh.contentItems)
             dashboard = fresh
+            AttendanceWidgetBridge.update(from: fresh)
             await refreshRequestNotificationCount()
         } catch {
             present(error)
@@ -853,6 +888,7 @@ private final class SessionStore: ObservableObject {
         token = nil
         profile = nil
         dashboard = nil
+        AttendanceWidgetBridge.clear()
         unreadCount = 0
         requestUnreadCount = 0
         state = .signedOut
