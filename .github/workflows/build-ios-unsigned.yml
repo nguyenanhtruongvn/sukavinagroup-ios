@@ -40,6 +40,36 @@ jobs:
             CURRENT_PROJECT_VERSION="$APP_BUILD" \
             clean build
 
+      - name: Embed capabilities for SideStore re-signing
+        run: |
+          set -euo pipefail
+          APP_PATH='build/DerivedData/Build/Products/Release-iphoneos/App.app'
+          WIDGET_PATH="$APP_PATH/PlugIns/AttendanceWidget.appex"
+          test -d "$WIDGET_PATH"
+
+          # SideStore discovers App Groups from the existing signatures before
+          # replacing them with the device's personal development certificate.
+          /usr/bin/codesign \
+            --force \
+            --sign - \
+            --timestamp=none \
+            --generate-entitlement-der \
+            --entitlements apps/ios/App/AttendanceWidget/AttendanceWidget.entitlements \
+            "$WIDGET_PATH"
+          /usr/bin/codesign \
+            --force \
+            --sign - \
+            --timestamp=none \
+            --generate-entitlement-der \
+            --entitlements apps/ios/App/App/App.entitlements \
+            "$APP_PATH"
+
+          /usr/bin/codesign --verify --deep --strict "$APP_PATH"
+          /usr/bin/codesign -d --entitlements :- "$APP_PATH" 2> build/app-entitlements.plist
+          /usr/bin/codesign -d --entitlements :- "$WIDGET_PATH" 2> build/widget-entitlements.plist
+          /usr/bin/grep -q 'group.net.sukavinagroup.portal' build/app-entitlements.plist
+          /usr/bin/grep -q 'group.net.sukavinagroup.portal' build/widget-entitlements.plist
+
       - name: Package unsigned IPA
         run: |
           set -euo pipefail

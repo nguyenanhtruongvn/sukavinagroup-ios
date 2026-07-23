@@ -623,12 +623,16 @@ private enum AttendanceWidgetBridge {
             updatedAt: Date()
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
-        UserDefaults(suiteName: appGroup)?.set(data, forKey: stateKey)
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.set(data, forKey: stateKey)
+        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
     static func clear() {
-        UserDefaults(suiteName: appGroup)?.removeObject(forKey: stateKey)
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.removeObject(forKey: stateKey)
+        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 }
