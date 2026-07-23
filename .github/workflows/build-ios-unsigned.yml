@@ -46,6 +46,10 @@ jobs:
           APP_PATH='build/DerivedData/Build/Products/Release-iphoneos/App.app'
           WIDGET_PATH="$APP_PATH/PlugIns/AttendanceWidget.appex"
           test -d "$WIDGET_PATH"
+          APP_GROUP=$(/usr/libexec/PlistBuddy -c 'Print :ALTAppGroups:0' "$APP_PATH/Info.plist")
+          WIDGET_GROUP=$(/usr/libexec/PlistBuddy -c 'Print :ALTAppGroups:0' "$WIDGET_PATH/Info.plist")
+          test "$APP_GROUP" = 'group.net.sukavinagroup.portal'
+          test "$WIDGET_GROUP" = "$APP_GROUP"
 
           # SideStore discovers App Groups from the existing signatures before
           # replacing them with the device's personal development certificate.

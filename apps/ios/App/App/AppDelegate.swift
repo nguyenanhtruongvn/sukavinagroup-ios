@@ -601,9 +601,14 @@ private struct AttendanceRecord: Decodable, Identifiable {
 }
 
 private enum AttendanceWidgetBridge {
-    static let appGroup = "group.net.sukavinagroup.portal"
+    private static let originalAppGroup = "group.net.sukavinagroup.portal"
     static let kind = "SukavinaAttendanceWidget"
     private static let stateKey = "attendance-widget-state"
+
+    private static var appGroup: String {
+        let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
+        return resignedGroups?.first(where: { $0.contains(originalAppGroup) }) ?? originalAppGroup
+    }
 
     private struct State: Codable {
         let employeeName: String

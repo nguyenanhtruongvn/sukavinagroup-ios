@@ -2,8 +2,13 @@ import SwiftUI
 import WidgetKit
 
 private enum WidgetStorage {
-    static let appGroup = "group.net.sukavinagroup.portal"
+    private static let originalAppGroup = "group.net.sukavinagroup.portal"
     static let stateKey = "attendance-widget-state"
+
+    private static var appGroup: String {
+        let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
+        return resignedGroups?.first(where: { $0.contains(originalAppGroup) }) ?? originalAppGroup
+    }
 
     struct State: Codable {
         let employeeName: String
