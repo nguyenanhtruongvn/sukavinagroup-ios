@@ -65,8 +65,8 @@ jobs:
             "$APP_PATH"
 
           /usr/bin/codesign --verify --deep --strict "$APP_PATH"
-          /usr/bin/codesign -d --entitlements :- "$APP_PATH" 2> build/app-entitlements.plist
-          /usr/bin/codesign -d --entitlements :- "$WIDGET_PATH" 2> build/widget-entitlements.plist
+          /usr/bin/codesign -d --entitlements :- "$APP_PATH" > build/app-entitlements.plist 2>/dev/null
+          /usr/bin/codesign -d --entitlements :- "$WIDGET_PATH" > build/widget-entitlements.plist 2>/dev/null
           /usr/bin/grep -q 'group.net.sukavinagroup.portal' build/app-entitlements.plist
           /usr/bin/grep -q 'group.net.sukavinagroup.portal' build/widget-entitlements.plist
 
