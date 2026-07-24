@@ -110,8 +110,9 @@ private struct AttendanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: AttendanceEntry
 
-    private let checkInColor = Color(red: 0.27, green: 0.96, blue: 0.75)
-    private let checkOutColor = Color(red: 1.00, green: 0.86, blue: 0.35)
+    private let inkColor = Color(red: 0.16, green: 0.11, blue: 0.14)
+    private let checkInColor = Color(red: 0.03, green: 0.48, blue: 0.37)
+    private let checkOutColor = Color(red: 0.78, green: 0.34, blue: 0.03)
 
     var body: some View {
         VStack(alignment: .leading, spacing: family == .systemSmall ? 10 : 12) {
@@ -126,28 +127,23 @@ private struct AttendanceWidgetView: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 1.00, green: 0.51, blue: 0.20),
-                        Color(red: 0.98, green: 0.20, blue: 0.28),
-                        Color(red: 0.66, green: 0.06, blue: 0.32),
+                        Color(red: 1.00, green: 0.97, blue: 0.91),
+                        Color(red: 1.00, green: 0.90, blue: 0.82),
+                        Color(red: 1.00, green: 0.83, blue: 0.77),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Circle()
-                    .fill(Color.yellow.opacity(0.24))
-                    .frame(width: family == .systemSmall ? 150 : 230)
-                    .blur(radius: 12)
-                    .offset(x: family == .systemSmall ? 72 : 145, y: -78)
-                Circle()
-                    .fill(Color(red: 1.00, green: 0.39, blue: 0.68).opacity(0.24))
-                    .frame(width: family == .systemSmall ? 130 : 210)
+                    .fill(Color.white.opacity(0.62))
+                    .frame(width: family == .systemSmall ? 140 : 220)
                     .blur(radius: 18)
-                    .offset(x: family == .systemSmall ? -78 : -160, y: 82)
-                LinearGradient(
-                    colors: [.white.opacity(0.15), .clear, .black.opacity(0.08)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    .offset(x: family == .systemSmall ? 78 : 155, y: -82)
+                Circle()
+                    .fill(Color(red: 1.00, green: 0.48, blue: 0.34).opacity(0.16))
+                    .frame(width: family == .systemSmall ? 115 : 190)
+                    .blur(radius: 20)
+                    .offset(x: family == .systemSmall ? -80 : -165, y: 88)
             }
         }
     }
@@ -158,18 +154,35 @@ private struct AttendanceWidgetView: View {
                 .font(.caption.bold())
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [.white, Color(red: 1.00, green: 0.90, blue: 0.50)],
+                        colors: [.white, Color(red: 1.00, green: 0.84, blue: 0.48)],
                         startPoint: .top,
                         endPoint: .bottom
                     )
                 )
                 .frame(width: 25, height: 25)
-                .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .background(.white.opacity(0.18), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             Text("CHẤM CÔNG HÔM NAY")
                 .font(.caption2.weight(.bold))
                 .tracking(0.7)
-                .foregroundStyle(.white.opacity(0.94))
+                .foregroundStyle(.white)
             Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.78, green: 0.04, blue: 0.12),
+                    Color(red: 0.96, green: 0.20, blue: 0.17),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(.white.opacity(0.42), lineWidth: 0.8)
         }
     }
 
@@ -192,7 +205,7 @@ private struct AttendanceWidgetView: View {
                 Spacer()
                 Text("Cập nhật \(state.updatedAt.formatted(date: .omitted, time: .shortened))")
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.72))
+                    .foregroundStyle(inkColor.opacity(0.62))
             }
         }
     }
@@ -204,16 +217,23 @@ private struct AttendanceWidgetView: View {
                 .foregroundStyle(color)
             Text(value)
                 .font(.title3.monospacedDigit().weight(.bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(inkColor)
                 .minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .background(
+            LinearGradient(
+                colors: [.white.opacity(0.98), color.opacity(0.12)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(.white.opacity(0.18), lineWidth: 0.7)
+                .stroke(color.opacity(0.32), lineWidth: 1)
         }
     }
 
@@ -227,29 +247,39 @@ private struct AttendanceWidgetView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(color)
                 Text(value)
                     .font(.title3.monospacedDigit().weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(inkColor)
             }
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .background(
+            LinearGradient(
+                colors: [.white.opacity(0.98), color.opacity(0.1)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(.white.opacity(0.2), lineWidth: 0.8)
+                .stroke(color.opacity(0.3), lineWidth: 1)
         }
     }
 
     private func statusLabel(_ status: String) -> some View {
         Label(status.isEmpty ? "Chưa chấm công" : status, systemImage: statusSymbol(status))
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.94))
+            .foregroundStyle(Color(red: 0.62, green: 0.04, blue: 0.10))
             .lineLimit(1)
             .padding(.horizontal, 9)
             .padding(.vertical, 5)
-            .background(.white.opacity(0.13), in: Capsule())
+            .background(.white.opacity(0.82), in: Capsule())
+            .overlay {
+                Capsule().stroke(Color(red: 0.76, green: 0.06, blue: 0.12).opacity(0.2), lineWidth: 0.8)
+            }
     }
 
     private var emptyContent: some View {
@@ -257,10 +287,10 @@ private struct AttendanceWidgetView: View {
             Spacer(minLength: 0)
             Text("--:--")
                 .font(.title2.monospacedDigit().bold())
-                .foregroundStyle(.white)
+                .foregroundStyle(inkColor)
             Text("Mở Sukavina để cập nhật dữ liệu chấm công.")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.82))
+                .foregroundStyle(inkColor.opacity(0.68))
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
