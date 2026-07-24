@@ -110,6 +110,9 @@ private struct AttendanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: AttendanceEntry
 
+    private let checkInColor = Color(red: 0.27, green: 0.96, blue: 0.75)
+    private let checkOutColor = Color(red: 1.00, green: 0.86, blue: 0.35)
+
     var body: some View {
         VStack(alignment: .leading, spacing: family == .systemSmall ? 10 : 12) {
             header
@@ -120,22 +123,52 @@ private struct AttendanceWidgetView: View {
             }
         }
         .containerBackground(for: .widget) {
-            LinearGradient(
-                colors: [Color(red: 0.13, green: 0.05, blue: 0.06), Color(red: 0.06, green: 0.07, blue: 0.09)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 1.00, green: 0.51, blue: 0.20),
+                        Color(red: 0.98, green: 0.20, blue: 0.28),
+                        Color(red: 0.66, green: 0.06, blue: 0.32),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Circle()
+                    .fill(Color.yellow.opacity(0.24))
+                    .frame(width: family == .systemSmall ? 150 : 230)
+                    .blur(radius: 12)
+                    .offset(x: family == .systemSmall ? 72 : 145, y: -78)
+                Circle()
+                    .fill(Color(red: 1.00, green: 0.39, blue: 0.68).opacity(0.24))
+                    .frame(width: family == .systemSmall ? 130 : 210)
+                    .blur(radius: 18)
+                    .offset(x: family == .systemSmall ? -78 : -160, y: 82)
+                LinearGradient(
+                    colors: [.white.opacity(0.15), .clear, .black.opacity(0.08)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
         }
     }
 
     private var header: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             Image(systemName: "clock.badge.checkmark.fill")
-                .foregroundStyle(Color(red: 1, green: 0.32, blue: 0.32))
+                .font(.caption.bold())
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.white, Color(red: 1.00, green: 0.90, blue: 0.50)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .frame(width: 25, height: 25)
+                .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             Text("CHẤM CÔNG HÔM NAY")
                 .font(.caption2.weight(.bold))
-                .tracking(0.6)
-                .foregroundStyle(.white.opacity(0.72))
+                .tracking(0.7)
+                .foregroundStyle(.white.opacity(0.94))
             Spacer(minLength: 0)
         }
     }
@@ -144,22 +177,22 @@ private struct AttendanceWidgetView: View {
     private func attendanceContent(_ state: WidgetStorage.State) -> some View {
         if family == .systemSmall {
             HStack(spacing: 10) {
-                compactTime(title: "Vào", value: timeLabel(state.checkIn), color: .green)
-                compactTime(title: "Ra", value: timeLabel(state.checkOut), color: Color(red: 1, green: 0.32, blue: 0.32))
+                compactTime(title: "Vào", value: timeLabel(state.checkIn), color: checkInColor)
+                compactTime(title: "Ra", value: timeLabel(state.checkOut), color: checkOutColor)
             }
             Spacer(minLength: 0)
             statusLabel(state.status)
         } else {
             HStack(spacing: 12) {
-                timeCard(title: "GIỜ VÀO", value: timeLabel(state.checkIn), icon: "arrow.down.right", color: .green)
-                timeCard(title: "GIỜ RA", value: timeLabel(state.checkOut), icon: "arrow.up.right", color: Color(red: 1, green: 0.32, blue: 0.32))
+                timeCard(title: "GIỜ VÀO", value: timeLabel(state.checkIn), icon: "arrow.down.right", color: checkInColor)
+                timeCard(title: "GIỜ RA", value: timeLabel(state.checkOut), icon: "arrow.up.right", color: checkOutColor)
             }
             HStack {
                 statusLabel(state.status)
                 Spacer()
                 Text("Cập nhật \(state.updatedAt.formatted(date: .omitted, time: .shortened))")
                     .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(.white.opacity(0.72))
             }
         }
     }
@@ -174,7 +207,14 @@ private struct AttendanceWidgetView: View {
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.8)
         }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.13), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(.white.opacity(0.18), lineWidth: 0.7)
+        }
     }
 
     private func timeCard(title: String, value: String, icon: String, color: Color) -> some View {
@@ -187,7 +227,7 @@ private struct AttendanceWidgetView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.white.opacity(0.75))
                 Text(value)
                     .font(.title3.monospacedDigit().weight(.bold))
                     .foregroundStyle(.white)
@@ -195,14 +235,21 @@ private struct AttendanceWidgetView: View {
             Spacer(minLength: 0)
         }
         .padding(10)
-        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.white.opacity(0.14), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .stroke(.white.opacity(0.2), lineWidth: 0.8)
+        }
     }
 
     private func statusLabel(_ status: String) -> some View {
         Label(status.isEmpty ? "Chưa chấm công" : status, systemImage: statusSymbol(status))
             .font(.caption2.weight(.semibold))
-            .foregroundStyle(.white.opacity(0.78))
+            .foregroundStyle(.white.opacity(0.94))
             .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(.white.opacity(0.13), in: Capsule())
     }
 
     private var emptyContent: some View {
@@ -213,7 +260,7 @@ private struct AttendanceWidgetView: View {
                 .foregroundStyle(.white)
             Text("Mở Sukavina để cập nhật dữ liệu chấm công.")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(.white.opacity(0.82))
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
