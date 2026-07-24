@@ -64,24 +64,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const payload = {
-      sub: user.id,
-      employeeCode: user.employeeCode,
-      role: user.role,
-      accountType: user.accountType,
-      permissions: user.permissions,
-    };
-    return {
-      accessToken: await this.jwtService.signAsync(payload),
-      user: {
-        employeeCode: user.employeeCode,
-        name: user.fullName,
-        role: user.role,
-        accountType: user.accountType,
-        permissions: user.permissions,
-        protected: user.protected,
-      },
-    };
+    return this.issueSession(user);
   }
 
   async register(data: {
@@ -359,6 +342,45 @@ export class AuthService {
       data: { counter: BigInt(verification.authenticationInfo.newCounter) },
     });
     const user = stored.employee;
+    return this.issueSession(user);
+  }
+
+  async refreshSession(refreshToken: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub: string; purpose?: string }>(refreshToken);
+      if (payload.purpose !== 'refresh') throw new Error('Invalid token purpose');
+      const user = await this.prisma.employee.findUnique({ where: { id: payload.sub } });
+      if (!user || !user.active || !user.gmailVerified) throw new Error('Inactive account');
+      return this.issueSession(user);
+    } catch {
+      throw new UnauthorizedException('Phiên đăng nhập đã hết hạn');
+    }
+  }
+
+  async verifyWidgetToken(widgetToken: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync<{ sub: string; purpose?: string }>(widgetToken);
+      if (payload.purpose !== 'attendance-widget') throw new Error('Invalid token purpose');
+      const user = await this.prisma.employee.findUnique({
+        where: { id: payload.sub },
+        select: { id: true, active: true },
+      });
+      if (!user?.active) throw new Error('Inactive account');
+      return user.id;
+    } catch {
+      throw new UnauthorizedException('Widget token không hợp lệ');
+    }
+  }
+
+  private async issueSession(user: {
+    id: string;
+    employeeCode: string;
+    fullName: string;
+    role: string;
+    accountType: string;
+    permissions: string[];
+    protected: boolean;
+  }) {
     const payload = {
       sub: user.id,
       employeeCode: user.employeeCode,
@@ -366,8 +388,15 @@ export class AuthService {
       accountType: user.accountType,
       permissions: user.permissions,
     };
+    const [accessToken, refreshToken, widgetToken] = await Promise.all([
+      this.jwtService.signAsync(payload, { expiresIn: '24h' }),
+      this.jwtService.signAsync({ sub: user.id, purpose: 'refresh' }, { expiresIn: '180d' }),
+      this.jwtService.signAsync({ sub: user.id, purpose: 'attendance-widget' }, { expiresIn: '180d' }),
+    ]);
     return {
-      accessToken: await this.jwtService.signAsync(payload),
+      accessToken,
+      refreshToken,
+      widgetToken,
       user: {
         employeeCode: user.employeeCode,
         name: user.fullName,

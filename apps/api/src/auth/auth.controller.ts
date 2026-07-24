@@ -13,6 +13,11 @@ export class AuthController {
     return this.authService.login(body.loginId, body.password);
   }
 
+  @Post('refresh')
+  refresh(@Body() body: { refreshToken: string }) {
+    return this.authService.refreshSession(body.refreshToken);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@Req() req: { user: { sub: string } }) {

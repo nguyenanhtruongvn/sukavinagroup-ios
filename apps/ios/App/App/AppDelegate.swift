@@ -270,6 +270,9 @@ private final class APIClient {
             if token == nil && path == "auth/login" && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.invalidCredentials
             }
+            if token == nil && path == "auth/refresh" && (http.statusCode == 401 || http.statusCode == 403) {
+                throw NetworkError.unauthorized
+            }
             if token != nil && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.unauthorized
             }
@@ -296,10 +299,19 @@ private struct EmptyBody: Encodable {}
 
 private enum KeychainStore {
     private static let service = "net.sukavinagroup.user"
-    private static let account = "access-token"
+    private static let accessTokenAccount = "access-token"
+    private static let refreshTokenAccount = "refresh-token"
 
     static func save(token: String) {
-        let data = Data(token.utf8)
+        save(token, account: accessTokenAccount)
+    }
+
+    static func save(refreshToken: String) {
+        save(refreshToken, account: refreshTokenAccount)
+    }
+
+    private static func save(_ value: String, account: String) {
+        let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -313,6 +325,14 @@ private enum KeychainStore {
     }
 
     static func loadToken() -> String? {
+        load(account: accessTokenAccount)
+    }
+
+    static func loadRefreshToken() -> String? {
+        load(account: refreshTokenAccount)
+    }
+
+    private static func load(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -329,8 +349,7 @@ private enum KeychainStore {
     static func clear() {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrService as String: service
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -411,7 +430,13 @@ private struct UserSummary: Codable {
 
 private struct LoginResponse: Decodable {
     let accessToken: String
+    let refreshToken: String
+    let widgetToken: String
     let user: UserSummary
+}
+
+private struct RefreshSessionBody: Encodable {
+    let refreshToken: String
 }
 
 private struct Profile: Decodable {
@@ -604,6 +629,7 @@ private enum AttendanceWidgetBridge {
     private static let originalAppGroup = "group.net.sukavinagroup.portal"
     static let kind = "SukavinaAttendanceWidget"
     private static let stateKey = "attendance-widget-state"
+    private static let tokenKey = "attendance-widget-token"
 
     private static var appGroup: String {
         let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
@@ -634,9 +660,17 @@ private enum AttendanceWidgetBridge {
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
+    static func configure(token: String) {
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.set(token, forKey: tokenKey)
+        defaults?.synchronize()
+        WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
+
     static func clear() {
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.removeObject(forKey: stateKey)
+        defaults?.removeObject(forKey: tokenKey)
         defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
@@ -720,6 +754,7 @@ private final class SessionStore: ObservableObject {
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
     private var eventStreamTask: Task<Void, Never>?
+    private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
     private var isMonitoringNetwork = false
@@ -729,20 +764,29 @@ private final class SessionStore: ObservableObject {
     func restore() async {
         startNetworkMonitoring()
         try? await Task.sleep(nanoseconds: 250_000_000)
-        guard let savedToken = KeychainStore.loadToken() else {
+        guard KeychainStore.loadToken() != nil || KeychainStore.loadRefreshToken() != nil else {
             state = .signedOut
             return
         }
-        token = savedToken
         loadKnownArticles()
-        state = .signedIn
-        startNetworkMonitoring()
         do {
-            profile = try await APIClient.shared.request("auth/me", token: savedToken)
+            if let savedToken = KeychainStore.loadToken() {
+                token = savedToken
+                do {
+                    profile = try await APIClient.shared.request("auth/me", token: savedToken)
+                } catch NetworkError.unauthorized {
+                    try await refreshSession()
+                }
+            } else {
+                try await refreshSession()
+            }
+            state = .signedIn
+            startNetworkMonitoring()
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             await refreshProfile()
             startRealTimeUpdates()
+            startSessionRefresh()
         } catch NetworkError.unauthorized {
             signOut()
         } catch {
@@ -767,26 +811,15 @@ private final class SessionStore: ObservableObject {
                 body: LoginBody(loginId: loginId, password: password)
             )
             resetBiometricsWhenAccountChanges(to: response.user.employeeCode)
-            token = response.accessToken
-            KeychainStore.save(token: response.accessToken)
+            applySession(response)
             loadKnownArticles()
-            profile = Profile(
-                id: "",
-                employeeCode: response.user.employeeCode,
-                name: response.user.name,
-                role: response.user.role,
-                accountType: response.user.accountType,
-                permissions: response.user.permissions,
-                protected: response.user.protected,
-                email: nil,
-                passwordChangedAt: nil
-            )
             state = .signedIn
             startNetworkMonitoring()
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             await refreshProfile()
             startRealTimeUpdates()
+            startSessionRefresh()
             ConnectionDiagnostics.record("Sign-in completed successfully")
             return true
         } catch {
@@ -829,6 +862,7 @@ private final class SessionStore: ObservableObject {
             startNetworkMonitoring()
             await refreshDashboard()
             startRealTimeUpdates()
+            startSessionRefresh()
             return true
         } catch NetworkError.unauthorized {
             disableBiometricLogin()
@@ -893,6 +927,8 @@ private final class SessionStore: ObservableObject {
     func signOut() {
         eventStreamTask?.cancel()
         eventStreamTask = nil
+        sessionRefreshTask?.cancel()
+        sessionRefreshTask = nil
         KeychainStore.clear()
         token = nil
         profile = nil
@@ -901,6 +937,57 @@ private final class SessionStore: ObservableObject {
         unreadCount = 0
         requestUnreadCount = 0
         state = .signedOut
+    }
+
+    private func applySession(_ response: LoginResponse) {
+        token = response.accessToken
+        KeychainStore.save(token: response.accessToken)
+        KeychainStore.save(refreshToken: response.refreshToken)
+        AttendanceWidgetBridge.configure(token: response.widgetToken)
+        profile = Profile(
+            id: "",
+            employeeCode: response.user.employeeCode,
+            name: response.user.name,
+            role: response.user.role,
+            accountType: response.user.accountType,
+            permissions: response.user.permissions,
+            protected: response.user.protected,
+            email: nil,
+            passwordChangedAt: nil
+        )
+    }
+
+    private func refreshSession() async throws {
+        guard let refreshToken = KeychainStore.loadRefreshToken() else {
+            throw NetworkError.unauthorized
+        }
+        let response: LoginResponse = try await APIClient.shared.request(
+            "auth/refresh",
+            method: "POST",
+            body: RefreshSessionBody(refreshToken: refreshToken)
+        )
+        applySession(response)
+        if biometricsEnabled {
+            _ = BiometricKeychain.save(token: response.accessToken)
+        }
+    }
+
+    private func startSessionRefresh() {
+        sessionRefreshTask?.cancel()
+        sessionRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 12 * 60 * 60 * 1_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                do {
+                    try await self.refreshSession()
+                } catch NetworkError.unauthorized {
+                    self.signOut()
+                    return
+                } catch {
+                    ConnectionDiagnostics.record("Session refresh deferred: \(error.localizedDescription)")
+                }
+            }
+        }
     }
 
     func refreshRequestNotificationCount() async {

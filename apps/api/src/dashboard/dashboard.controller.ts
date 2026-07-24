@@ -1,9 +1,10 @@
-import { Controller, Get, MessageEvent, Query, Req, Sse, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, MessageEvent, Post, Query, Req, Sse, UseGuards } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { ContentEventsService } from './content-events.service';
 import { DashboardService } from './dashboard.service';
 import { AttendanceSyncService } from './attendance-sync.service';
+import { AuthService } from '../auth/auth.service';
 
 @Controller()
 export class DashboardController {
@@ -11,6 +12,7 @@ export class DashboardController {
     private readonly dashboardService: DashboardService,
     private readonly contentEvents: ContentEventsService,
     private readonly attendanceSync: AttendanceSyncService,
+    private readonly authService: AuthService,
   ) {}
 
   @Get('public/news')
@@ -21,6 +23,12 @@ export class DashboardController {
   @Sse('public/news/events')
   newsEvents(): Observable<MessageEvent> {
     return this.contentEvents.stream();
+  }
+
+  @Post('public/widget/attendance')
+  async getWidgetAttendance(@Body() body: { widgetToken: string }) {
+    const userId = await this.authService.verifyWidgetToken(body.widgetToken);
+    return this.dashboardService.getWidgetAttendance(userId);
   }
 
   @UseGuards(JwtAuthGuard)

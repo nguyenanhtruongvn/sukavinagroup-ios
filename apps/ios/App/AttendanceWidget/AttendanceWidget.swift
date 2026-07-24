@@ -4,6 +4,8 @@ import WidgetKit
 private enum WidgetStorage {
     private static let originalAppGroup = "group.net.sukavinagroup.portal"
     static let stateKey = "attendance-widget-state"
+    private static let tokenKey = "attendance-widget-token"
+    private static let endpoint = URL(string: "https://sukavinagroup.net/api/public/widget/attendance")!
 
     private static var appGroup: String {
         let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
@@ -21,6 +23,54 @@ private enum WidgetStorage {
     static func load() -> State? {
         guard let data = UserDefaults(suiteName: appGroup)?.data(forKey: stateKey) else { return nil }
         return try? JSONDecoder().decode(State.self, from: data)
+    }
+
+    static func fetchLatest() async -> State? {
+        let defaults = UserDefaults(suiteName: appGroup)
+        guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty else { return load() }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 15
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = try? JSONEncoder().encode(TokenBody(widgetToken: token))
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                  let payload = try? JSONDecoder().decode(AttendancePayload.self, from: data) else {
+                return load()
+            }
+            let records = payload.attendanceRecords
+            let cachedName = load()?.employeeName ?? "Sukavina"
+            let state = State(
+                employeeName: cachedName,
+                status: payload.attendanceStatus,
+                checkIn: records.last?.punchedAt,
+                checkOut: records.count > 1 ? records.first?.punchedAt : nil,
+                updatedAt: ISO8601DateFormatter().date(from: payload.updatedAt) ?? Date()
+            )
+            if let encoded = try? JSONEncoder().encode(state) {
+                defaults?.set(encoded, forKey: stateKey)
+                defaults?.synchronize()
+            }
+            return state
+        } catch {
+            return load()
+        }
+    }
+
+    private struct TokenBody: Encodable {
+        let widgetToken: String
+    }
+
+    private struct AttendancePayload: Decodable {
+        let attendanceStatus: String
+        let attendanceRecords: [AttendanceRecord]
+        let updatedAt: String
+    }
+
+    private struct AttendanceRecord: Decodable {
+        let punchedAt: String
     }
 }
 
@@ -48,9 +98,11 @@ private struct AttendanceProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<AttendanceEntry>) -> Void) {
-        let entry = AttendanceEntry(date: Date(), state: WidgetStorage.load())
-        let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(900)
-        completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+        Task {
+            let entry = AttendanceEntry(date: Date(), state: await WidgetStorage.fetchLatest())
+            let nextRefresh = Calendar.current.date(byAdding: .minute, value: 1, to: Date()) ?? Date().addingTimeInterval(60)
+            completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+        }
     }
 }
 

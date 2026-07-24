@@ -78,6 +78,15 @@ export class DashboardService {
     };
   }
 
+  async getWidgetAttendance(userId: string) {
+    const dashboard = await this.getDashboard(userId);
+    return {
+      attendanceStatus: dashboard.attendanceStatus,
+      attendanceRecords: dashboard.attendanceRecords,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
   private getVietnamDate() {
     return new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Ho_Chi_Minh',
