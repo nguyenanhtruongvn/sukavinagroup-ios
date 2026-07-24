@@ -113,6 +113,8 @@ jobs:
             --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
 
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${SIDESTORE_REPO}.git" sidestore-source
+          cp "$GITHUB_WORKSPACE/apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" \
+            sidestore-source/icon.png
           export DOWNLOAD_URL IPA_PATH
           python3 - <<'PY'
           import datetime
@@ -140,7 +142,7 @@ jobs:
           cd sidestore-source
           git config user.name "Sukavina Release Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add apps.json
+          git add apps.json icon.png
           git commit -m "release: Sukavina ${APP_VERSION}"
           git push origin main
 

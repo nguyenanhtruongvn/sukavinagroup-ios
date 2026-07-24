@@ -1,5 +1,9 @@
 # Sukavina Group Platform
 
+<p align="center">
+  <img src="apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" width="180" alt="Sukavina">
+</p>
+
 Monorepo chính thức cho hệ thống nội bộ Sukavina Group. Dự án gồm website nhân viên, website quản trị, API và hai ứng dụng mobile native.
 
 ## Cấu trúc
