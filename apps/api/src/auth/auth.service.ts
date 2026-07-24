@@ -357,6 +357,14 @@ export class AuthService {
     }
   }
 
+  async upgradeSession(userId: string) {
+    const user = await this.prisma.employee.findUnique({ where: { id: userId } });
+    if (!user || !user.active || !user.gmailVerified) {
+      throw new UnauthorizedException('Tài khoản không còn hoạt động');
+    }
+    return this.issueSession(user);
+  }
+
   async verifyWidgetToken(widgetToken: string) {
     try {
       const payload = await this.jwtService.verifyAsync<{ sub: string; purpose?: string }>(widgetToken);

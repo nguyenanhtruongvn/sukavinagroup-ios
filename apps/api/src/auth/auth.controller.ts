@@ -25,6 +25,12 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Post('session/upgrade')
+  upgradeSession(@Req() req: { user: { sub: string } }) {
+    return this.authService.upgradeSession(req.user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Post('password-change/request')
   requestPasswordChange(@Req() req: { user: { sub: string } }) {
     return this.authService.requestPasswordChange(req.user.sub);

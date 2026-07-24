@@ -774,6 +774,14 @@ private final class SessionStore: ObservableObject {
                 token = savedToken
                 do {
                     profile = try await APIClient.shared.request("auth/me", token: savedToken)
+                    if KeychainStore.loadRefreshToken() == nil {
+                        let upgraded: LoginResponse = try await APIClient.shared.request(
+                            "auth/session/upgrade",
+                            method: "POST",
+                            token: savedToken
+                        )
+                        applySession(upgraded)
+                    }
                 } catch NetworkError.unauthorized {
                     try await refreshSession()
                 }
