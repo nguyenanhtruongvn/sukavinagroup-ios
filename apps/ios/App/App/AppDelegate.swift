@@ -1977,6 +1977,7 @@ private struct RequestsView: View {
     @State private var filter: EmployeeRequestStatus?
     @State private var composing = false
     @State private var reviewing: EmployeeRequest?
+    @State private var cancelling: EmployeeRequest?
     private var combinedRequests: [EmployeeRequest] {
         var seen = Set<String>()
         return (store.approvals + store.requests)
@@ -2005,7 +2006,7 @@ private struct RequestsView: View {
                                     if store.approvals.contains(where: { $0.id == request.id && $0.status == .pending }) {
                                         Button { reviewing = request } label: { RequestCard(request: request, canCancel: false, cancel: {}) }.buttonStyle(.plain)
                                     } else {
-                                        RequestCard(request: request) { Task { await store.cancel(token: session.token, id: request.id) } }
+                                        RequestCard(request: request) { cancelling = request }
                                     }
                                 }
                             }
@@ -2038,6 +2039,16 @@ private struct RequestsView: View {
                 RequestDecisionView(request: request) { approved, note in
                     await store.decide(token: session.token, id: request.id, approved: approved, note: note)
                 }
+            }
+            .alert(item: $cancelling) { request in
+                Alert(
+                    title: Text("Hủy đơn này?"),
+                    message: Text("Đơn \(request.kind.title) sẽ chuyển sang trạng thái đã hủy và người quản lý sẽ nhận được thông báo. Thao tác không thể hoàn tác."),
+                    primaryButton: .destructive(Text("Xác nhận hủy")) {
+                        Task { await store.cancel(token: session.token, id: request.id) }
+                    },
+                    secondaryButton: .cancel(Text("Giữ lại"))
+                )
             }
             .task { await store.load(session.token) }
             .refreshable { await store.load(session.token) }

@@ -175,6 +175,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     var filter by rememberSaveable { mutableStateOf("all") }
     var composing by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf<EmployeeRequest?>(null) }
+    var cancelling by remember { mutableStateOf<EmployeeRequest?>(null) }
     val approvalIds = state.approvals.map { it.id }.toSet()
     val merged = (state.approvals + state.requests).distinctBy { it.id }.sortedByDescending { it.createdAt }
     val visible = merged.filter { filter == "all" || it.status == filter }
@@ -189,7 +190,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
             LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(visible, key = { it.id }) { request ->
                     RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
-                        onCancel = { session.cancelRequest(request.id) }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
+                        onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
                 }
                 if (visible.isEmpty()) item { Text("Chưa có đơn trong mục này.", color = SukavinaMuted, modifier = Modifier.padding(top = 45.dp)) }
             }
@@ -197,6 +198,23 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     }
     if (composing) RequestComposer(state.working, { composing = false }) { kind, from, to, reason -> session.createRequest(kind, from, to, reason) { if (it) composing = false } }
     reviewing?.let { request -> RequestDecisionDialog(request, state.working, { reviewing = null }) { approved, note -> session.decideRequest(request.id, approved, note) { if (it) reviewing = null } } }
+    cancelling?.let { request ->
+        AlertDialog(
+            onDismissRequest = { if (!state.working) cancelling = null },
+            title = { Text("Hủy đơn này?") },
+            text = { Text("Đơn ${requestKind(request.kind).title} sẽ chuyển sang trạng thái đã hủy và người quản lý sẽ nhận được thông báo. Thao tác không thể hoàn tác.") },
+            confirmButton = {
+                TextButton(
+                    enabled = !state.working,
+                    onClick = {
+                        session.cancelRequest(request.id)
+                        cancelling = null
+                    },
+                ) { Text("Xác nhận hủy", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(enabled = !state.working, onClick = { cancelling = null }) { Text("Giữ lại") } },
+        )
+    }
 }
 
 @Composable private fun RequestCard(request: EmployeeRequest, canCancel: Boolean, onCancel: () -> Unit, onClick: () -> Unit = {}) {

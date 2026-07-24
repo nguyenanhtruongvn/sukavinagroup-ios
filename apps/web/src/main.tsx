@@ -373,6 +373,14 @@ function App() {
   const [adminRequestDetail, setAdminRequestDetail] = useState<EmployeeRequest | null>(null);
   const [adminRequestDeleteConfirm, setAdminRequestDeleteConfirm] = useState<EmployeeRequest | null>(null);
   const [adminRequestDeleting, setAdminRequestDeleting] = useState(false);
+  const [destructiveConfirm, setDestructiveConfirm] = useState<{
+    kind: 'content' | 'employee' | 'notifications' | 'passkey' | 'request';
+    id?: string;
+    title: string;
+    message: string;
+    confirmLabel: string;
+  } | null>(null);
+  const [destructiveWorking, setDestructiveWorking] = useState(false);
   const [employeeForm, setEmployeeForm] = useState({
     employeeCode: '',
     fullName: '',
@@ -1074,6 +1082,7 @@ function App() {
       }
       await refreshContent();
       await refreshSharedContent();
+      setToast({ type: 'success', message: 'Bài viết đã được xóa vĩnh viễn.' });
       setContentComposerOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không lưu được dữ liệu');
@@ -1264,6 +1273,7 @@ function App() {
         throw new Error('Không xóa được nhân viên');
       }
       await refreshEmployees();
+      setToast({ type: 'success', message: 'Nhân viên đã được xóa vĩnh viễn.' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không xóa được nhân viên');
     } finally {
@@ -1735,6 +1745,22 @@ function App() {
     setRequestNotifications([]);
     setNotificationOpen(false);
     setToast({ type: 'success', message: 'Đã xóa tất cả thông báo.' });
+  };
+
+  const executeDestructiveAction = async () => {
+    if (!destructiveConfirm || destructiveWorking) return;
+    const action = destructiveConfirm;
+    setDestructiveWorking(true);
+    try {
+      if (action.kind === 'content' && action.id) await deleteContent(action.id);
+      if (action.kind === 'employee' && action.id) await deleteEmployee(action.id);
+      if (action.kind === 'notifications') await clearAllNotifications();
+      if (action.kind === 'passkey') await setWebsitePasskey(false);
+      if (action.kind === 'request' && action.id) await cancelRequest(action.id);
+      setDestructiveConfirm(null);
+    } finally {
+      setDestructiveWorking(false);
+    }
   };
 
   useEffect(() => {
@@ -2299,7 +2325,12 @@ function App() {
                     <button
                       type="button"
                       className="ghost-button"
-                      onClick={() => void clearAllNotifications()}
+                      onClick={() => setDestructiveConfirm({
+                        kind: 'notifications',
+                        title: 'Xóa tất cả thông báo?',
+                        message: 'Toàn bộ thông báo hiện có sẽ bị xóa khỏi tài khoản này. Thao tác không thể hoàn tác.',
+                        confirmLabel: 'Xóa tất cả',
+                      })}
                     >
                       Xóa tất cả thông báo
                     </button>
@@ -2336,7 +2367,18 @@ function App() {
                   {!currentUser?.email ? <p className="account-email-warning">Cần cập nhật email để đổi mật khẩu và bảo vệ tài khoản.</p> : null}
                   <div className="account-popover-actions">
                     <button type="button" onClick={openPasswordChange}><span>⌁</span><div><strong>Đổi mật khẩu</strong><small>Xác thực bằng mã OTP qua email</small></div><b>›</b></button>
-                    <button type="button" disabled={passkeyWorking} onClick={() => void setWebsitePasskey(!currentUser?.passkeyEnabled)}><span>◎</span><div><strong>{currentUser?.passkeyEnabled ? 'Tắt sinh trắc học' : 'Bật sinh trắc học'}</strong><small>{currentUser?.passkeyEnabled ? 'Passkey đang hoạt động trên website' : 'Dùng Face ID, Touch ID hoặc Windows Hello'}</small></div><b>{passkeyWorking ? '…' : currentUser?.passkeyEnabled ? '✓' : '›'}</b></button>
+                    <button type="button" disabled={passkeyWorking} onClick={() => {
+                      if (currentUser?.passkeyEnabled) {
+                        setDestructiveConfirm({
+                          kind: 'passkey',
+                          title: 'Tắt đăng nhập sinh trắc học?',
+                          message: 'Passkey đã lưu cho tài khoản này sẽ bị xóa. Bạn cần thiết lập lại nếu muốn sử dụng sinh trắc học sau này.',
+                          confirmLabel: 'Tắt sinh trắc học',
+                        });
+                      } else {
+                        void setWebsitePasskey(true);
+                      }
+                    }}><span>◎</span><div><strong>{currentUser?.passkeyEnabled ? 'Tắt sinh trắc học' : 'Bật sinh trắc học'}</strong><small>{currentUser?.passkeyEnabled ? 'Passkey đang hoạt động trên website' : 'Dùng Face ID, Touch ID hoặc Windows Hello'}</small></div><b>{passkeyWorking ? '…' : currentUser?.passkeyEnabled ? '✓' : '›'}</b></button>
                     <button type="button" onClick={signOut}><span>↪</span><div><strong>Đăng xuất</strong><small>Kết thúc phiên trên thiết bị này</small></div><b>›</b></button>
                   </div>
                 </aside>
@@ -2458,7 +2500,13 @@ function App() {
                       </div>
                     </div>
                     {item.status === 'pending' ? (
-                      <button type="button" className="request-cancel" onClick={() => void cancelRequest(item.id)}>Hủy đơn</button>
+                      <button type="button" className="request-cancel" onClick={() => setDestructiveConfirm({
+                        kind: 'request',
+                        id: item.id,
+                        title: 'Hủy đơn này?',
+                        message: 'Đơn sẽ chuyển sang trạng thái đã hủy và người quản lý sẽ nhận được thông báo. Thao tác không thể hoàn tác.',
+                        confirmLabel: 'Xác nhận hủy',
+                      })}>Hủy đơn</button>
                     ) : null}
                   </article>
                 ))
@@ -2515,6 +2563,27 @@ function App() {
             <span className="admin-request-delete-icon">!</span>
             <div><p className="panel-label">Xác nhận thao tác</p><h2 id="admin-request-delete-title">Xóa vĩnh viễn đơn từ?</h2><p>Đơn <strong>{requestKindLabels[adminRequestDeleteConfirm.kind]}</strong> của <strong>{adminRequestDeleteConfirm.employee?.fullName || adminRequestDeleteConfirm.employee?.employeeCode}</strong> và các thông báo liên quan sẽ bị xóa khỏi toàn bộ hệ thống. Thao tác này không thể hoàn tác.</p></div>
             <footer><button type="button" className="ghost-button" disabled={adminRequestDeleting} onClick={() => setAdminRequestDeleteConfirm(null)}>Giữ lại</button><button type="button" className="admin-request-confirm-delete" disabled={adminRequestDeleting} onClick={() => void deleteAdminRequest()}>{adminRequestDeleting ? 'Đang xóa...' : 'Xác nhận xóa'}</button></footer>
+          </section>
+        </div>
+      ) : null}
+
+      {destructiveConfirm ? (
+        <div className="article-modal-backdrop admin-request-delete-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !destructiveWorking) setDestructiveConfirm(null);
+        }}>
+          <section className="admin-request-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="destructive-confirm-title">
+            <span className="admin-request-delete-icon">!</span>
+            <div>
+              <p className="panel-label">Cảnh báo thao tác</p>
+              <h2 id="destructive-confirm-title">{destructiveConfirm.title}</h2>
+              <p>{destructiveConfirm.message}</p>
+            </div>
+            <footer>
+              <button type="button" className="ghost-button" disabled={destructiveWorking} onClick={() => setDestructiveConfirm(null)}>Giữ lại</button>
+              <button type="button" className="admin-request-confirm-delete" disabled={destructiveWorking} onClick={() => void executeDestructiveAction()}>
+                {destructiveWorking ? 'Đang xử lý...' : destructiveConfirm.confirmLabel}
+              </button>
+            </footer>
           </section>
         </div>
       ) : null}
@@ -3136,7 +3205,13 @@ function App() {
                                   <button
                                     type="button"
                                     className="ghost-button employee-delete-button"
-                                    onClick={() => deleteEmployee(employee.id)}
+                                    onClick={() => setDestructiveConfirm({
+                                      kind: 'employee',
+                                      id: employee.id,
+                                      title: 'Xóa vĩnh viễn nhân viên?',
+                                      message: `Hồ sơ và tài khoản của ${employee.fullName || employee.employeeCode} sẽ bị xóa khỏi hệ thống. Thao tác không thể hoàn tác.`,
+                                      confirmLabel: 'Xóa nhân viên',
+                                    })}
                                   >
                                     Xóa
                                   </button>
@@ -3532,7 +3607,16 @@ function App() {
                           <button
                             type="button"
                             className="ghost-button"
-                            onClick={(event) => { event.stopPropagation(); void deleteContent(item.id); }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setDestructiveConfirm({
+                                kind: 'content',
+                                id: item.id,
+                                title: 'Xóa vĩnh viễn bài viết?',
+                                message: `Bài viết “${item.title}” sẽ bị xóa hoàn toàn khỏi website, ứng dụng và database. Thao tác không thể hoàn tác.`,
+                                confirmLabel: 'Xóa bài viết',
+                              });
+                            }}
                           >
                             Xóa
                           </button>
