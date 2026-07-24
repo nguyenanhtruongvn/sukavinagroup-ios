@@ -35,7 +35,7 @@ private enum AppTheme {
     static let red = Color(red: 0.91, green: 0.12, blue: 0.16)
     static let deepRed = Color(red: 0.45, green: 0.04, blue: 0.07)
     static let ink = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1) : UIColor(red: 0.96, green: 0.95, blue: 0.93, alpha: 1)
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1) : UIColor(red: 0.906, green: 0.914, blue: 0.929, alpha: 1)
     })
     static let card = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(red: 0.12, green: 0.12, blue: 0.15, alpha: 1) : UIColor.white
@@ -44,19 +44,19 @@ private enum AppTheme {
         traits.userInterfaceStyle == .dark ? UIColor(red: 0.66, green: 0.65, blue: 0.68, alpha: 1) : UIColor(red: 0.36, green: 0.35, blue: 0.38, alpha: 1)
     })
     static let loginAccent = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor(red: 0.45, green: 0.04, blue: 0.07, alpha: 0.72) : UIColor(red: 0.96, green: 0.84, blue: 0.82, alpha: 1)
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.45, green: 0.04, blue: 0.07, alpha: 0.72) : UIColor.white
     })
     static let field = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.055) : UIColor(red: 0.94, green: 0.92, blue: 0.89, alpha: 1)
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.055) : UIColor.white
     })
     static let fieldBorder = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.75, green: 0.68, blue: 0.65, alpha: 0.48)
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.63, green: 0.66, blue: 0.71, alpha: 0.42)
     })
     static let cardBorder = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.55, green: 0.13, blue: 0.15, alpha: 0.15)
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.31, green: 0.34, blue: 0.39, alpha: 0.12)
     })
     static let biometricFill = Color(UIColor { traits in
-        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.075) : UIColor(red: 0.98, green: 0.90, blue: 0.89, alpha: 1)
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.075) : UIColor.white
     })
     static let biometricForeground = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor.white : UIColor(red: 0.68, green: 0.07, blue: 0.10, alpha: 1)

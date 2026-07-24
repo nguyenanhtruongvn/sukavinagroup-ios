@@ -129,19 +129,20 @@ private struct AttendanceWidgetView: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 1.00, green: 0.99, blue: 0.96),
-                        Color(red: 1.00, green: 0.94, blue: 0.88),
+                        .white,
+                        Color(red: 0.91, green: 0.92, blue: 0.94),
+                        Color(red: 1.00, green: 0.92, blue: 0.91),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Circle()
-                    .fill(Color.white.opacity(0.72))
+                    .fill(Color.white.opacity(0.76))
                     .frame(width: family == .systemSmall ? 150 : 240)
                     .blur(radius: 12)
                     .offset(x: family == .systemSmall ? 82 : 170, y: -92)
                 Circle()
-                    .fill(brandColor.opacity(0.09))
+                    .fill(brandColor.opacity(0.08))
                     .frame(width: family == .systemSmall ? 120 : 210)
                     .blur(radius: 18)
                     .offset(x: family == .systemSmall ? -88 : -170, y: 98)

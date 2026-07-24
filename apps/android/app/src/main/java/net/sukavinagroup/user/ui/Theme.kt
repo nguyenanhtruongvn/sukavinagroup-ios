@@ -20,11 +20,11 @@ private val darkColors = darkColorScheme(
 
 private val lightColors = lightColorScheme(
     primary = Color(0xFFC6252A), onPrimary = Color.White,
-    background = Color(0xFFF6F3EE), onBackground = Color(0xFF211D1C),
-    surface = Color.White, onSurface = Color(0xFF211D1C),
-    surfaceVariant = Color(0xFFEDE8E3), onSurfaceVariant = Color(0xFF615B58),
+    background = Color(0xFFE7E9ED), onBackground = Color(0xFF1F2733),
+    surface = Color.White, onSurface = Color(0xFF1F2733),
+    surfaceVariant = Color(0xFFE7E9ED), onSurfaceVariant = Color(0xFF5E6672),
     primaryContainer = Color(0xFFFFDAD7), onPrimaryContainer = Color(0xFF410006),
-    secondary = Color(0xFF287A4B), outline = Color(0xFF857370),
+    secondary = Color(0xFF287A4B), outline = Color(0xFF8E949E),
 )
 
 @Composable fun SukavinaTheme(content: @Composable () -> Unit) {
