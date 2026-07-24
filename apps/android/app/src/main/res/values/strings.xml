@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sukavina</string>
+    <string name="attendance_widget_description">Xem nhanh giờ vào và giờ ra hôm nay.</string>
+</resources>

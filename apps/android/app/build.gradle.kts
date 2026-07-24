@@ -13,13 +13,31 @@ android {
         applicationId = "net.sukavinagroup.user"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 1
+        versionName = providers.gradleProperty("versionName").orNull ?: "1.0.0"
+    }
+
+    signingConfigs {
+        val keystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+        val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+        val keyAliasValue = System.getenv("ANDROID_KEY_ALIAS")
+        val keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD")
+        if (!keystorePath.isNullOrBlank() && !keystorePassword.isNullOrBlank() &&
+            !keyAliasValue.isNullOrBlank() && !keyPasswordValue.isNullOrBlank()
+        ) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                keyAlias = keyAliasValue
+                keyPassword = keyPasswordValue
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfigs.findByName("release")?.let { signingConfig = it }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

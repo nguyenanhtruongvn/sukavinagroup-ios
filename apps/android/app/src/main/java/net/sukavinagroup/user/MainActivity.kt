@@ -1,8 +1,11 @@
 package net.sukavinagroup.user
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
@@ -24,7 +27,11 @@ class MainActivity : FragmentActivity() {
             val session: SessionViewModel = viewModel()
             val state = session.state.collectAsStateWithLifecycle().value
             LaunchedEffect(state.token) {
-                if (state.token != null && Build.VERSION.SDK_INT >= 33) {
+                val preferences = getSharedPreferences("sukavina-permissions", MODE_PRIVATE)
+                if (state.token != null && Build.VERSION.SDK_INT >= 33 &&
+                    !preferences.getBoolean("notification_permission_requested", false)
+                ) {
+                    preferences.edit().putBoolean("notification_permission_requested", true).apply()
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
@@ -41,5 +48,16 @@ class MainActivity : FragmentActivity() {
             .setSubtitle("Xác nhận bằng vân tay hoặc khuôn mặt")
             .setNegativeButtonText("Hủy")
             .build())
+    }
+
+    fun openNotificationSettings() {
+        startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+        )
+    }
+
+    fun openUrl(url: String) {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 }

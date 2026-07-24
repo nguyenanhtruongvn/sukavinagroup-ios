@@ -2692,6 +2692,27 @@ private struct ProfileView: View {
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
+                    accountSectionTitle("QUYỀN RIÊNG TƯ & HỖ TRỢ")
+                    VStack(spacing: 0) {
+                        Link(destination: URL(string: "https://sukavinagroup.net/privacy-policy")!) {
+                            accountLink(icon: "hand.raised.fill", title: "Chính sách quyền riêng tư")
+                        }
+                        Divider().padding(.leading, 58)
+                        Link(destination: URL(string: "https://sukavinagroup.net/support")!) {
+                            accountLink(icon: "questionmark.circle.fill", title: "Hỗ trợ người dùng")
+                        }
+                        Divider().padding(.leading, 58)
+                        Link(destination: URL(string: "https://sukavinagroup.net/account-deletion")!) {
+                            accountLink(icon: "person.crop.circle.badge.minus", title: "Hướng dẫn xóa tài khoản")
+                        }
+                        Divider().padding(.leading, 58)
+                        Link(destination: URL(string: UIApplication.openNotificationSettingsURLString)!) {
+                            accountLink(icon: "bell.badge.fill", title: "Cài đặt thông báo")
+                        }
+                    }
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
                     accountSectionTitle("PHIÊN ĐĂNG NHẬP")
                     Button("Đăng xuất", role: .destructive) { session.signOut() }
                         .font(.headline)
@@ -2763,6 +2784,16 @@ private struct ProfileView: View {
             .foregroundColor(AppTheme.muted)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 2)
+    }
+    private func accountLink(icon: String, title: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon).foregroundColor(AppTheme.red).frame(width: 26)
+            Text(title).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
+            Spacer()
+            Image(systemName: "arrow.up.right").font(.caption.bold()).foregroundColor(AppTheme.muted)
+        }
+        .padding(.horizontal, 18)
+        .frame(minHeight: 52)
     }
     private var nextPasswordChangeMonth: String {
         var calendar = Calendar(identifier: .gregorian)

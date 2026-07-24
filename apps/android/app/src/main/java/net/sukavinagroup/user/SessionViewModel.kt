@@ -79,6 +79,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             val ids = dashboard.contentItems.map { it.id }.toSet()
             val unread = if (knownArticles.isEmpty()) 0 else (ids - knownArticles).size
             _state.value = _state.value.copy(profile = profile, dashboard = dashboard, working = false, unreadCount = unread, error = null)
+            AttendanceWidgetStore.update(getApplication(), dashboard)
             if (unread > 0) NotificationHelper.showArticleNotification(getApplication(), dashboard.contentItems.first().title, unread)
         }.onFailure { update(working = false, error = it.message) }
     }
@@ -195,6 +196,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun signOut() {
         events?.cancel(); events = null
         preferences.edit().remove("token").apply()
+        AttendanceWidgetStore.clear(getApplication())
         _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
     }
 

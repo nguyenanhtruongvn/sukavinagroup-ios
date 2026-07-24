@@ -1,4 +1,4 @@
-name: Build native Android APK
+name: Build native Android APK and AAB
 
 on:
   workflow_dispatch:
@@ -27,12 +27,37 @@ jobs:
       - name: Install Android 16 SDK
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
-      - name: Build native Kotlin APK
+      - name: Prepare optional Google Play upload key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sukavina-upload.jks"
+          fi
+
+      - name: Build native Kotlin APK and release AAB
         working-directory: apps/android
-        run: gradle --no-daemon lintDebug assembleDebug
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/sukavina-upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle --no-daemon \
+            -PversionCode="${GITHUB_RUN_NUMBER}" \
+            -PversionName="1.0.${GITHUB_RUN_NUMBER}" \
+            lintDebug assembleDebug lintRelease bundleRelease
+
       - uses: actions/upload-artifact@v4
         with:
           name: Sukavina-Android-debug-APK
           path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Sukavina-Android-release-AAB
+          path: apps/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
           retention-days: 14

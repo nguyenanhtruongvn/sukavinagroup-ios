@@ -250,13 +250,15 @@ function PublicFooter() {
     <footer className="public-footer">
       <a href="/privacy-policy">Chính sách quyền riêng tư</a>
       <a href="/support">Hỗ trợ</a>
+      <a href="/account-deletion">Xóa tài khoản</a>
       <span>© 2026 Sukavina Group</span>
     </footer>
   );
 }
 
-function LegalPage({ page }: { page: 'privacy' | 'support' }) {
+function LegalPage({ page }: { page: 'privacy' | 'support' | 'deletion' }) {
   const isPrivacy = page === 'privacy';
+  const isDeletion = page === 'deletion';
   return (
     <main className="legal-shell">
       <header className="legal-header">
@@ -264,9 +266,9 @@ function LegalPage({ page }: { page: 'privacy' | 'support' }) {
         <a className="ghost-button legal-back" href="/">Về trang đăng nhập</a>
       </header>
       <article className="legal-card">
-        <p className="panel-label">{isPrivacy ? 'Quyền riêng tư' : 'Trung tâm hỗ trợ'}</p>
-        <h1>{isPrivacy ? 'Chính sách quyền riêng tư' : 'Hỗ trợ người dùng'}</h1>
-        <p className="legal-updated">Cập nhật lần cuối: 16/07/2026</p>
+        <p className="panel-label">{isPrivacy ? 'Quyền riêng tư' : isDeletion ? 'Quyền kiểm soát dữ liệu' : 'Trung tâm hỗ trợ'}</p>
+        <h1>{isPrivacy ? 'Chính sách quyền riêng tư' : isDeletion ? 'Yêu cầu xóa tài khoản' : 'Hỗ trợ người dùng'}</h1>
+        <p className="legal-updated">Cập nhật lần cuối: 24/07/2026</p>
         {isPrivacy ? (
           <>
             <section>
@@ -281,6 +283,8 @@ function LegalPage({ page }: { page: 'privacy' | 'support' }) {
                 <div><strong>Số điện thoại</strong><span>Liên hệ và hỗ trợ đăng nhập khi được cung cấp.</span></div>
                 <div><strong>Mã nhân viên</strong><span>Định danh tài khoản trong hệ thống Sukavina.</span></div>
                 <div><strong>Dữ liệu sử dụng</strong><span>Nhật ký truy cập, thao tác và lỗi kỹ thuật phục vụ bảo mật, vận hành.</span></div>
+                <div><strong>Dữ liệu chấm công</strong><span>Thời gian vào, ra và lịch sử chấm công phục vụ quản lý công việc.</span></div>
+                <div><strong>Đơn từ nội bộ</strong><span>Loại đơn, thời gian, lý do và trạng thái phê duyệt.</span></div>
               </div>
             </section>
             <section>
@@ -298,6 +302,25 @@ function LegalPage({ page }: { page: 'privacy' | 'support' }) {
             <section>
               <h2>6. Liên hệ</h2>
               <p>Mọi câu hỏi về quyền riêng tư gửi tới <a href="mailto:group@sukavina.com">group@sukavina.com</a>.</p>
+            </section>
+          </>
+        ) : isDeletion ? (
+          <>
+            <section>
+              <h2>Xóa trực tiếp trong ứng dụng</h2>
+              <p>Mở Sukavina, chọn tab “Tài khoản”, kéo tới “Vùng nguy hiểm” và chọn “Yêu cầu xóa tài khoản”. Sau khi nhập mật khẩu và xác nhận, tài khoản cùng dữ liệu cá nhân liên quan sẽ bị xóa vĩnh viễn.</p>
+            </section>
+            <section>
+              <h2>Không thể đăng nhập?</h2>
+              <p>Bạn vẫn có thể gửi yêu cầu từ email đã liên kết với tài khoản. Hãy cung cấp họ tên và mã nhân viên để Sukavina xác minh chủ tài khoản; tuyệt đối không gửi mật khẩu hoặc mã OTP.</p>
+              <div className="support-contact">
+                <span>Email tiếp nhận yêu cầu xóa</span>
+                <a href="mailto:group@sukavina.com?subject=Y%C3%AAu%20c%E1%BA%A7u%20x%C3%B3a%20t%C3%A0i%20kho%E1%BA%A3n%20Sukavina">group@sukavina.com</a>
+              </div>
+            </section>
+            <section>
+              <h2>Dữ liệu bị xóa và dữ liệu cần lưu giữ</h2>
+              <p>Hồ sơ tài khoản, thông tin liên hệ và dữ liệu liên kết sẽ bị xóa sau khi xác minh yêu cầu. Nếu một phần dữ liệu phải được lưu theo nghĩa vụ pháp lý, bảo mật hoặc phòng chống gian lận, Sukavina sẽ thông báo phạm vi và thời hạn lưu giữ cho người yêu cầu.</p>
             </section>
           </>
         ) : (
@@ -330,6 +353,7 @@ function App() {
   const isAdminRoute = window.location.pathname.startsWith('/admin');
   const isPrivacyRoute = window.location.pathname === '/privacy-policy';
   const isSupportRoute = window.location.pathname === '/support';
+  const isAccountDeletionRoute = window.location.pathname === '/account-deletion';
   const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const registerMode = false;
@@ -1926,6 +1950,7 @@ function App() {
 
   if (isPrivacyRoute) return <LegalPage page="privacy" />;
   if (isSupportRoute) return <LegalPage page="support" />;
+  if (isAccountDeletionRoute) return <LegalPage page="deletion" />;
 
   if (!isLoggedIn) {
     return (
@@ -1967,6 +1992,7 @@ function App() {
             ) : null}
           </div>
 
+          {/* eslint-disable-next-line no-constant-condition, no-constant-binary-expression */}
           {false && !isAdminRoute ? (
           <form className="auth-form" onSubmit={registrationDisabled}>
             <label>
@@ -2100,6 +2126,7 @@ function App() {
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 11.5a4.5 4.5 0 1 1 4.1 4.48M8.5 8.5v3h3M15 16.5h6m-2-2v4" /></svg>
               <span>{passkeyWorking ? 'Đang xác thực...' : 'Đăng nhập bằng sinh trắc học'}</span>
             </button>
+            {/* eslint-disable-next-line no-constant-condition */}
             {false ? (
               <button
                 type="button"
@@ -2196,6 +2223,7 @@ function App() {
         </div>
 
         <div className="topbar-actions">
+          {/* eslint-disable-next-line no-constant-condition, no-constant-binary-expression */}
           {false && isAdminRoute && canAccess('accounts.manage') ? (
             <div className="notification-wrap">
               <button
@@ -3731,6 +3759,8 @@ function App() {
   );
 }
 
+// The HTML shell always provides the root mount element.
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AppErrorBoundary>
