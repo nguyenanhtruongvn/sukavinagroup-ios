@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import WidgetKit
 
 private enum WidgetStorage {
@@ -105,38 +106,57 @@ private struct AttendanceWidgetView: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            weekStrip
-            HStack(spacing: 0) {
-                timeValue(
-                    title: "GIỜ VÀO",
-                    value: timeLabel(entry.state?.checkIn),
-                    symbol: "arrow.right.to.line",
-                    tint: Color(red: 0.55, green: 0.90, blue: 0.70)
-                )
-                Rectangle()
-                    .fill(.white.opacity(0.38))
-                    .frame(width: 1, height: 54)
-                    .padding(.horizontal, 18)
-                timeValue(
-                    title: "GIỜ RA",
-                    value: timeLabel(entry.state?.checkOut),
-                    symbol: "arrow.left.to.line",
-                    tint: Color(red: 1.00, green: 0.52, blue: 0.55)
-                )
+        ZStack {
+            widgetArtwork
+            Color.black.opacity(0.12)
+
+            VStack(spacing: 12) {
+                weekStrip
+                HStack(spacing: 0) {
+                    timeValue(
+                        title: "GIỜ VÀO",
+                        value: timeLabel(entry.state?.checkIn),
+                        symbol: "arrow.right.to.line",
+                        tint: Color(red: 0.55, green: 0.90, blue: 0.70)
+                    )
+                    Rectangle()
+                        .fill(.white.opacity(0.38))
+                        .frame(width: 1, height: 54)
+                        .padding(.horizontal, 18)
+                    timeValue(
+                        title: "GIỜ RA",
+                        value: timeLabel(entry.state?.checkOut),
+                        symbol: "arrow.left.to.line",
+                        tint: Color(red: 1.00, green: 0.52, blue: 0.55)
+                    )
+                }
+                .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
-            ZStack {
-                Image("WidgetBackground")
-                    .resizable()
-                    .scaledToFill()
-                Color.black.opacity(0.10)
-            }
+            Color.clear
+        }
+    }
+
+    @ViewBuilder
+    private var widgetArtwork: some View {
+        if let url = Bundle.main.url(forResource: "WidgetBackground", withExtension: "jpg"),
+           let image = UIImage(contentsOfFile: url.path) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            LinearGradient(
+                colors: [
+                    Color(red: 1.00, green: 0.34, blue: 0.02),
+                    Color(red: 0.95, green: 0.02, blue: 0.08),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
         }
     }
 
