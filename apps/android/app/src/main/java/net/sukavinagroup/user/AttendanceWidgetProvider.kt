@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.widget.RemoteViews
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -14,9 +15,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.sukavinagroup.user.data.ApiClient
 import net.sukavinagroup.user.data.Dashboard
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.time.temporal.TemporalAdjusters
 
 class AttendanceWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
@@ -61,7 +65,34 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
                 views.setOnClickPendingIntent(R.id.widget_root, openApp)
                 views.setTextViewText(R.id.widget_check_in, state.checkIn)
                 views.setTextViewText(R.id.widget_check_out, state.checkOut)
+                bindWeek(views)
                 manager.updateAppWidget(id, views)
+            }
+        }
+
+        private fun bindWeek(views: RemoteViews) {
+            val dayViews = intArrayOf(
+                R.id.widget_day_1,
+                R.id.widget_day_2,
+                R.id.widget_day_3,
+                R.id.widget_day_4,
+                R.id.widget_day_5,
+                R.id.widget_day_6,
+                R.id.widget_day_7,
+            )
+            val zone = ZoneId.of("Asia/Ho_Chi_Minh")
+            val today = LocalDate.now(zone)
+            val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+            dayViews.forEachIndexed { index, viewId ->
+                val date = monday.plusDays(index.toLong())
+                val isToday = date == today
+                views.setTextViewText(viewId, date.dayOfMonth.toString())
+                views.setInt(
+                    viewId,
+                    "setBackgroundResource",
+                    if (isToday) R.drawable.attendance_widget_today else 0,
+                )
+                views.setTextColor(viewId, if (isToday) Color.rgb(211, 18, 52) else Color.WHITE)
             }
         }
     }

@@ -95,52 +95,123 @@ private struct AttendanceProvider: TimelineProvider {
 }
 
 private struct AttendanceWidgetView: View {
-    @Environment(\.widgetFamily) private var family
     let entry: AttendanceEntry
 
+    private struct WeekDay: Identifiable {
+        let id: Date
+        let label: String
+        let number: String
+        let isToday: Bool
+    }
+
     var body: some View {
-        HStack(spacing: family == .systemSmall ? 10 : 28) {
-            timeValue(title: "GIỜ VÀO", value: timeLabel(entry.state?.checkIn), alignment: .leading)
-            Spacer(minLength: 0)
-            timeValue(title: "GIỜ RA", value: timeLabel(entry.state?.checkOut), alignment: .trailing)
+        VStack(spacing: 12) {
+            weekStrip
+            HStack(spacing: 0) {
+                timeValue(
+                    title: "GIỜ VÀO",
+                    value: timeLabel(entry.state?.checkIn),
+                    symbol: "rectangle.portrait.and.arrow.right",
+                    tint: Color(red: 0.64, green: 0.91, blue: 0.77)
+                )
+                Rectangle()
+                    .fill(.white.opacity(0.38))
+                    .frame(width: 1, height: 54)
+                    .padding(.horizontal, 18)
+                timeValue(
+                    title: "GIỜ RA",
+                    value: timeLabel(entry.state?.checkOut),
+                    symbol: "rectangle.portrait.and.arrow.forward",
+                    tint: Color(red: 1.00, green: 0.79, blue: 0.62)
+                )
+            }
         }
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
         .containerBackground(for: .widget) {
             ZStack {
                 LinearGradient(
                     colors: [
-                        Color(red: 1.00, green: 0.18, blue: 0.22),
-                        Color(red: 1.00, green: 0.42, blue: 0.05),
-                        Color(red: 0.93, green: 0.04, blue: 0.24),
+                        Color(red: 0.98, green: 0.18, blue: 0.26),
+                        Color(red: 1.00, green: 0.50, blue: 0.10),
+                        Color(red: 0.86, green: 0.04, blue: 0.36),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Circle()
                     .fill(Color.yellow.opacity(0.26))
-                    .frame(width: family == .systemSmall ? 150 : 250)
+                    .frame(width: 250)
                     .blur(radius: 24)
-                    .offset(x: family == .systemSmall ? 88 : 175, y: -95)
+                    .offset(x: 175, y: -95)
                 Circle()
                     .fill(Color.pink.opacity(0.34))
-                    .frame(width: family == .systemSmall ? 130 : 220)
+                    .frame(width: 220)
                     .blur(radius: 26)
-                    .offset(x: family == .systemSmall ? -90 : -170, y: 100)
+                    .offset(x: -170, y: 100)
             }
         }
     }
 
-    private func timeValue(title: String, value: String, alignment: HorizontalAlignment) -> some View {
-        VStack(alignment: alignment, spacing: 5) {
+    private var weekStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(weekDays) { day in
+                VStack(spacing: 5) {
+                    Text(day.label)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white.opacity(0.74))
+                    Text(day.number)
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(day.isToday ? Color(red: 0.83, green: 0.07, blue: 0.21) : .white)
+                        .frame(width: 27, height: 27)
+                        .background(day.isToday ? Color.white.opacity(0.88) : Color.clear, in: Circle())
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
+        .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+    }
+
+    private var weekDays: [WeekDay] {
+        var calendar = Calendar(identifier: .iso8601)
+        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let today = calendar.startOfDay(for: entry.date)
+        let interval = calendar.dateInterval(of: .weekOfYear, for: today)
+        let monday = interval?.start ?? today
+        let labels = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+        return labels.enumerated().compactMap { index, label in
+            guard let date = calendar.date(byAdding: .day, value: index, to: monday) else { return nil }
+            return WeekDay(
+                id: date,
+                label: label,
+                number: date.formatted(.dateTime.day()),
+                isToday: calendar.isDate(date, inSameDayAs: today)
+            )
+        }
+    }
+
+    private func timeValue(title: String, value: String, symbol: String, tint: Color) -> some View {
+        HStack(spacing: 11) {
+            Image(systemName: symbol)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.34), in: Circle())
+            VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2.weight(.bold))
                 .tracking(0.7)
                 .foregroundStyle(.white.opacity(0.78))
             Text(value)
-                .font((family == .systemSmall ? Font.title3 : Font.title2).monospacedDigit().weight(.heavy))
+                    .font(.title2.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.white)
                 .minimumScaleFactor(0.75)
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func timeLabel(_ value: String?) -> String {
@@ -161,7 +232,7 @@ private struct SukavinaAttendanceWidget: Widget {
         }
         .configurationDisplayName("Chấm công hôm nay")
         .description("Xem nhanh giờ vào và giờ ra hôm nay.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemMedium])
     }
 }
 
