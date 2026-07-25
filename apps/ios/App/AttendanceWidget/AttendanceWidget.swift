@@ -96,6 +96,8 @@ private struct AttendanceProvider: TimelineProvider {
 }
 
 private struct AttendanceWidgetView: View {
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
     let entry: AttendanceEntry
 
     private struct WeekDay: Identifiable {
@@ -147,6 +149,7 @@ private struct AttendanceWidgetView: View {
            let image = UIImage(contentsOfFile: url.path) {
             Image(uiImage: image)
                 .resizable()
+                .widgetAccentedRenderingMode(.fullColor)
                 .scaledToFill()
         } else {
             LinearGradient(
@@ -169,9 +172,23 @@ private struct AttendanceWidgetView: View {
                         .foregroundStyle(Color.white)
                     Text(day.number)
                         .font(.caption.monospacedDigit().weight(.medium))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(day.isToday && renderingMode != .fullColor ? Color.black.opacity(0.76) : Color.white)
                         .frame(width: 27, height: 27)
-                        .background(day.isToday ? Color.white.opacity(0.24) : Color.clear, in: Circle())
+                        .background {
+                            if day.isToday {
+                                Circle()
+                                    .fill(
+                                        renderingMode == .fullColor
+                                            ? Color(red: 0.92, green: 0.12, blue: 0.18)
+                                            : Color.white.opacity(0.92)
+                                    )
+                                    .overlay {
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.95), lineWidth: 2)
+                                    }
+                                    .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
+                            }
+                        }
                 }
                 .frame(maxWidth: .infinity)
             }
