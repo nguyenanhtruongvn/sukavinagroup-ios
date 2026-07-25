@@ -7,12 +7,13 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { RegistrationEventsService } from './registration-events.service';
 import { MailService } from './mail.service';
+import { getJwtSecret } from './jwt-secret';
 
 @Module({
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'dev-secret',
+      secret: getJwtSecret(),
       signOptions: { expiresIn: '8h' },
     }),
   ],

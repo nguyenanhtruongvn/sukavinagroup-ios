@@ -13,11 +13,8 @@ private enum WidgetStorage {
     }
 
     struct State: Codable {
-        let employeeName: String
-        let status: String
         let checkIn: String?
         let checkOut: String?
-        let updatedAt: Date
     }
 
     static func load() -> State? {
@@ -41,13 +38,9 @@ private enum WidgetStorage {
                 return load()
             }
             let records = payload.attendanceRecords
-            let cachedName = load()?.employeeName ?? "Sukavina"
             let state = State(
-                employeeName: cachedName,
-                status: payload.attendanceStatus,
                 checkIn: records.last?.punchedAt,
-                checkOut: records.count > 1 ? records.first?.punchedAt : nil,
-                updatedAt: ISO8601DateFormatter().date(from: payload.updatedAt) ?? Date()
+                checkOut: records.count > 1 ? records.first?.punchedAt : nil
             )
             if let encoded = try? JSONEncoder().encode(state) {
                 defaults?.set(encoded, forKey: stateKey)
@@ -64,9 +57,7 @@ private enum WidgetStorage {
     }
 
     private struct AttendancePayload: Decodable {
-        let attendanceStatus: String
         let attendanceRecords: [AttendanceRecord]
-        let updatedAt: String
     }
 
     private struct AttendanceRecord: Decodable {
@@ -84,11 +75,8 @@ private struct AttendanceProvider: TimelineProvider {
         AttendanceEntry(
             date: Date(),
             state: .init(
-                employeeName: "Sukavina",
-                status: "Đã chấm công",
                 checkIn: "2026-07-23T08:00:00+07:00",
-                checkOut: "2026-07-23T17:00:00+07:00",
-                updatedAt: Date()
+                checkOut: "2026-07-23T17:00:00+07:00"
             )
         )
     }
@@ -110,166 +98,48 @@ private struct AttendanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: AttendanceEntry
 
-    private let inkColor = Color(red: 0.12, green: 0.15, blue: 0.20)
-    private let mutedColor = Color(red: 0.38, green: 0.41, blue: 0.47)
-    private let checkInColor = Color(red: 0.02, green: 0.50, blue: 0.38)
-    private let checkOutColor = Color(red: 0.92, green: 0.34, blue: 0.12)
-    private let brandColor = Color(red: 0.87, green: 0.08, blue: 0.12)
-
     var body: some View {
-        VStack(alignment: .leading, spacing: family == .systemSmall ? 9 : 11) {
-            header
-            if let state = entry.state {
-                attendanceContent(state)
-            } else {
-                emptyContent
-            }
+        HStack(spacing: family == .systemSmall ? 10 : 28) {
+            timeValue(title: "GIỜ VÀO", value: timeLabel(entry.state?.checkIn), alignment: .leading)
+            Spacer(minLength: 0)
+            timeValue(title: "GIỜ RA", value: timeLabel(entry.state?.checkOut), alignment: .trailing)
         }
         .containerBackground(for: .widget) {
             ZStack {
                 LinearGradient(
                     colors: [
-                        .white,
-                        Color(red: 0.91, green: 0.92, blue: 0.94),
-                        Color(red: 1.00, green: 0.92, blue: 0.91),
+                        Color(red: 1.00, green: 0.18, blue: 0.22),
+                        Color(red: 1.00, green: 0.42, blue: 0.05),
+                        Color(red: 0.93, green: 0.04, blue: 0.24),
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
                 Circle()
-                    .fill(Color.white.opacity(0.76))
-                    .frame(width: family == .systemSmall ? 150 : 240)
-                    .blur(radius: 12)
-                    .offset(x: family == .systemSmall ? 82 : 170, y: -92)
+                    .fill(Color.yellow.opacity(0.26))
+                    .frame(width: family == .systemSmall ? 150 : 250)
+                    .blur(radius: 24)
+                    .offset(x: family == .systemSmall ? 88 : 175, y: -95)
                 Circle()
-                    .fill(brandColor.opacity(0.08))
-                    .frame(width: family == .systemSmall ? 120 : 210)
-                    .blur(radius: 18)
-                    .offset(x: family == .systemSmall ? -88 : -170, y: 98)
+                    .fill(Color.pink.opacity(0.34))
+                    .frame(width: family == .systemSmall ? 130 : 220)
+                    .blur(radius: 26)
+                    .offset(x: family == .systemSmall ? -90 : -170, y: 100)
             }
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "clock.badge.checkmark.fill")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(
-                    LinearGradient(colors: [brandColor, .orange], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-                )
-            VStack(alignment: .leading, spacing: 1) {
-                Text("SUKAVINA")
-                    .font(.caption2.weight(.bold))
-                    .tracking(0.8)
-                    .foregroundStyle(brandColor)
-                Text("Chấm công hôm nay")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(inkColor)
-            }
-            Spacer(minLength: 0)
-            Circle()
-                .fill(checkInColor)
-                .frame(width: 7, height: 7)
-                .overlay(Circle().stroke(checkInColor.opacity(0.2), lineWidth: 4))
-        }
-    }
-
-    @ViewBuilder
-    private func attendanceContent(_ state: WidgetStorage.State) -> some View {
-        if family == .systemSmall {
-            HStack(spacing: 8) {
-                compactTime(title: "Vào", value: timeLabel(state.checkIn), color: checkInColor)
-                compactTime(title: "Ra", value: timeLabel(state.checkOut), color: checkOutColor)
-            }
-            Spacer(minLength: 0)
-            statusLabel(state.status)
-        } else {
-            HStack(spacing: 10) {
-                timeCard(title: "GIỜ VÀO", value: timeLabel(state.checkIn), icon: "arrow.down.right", color: checkInColor)
-                timeCard(title: "GIỜ RA", value: timeLabel(state.checkOut), icon: "arrow.up.right", color: checkOutColor)
-            }
-            HStack {
-                statusLabel(state.status)
-                Spacer()
-                Text("Cập nhật \(state.updatedAt.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption2)
-                    .foregroundStyle(inkColor.opacity(0.62))
-            }
-        }
-    }
-
-    private func compactTime(title: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title.uppercased())
+    private func timeValue(title: String, value: String, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 5) {
+            Text(title)
                 .font(.caption2.weight(.bold))
-                .foregroundStyle(color)
+                .tracking(0.7)
+                .foregroundStyle(.white.opacity(0.78))
             Text(value)
-                .font(.title3.monospacedDigit().weight(.heavy))
-                .foregroundStyle(inkColor)
-                .minimumScaleFactor(0.8)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(color.opacity(0.18), lineWidth: 0.8)
-        }
-    }
-
-    private func timeCard(title: String, value: String, icon: String, color: Color) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.caption.bold())
-                .foregroundStyle(color)
-                .frame(width: 28, height: 28)
-                .background(color.opacity(0.15), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(color)
-                Text(value)
-                    .font(.title3.monospacedDigit().weight(.heavy))
-                    .foregroundStyle(inkColor)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(.white.opacity(0.92), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 15, style: .continuous)
-                .stroke(color.opacity(0.18), lineWidth: 0.8)
-        }
-    }
-
-    private func statusLabel(_ status: String) -> some View {
-        Label(status.isEmpty ? "Chưa chấm công" : status, systemImage: statusSymbol(status))
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(inkColor)
-            .lineLimit(1)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(.white.opacity(0.72), in: Capsule())
-            .overlay {
-                Capsule().stroke(mutedColor.opacity(0.14), lineWidth: 0.8)
-            }
-    }
-
-    private var emptyContent: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Spacer(minLength: 0)
-            Text("--:--")
-                .font(.title2.monospacedDigit().bold())
-                .foregroundStyle(inkColor)
-            Text("Mở Sukavina để cập nhật dữ liệu chấm công.")
-                .font(.caption)
-                .foregroundStyle(inkColor.opacity(0.68))
-                .lineLimit(2)
-            Spacer(minLength: 0)
+                .font((family == .systemSmall ? Font.title3 : Font.title2).monospacedDigit().weight(.heavy))
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.75)
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
         }
     }
 
@@ -279,10 +149,6 @@ private struct AttendanceWidgetView: View {
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         guard let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) else { return "--:--" }
         return date.formatted(date: .omitted, time: .shortened)
-    }
-
-    private func statusSymbol(_ status: String) -> String {
-        status.localizedCaseInsensitiveContains("chưa") ? "clock" : "checkmark.circle.fill"
     }
 }
 

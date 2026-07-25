@@ -381,9 +381,6 @@ function App() {
   const [employeeDepartmentFilter, setEmployeeDepartmentFilter] = useState('all');
   const [employeeStatusFilter, setEmployeeStatusFilter] = useState('all');
   const [employeePage, setEmployeePage] = useState(1);
-  const [selectedEmployees, setSelectedEmployees] = useState<string[]>([]);
-  const [contentPage, setContentPage] = useState(1);
-  const [mediaUploading, setMediaUploading] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteAccountForm, setDeleteAccountForm] = useState({ password: '', confirmation: '' });
   const [adminTab, setAdminTab] = useState<'content' | 'employees' | 'requests' | 'accounts'>(
@@ -482,7 +479,6 @@ function App() {
     endsAt: '',
     reason: '',
   });
-  const pageSize = 3;
 
   const isLoggedIn = Boolean(token);
   const isSuperAdmin =
@@ -714,7 +710,6 @@ function App() {
         const data = (await response.json()) as Dashboard;
         setDashboard(data);
         setContents(data.contentItems ?? []);
-        setContentPage(1);
         setAdminForm((current) =>
           current.sortOrder === 0 || current.sortOrder === nextContentSortOrder
             ? { ...current, sortOrder: nextContentSortOrder }
@@ -933,7 +928,6 @@ function App() {
     }
     const data = (await response.json()) as Dashboard['contentItems'];
     setContents(data ?? []);
-    setContentPage(1);
   };
 
   const uploadMedia = async (file: File) => {
@@ -1897,14 +1891,7 @@ function App() {
   };
 
   const insertImageFromDevice = async (file: File) => {
-    setMediaUploading(true);
-    const uploaded = await uploadMedia(file).finally(() => setMediaUploading(false));
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result ?? ''));
-      reader.onerror = () => reject(new Error('Không đọc được ảnh'));
-      reader.readAsDataURL(file);
-    });
+    const uploaded = await uploadMedia(file);
 
     if (editorRef.current) {
       applyEditorCommand('insertImage', uploaded.url);
@@ -1933,20 +1920,6 @@ function App() {
     if (unreadCount > 0) return;
     setNotificationOpen(false);
   }, [isAdminRoute, unreadCount]);
-
-  const contentPageCount = Math.max(1, Math.ceil(latestPostsDisplay.length / pageSize));
-  const visibleDisplayPosts = latestPostsDisplay.slice(
-    (contentPage - 1) * pageSize,
-    contentPage * pageSize,
-  );
-
-  const toggleEmployeeSelection = (id: string) => {
-    setSelectedEmployees((current) =>
-      current.includes(id)
-        ? current.filter((item) => item !== id)
-        : [...current, id],
-    );
-  };
 
   if (isPrivacyRoute) return <LegalPage page="privacy" />;
   if (isSupportRoute) return <LegalPage page="support" />;
@@ -3128,9 +3101,6 @@ function App() {
                         </p>
                       </div>
                       <div className="employee-pill-row">
-                        <span className="status-pill">
-                          Chọn: {selectedEmployees.length}
-                        </span>
                         <button type="button" className="ghost-button employee-refresh-button" onClick={() => refreshEmployees()}>
                           Tải lại
                         </button>

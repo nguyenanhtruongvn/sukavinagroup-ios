@@ -14,7 +14,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.sukavinagroup.user.data.ApiClient
 import net.sukavinagroup.user.data.Dashboard
-import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -61,8 +60,6 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
                 views.setOnClickPendingIntent(R.id.widget_root, openApp)
                 views.setTextViewText(R.id.widget_check_in, state.checkIn)
                 views.setTextViewText(R.id.widget_check_out, state.checkOut)
-                views.setTextViewText(R.id.widget_status, state.status)
-                views.setTextViewText(R.id.widget_updated, state.updated)
                 manager.updateAppWidget(id, views)
             }
         }
@@ -75,8 +72,6 @@ object AttendanceWidgetStore {
     data class State(
         val checkIn: String = "--:--",
         val checkOut: String = "--:--",
-        val status: String = "Chưa chấm công",
-        val updated: String = "Mở Sukavina để cập nhật",
     )
 
     fun update(context: Context, dashboard: Dashboard) {
@@ -86,8 +81,6 @@ object AttendanceWidgetStore {
         context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
             .putString("check_in", checkIn)
             .putString("check_out", checkOut)
-            .putString("status", dashboard.attendanceStatus.ifBlank { "Chưa chấm công" })
-            .putString("updated", "Cập nhật ${OffsetDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))}")
             .apply()
         AttendanceWidgetProvider.renderAll(context)
     }
@@ -102,8 +95,6 @@ object AttendanceWidgetStore {
         return State(
             checkIn = preferences.getString("check_in", null) ?: "--:--",
             checkOut = preferences.getString("check_out", null) ?: "--:--",
-            status = preferences.getString("status", null) ?: "Chưa chấm công",
-            updated = preferences.getString("updated", null) ?: "Mở Sukavina để cập nhật",
         )
     }
 

@@ -43,7 +43,10 @@ export class EmployeesService {
   ) {
     assertPermission(user, 'employees.manage');
     const passwordHash = data.password ? await hash(data.password, 10) : null;
-    const { password, hireDate, ...employeeData } = data;
+    const { hireDate } = data;
+    const employeeData = { ...data };
+    delete employeeData.password;
+    delete employeeData.hireDate;
     const employee = await this.prisma.employee
       .create({
         data: {
@@ -89,7 +92,10 @@ export class EmployeesService {
     const existing = await this.prisma.employee.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Employee not found');
     const passwordHash = data.password ? await hash(data.password, 10) : undefined;
-    const { password, hireDate, ...rest } = data;
+    const { hireDate } = data;
+    const rest = { ...data };
+    delete rest.password;
+    delete rest.hireDate;
     const employee = await this.prisma.employee
       .update({
         where: { id },
