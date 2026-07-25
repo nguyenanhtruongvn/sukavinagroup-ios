@@ -109,8 +109,12 @@ private struct AttendanceWidgetView: View {
 
     var body: some View {
         ZStack {
-            widgetArtwork
-            Color.black.opacity(0.12)
+            if renderingMode == .fullColor {
+                widgetArtwork
+                Color.black.opacity(0.18)
+            } else {
+                Color.clear
+            }
 
             VStack(spacing: 12) {
                 weekStrip
@@ -147,16 +151,9 @@ private struct AttendanceWidgetView: View {
     private var widgetArtwork: some View {
         if let url = Bundle.main.url(forResource: "WidgetBackground", withExtension: "jpg"),
            let image = UIImage(contentsOfFile: url.path) {
-            if #available(iOS 18.0, *) {
-                Image(uiImage: image)
-                    .resizable()
-                    .widgetAccentedRenderingMode(.fullColor)
-                    .scaledToFill()
-            } else {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            }
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
         } else {
             LinearGradient(
                 colors: [
