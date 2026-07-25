@@ -5,7 +5,8 @@
     android:layout_height="match_parent"
     android:background="@drawable/attendance_widget_background"
     android:orientation="vertical"
-    android:padding="13dp">
+    android:paddingHorizontal="10dp"
+    android:paddingVertical="11dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,7 +14,7 @@
         android:background="@drawable/attendance_widget_week"
         android:gravity="center"
         android:orientation="horizontal"
-        android:paddingHorizontal="7dp">
+        android:paddingHorizontal="5dp">
 
         <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="T2" android:textColor="#CFFFFFFF" android:textSize="9sp" android:textStyle="bold" />
@@ -52,11 +53,11 @@
         android:layout_weight="1"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="13dp">
+        android:paddingHorizontal="3dp">
 
         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
             <TextView android:layout_width="34dp" android:layout_height="34dp" android:background="@drawable/attendance_widget_checkin_icon" android:gravity="center" android:text="↪" android:textColor="#FFFFFFFF" android:textSize="18sp" android:textStyle="bold" />
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="GIỜ VÀO" android:textColor="#CFFFFFFF" android:textSize="9sp" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="GIỜ VÀO" android:textColor="#E6FFFFFF" android:textSize="9sp" android:textStyle="bold" />
             <TextView android:id="@+id/widget_check_in" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--:--" android:textColor="#FFFFFFFF" android:textSize="25sp" android:textStyle="bold" />
         </LinearLayout>
 
@@ -68,7 +69,7 @@
 
         <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:orientation="vertical">
             <TextView android:layout_width="34dp" android:layout_height="34dp" android:background="@drawable/attendance_widget_checkout_icon" android:gravity="center" android:text="↩" android:textColor="#FFFFFFFF" android:textSize="18sp" android:textStyle="bold" />
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="GIỜ RA" android:textColor="#CFFFFFFF" android:textSize="9sp" android:textStyle="bold" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:text="GIỜ RA" android:textColor="#E6FFFFFF" android:textSize="9sp" android:textStyle="bold" />
             <TextView android:id="@+id/widget_check_out" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--:--" android:textColor="#FFFFFFFF" android:textSize="25sp" android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>

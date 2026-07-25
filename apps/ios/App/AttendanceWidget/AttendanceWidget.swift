@@ -125,9 +125,11 @@ private struct AttendanceWidgetView: View {
                     tint: Color(red: 1.00, green: 0.79, blue: 0.62)
                 )
             }
+            .frame(maxWidth: .infinity)
         }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 25, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
             ZStack {
                 LinearGradient(
@@ -149,6 +151,16 @@ private struct AttendanceWidgetView: View {
                     .frame(width: 220)
                     .blur(radius: 26)
                     .offset(x: -170, y: 100)
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.12),
+                        Color.white.opacity(0.03),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
             }
         }
     }
@@ -171,6 +183,7 @@ private struct AttendanceWidgetView: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
         .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
 
@@ -233,6 +246,7 @@ private struct SukavinaAttendanceWidget: Widget {
         .configurationDisplayName("Chấm công hôm nay")
         .description("Xem nhanh giờ vào và giờ ra hôm nay.")
         .supportedFamilies([.systemMedium])
+        .contentMarginsDisabled()
     }
 }
 
