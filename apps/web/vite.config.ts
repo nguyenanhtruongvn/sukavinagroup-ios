@@ -20,5 +20,15 @@ export default defineConfig({
   build: {
     outDir: resolve(root, '../../dist/apps/web'),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('react')) return 'react-vendor';
+          if (id.includes('@simplewebauthn')) return 'auth-vendor';
+          if (id.includes('axios')) return 'api-vendor';
+        },
+      },
+    },
   },
 });
