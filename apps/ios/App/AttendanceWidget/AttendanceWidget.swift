@@ -135,7 +135,6 @@ private struct AttendanceWidgetView: View {
                 Image("WidgetBackground")
                     .resizable()
                     .scaledToFill()
-                    .widgetAccentedRenderingMode(.fullColor)
                 Color.black.opacity(0.10)
             }
         }
