@@ -111,8 +111,8 @@ private struct AttendanceWidgetView: View {
                 timeValue(
                     title: "GIỜ VÀO",
                     value: timeLabel(entry.state?.checkIn),
-                    symbol: "rectangle.portrait.and.arrow.right",
-                    tint: Color(red: 0.64, green: 0.91, blue: 0.77)
+                    symbol: "arrow.right.to.line",
+                    tint: Color(red: 0.55, green: 0.90, blue: 0.70)
                 )
                 Rectangle()
                     .fill(.white.opacity(0.38))
@@ -121,8 +121,8 @@ private struct AttendanceWidgetView: View {
                 timeValue(
                     title: "GIỜ RA",
                     value: timeLabel(entry.state?.checkOut),
-                    symbol: "rectangle.portrait.and.arrow.forward",
-                    tint: Color(red: 1.00, green: 0.79, blue: 0.62)
+                    symbol: "arrow.left.to.line",
+                    tint: Color(red: 1.00, green: 0.52, blue: 0.55)
                 )
             }
             .frame(maxWidth: .infinity)
@@ -132,35 +132,12 @@ private struct AttendanceWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
             ZStack {
-                LinearGradient(
-                    colors: [
-                        Color(red: 0.98, green: 0.18, blue: 0.26),
-                        Color(red: 1.00, green: 0.50, blue: 0.10),
-                        Color(red: 0.86, green: 0.04, blue: 0.36),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                Circle()
-                    .fill(Color.yellow.opacity(0.26))
-                    .frame(width: 250)
-                    .blur(radius: 24)
-                    .offset(x: 175, y: -95)
-                Circle()
-                    .fill(Color.pink.opacity(0.34))
-                    .frame(width: 220)
-                    .blur(radius: 26)
-                    .offset(x: -170, y: 100)
+                Image("WidgetBackground")
+                    .resizable()
+                    .scaledToFill()
                 Rectangle()
                     .fill(.ultraThinMaterial)
-                LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.12),
-                        Color.white.opacity(0.03),
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+                Color.black.opacity(0.14)
             }
         }
     }
@@ -170,13 +147,13 @@ private struct AttendanceWidgetView: View {
             ForEach(weekDays) { day in
                 VStack(spacing: 5) {
                     Text(day.label)
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white.opacity(0.74))
+                        .font(.caption2.weight(.heavy))
+                        .foregroundStyle(Color.white)
                     Text(day.number)
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(day.isToday ? Color(red: 0.83, green: 0.07, blue: 0.21) : .white)
+                        .font(.caption.monospacedDigit().weight(.medium))
+                        .foregroundStyle(Color.white)
                         .frame(width: 27, height: 27)
-                        .background(day.isToday ? Color.white.opacity(0.88) : Color.clear, in: Circle())
+                        .background(day.isToday ? Color.white.opacity(0.24) : Color.clear, in: Circle())
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -209,17 +186,17 @@ private struct AttendanceWidgetView: View {
         HStack(spacing: 11) {
             Image(systemName: symbol)
                 .font(.headline.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.white)
                 .frame(width: 36, height: 36)
                 .background(tint.opacity(0.34), in: Circle())
             VStack(alignment: .leading, spacing: 2) {
             Text(title)
                 .font(.caption2.weight(.bold))
                 .tracking(0.7)
-                .foregroundStyle(.white.opacity(0.78))
+                .foregroundStyle(Color.white)
             Text(value)
                     .font(.title2.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.white)
                 .minimumScaleFactor(0.75)
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
             }

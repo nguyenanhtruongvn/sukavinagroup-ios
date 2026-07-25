@@ -14,6 +14,7 @@
 		A10000000000000000000003 /* AttendanceWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* AttendanceWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B20000000000000000000010 /* App PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* App PrivacyInfo.xcprivacy */; };
 		B20000000000000000000012 /* Widget PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */; };
+		C30000000000000000000001 /* WidgetBackground.jpg in Resources */ = {isa = PBXBuildFile; fileRef = C30000000000000000000002 /* WidgetBackground.jpg */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -54,6 +55,7 @@
 		A1000000000000000000000A /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		B20000000000000000000011 /* App PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		C30000000000000000000002 /* WidgetBackground.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = WidgetBackground.jpg; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +115,7 @@
 				A10000000000000000000008 /* Widget Info.plist */,
 				A10000000000000000000009 /* AttendanceWidget.entitlements */,
 				B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */,
+				C30000000000000000000002 /* WidgetBackground.jpg */,
 			);
 			path = AttendanceWidget;
 			sourceTree = "<group>";
@@ -217,6 +220,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B20000000000000000000012 /* Widget PrivacyInfo.xcprivacy in Resources */,
+				C30000000000000000000001 /* WidgetBackground.jpg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
