@@ -71,6 +71,10 @@ const seeds = [
       });
     }
 
+    // Editorial content is user-managed. Recreating deleted posts on startup
+    // makes a deliberate deletion appear to be lost after every deployment.
+    return;
+
     const contentSeeds = [
       {
         page: 'employee',
