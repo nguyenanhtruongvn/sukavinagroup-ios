@@ -22,7 +22,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/sukavina?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/sukavina?schema=public&connection_limit=15&pool_timeout=30
       JWT_SECRET: ${JWT_SECRET}
       API_WORKERS: ${API_WORKERS:-2}
       PORT: 3000
