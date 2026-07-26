@@ -9,7 +9,7 @@ services:
     volumes:
       - sukavina_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d sukavina"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d sukavina']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -24,6 +24,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/sukavina?schema=public
       JWT_SECRET: ${JWT_SECRET}
+      API_WORKERS: ${API_WORKERS:-2}
       PORT: 3000
       MEDIA_ROOT: /app/media
     volumes:
@@ -40,7 +41,7 @@ services:
     depends_on:
       - api
     ports:
-      - "127.0.0.1:8080:80"
+      - '127.0.0.1:8080:80'
 
 volumes:
   sukavina_postgres_data:

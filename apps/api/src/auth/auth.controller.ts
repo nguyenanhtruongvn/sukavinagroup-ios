@@ -1,16 +1,38 @@
-import { Body, Controller, Delete, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
-import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
+import type {
+  AuthenticationResponseJSON,
+  RegistrationResponseJSON,
+} from '@simplewebauthn/server';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('login')
-  login(@Body() body: LoginDto) {
-    return this.authService.login(body.loginId, body.password);
+  login(
+    @Body() body: LoginDto,
+    @Req()
+    req: {
+      ip?: string;
+      headers: Record<string, string | string[] | undefined>;
+    },
+  ) {
+    const forwarded = req.headers['x-forwarded-for'];
+    const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+    const clientIp =
+      forwardedValue?.split(',')[0]?.trim() || req.ip || 'unknown';
+    return this.authService.login(body.loginId, body.password, clientIp);
   }
 
   @Post('refresh')
@@ -42,7 +64,11 @@ export class AuthController {
     @Req() req: { user: { sub: string } },
     @Body() body: { code: string; newPassword: string },
   ) {
-    return this.authService.confirmPasswordChange(req.user.sub, body.code, body.newPassword);
+    return this.authService.confirmPasswordChange(
+      req.user.sub,
+      body.code,
+      body.newPassword,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -55,9 +81,14 @@ export class AuthController {
   @Post('passkeys/register/verify')
   verifyPasskeyRegistration(
     @Req() req: { user: { sub: string } },
-    @Body() body: { challengeToken: string; response: RegistrationResponseJSON },
+    @Body()
+    body: { challengeToken: string; response: RegistrationResponseJSON },
   ) {
-    return this.authService.verifyPasskeyRegistration(req.user.sub, body.challengeToken, body.response);
+    return this.authService.verifyPasskeyRegistration(
+      req.user.sub,
+      body.challengeToken,
+      body.response,
+    );
   }
 
   @Post('passkeys/login/options')
@@ -67,9 +98,16 @@ export class AuthController {
 
   @Post('passkeys/login/verify')
   verifyPasskeyAuthentication(
-    @Body() body: { challengeToken: string; response: AuthenticationResponseJSON },
+    @Body()
+    body: {
+      challengeToken: string;
+      response: AuthenticationResponseJSON;
+    },
   ) {
-    return this.authService.verifyPasskeyAuthentication(body.challengeToken, body.response);
+    return this.authService.verifyPasskeyAuthentication(
+      body.challengeToken,
+      body.response,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -84,6 +122,10 @@ export class AuthController {
     @Req() req: { user: { sub: string } },
     @Body() body: { password: string; confirmation: string },
   ) {
-    return this.authService.deleteMyAccount(req.user.sub, body.password, body.confirmation);
+    return this.authService.deleteMyAccount(
+      req.user.sub,
+      body.password,
+      body.confirmation,
+    );
   }
 }

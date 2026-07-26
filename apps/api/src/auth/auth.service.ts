@@ -7,7 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
 import { compare, hash } from 'bcryptjs';
-import { randomInt } from 'crypto';
+import { createHmac, randomInt, timingSafeEqual } from 'crypto';
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -20,20 +20,25 @@ import type {
 } from '@simplewebauthn/server';
 import { RegistrationEventsService } from './registration-events.service';
 import { MailService } from './mail.service';
+import { LoginRateLimitService } from './login-rate-limit.service';
 
 @Injectable()
 export class AuthService {
-  private readonly passkeyRpId = process.env.PASSKEY_RP_ID ?? 'sukavinagroup.net';
-  private readonly passkeyOrigin = process.env.PASSKEY_ORIGIN ?? 'https://sukavinagroup.net';
+  private readonly passkeyRpId =
+    process.env.PASSKEY_RP_ID ?? 'sukavinagroup.net';
+  private readonly passkeyOrigin =
+    process.env.PASSKEY_ORIGIN ?? 'https://sukavinagroup.net';
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly registrationEvents: RegistrationEventsService,
     private readonly mailService: MailService,
+    private readonly loginRateLimit: LoginRateLimitService,
   ) {}
 
-  async login(loginId: string, password: string) {
+  async login(loginId: string, password: string, clientIp: string) {
     const normalized = loginId.trim();
+    await this.loginRateLimit.assertAllowed(normalized, clientIp);
     const user = await this.prisma.employee.findFirst({
       where: {
         OR: [
@@ -46,6 +51,7 @@ export class AuthService {
     });
 
     if (!user) {
+      await this.loginRateLimit.recordFailure(normalized, clientIp);
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -61,9 +67,11 @@ export class AuthService {
 
     const ok = await compare(password, user.passwordHash);
     if (!ok) {
+      await this.loginRateLimit.recordFailure(normalized, clientIp);
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    await this.loginRateLimit.clear(normalized, clientIp);
     return this.issueSession(user);
   }
 
@@ -110,7 +118,11 @@ export class AuthService {
 
     const verificationCode = String(randomInt(100000, 1000000));
     const verificationData = {
-      emailVerificationCode: await hash(verificationCode, 10),
+      emailVerificationCode: this.hashOtp(
+        'email-verification',
+        employeeCode,
+        verificationCode,
+      ),
       emailVerificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
       gmailVerified: false,
       active: false,
@@ -173,7 +185,14 @@ export class AuthService {
     if (user.emailVerificationExpiresAt.getTime() < Date.now()) {
       throw new BadRequestException('Mã xác minh đã hết hạn');
     }
-    if (!(await compare(data.code.trim(), user.emailVerificationCode))) {
+    if (
+      !(await this.verifyOtp(
+        'email-verification',
+        employeeCode,
+        data.code,
+        user.emailVerificationCode,
+      ))
+    ) {
       throw new BadRequestException('Mã xác minh không đúng');
     }
 
@@ -203,7 +222,11 @@ export class AuthService {
     await this.prisma.employee.update({
       where: { id: user.id },
       data: {
-        emailVerificationCode: await hash(verificationCode, 10),
+        emailVerificationCode: this.hashOtp(
+          'email-verification',
+          employeeCode,
+          verificationCode,
+        ),
         emailVerificationExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
       },
     });
@@ -216,7 +239,8 @@ export class AuthService {
       where: { id },
       include: { _count: { select: { passkeys: true } } },
     });
-    if (!user || !user.active) throw new UnauthorizedException('Account disabled');
+    if (!user || !user.active)
+      throw new UnauthorizedException('Account disabled');
     return {
       id: user.id,
       employeeCode: user.employeeCode,
@@ -236,7 +260,8 @@ export class AuthService {
       where: { id: employeeId },
       include: { passkeys: true },
     });
-    if (!user || !user.active) throw new UnauthorizedException('Tài khoản không tồn tại');
+    if (!user || !user.active)
+      throw new UnauthorizedException('Tài khoản không tồn tại');
     const options = await generateRegistrationOptions({
       rpName: 'Sukavina',
       rpID: this.passkeyRpId,
@@ -265,7 +290,11 @@ export class AuthService {
     challengeToken: string,
     response: RegistrationResponseJSON,
   ) {
-    const challenge = await this.verifyPasskeyChallenge(challengeToken, 'passkey-register', employeeId);
+    const challenge = await this.verifyPasskeyChallenge(
+      challengeToken,
+      'passkey-register',
+      employeeId,
+    );
     const verification = await verifyRegistrationResponse({
       response,
       expectedChallenge: challenge,
@@ -276,7 +305,8 @@ export class AuthService {
     if (!verification.verified || !verification.registrationInfo) {
       throw new BadRequestException('Không thể xác minh Passkey.');
     }
-    const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+    const { credential, credentialDeviceType, credentialBackedUp } =
+      verification.registrationInfo;
     await this.prisma.webAuthnCredential.upsert({
       where: { id: credential.id },
       create: {
@@ -317,12 +347,16 @@ export class AuthService {
     challengeToken: string,
     response: AuthenticationResponseJSON,
   ) {
-    const challenge = await this.verifyPasskeyChallenge(challengeToken, 'passkey-login');
+    const challenge = await this.verifyPasskeyChallenge(
+      challengeToken,
+      'passkey-login',
+    );
     const stored = await this.prisma.webAuthnCredential.findUnique({
       where: { id: response.id },
       include: { employee: true },
     });
-    if (!stored || !stored.employee.active) throw new UnauthorizedException('Passkey không hợp lệ.');
+    if (!stored || !stored.employee.active)
+      throw new UnauthorizedException('Passkey không hợp lệ.');
     const verification = await verifyAuthenticationResponse({
       response,
       expectedChallenge: challenge,
@@ -336,7 +370,8 @@ export class AuthService {
       },
       requireUserVerification: true,
     });
-    if (!verification.verified) throw new UnauthorizedException('Không thể xác minh sinh trắc học.');
+    if (!verification.verified)
+      throw new UnauthorizedException('Không thể xác minh sinh trắc học.');
     await this.prisma.webAuthnCredential.update({
       where: { id: stored.id },
       data: { counter: BigInt(verification.authenticationInfo.newCounter) },
@@ -347,10 +382,17 @@ export class AuthService {
 
   async refreshSession(refreshToken: string) {
     try {
-      const payload = await this.jwtService.verifyAsync<{ sub: string; purpose?: string }>(refreshToken);
-      if (payload.purpose !== 'refresh') throw new Error('Invalid token purpose');
-      const user = await this.prisma.employee.findUnique({ where: { id: payload.sub } });
-      if (!user || !user.active || !user.gmailVerified) throw new Error('Inactive account');
+      const payload = await this.jwtService.verifyAsync<{
+        sub: string;
+        purpose?: string;
+      }>(refreshToken);
+      if (payload.purpose !== 'refresh')
+        throw new Error('Invalid token purpose');
+      const user = await this.prisma.employee.findUnique({
+        where: { id: payload.sub },
+      });
+      if (!user || !user.active || !user.gmailVerified)
+        throw new Error('Inactive account');
       return this.issueSession(user);
     } catch {
       throw new UnauthorizedException('Phiên đăng nhập đã hết hạn');
@@ -358,7 +400,9 @@ export class AuthService {
   }
 
   async upgradeSession(userId: string) {
-    const user = await this.prisma.employee.findUnique({ where: { id: userId } });
+    const user = await this.prisma.employee.findUnique({
+      where: { id: userId },
+    });
     if (!user || !user.active || !user.gmailVerified) {
       throw new UnauthorizedException('Tài khoản không còn hoạt động');
     }
@@ -367,8 +411,12 @@ export class AuthService {
 
   async verifyWidgetToken(widgetToken: string) {
     try {
-      const payload = await this.jwtService.verifyAsync<{ sub: string; purpose?: string }>(widgetToken);
-      if (payload.purpose !== 'attendance-widget') throw new Error('Invalid token purpose');
+      const payload = await this.jwtService.verifyAsync<{
+        sub: string;
+        purpose?: string;
+      }>(widgetToken);
+      if (payload.purpose !== 'attendance-widget')
+        throw new Error('Invalid token purpose');
       const user = await this.prisma.employee.findUnique({
         where: { id: payload.sub },
         select: { id: true, active: true },
@@ -398,8 +446,14 @@ export class AuthService {
     };
     const [accessToken, refreshToken, widgetToken] = await Promise.all([
       this.jwtService.signAsync(payload, { expiresIn: '24h' }),
-      this.jwtService.signAsync({ sub: user.id, purpose: 'refresh' }, { expiresIn: '180d' }),
-      this.jwtService.signAsync({ sub: user.id, purpose: 'attendance-widget' }, { expiresIn: '180d' }),
+      this.jwtService.signAsync(
+        { sub: user.id, purpose: 'refresh' },
+        { expiresIn: '180d' },
+      ),
+      this.jwtService.signAsync(
+        { sub: user.id, purpose: 'attendance-widget' },
+        { expiresIn: '180d' },
+      ),
     ]);
     return {
       accessToken,
@@ -421,35 +475,53 @@ export class AuthService {
     return { message: 'Đã tắt đăng nhập bằng sinh trắc học trên website.' };
   }
 
-  private async verifyPasskeyChallenge(token: string, purpose: string, employeeId?: string) {
+  private async verifyPasskeyChallenge(
+    token: string,
+    purpose: string,
+    employeeId?: string,
+  ) {
     try {
       const payload = await this.jwtService.verifyAsync<{
         purpose: string;
         employeeId?: string;
         challenge: string;
       }>(token);
-      if (payload.purpose !== purpose || (employeeId && payload.employeeId !== employeeId)) throw new Error();
+      if (
+        payload.purpose !== purpose ||
+        (employeeId && payload.employeeId !== employeeId)
+      )
+        throw new Error();
       return payload.challenge;
     } catch {
-      throw new BadRequestException('Yêu cầu sinh trắc học đã hết hạn. Vui lòng thử lại.');
+      throw new BadRequestException(
+        'Yêu cầu sinh trắc học đã hết hạn. Vui lòng thử lại.',
+      );
     }
   }
 
   async requestPasswordChange(id: string) {
     const user = await this.prisma.employee.findUnique({ where: { id } });
-    if (!user || !user.active) throw new UnauthorizedException('Tài khoản không tồn tại');
+    if (!user || !user.active)
+      throw new UnauthorizedException('Tài khoản không tồn tại');
     if (!user.gmailEmail) {
-      throw new BadRequestException('Tài khoản chưa có email. Vui lòng liên hệ Nhân sự để cập nhật email.');
+      throw new BadRequestException(
+        'Tài khoản chưa có email. Vui lòng liên hệ Nhân sự để cập nhật email.',
+      );
     }
     this.ensurePasswordChangeAllowed(user.passwordChangedAt, user.accountType);
-    if (user.passwordChangeRequestedAt && Date.now() - user.passwordChangeRequestedAt.getTime() < 60_000) {
-      throw new BadRequestException('Vui lòng chờ 60 giây trước khi yêu cầu mã OTP mới.');
+    if (
+      user.passwordChangeRequestedAt &&
+      Date.now() - user.passwordChangeRequestedAt.getTime() < 60_000
+    ) {
+      throw new BadRequestException(
+        'Vui lòng chờ 60 giây trước khi yêu cầu mã OTP mới.',
+      );
     }
     const code = String(randomInt(100000, 1000000));
     await this.prisma.employee.update({
       where: { id },
       data: {
-        passwordChangeCode: await hash(code, 10),
+        passwordChangeCode: this.hashOtp('password-change', id, code),
         passwordChangeExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
         passwordChangeRequestedAt: new Date(),
       },
@@ -467,15 +539,25 @@ export class AuthService {
       throw new BadRequestException('Mật khẩu mới phải có ít nhất 6 ký tự.');
     }
     const user = await this.prisma.employee.findUnique({ where: { id } });
-    if (!user || !user.active) throw new UnauthorizedException('Tài khoản không tồn tại');
+    if (!user || !user.active)
+      throw new UnauthorizedException('Tài khoản không tồn tại');
     this.ensurePasswordChangeAllowed(user.passwordChangedAt, user.accountType);
     if (!user.passwordChangeCode || !user.passwordChangeExpiresAt) {
       throw new BadRequestException('Vui lòng yêu cầu mã OTP mới.');
     }
     if (user.passwordChangeExpiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới.');
+      throw new BadRequestException(
+        'Mã OTP đã hết hạn. Vui lòng yêu cầu mã mới.',
+      );
     }
-    if (!(await compare(code.trim(), user.passwordChangeCode))) {
+    if (
+      !(await this.verifyOtp(
+        'password-change',
+        id,
+        code,
+        user.passwordChangeCode,
+      ))
+    ) {
       throw new BadRequestException('Mã OTP không chính xác.');
     }
     await this.prisma.employee.update({
@@ -491,15 +573,55 @@ export class AuthService {
     return { message: 'Đổi mật khẩu thành công.' };
   }
 
-  private ensurePasswordChangeAllowed(changedAt: Date | null, accountType: string) {
+  private ensurePasswordChangeAllowed(
+    changedAt: Date | null,
+    accountType: string,
+  ) {
     if (accountType === 'ADMIN' || accountType === 'SUPER_ADMIN') return;
     if (!changedAt) return;
     const vietnamOffset = 7 * 60 * 60 * 1000;
     const now = new Date(Date.now() + vietnamOffset);
     const changed = new Date(changedAt.getTime() + vietnamOffset);
-    if (changed.getUTCFullYear() === now.getUTCFullYear() && changed.getUTCMonth() === now.getUTCMonth()) {
-      throw new BadRequestException('Bạn chỉ được đổi mật khẩu một lần mỗi tháng.');
+    if (
+      changed.getUTCFullYear() === now.getUTCFullYear() &&
+      changed.getUTCMonth() === now.getUTCMonth()
+    ) {
+      throw new BadRequestException(
+        'Bạn chỉ được đổi mật khẩu một lần mỗi tháng.',
+      );
     }
+  }
+
+  private hashOtp(purpose: string, subject: string, code: string) {
+    const digest = createHmac('sha256', this.otpSecret())
+      .update(`${purpose}:${subject}:${code.trim()}`)
+      .digest('hex');
+    return `hmac-sha256:${digest}`;
+  }
+
+  private async verifyOtp(
+    purpose: string,
+    subject: string,
+    code: string,
+    stored: string,
+  ) {
+    if (!stored.startsWith('hmac-sha256:')) {
+      return compare(code.trim(), stored);
+    }
+    const expected = this.hashOtp(purpose, subject, code);
+    const expectedBuffer = Buffer.from(expected);
+    const storedBuffer = Buffer.from(stored);
+    return (
+      expectedBuffer.length === storedBuffer.length &&
+      timingSafeEqual(expectedBuffer, storedBuffer)
+    );
+  }
+
+  private otpSecret() {
+    const secret = process.env.OTP_HMAC_SECRET ?? process.env.JWT_SECRET;
+    if (!secret)
+      throw new Error('OTP_HMAC_SECRET or JWT_SECRET must be configured');
+    return secret;
   }
 
   async deleteMyAccount(id: string, password: string, confirmation: string) {

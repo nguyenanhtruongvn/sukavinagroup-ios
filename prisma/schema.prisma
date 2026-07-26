@@ -117,6 +117,36 @@ model AppLog {
   @@index([createdAt])
 }
 
+model EmailJob {
+  id          String   @id @default(cuid())
+  kind        String
+  recipient   String
+  payload     String
+  status      String   @default("pending")
+  attempts    Int      @default(0)
+  scheduledAt DateTime @default(now())
+  lockedAt    DateTime?
+  lastError   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, scheduledAt, createdAt])
+  @@index([lockedAt])
+}
+
+model LoginRateLimit {
+  key             String   @id
+  scope           String
+  identifierHash  String
+  count           Int      @default(0)
+  windowStartedAt DateTime @default(now())
+  blockedUntil    DateTime?
+  updatedAt       DateTime @updatedAt
+
+  @@index([blockedUntil])
+  @@index([updatedAt])
+}
+
 model AttendanceRecord {
   id               String   @id @default(cuid())
   userEnrollNumber String

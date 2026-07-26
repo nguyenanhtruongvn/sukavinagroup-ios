@@ -1,5 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cluster from 'cluster';
+import { availableParallelism } from 'os';
 import { AppModule } from './app/app.module';
 import { AllExceptionsFilter } from './logging/all-exceptions.filter';
 
@@ -27,7 +29,25 @@ async function bootstrap() {
   app.setGlobalPrefix(globalPrefix);
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  Logger.log(`Application listening on port ${port} with prefix /${globalPrefix}`);
+  Logger.log(
+    `Application listening on port ${port} with prefix /${globalPrefix}`,
+  );
 }
 
-bootstrap();
+const requestedWorkers = Number(process.env.API_WORKERS ?? 2);
+const workerCount = Number.isFinite(requestedWorkers)
+  ? Math.max(1, Math.min(Math.floor(requestedWorkers), availableParallelism()))
+  : 2;
+
+if (cluster.isPrimary && workerCount > 1) {
+  Logger.log(`Starting ${workerCount} API workers`);
+  for (let index = 0; index < workerCount; index += 1) cluster.fork();
+  cluster.on('exit', (worker, code) => {
+    Logger.error(
+      `API worker ${worker.process.pid} exited with code ${code}; restarting`,
+    );
+    cluster.fork();
+  });
+} else {
+  void bootstrap();
+}

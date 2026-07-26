@@ -17,6 +17,7 @@ apps/ios/**/xcuserdata/
 *.db
 *.sqlite*
 *.sql
+!prisma/manual-migrations/*.sql
 *.tar.gz
 *.log
 *.ipa

@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { RegistrationEventsService } from './registration-events.service';
 import { MailService } from './mail.service';
 import { getJwtSecret } from './jwt-secret';
+import { LoginRateLimitService } from './login-rate-limit.service';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { getJwtSecret } from './jwt-secret';
     JwtStrategy,
     RegistrationEventsService,
     MailService,
+    LoginRateLimitService,
   ],
   exports: [
     AuthService,
