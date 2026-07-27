@@ -209,7 +209,8 @@ private final class APIClient {
         _ path: String,
         method: String = "GET",
         token: String? = nil,
-        body: Body? = nil
+        body: Body? = nil,
+        allowSessionRefresh: Bool = true
     ) async throws -> Response {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw NetworkError.invalidResponse
@@ -220,8 +221,9 @@ private final class APIClient {
         request.timeoutInterval = 25
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
-        if let token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let effectiveToken = token.flatMap { _ in KeychainStore.loadToken() } ?? token
+        if let effectiveToken {
+            request.setValue("Bearer \(effectiveToken)", forHTTPHeaderField: "Authorization")
         }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -272,6 +274,27 @@ private final class APIClient {
             }
             if token == nil && path == "auth/refresh" && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.unauthorized
+            }
+            if token != nil,
+               allowSessionRefresh,
+               (http.statusCode == 401 || http.statusCode == 403),
+               let refreshToken = KeychainStore.loadRefreshToken() {
+                let refreshed: LoginResponse = try await request(
+                    "auth/refresh",
+                    method: "POST",
+                    body: RefreshSessionBody(refreshToken: refreshToken),
+                    allowSessionRefresh: false
+                )
+                KeychainStore.save(token: refreshed.accessToken)
+                KeychainStore.save(refreshToken: refreshed.refreshToken)
+                AttendanceWidgetBridge.configure(token: refreshed.widgetToken)
+                return try await request(
+                    path,
+                    method: method,
+                    token: refreshed.accessToken,
+                    body: body,
+                    allowSessionRefresh: false
+                )
             }
             if token != nil && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.unauthorized
