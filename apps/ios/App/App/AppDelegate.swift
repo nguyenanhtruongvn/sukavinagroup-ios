@@ -215,19 +215,19 @@ private final class APIClient {
         guard let url = URL(string: path, relativeTo: baseURL) else {
             throw NetworkError.invalidResponse
         }
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.timeoutInterval = 25
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+        var urlRequest = URLRequest(url: url)
+        urlRequest.httpMethod = method
+        urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
+        urlRequest.timeoutInterval = 25
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
         let effectiveToken = token.flatMap { _ in KeychainStore.loadToken() } ?? token
         if let effectiveToken {
-            request.setValue("Bearer \(effectiveToken)", forHTTPHeaderField: "Authorization")
+            urlRequest.setValue("Bearer \(effectiveToken)", forHTTPHeaderField: "Authorization")
         }
         if let body {
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try encoder.encode(body)
+            urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            urlRequest.httpBody = try encoder.encode(body)
         }
 
         var data: Data
@@ -235,7 +235,7 @@ private final class APIClient {
         let primaryHost = url.host ?? "unknown"
         ConnectionDiagnostics.record("API primary start: \(method) \(primaryHost)/\(path)")
         do {
-            (data, response) = try await NetworkSessions.api.data(for: request)
+            (data, response) = try await NetworkSessions.api.data(for: urlRequest)
         } catch let error as URLError where error.code == .dataNotAllowed || error.code == .internationalRoamingOff {
             ConnectionDiagnostics.record("API primary cellular denied: \(error.code.rawValue) \(error.localizedDescription)")
             throw NetworkError.cellularRestricted
@@ -246,11 +246,11 @@ private final class APIClient {
             guard let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
                 throw NetworkError.offline
             }
-            request.url = fallbackURL
+            urlRequest.url = fallbackURL
             let fallbackHost = fallbackURL.host ?? "unknown"
             ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackHost)/\(path)")
             do {
-                (data, response) = try await NetworkSessions.api.data(for: request)
+                (data, response) = try await NetworkSessions.api.data(for: urlRequest)
             } catch let fallbackError as URLError where fallbackError.code == .dataNotAllowed || fallbackError.code == .internationalRoamingOff {
                 ConnectionDiagnostics.record("API fallback cellular denied: \(fallbackError.code.rawValue) \(fallbackError.localizedDescription)")
                 throw NetworkError.cellularRestricted
