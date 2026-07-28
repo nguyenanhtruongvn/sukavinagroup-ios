@@ -1,13 +1,127 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { hash } from 'bcryptjs';
+import * as ExcelJS from 'exceljs';
 import { PrismaService } from '../prisma/prisma.service';
 import { assertPermission, AuthUser } from '../auth/permissions';
 import { ContentEventsService } from '../dashboard/content-events.service';
+
+type ImportedEmployee = {
+  row: number;
+  employeeCode: string;
+  fullName: string;
+  department: string;
+  managerEmployeeCode: string | null;
+  jobTitle: string;
+  hireDate: Date | null;
+  contractType: string | null;
+  gmailEmail: string | null;
+  phoneNumber: string | null;
+};
+
+const REQUIRED_IMPORT_HEADERS = [
+  'msnv',
+  'họ và tên',
+  'phòng ban',
+  'msnv quản lý',
+  'chức danh',
+  'ngày vào làm',
+  'loại hợp đồng',
+  'email',
+  'số điện thoại',
+];
+
+const normalizeHeader = (value: string) =>
+  value
+    .trim()
+    .toLocaleLowerCase('vi')
+    .replace(/\s+/g, ' ');
+
+const parseImportDate = (cell: ExcelJS.Cell, row: number) => {
+  if (cell.value === null || cell.value === undefined || cell.text.trim() === '') return null;
+  if (cell.value instanceof Date && !Number.isNaN(cell.value.getTime())) {
+    return new Date(Date.UTC(cell.value.getFullYear(), cell.value.getMonth(), cell.value.getDate()));
+  }
+
+  const value = cell.text.trim();
+  const match = value.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  const isoMatch = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const day = match ? Number(match[1]) : isoMatch ? Number(isoMatch[3]) : 0;
+  const month = match ? Number(match[2]) : isoMatch ? Number(isoMatch[2]) : 0;
+  const year = match ? Number(match[3]) : isoMatch ? Number(isoMatch[1]) : 0;
+  const result = new Date(Date.UTC(year, month - 1, day));
+  if (
+    !year ||
+    result.getUTCFullYear() !== year ||
+    result.getUTCMonth() !== month - 1 ||
+    result.getUTCDate() !== day
+  ) {
+    throw new BadRequestException(
+      `Dòng ${row}: Ngày vào làm phải có định dạng dd/mm/yyyy hoặc yyyy-mm-dd.`,
+    );
+  }
+  return result;
+};
+
+export async function parseEmployeeWorkbook(buffer: Buffer): Promise<ImportedEmployee[]> {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  } catch {
+    throw new BadRequestException('File Excel không hợp lệ hoặc đã bị hỏng.');
+  }
+
+  const sheet = workbook.worksheets[0];
+  if (!sheet) throw new BadRequestException('File Excel không có trang dữ liệu.');
+
+  const headers = REQUIRED_IMPORT_HEADERS.map((_, index) =>
+    normalizeHeader(sheet.getCell(1, index + 1).text),
+  );
+  const invalidHeader = REQUIRED_IMPORT_HEADERS.findIndex(
+    (header, index) => headers[index] !== header,
+  );
+  if (invalidHeader >= 0) {
+    throw new BadRequestException(
+      `Cột ${invalidHeader + 1} phải là "${REQUIRED_IMPORT_HEADERS[invalidHeader]}".`,
+    );
+  }
+
+  const employees: ImportedEmployee[] = [];
+  for (let row = 2; row <= sheet.rowCount; row += 1) {
+    const values = Array.from({ length: 9 }, (_, index) =>
+      sheet.getCell(row, index + 1).text.trim(),
+    );
+    if (values.every((value) => !value)) continue;
+
+    const [employeeCode, fullName, department, managerCode, jobTitle, , contractType, email, phone] =
+      values;
+    if (!employeeCode || !fullName || !department || !jobTitle) {
+      throw new BadRequestException(
+        `Dòng ${row}: MSNV, họ và tên, phòng ban và chức danh là bắt buộc.`,
+      );
+    }
+    employees.push({
+      row,
+      employeeCode,
+      fullName,
+      department,
+      managerEmployeeCode: managerCode || null,
+      jobTitle,
+      hireDate: parseImportDate(sheet.getCell(row, 6), row),
+      contractType: contractType || null,
+      gmailEmail: email ? email.toLocaleLowerCase('vi') : null,
+      phoneNumber: phone || null,
+    });
+  }
+
+  if (!employees.length) throw new BadRequestException('File Excel chưa có nhân viên để nhập.');
+  return employees;
+}
 
 @Injectable()
 export class EmployeesService {
@@ -19,6 +133,88 @@ export class EmployeesService {
   list(user: AuthUser) {
     assertPermission(user, 'employees.manage');
     return this.prisma.employee.findMany({ orderBy: { createdAt: 'desc' } });
+  }
+
+  async import(user: AuthUser, file?: Express.Multer.File) {
+    assertPermission(user, 'employees.manage');
+    if (!file) throw new BadRequestException('Vui lòng chọn file Excel.');
+    if (!file.originalname.toLocaleLowerCase('vi').endsWith('.xlsx')) {
+      throw new BadRequestException('Chỉ hỗ trợ file Excel định dạng .xlsx.');
+    }
+
+    const rows = await parseEmployeeWorkbook(file.buffer);
+    const seenCodes = new Set<string>();
+    const seenEmails = new Set<string>();
+    const seenPhones = new Set<string>();
+    for (const employee of rows) {
+      const codeKey = employee.employeeCode.toLocaleLowerCase('vi');
+      if (seenCodes.has(codeKey)) {
+        throw new BadRequestException(`Dòng ${employee.row}: MSNV bị trùng trong file.`);
+      }
+      seenCodes.add(codeKey);
+      if (employee.gmailEmail) {
+        if (seenEmails.has(employee.gmailEmail)) {
+          throw new BadRequestException(`Dòng ${employee.row}: Email bị trùng trong file.`);
+        }
+        seenEmails.add(employee.gmailEmail);
+      }
+      if (employee.phoneNumber) {
+        if (seenPhones.has(employee.phoneNumber)) {
+          throw new BadRequestException(`Dòng ${employee.row}: Số điện thoại bị trùng trong file.`);
+        }
+        seenPhones.add(employee.phoneNumber);
+      }
+    }
+
+    const existing = await this.prisma.employee.findMany({
+      where: {
+        OR: [
+          { employeeCode: { in: rows.map((item) => item.employeeCode) } },
+          { gmailEmail: { in: rows.flatMap((item) => (item.gmailEmail ? [item.gmailEmail] : [])) } },
+          { phoneNumber: { in: rows.flatMap((item) => (item.phoneNumber ? [item.phoneNumber] : [])) } },
+        ],
+      },
+      select: { employeeCode: true, gmailEmail: true, phoneNumber: true },
+    });
+    const existingCodes = new Set(existing.map((item) => item.employeeCode.toLocaleLowerCase('vi')));
+    const newRows = rows.filter(
+      (item) => !existingCodes.has(item.employeeCode.toLocaleLowerCase('vi')),
+    );
+    const existingEmails = new Set(existing.flatMap((item) => (item.gmailEmail ? [item.gmailEmail] : [])));
+    const existingPhones = new Set(existing.flatMap((item) => (item.phoneNumber ? [item.phoneNumber] : [])));
+    const emailConflict = newRows.find((item) => item.gmailEmail && existingEmails.has(item.gmailEmail));
+    if (emailConflict) {
+      throw new ConflictException(`Dòng ${emailConflict.row}: Email đã được sử dụng.`);
+    }
+    const phoneConflict = newRows.find(
+      (item) => item.phoneNumber && existingPhones.has(item.phoneNumber),
+    );
+    if (phoneConflict) {
+      throw new ConflictException(`Dòng ${phoneConflict.row}: Số điện thoại đã được sử dụng.`);
+    }
+
+    if (newRows.length) {
+      const passwordHash = await hash('123456', 10);
+      await this.prisma.employee.createMany({
+        data: newRows.map(({ row: _row, ...employee }) => ({
+          ...employee,
+          passwordHash,
+          authProvider: 'phone_password',
+          role: employee.jobTitle,
+          accountType: 'EMPLOYEE',
+          gmailVerified: true,
+          active: true,
+        })),
+      });
+      this.contentEvents.notify('employee_changed');
+    }
+
+    return {
+      imported: newRows.length,
+      skipped: rows.length - newRows.length,
+      total: rows.length,
+      defaultPassword: '123456',
+    };
   }
 
   async create(

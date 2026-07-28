@@ -1,4 +1,17 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { EmployeesService } from './employees.service';
 
@@ -35,6 +48,15 @@ export class EmployeesController {
     },
   ) {
     return this.employeesService.create(req.user, body);
+  }
+
+  @Post('import')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
+  import(
+    @Req() req: { user: { employeeCode?: string; role?: string } },
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    return this.employeesService.import(req.user, file);
   }
 
   @Patch(':id')

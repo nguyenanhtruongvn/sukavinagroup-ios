@@ -3163,11 +3163,23 @@ h1 {
 .employee-stats-hero .stat-card:nth-child(4) { box-shadow: inset 3px 0 #58a6d7; }
 
 .employee-add-button,
-.employee-export-button {
+.employee-export-button,
+.employee-import-button {
   min-height: 44px;
   padding: 0 18px;
   border-radius: 12px;
   font-weight: 750;
+}
+
+.employee-import-button {
+  border-color: rgba(82, 166, 218, 0.38);
+  color: #dff4ff;
+  background: linear-gradient(145deg, rgba(65, 143, 194, 0.2), rgba(255, 255, 255, 0.045));
+}
+
+.employee-import-button:hover:not(:disabled) {
+  border-color: rgba(103, 192, 247, 0.7);
+  box-shadow: 0 10px 24px rgba(39, 125, 180, 0.18);
 }
 
 .employee-add-button {

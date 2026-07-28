@@ -441,6 +441,8 @@ function App() {
   const [pendingMealChoice, setPendingMealChoice] = useState<'water' | 'vegetarian' | 'received' | 'cancel' | null>(null);
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [employeeImporting, setEmployeeImporting] = useState(false);
+  const employeeFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
   const [adminRequestQuery, setAdminRequestQuery] = useState('');
   const [adminRequestKind, setAdminRequestKind] = useState<'all' | EmployeeRequest['kind']>('all');
@@ -1212,6 +1214,50 @@ function App() {
     });
     if (!response.ok) throw new Error('Không tải được danh sách nhân viên');
     setEmployees((await response.json()) as EmployeeRecord[]);
+  };
+
+  const importEmployees = async (file?: File) => {
+    if (!token || !file) return;
+    setEmployeeImporting(true);
+    setError('');
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch('/api/admin/employees/import', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      });
+      const result = (await response.json().catch(() => null)) as
+        | { imported: number; skipped: number; total: number; defaultPassword: string }
+        | { message?: string | string[] }
+        | null;
+      if (!response.ok || !result || !('imported' in result)) {
+        const responseMessage = (result as { message?: string | string[] } | null)?.message;
+        throw new Error(
+          (Array.isArray(responseMessage) ? responseMessage.join(', ') : responseMessage) ||
+            'Không nhập được danh sách nhân viên.',
+        );
+      }
+      await refreshEmployees();
+      setToast({
+        type: 'success',
+        message:
+          `Đã nhập ${result.imported}/${result.total} nhân viên` +
+          (result.skipped ? `, bỏ qua ${result.skipped} MSNV đã tồn tại.` : '.') +
+          ` Mật khẩu mặc định: ${result.defaultPassword}`,
+      });
+    } catch (importError) {
+      const message =
+        importError instanceof Error
+          ? importError.message
+          : 'Không nhập được danh sách nhân viên.';
+      setError(message);
+      setToast({ type: 'error', message });
+    } finally {
+      setEmployeeImporting(false);
+      if (employeeFileInputRef.current) employeeFileInputRef.current.value = '';
+    }
   };
 
   const registrationDisabled = (event: React.FormEvent<HTMLFormElement>) => {
@@ -3301,7 +3347,7 @@ function App() {
                       onClick={() => menuFileInputRef.current?.click()}
                     >
                       <span>↑</span>
-                      {menuImporting ? 'Đang import...' : 'Import Excel'}
+                      {menuImporting ? 'Đang nhập...' : 'Nhập thực đơn'}
                     </button>
                   </div>
                 </header>
@@ -3487,12 +3533,27 @@ function App() {
                     </p>
                   </div>
                   <div className="employee-toolbar">
+                    <input
+                      ref={employeeFileInputRef}
+                      type="file"
+                      accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      hidden
+                      onChange={(event) => void importEmployees(event.target.files?.[0])}
+                    />
                     <button
                       type="button"
                       className="ghost-button employee-export-button"
                       onClick={exportEmployees}
                     >
-                      Xuất Excel
+                      Xuất danh sách nhân viên
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost-button employee-import-button"
+                      disabled={employeeImporting}
+                      onClick={() => employeeFileInputRef.current?.click()}
+                    >
+                      {employeeImporting ? 'Đang nhập...' : 'Nhập danh sách nhân viên'}
                     </button>
                     <button
                       type="button"
