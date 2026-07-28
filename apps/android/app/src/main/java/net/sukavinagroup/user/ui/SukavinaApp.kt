@@ -393,6 +393,63 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 
 @Composable private fun DateTimeField(label: String, value: LocalDateTime, changed: (LocalDateTime) -> Unit) {
     val context = LocalContext.current
+    var showTimePicker by remember { mutableStateOf(false) }
+
+    if (showTimePicker) {
+        val timeState = rememberTimePickerState(
+            initialHour = value.hour,
+            initialMinute = value.minute,
+            is24Hour = true,
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            icon = {
+                Surface(
+                    shape = CircleShape,
+                    color = SukavinaRed.copy(alpha = .14f),
+                    modifier = Modifier.size(46.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = SukavinaRed,
+                        modifier = Modifier.padding(11.dp),
+                    )
+                }
+            },
+            title = { Text("Chọn giờ ${label.lowercase()}") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "Chạm vào giờ hoặc phút, sau đó chọn trên mặt đồng hồ.",
+                        color = SukavinaMuted,
+                        fontSize = 13.sp,
+                    )
+                    TimePicker(state = timeState)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        changed(value.withHour(timeState.hour).withMinute(timeState.minute))
+                        showTimePicker = false
+                    },
+                ) {
+                    Text("Xác nhận")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text("Hủy")
+                }
+            },
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(17.dp),
@@ -421,15 +478,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
                     Text(value.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), maxLines = 1)
                 }
                 OutlinedButton(
-                    onClick = {
-                        android.app.TimePickerDialog(
-                            context,
-                            { _, hour, minute -> changed(value.withHour(hour).withMinute(minute)) },
-                            value.hour,
-                            value.minute,
-                            true,
-                        ).show()
-                    },
+                    onClick = { showTimePicker = true },
                     modifier = Modifier.weight(.9f),
                     contentPadding = PaddingValues(horizontal = 11.dp, vertical = 10.dp),
                 ) {
