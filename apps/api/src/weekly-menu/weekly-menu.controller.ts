@@ -64,6 +64,11 @@ export class EmployeeWeeklyMenuController {
     return this.weeklyMenu.selectMeal(req.user, body.choice);
   }
 
+  @Patch('selection/received')
+  receiveSelection(@Req() req: { user: AuthUser }) {
+    return this.weeklyMenu.receiveMealSelection(req.user);
+  }
+
   @Delete('selection')
   cancelSelection(@Req() req: { user: AuthUser }) {
     return this.weeklyMenu.cancelMealSelection(req.user);

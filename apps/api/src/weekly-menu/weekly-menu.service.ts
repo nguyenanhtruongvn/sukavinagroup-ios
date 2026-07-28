@@ -135,6 +135,7 @@ export class WeeklyMenuService {
         overtime: '',
       },
       selection: selection?.choice ?? null,
+      receivedAt: selection?.receivedAt?.toISOString() ?? null,
     };
   }
 
@@ -146,8 +147,24 @@ export class WeeklyMenuService {
     const mealDate = todayInVietnam();
     await this.prisma.mealSelection.upsert({
       where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
-      update: { choice },
+      update: { choice, receivedAt: null },
       create: { employeeId: user.sub, mealDate, choice },
+    });
+    return this.today(user);
+  }
+
+  async receiveMealSelection(user: AuthUser) {
+    if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
+    const mealDate = todayInVietnam();
+    const selection = await this.prisma.mealSelection.findUnique({
+      where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
+    });
+    if (!selection) {
+      throw new BadRequestException('Bạn chưa lựa chọn món ăn hôm nay.');
+    }
+    await this.prisma.mealSelection.update({
+      where: { id: selection.id },
+      data: { receivedAt: new Date() },
     });
     return this.today(user);
   }

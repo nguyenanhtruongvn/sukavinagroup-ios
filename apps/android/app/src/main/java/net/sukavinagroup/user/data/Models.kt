@@ -66,5 +66,11 @@ import kotlinx.serialization.Serializable
     val soup: String = "", val vegetarianMain: String = "", val vegetarianSide: String = "",
     val overtime: String = "",
 )
-@Serializable data class TodayMenu(val date: String = "", val day: MenuDay = MenuDay(), val selection: String? = null)
+@Serializable data class TodayMenu(
+    val date: String = "",
+    val day: MenuDay = MenuDay(),
+    val selection: String? = null,
+    val receivedAt: String? = null,
+)
 @Serializable data class MealSelectionBody(val choice: String)
+@Serializable data class EmptyBody(val acknowledged: Boolean = true)

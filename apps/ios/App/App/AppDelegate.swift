@@ -526,6 +526,7 @@ private struct TodayMenu: Decodable {
     let date: String
     let day: MenuDay
     let selection: String?
+    let receivedAt: String?
 }
 
 private struct MealSelectionBody: Encodable {
@@ -917,6 +918,21 @@ private final class SessionStore: ObservableObject {
             todayMenu = try await APIClient.shared.request(
                 "me/menu/selection",
                 method: "DELETE",
+                token: token
+            )
+        } catch {
+            present(error)
+        }
+    }
+
+    func receiveMealSelection() async {
+        guard let token else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            todayMenu = try await APIClient.shared.request(
+                "me/menu/selection/received",
+                method: "PATCH",
                 token: token
             )
         } catch {
@@ -1729,11 +1745,39 @@ private struct TodayMenuView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                        Text("Bạn muốn dùng món nào?").font(.title3.bold())
-                        mealButton("Món nước", detail: session.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
-                        mealButton("Món chay", detail: [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
-                        if session.todayMenu?.selection != nil {
+                        if let selection = session.todayMenu?.selection {
+                            let isWater = selection == "water"
+                            Text("MÓN ĂN ĐÃ ĐẶT").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                            HStack(spacing: 14) {
+                                Image(systemName: isWater ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundColor(isWater ? .cyan : .green)
+                                    .frame(width: 50, height: 50)
+                                    .background((isWater ? Color.cyan : Color.green).opacity(0.14))
+                                    .clipShape(RoundedRectangle(cornerRadius: 15))
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(isWater ? "Món nước" : "Món chay").font(.title3.bold())
+                                    Text(selectedMealDetail(selection))
+                                        .font(.subheadline).foregroundColor(AppTheme.muted).lineLimit(2)
+                                }
+                            }
+                            if session.todayMenu?.receivedAt == nil {
+                                Button {
+                                    pendingChoice = "received"
+                                } label: {
+                                    Label("Xác nhận đã nhận món", systemImage: "checkmark.circle.fill")
+                                        .font(.headline).foregroundColor(.white)
+                                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                                        .background(Color.green.opacity(0.88))
+                                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                                }
+                            } else {
+                                Label("Đã nhận món", systemImage: "checkmark.seal.fill")
+                                    .font(.headline).foregroundColor(.green)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 13)
+                                    .background(Color.green.opacity(0.11))
+                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                            }
                             Button {
                                 pendingChoice = "cancel"
                             } label: {
@@ -1744,6 +1788,11 @@ private struct TodayMenuView: View {
                                     .padding(.vertical, 12)
                             }
                             .buttonStyle(.plain)
+                        } else {
+                            Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                            Text("Bạn muốn dùng món nào?").font(.title3.bold())
+                            mealButton("Món nước", detail: session.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
+                            mealButton("Món chay", detail: [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
                         }
                     }
                     .padding(18)
@@ -1759,25 +1808,26 @@ private struct TodayMenuView: View {
             .sheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
+                let receiving = choice == "received"
                 let title = choice == "water" ? "Món nước" : "Món chay"
                 let detail = choice == "water"
                     ? (session.todayMenu?.day.featured ?? "...")
                     : [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
                 VStack(spacing: 18) {
                     Capsule().fill(AppTheme.muted.opacity(0.35)).frame(width: 42, height: 5)
-                    Image(systemName: cancelling ? "xmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill"))
+                    Image(systemName: cancelling ? "xmark.circle.fill" : (receiving ? "checkmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill")))
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(cancelling ? .red : (choice == "water" ? .cyan : .green))
+                        .foregroundColor(cancelling ? .red : (receiving ? .green : (choice == "water" ? .cyan : .green)))
                         .frame(width: 64, height: 64)
                         .background((cancelling ? Color.red : (choice == "water" ? Color.cyan : Color.green)).opacity(0.13))
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                     VStack(spacing: 7) {
-                        Text(cancelling ? "Hủy lựa chọn hôm nay?" : "Xác nhận \(title)")
+                        Text(cancelling ? "Hủy lựa chọn hôm nay?" : (receiving ? "Bạn đã nhận món?" : "Xác nhận \(title)"))
                             .font(.title2.bold())
-                        Text(cancelling ? "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." : "Kiểm tra món trước khi xác nhận đặt.")
+                        Text(cancelling ? "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." : (receiving ? "Xác nhận sau khi bạn đã nhận đúng phần ăn đã đặt." : "Kiểm tra món trước khi xác nhận đặt."))
                             .font(.subheadline).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
                     }
-                    if !cancelling {
+                    if !cancelling && !receiving {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(title.uppercased()).font(.caption.bold()).tracking(1).foregroundColor(AppTheme.muted)
                             Text(detail.isEmpty ? "..." : detail).font(.headline)
@@ -1789,22 +1839,32 @@ private struct TodayMenuView: View {
                         pendingChoice = nil
                         Task {
                             if cancelling { await session.cancelMealSelection() }
+                            else if receiving { await session.receiveMealSelection() }
                             else { await session.selectMeal(choice) }
                         }
                     } label: {
-                        Text(cancelling ? "Xác nhận hủy" : "Xác nhận đặt món")
+                        Text(cancelling ? "Xác nhận hủy" : (receiving ? "Xác nhận đã nhận" : "Xác nhận đặt món"))
                             .font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 15)
-                            .background(cancelling ? Color.red : AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
+                            .background(cancelling ? Color.red : (receiving ? Color.green : AppTheme.red)).clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     Button("Quay lại") { pendingChoice = nil }
                         .font(.headline).foregroundColor(AppTheme.muted).padding(.vertical, 5)
                 }
                 .padding(22)
-                .presentationDetents([.height(cancelling ? 370 : 450)])
+                .presentationDetents([.height((cancelling || receiving) ? 370 : 450)])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(28)
             }
         }
+    }
+
+    private func selectedMealDetail(_ selection: String) -> String {
+        if selection == "water" {
+            return session.todayMenu?.day.featured ?? "..."
+        }
+        let detail = [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        return detail.isEmpty ? "..." : detail
     }
 
     private func menuGroup(_ title: String, icon: String, color: Color, lines: [String?]) -> some View {

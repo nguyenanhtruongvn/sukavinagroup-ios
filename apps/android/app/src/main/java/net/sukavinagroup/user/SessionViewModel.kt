@@ -108,6 +108,16 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             .onFailure { update(working = false, error = it.message) }
     }
 
+    fun receiveMealSelection() = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        update(working = true, error = null)
+        runCatching {
+            api.patch<TodayMenu, EmptyBody>("me/menu/selection/received", EmptyBody(), token)
+        }
+            .onSuccess { _state.value = _state.value.copy(todayMenu = it, working = false) }
+            .onFailure { update(working = false, error = it.message) }
+    }
+
     fun refreshRequests() = viewModelScope.launch {
         val token = _state.value.token ?: return@launch
         runCatching {
