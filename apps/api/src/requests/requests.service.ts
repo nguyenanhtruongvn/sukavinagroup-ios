@@ -125,6 +125,10 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     return this.prisma.userNotification.deleteMany({ where: { recipientId: employeeId } });
   }
 
+  deleteNotification(employeeId: string, id: string) {
+    return this.prisma.userNotification.deleteMany({ where: { id, recipientId: employeeId } });
+  }
+
   async create(employeeId: string, input: { kind?: string; startsAt?: string; endsAt?: string; reason?: string }) {
     const kind = String(input.kind ?? '');
     const reason = String(input.reason ?? '').trim();

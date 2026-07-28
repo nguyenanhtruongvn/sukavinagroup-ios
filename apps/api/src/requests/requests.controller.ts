@@ -63,6 +63,14 @@ export class RequestsController {
     return this.requests.clearNotifications(req.user.sub);
   }
 
+  @Delete('notifications/:notificationId')
+  deleteNotification(
+    @Req() req: { user: { sub: string } },
+    @Param('notificationId') notificationId: string,
+  ) {
+    return this.requests.deleteNotification(req.user.sub, notificationId);
+  }
+
   @Patch(':id/decision')
   decide(
     @Req() req: { user: { sub: string } },

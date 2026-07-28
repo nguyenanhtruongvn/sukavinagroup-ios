@@ -2244,7 +2244,7 @@ private struct ModernAttendanceHistoryView: View {
         HStack(spacing: 8) {
             summary(count("present"), "Ngày công", .green)
             summary(count("late"), "Đi trễ", .orange)
-            summary(count("leave"), "Nghỉ phép", .gray)
+            summary(count("leave"), "Nghỉ phép", EmployeeRequestKind.leave.color)
             summary(count("absent"), "Vắng", AppTheme.red)
         }
     }
@@ -2276,7 +2276,7 @@ private struct ModernAttendanceHistoryView: View {
             HStack(spacing: 9) {
                 legend("Đủ công", .green.opacity(0.22))
                 legend("Đi trễ", .orange.opacity(0.22))
-                legend("Nghỉ phép", .gray.opacity(0.18))
+                legend("Nghỉ phép", EmployeeRequestKind.leave.color.opacity(0.2))
                 legend("Vắng", AppTheme.red.opacity(0.2))
             }
         }
@@ -2350,7 +2350,7 @@ private struct ModernAttendanceHistoryView: View {
         switch status {
         case "present": return .green.opacity(0.2)
         case "late": return .orange.opacity(0.2)
-        case "leave": return .gray.opacity(0.16)
+        case "leave": return EmployeeRequestKind.leave.color.opacity(0.2)
         case "absent": return AppTheme.red.opacity(0.18)
         case "weekend": return .gray.opacity(0.08)
         default: return AppTheme.muted.opacity(0.06)
@@ -2588,6 +2588,15 @@ private struct RequestsView: View {
                         }
                     }.padding(16).padding(.bottom, 82)
                 }
+                .contentShape(Rectangle())
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 28)
+                        .onEnded { value in
+                            guard abs(value.translation.width) > abs(value.translation.height) * 1.35,
+                                  abs(value.translation.width) > 65 else { return }
+                            moveFilter(value.translation.width < 0 ? 1 : -1)
+                        }
+                )
 
                 Button { composing = true } label: {
                     Image(systemName: "plus")
@@ -2637,6 +2646,15 @@ private struct RequestsView: View {
             .foregroundStyle(filter == value ? Color.white : Color.primary)
             .overlay(Capsule().stroke(filter == value ? Color.clear : Color.primary.opacity(0.12), lineWidth: 1))
             .clipShape(Capsule())
+    }
+
+    private func moveFilter(_ direction: Int) {
+        let filters: [EmployeeRequestStatus?] = [nil] + EmployeeRequestStatus.allCases.map(Optional.some)
+        guard let index = filters.firstIndex(where: { $0 == filter }) else { return }
+        let target = min(max(index + direction, 0), filters.count - 1)
+        guard target != index else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.snappy(duration: 0.3)) { filter = filters[target] }
     }
 }
 
@@ -2903,7 +2921,8 @@ private struct NotificationsView: View {
                         if !requestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
                     }
                     ForEach(requestNotifications) { item in
-                        Button { Task { await open(item) } } label: {
+                        SwipeDeleteRow(onDelete: { Task { await deleteNotification(item) } }) {
+                          Button { Task { await open(item) } } label: {
                           HStack(alignment: .top, spacing: 14) {
                             Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 6) {
@@ -2917,10 +2936,12 @@ private struct NotificationsView: View {
                             Spacer()
                             if !item.read { Circle().fill(AppTheme.red).frame(width: 8, height: 8) }
                           }.padding(16).background(item.read ? AppTheme.card : Color.white.opacity(0.115)).overlay { RoundedRectangle(cornerRadius: 20).stroke(item.read ? Color.clear : notificationColor(item).opacity(0.32)) }.clipShape(RoundedRectangle(cornerRadius: 20))
-                        }.buttonStyle(.plain)
+                          }.buttonStyle(.plain)
+                        }
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        NavigationLink(destination: ArticleDetailView(item: item)) {
+                        SwipeDeleteRow(onDelete: { hideArticle(item) }) {
+                          NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 6) {
@@ -2930,7 +2951,8 @@ private struct NotificationsView: View {
                                 }
                                 Spacer(minLength: 0)
                             }.padding(16).background(index < session.unreadCount ? Color.white.opacity(0.115) : AppTheme.card).overlay { RoundedRectangle(cornerRadius: 20).stroke(index < session.unreadCount ? AppTheme.red.opacity(0.3) : Color.clear) }.clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
+                          }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
+                        }
                     }
                     if items.isEmpty && requestNotifications.isEmpty { ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash").padding(.top, 70) }
                 }.padding(16)
@@ -2971,6 +2993,23 @@ private struct NotificationsView: View {
         session.markArticlesRead(); await loadRequestNotifications()
     }
 
+    private func deleteNotification(_ item: RequestNotification) async {
+        guard let token = session.token else { return }
+        let _: UpdateCount? = try? await APIClient.shared.request(
+            "me/requests/notifications/\(item.id)", method: "DELETE", token: token
+        )
+        withAnimation(.snappy(duration: 0.28)) {
+            requestNotifications.removeAll { $0.id == item.id }
+        }
+        session.requestUnreadCount = requestNotifications.filter { !$0.read }.count
+    }
+
+    private func hideArticle(_ item: ContentItem) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.snappy(duration: 0.28)) { hiddenArticleIDs.insert(item.id) }
+        UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+    }
+
     private func linkedRequest(_ item: RequestNotification) -> EmployeeRequest? {
         guard let id = item.requestId else { return nil }
         return (requestStore.requests + requestStore.approvals).first { $0.id == id }
@@ -2991,6 +3030,61 @@ private struct NotificationsView: View {
         if type.contains("rejected") { return AppTheme.red }
         if type.contains("cancelled") { return .gray }
         return .green
+    }
+}
+
+private struct SwipeDeleteRow<Content: View>: View {
+    let onDelete: () -> Void
+    let content: Content
+    @State private var offset: CGFloat = 0
+
+    init(onDelete: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.onDelete = onDelete
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            LinearGradient(
+                colors: [Color(red: 0.96, green: 0.22, blue: 0.24), Color(red: 0.67, green: 0.04, blue: 0.08)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .overlay(alignment: .trailing) {
+                VStack(spacing: 5) {
+                    Image(systemName: "trash.fill").font(.title3.bold())
+                    Text("Xóa").font(.caption.bold())
+                }
+                .foregroundStyle(.white)
+                .frame(width: 86)
+                .scaleEffect(offset < -35 ? 1 : 0.78)
+                .opacity(offset < -10 ? 1 : 0)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+            content
+                .offset(x: offset)
+                .gesture(
+                    DragGesture(minimumDistance: 18)
+                        .onChanged { value in
+                            guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                            offset = min(0, max(-96, value.translation.width))
+                        }
+                        .onEnded { value in
+                            guard value.translation.width < -68 else {
+                                withAnimation(.snappy(duration: 0.25)) { offset = 0 }
+                                return
+                            }
+                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                            withAnimation(.snappy(duration: 0.2)) { offset = -96 }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                                onDelete()
+                                offset = 0
+                            }
+                        }
+                )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
