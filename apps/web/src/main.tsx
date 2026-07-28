@@ -978,6 +978,7 @@ function App() {
     if (!token || isAdminRoute) return;
     let active = true;
     let reconnectTimer = 0;
+    let dailyResetTimer = 0;
     const controller = new AbortController();
 
     const refreshRealtimeDashboard = async () => {
@@ -1618,11 +1619,27 @@ function App() {
       }
       if (active) reconnectTimer = window.setTimeout(() => void connect(), 2000);
     };
+    const scheduleDailyReset = () => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(new Date());
+      const values = Object.fromEntries(parts.map((part) => [part.type, Number(part.value)]));
+      const nextMidnight = Date.UTC(values.year, values.month - 1, values.day + 1) - 7 * 60 * 60 * 1000;
+      dailyResetTimer = window.setTimeout(() => {
+        refreshMenus();
+        scheduleDailyReset();
+      }, Math.max(1000, nextMidnight - Date.now() + 500));
+    };
     void connect();
+    scheduleDailyReset();
     return () => {
       active = false;
       controller.abort();
       window.clearTimeout(reconnectTimer);
+      window.clearTimeout(dailyResetTimer);
     };
   }, [token, currentUser, isAdminRoute, adminTab, employeeTab, menuWeek]);
 
@@ -3387,11 +3404,13 @@ function App() {
                       <header>
                         <div>
                           <p className="panel-label">TỔNG HỢP ĐẶT MÓN</p>
-                          <h3>Danh sách nhân viên đặt món</h3>
-                          <p className="panel-note">Theo dõi lựa chọn và trạng thái nhận món trong tuần đang xem.</p>
+                          <h3>Danh sách đặt món hôm nay</h3>
+                          <p className="panel-note">Danh sách tự làm mới vào đầu mỗi ngày, dữ liệu lịch sử vẫn được lưu an toàn.</p>
                         </div>
                         <div className="meal-orders-stats">
                           <span><small>Tổng đặt</small><strong>{mealSelections.length}</strong></span>
+                          <span className="water"><small>Món nước</small><strong>{mealSelections.filter((item) => item.choice === 'water').length}</strong></span>
+                          <span className="vegetarian"><small>Món chay</small><strong>{mealSelections.filter((item) => item.choice === 'vegetarian').length}</strong></span>
                           <span><small>Đã nhận</small><strong>{mealSelections.filter((item) => item.receivedAt).length}</strong></span>
                           <span><small>Chờ nhận</small><strong>{mealSelections.filter((item) => !item.receivedAt).length}</strong></span>
                         </div>

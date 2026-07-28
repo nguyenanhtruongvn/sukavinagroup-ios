@@ -117,6 +117,10 @@
 .meal-orders-stats small, .meal-orders-stats strong { display: block; }
 .meal-orders-stats small { color: #9fa2aa; font-size: 11px; }
 .meal-orders-stats strong { margin-top: 3px; font-size: 20px; }
+.meal-orders-stats span.water { border-color: rgba(74,181,238,.2); background: rgba(57,157,215,.1); }
+.meal-orders-stats span.water strong { color: #87d5ff; }
+.meal-orders-stats span.vegetarian { border-color: rgba(83,205,126,.2); background: rgba(53,171,94,.1); }
+.meal-orders-stats span.vegetarian strong { color: #83e4a4; }
 .meal-orders-table { overflow: hidden; border: 1px solid rgba(255,255,255,.08); border-radius: 17px; }
 .meal-orders-table-head, .meal-orders-row { display: grid; grid-template-columns: minmax(220px,1.5fr) .7fr .7fr .7fr .9fr; align-items: center; gap: 14px; padding: 13px 15px; }
 .meal-orders-table-head { color: #92959e; background: rgba(255,255,255,.04); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }

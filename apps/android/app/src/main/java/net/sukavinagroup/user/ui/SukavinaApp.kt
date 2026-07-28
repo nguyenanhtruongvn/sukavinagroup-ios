@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import net.sukavinagroup.user.SessionUiState
 import net.sukavinagroup.user.SessionViewModel
 import net.sukavinagroup.user.MainActivity
@@ -120,7 +121,15 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
 }
 
 @Composable private fun TodayMenuScreen(state: SessionUiState, session: SessionViewModel) {
-    LaunchedEffect(Unit) { session.refreshTodayMenu() }
+    LaunchedEffect(Unit) {
+        session.refreshTodayMenu()
+        while (true) {
+            val now = ZonedDateTime.now(ZoneId.of("Asia/Ho_Chi_Minh"))
+            val nextDay = now.toLocalDate().plusDays(1).atStartOfDay(now.zone)
+            delay(maxOf(1_000L, Duration.between(now, nextDay).toMillis() + 500L))
+            session.refreshTodayMenu()
+        }
+    }
     val menu = state.todayMenu
     var pendingChoice by remember { mutableStateOf<String?>(null) }
     if (pendingChoice != null) {

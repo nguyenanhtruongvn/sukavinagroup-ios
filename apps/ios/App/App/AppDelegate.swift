@@ -1805,7 +1805,19 @@ private struct TodayMenuView: View {
             }
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Thực đơn")
-            .task { await session.refreshTodayMenu() }
+            .task {
+                await session.refreshTodayMenu()
+                while !Task.isCancelled {
+                    var calendar = Calendar(identifier: .gregorian)
+                    calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+                    let now = Date()
+                    let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now.addingTimeInterval(86_400)
+                    let delay = max(1, nextDay.timeIntervalSince(now) + 0.5)
+                    try? await Task.sleep(for: .seconds(delay))
+                    guard !Task.isCancelled else { return }
+                    await session.refreshTodayMenu()
+                }
+            }
             .refreshable { await session.refreshTodayMenu() }
             .sheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"

@@ -111,11 +111,18 @@ export class WeeklyMenuService {
     return this.prisma.weeklyMenu.findUnique({ where: { weekStart: selectedWeekStart(week) } });
   }
 
-  async selections(user: AuthUser, week?: string) {
+  private async removeExpiredSelections() {
+    await this.prisma.mealSelection.deleteMany({
+      where: { mealDate: { lt: todayInVietnam() } },
+    });
+  }
+
+  async selections(user: AuthUser, _week?: string) {
     assertPermission(user, 'content.manage');
-    const start = selectedWeekStart(week);
+    await this.removeExpiredSelections();
+    const start = todayInVietnam();
     const end = new Date(start);
-    end.setUTCDate(end.getUTCDate() + 7);
+    end.setUTCDate(end.getUTCDate() + 1);
     return this.prisma.mealSelection.findMany({
       where: { mealDate: { gte: start, lt: end } },
       select: {
@@ -138,6 +145,7 @@ export class WeeklyMenuService {
 
   async today(user: AuthUser) {
     if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
+    await this.removeExpiredSelections();
     const mealDate = todayInVietnam();
     const weekStart = new Date(mealDate);
     weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
