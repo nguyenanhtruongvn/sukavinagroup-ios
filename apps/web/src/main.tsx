@@ -2872,7 +2872,7 @@ function App() {
                 <strong>{pendingMealChoice === 'water' ? todayMenu?.day.featured || '...' : [todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</strong>
               </div>
             ) : null}
-            <div>
+            <div className="meal-confirm-actions">
               <button type="button" onClick={() => setPendingMealChoice(null)}>Quay lại</button>
               <button type="button" className="confirm" disabled={mealSelectionSaving} onClick={() => {
                 const choice = pendingMealChoice;

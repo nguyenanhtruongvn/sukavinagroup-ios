@@ -94,8 +94,8 @@
 .meal-confirm-preview small, .meal-confirm-preview strong { display: block; }
 .meal-confirm-preview small { margin-bottom: 6px; color: #999da5; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
 .meal-confirm-preview strong { line-height: 1.45; }
-.meal-confirm-actions { display: grid; grid-template-columns: 1fr 1.3fr; gap: 9px; margin-top: 22px; }
-.meal-confirm-dialog button { min-height: 46px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; color: #efede9; background: rgba(255,255,255,.06); }
+.meal-confirm-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 12px; margin-top: 22px; }
+.meal-confirm-dialog button { width: 100%; min-width: 0; min-height: 46px; padding: 0 14px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; color: #efede9; background: rgba(255,255,255,.06); white-space: nowrap; }
 .meal-confirm-dialog button.confirm { border: 0; color: #fff; background: linear-gradient(135deg, #ed443c, #bd221e); font-weight: 800; }
 
 @media (max-width: 760px) {
@@ -103,6 +103,7 @@
   .employee-tabs button { flex: 1; justify-content: center; }
   .today-menu-layout { grid-template-columns: 1fr; }
   .today-menu-groups { grid-template-columns: 1fr; }
+  .meal-confirm-actions { grid-template-columns: 1fr; }
 }
 
 .weekly-menu-panel {
