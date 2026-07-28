@@ -3704,7 +3704,17 @@ select option:checked { background: #a82a2d; color: #fff; }
   color: var(--muted);
   font-weight: 750;
 }
+.request-filters button:hover:not(:disabled) {
+  transform: none;
+  border-color: rgba(255, 130, 121, .42);
+  background: rgba(255,255,255,.075);
+  box-shadow: 0 8px 20px rgba(0,0,0,.18), inset 0 0 0 1px rgba(255,255,255,.035);
+}
 .request-filters button.active { border-color: rgba(255,91,81,.5); background: #d92d27; color: #fff; }
+.request-filters button.active:hover:not(:disabled) {
+  border-color: rgba(255, 154, 145, .72);
+  background: #e13630;
+}
 .request-list { display: grid; gap: 10px; }
 .request-item {
   display: flex;
