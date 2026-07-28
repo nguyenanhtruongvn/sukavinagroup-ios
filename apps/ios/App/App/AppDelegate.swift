@@ -727,6 +727,8 @@ private enum AttendanceWidgetBridge {
 
 private struct AttendanceMonth: Decodable {
     let month: String
+    let startTime: String?
+    let department: String?
     let days: [AttendanceDay]
 }
 
@@ -735,6 +737,8 @@ private struct AttendanceDay: Decodable, Identifiable {
     let checkIn: String?
     let checkOut: String?
     let punchCount: Int
+    let status: String?
+    let startTime: String?
     let sources: [String]?
     let punches: [AttendancePunch]?
     var id: String { date }
@@ -1966,7 +1970,7 @@ private struct DashboardView: View {
                     MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
                     MetricWideCard(status: session.dashboard?.payrollStatus ?? "Chưa cập nhật")
 
-                    NavigationLink(destination: AttendanceHistoryView()) {
+                    NavigationLink(destination: ModernAttendanceHistoryView()) {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("Chấm công hôm nay").font(.headline)
@@ -2175,6 +2179,236 @@ private struct AttendanceHistoryView: View {
         formatter.dateFormat = "'Tháng' M, yyyy"
         return formatter.string(from: date)
     }
+}
+
+private struct ModernAttendanceHistoryView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var selectedMonth = Self.monthValue(Date())
+    @State private var history: AttendanceMonth?
+    @State private var selectedDate: String?
+    @State private var isLoading = false
+    @State private var message: String?
+    @State private var cache: [String: AttendanceMonth] = [:]
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 14) {
+                monthNavigation
+                summaryCards
+                calendarCard
+                if isLoading {
+                    ProgressView("Đang tải bảng công...").tint(AppTheme.red)
+                } else if let day = selectedDay {
+                    dayDetail(day)
+                } else if let message {
+                    Text(message).foregroundStyle(AppTheme.muted)
+                }
+            }
+            .padding(16)
+        }
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationTitle("Bảng chấm công")
+        .task(id: selectedMonth) { await loadHistory() }
+    }
+
+    private var monthNavigation: some View {
+        HStack {
+            monthButton("chevron.left", target: 1)
+            Spacer()
+            Text(monthTitle).font(.headline.bold()).foregroundStyle(AppTheme.text)
+            Spacer()
+            monthButton("chevron.right", target: -1)
+        }
+        .padding(12).background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+    }
+
+    private func monthButton(_ icon: String, target offset: Int) -> some View {
+        let index = options.firstIndex(of: selectedMonth) ?? 0
+        let target = index + offset
+        return Button {
+            guard options.indices.contains(target) else { return }
+            selectedMonth = options[target]
+        } label: {
+            Image(systemName: icon).font(.caption.bold())
+                .frame(width: 40, height: 40)
+                .background(AppTheme.red.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+        }
+        .buttonStyle(.plain)
+        .disabled(!options.indices.contains(target))
+        .opacity(options.indices.contains(target) ? 1 : 0.35)
+    }
+
+    private var summaryCards: some View {
+        HStack(spacing: 8) {
+            summary(count("present"), "Ngày công", .green)
+            summary(count("late"), "Đi trễ", .orange)
+            summary(count("leave"), "Nghỉ phép", .gray)
+            summary(count("absent"), "Vắng", AppTheme.red)
+        }
+    }
+
+    private func summary(_ value: Int, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 5) {
+            Text("\(value)").font(.title3.bold()).foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 13)
+        .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
+    }
+
+    private var calendarCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Lịch chấm công").font(.headline).foregroundStyle(AppTheme.text)
+            HStack(spacing: 4) {
+                ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
+                    Text($0).font(.caption.bold()).foregroundStyle(AppTheme.muted)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 7) {
+                ForEach(0..<leadingEmptyDays, id: \.self) { _ in
+                    Color.clear.frame(height: 50)
+                }
+                ForEach(history?.days ?? []) { day in dayCell(day) }
+            }
+            HStack(spacing: 9) {
+                legend("Đủ công", .green.opacity(0.22))
+                legend("Đi trễ", .orange.opacity(0.22))
+                legend("Nghỉ phép", .gray.opacity(0.18))
+                legend("Vắng", AppTheme.red.opacity(0.2))
+            }
+        }
+        .padding(18).background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func dayCell(_ day: AttendanceDay) -> some View {
+        let selected = selectedDate == day.date
+        return Button {
+            withAnimation(.easeOut(duration: 0.18)) { selectedDate = day.date }
+        } label: {
+            Text(String(Int(day.date.suffix(2)) ?? 0))
+                .font(.subheadline.weight(selected ? .bold : .medium))
+                .foregroundStyle(day.status == "absent" ? AppTheme.red : AppTheme.text)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(dayColor(day.status))
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11)
+                        .stroke(selected ? Color(red: 0.05, green: 0.25, blue: 0.5) : .clear, lineWidth: 2)
+                }
+        }.buttonStyle(.plain)
+    }
+
+    private func legend(_ title: String, _ color: Color) -> some View {
+        HStack(spacing: 3) {
+            RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 9, height: 9)
+            Text(title).font(.system(size: 9)).foregroundStyle(AppTheme.muted)
+        }
+    }
+
+    private func dayDetail(_ day: AttendanceDay) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Chi tiết ngày \(displayDate(day.date))", systemImage: "calendar")
+                .font(.headline).foregroundStyle(AppTheme.text)
+            Divider()
+            detailRow("Giờ vào", time(day.checkIn))
+            detailRow("Giờ ra", time(day.checkOut))
+            detailRow("Trạng thái", statusTitle(day.status))
+            detailRow("Giờ chuẩn \(history?.department ?? "phòng ban")",
+                      day.startTime ?? history?.startTime ?? "08:00")
+        }
+        .padding(18).background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    private func detailRow(_ title: String, _ value: String) -> some View {
+        HStack { Text(title).foregroundStyle(AppTheme.muted); Spacer(); Text(value).bold() }
+    }
+
+    private var options: [String] {
+        (0..<2).compactMap { Calendar.current.date(byAdding: .month, value: -$0, to: Date()) }
+            .map(Self.monthValue)
+    }
+    private var monthTitle: String {
+        guard let date = Self.monthParser.date(from: selectedMonth) else { return selectedMonth }
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "vi_VN")
+        formatter.dateFormat = "'Tháng' M / yyyy"; return formatter.string(from: date)
+    }
+    private var selectedDay: AttendanceDay? {
+        let days = history?.days ?? []
+        return days.first { $0.date == selectedDate } ?? days.first { $0.date == Self.dayValue(Date()) }
+    }
+    private var leadingEmptyDays: Int {
+        guard let value = history?.days.first?.date, let date = Self.dayParser.date(from: value) else { return 0 }
+        return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
+    }
+    private func count(_ status: String) -> Int { history?.days.filter { $0.status == status }.count ?? 0 }
+    private func dayColor(_ status: String?) -> Color {
+        switch status {
+        case "present": return .green.opacity(0.2)
+        case "late": return .orange.opacity(0.2)
+        case "leave": return .gray.opacity(0.16)
+        case "absent": return AppTheme.red.opacity(0.18)
+        case "weekend": return .gray.opacity(0.08)
+        default: return AppTheme.muted.opacity(0.06)
+        }
+    }
+    private func statusTitle(_ status: String?) -> String {
+        switch status {
+        case "present": return "Đủ công"
+        case "late": return "Đi trễ"
+        case "leave": return "Nghỉ phép"
+        case "absent": return "Vắng"
+        case "weekend": return "Cuối tuần"
+        default: return "Chưa đến"
+        }
+    }
+    private func time(_ value: String?) -> String {
+        guard let value else { return "--:--" }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value) else { return "--:--" }
+        return date.formatted(date: .omitted, time: .shortened)
+    }
+    private func displayDate(_ value: String) -> String {
+        guard let date = Self.dayParser.date(from: value) else { return value }
+        let formatter = DateFormatter(); formatter.dateFormat = "dd/MM/yyyy"; return formatter.string(from: date)
+    }
+    private func loadHistory() async {
+        guard let token = session.token else { return }
+        if let cached = cache[selectedMonth] {
+            history = cached
+            selectedDate = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date ?? cached.days.last?.date
+            return
+        }
+        isLoading = true; message = nil
+        defer { isLoading = false }
+        do {
+            let loaded: AttendanceMonth = try await APIClient.shared.request(
+                "me/attendance?month=\(selectedMonth)", token: token
+            )
+            history = loaded; cache[selectedMonth] = loaded
+            selectedDate = loaded.days.first(where: { $0.date == Self.dayValue(Date()) })?.date ?? loaded.days.last?.date
+        } catch {
+            history = nil; message = error.localizedDescription
+        }
+    }
+    private static func monthValue(_ date: Date) -> String {
+        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM"; return formatter.string(from: date)
+    }
+    private static func dayValue(_ date: Date) -> String { dayParser.string(from: date) }
+    private static let monthParser: DateFormatter = {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"; return formatter
+    }()
+    private static let dayParser: DateFormatter = {
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = "yyyy-MM-dd"; return formatter
+    }()
 }
 
 private struct MetricCard: View {

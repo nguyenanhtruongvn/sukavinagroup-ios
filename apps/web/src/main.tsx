@@ -54,6 +54,12 @@ type EmployeeRecord = {
   createdAt?: string;
 };
 
+type DepartmentWorkSchedule = {
+  id?: string;
+  department: string;
+  startTime: string;
+};
+
 type AttendanceMonth = {
   month: string;
   days: Array<{
@@ -444,6 +450,8 @@ function App() {
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [employeeImporting, setEmployeeImporting] = useState(false);
+  const [departmentSchedules, setDepartmentSchedules] = useState<DepartmentWorkSchedule[]>([]);
+  const [scheduleSaving, setScheduleSaving] = useState('');
   const employeeFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
   const [adminRequestQuery, setAdminRequestQuery] = useState('');
@@ -1216,6 +1224,35 @@ function App() {
     });
     if (!response.ok) throw new Error('Không tải được danh sách nhân viên');
     setEmployees((await response.json()) as EmployeeRecord[]);
+    const schedulesResponse = await fetch('/api/admin/employees/work-schedules', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (schedulesResponse.ok) {
+      setDepartmentSchedules((await schedulesResponse.json()) as DepartmentWorkSchedule[]);
+    }
+  };
+
+  const saveDepartmentSchedule = async (schedule: DepartmentWorkSchedule) => {
+    if (!token) return;
+    setScheduleSaving(schedule.department);
+    try {
+      const response = await fetch('/api/admin/employees/work-schedules', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(schedule),
+      });
+      const result = (await response.json().catch(() => null)) as { message?: string } | null;
+      if (!response.ok) throw new Error(result?.message || 'Không lưu được giờ làm việc');
+      setToast({ type: 'success', message: `Đã cập nhật giờ vào làm của ${schedule.department}.` });
+      await refreshEmployees();
+    } catch (scheduleError) {
+      setToast({
+        type: 'error',
+        message: scheduleError instanceof Error ? scheduleError.message : 'Không lưu được giờ làm việc',
+      });
+    } finally {
+      setScheduleSaving('');
+    }
   };
 
   const importEmployees = async (file?: File) => {
@@ -3601,6 +3638,43 @@ function App() {
                     <p>Đơn vị đang có nhân sự</p>
                   </article>
                 </div>
+
+                <section className="department-schedule-card">
+                  <div>
+                    <p className="panel-label">Quy định chấm công</p>
+                    <h3>Giờ vào làm theo phòng ban</h3>
+                    <p>Giờ này dùng để xác định đi trễ hoặc vắng. Chủ nhật luôn là ngày cuối tuần.</p>
+                  </div>
+                  <div className="department-schedule-grid">
+                    {departmentSchedules.map((schedule) => (
+                      <label key={schedule.department}>
+                        <span>{schedule.department}</span>
+                        <span className="department-schedule-control">
+                          <input
+                            type="time"
+                            value={schedule.startTime}
+                            onChange={(event) =>
+                              setDepartmentSchedules((current) =>
+                                current.map((item) =>
+                                  item.department === schedule.department
+                                    ? { ...item, startTime: event.target.value }
+                                    : item,
+                                ),
+                              )
+                            }
+                          />
+                          <button
+                            type="button"
+                            disabled={scheduleSaving === schedule.department}
+                            onClick={() => void saveDepartmentSchedule(schedule)}
+                          >
+                            {scheduleSaving === schedule.department ? 'Đang lưu' : 'Lưu'}
+                          </button>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </section>
 
                 <div className="employee-workspace">
                   <form id="employee-form-card" className="admin-form panel employee-form-card" onSubmit={saveEmployee}>

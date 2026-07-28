@@ -25,6 +25,19 @@ export class EmployeesController {
     return this.employeesService.list(req.user);
   }
 
+  @Get('work-schedules')
+  workSchedules(@Req() req: { user: { employeeCode?: string; role?: string } }) {
+    return this.employeesService.listWorkSchedules(req.user);
+  }
+
+  @Post('work-schedules')
+  saveWorkSchedule(
+    @Req() req: { user: { employeeCode?: string; role?: string } },
+    @Body() body: { department: string; startTime: string },
+  ) {
+    return this.employeesService.saveWorkSchedule(req.user, body);
+  }
+
   @Post()
   create(
     @Req() req: { user: { employeeCode?: string; role?: string } },

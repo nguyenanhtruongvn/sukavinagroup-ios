@@ -99,7 +99,7 @@ export class DashboardService {
   async getMonthlyAttendance(userId: string, requestedMonth?: string) {
     const user = await this.prisma.employee.findUnique({
       where: { id: userId },
-      select: { employeeCode: true },
+      select: { employeeCode: true, department: true, hireDate: true },
     });
     if (!user) throw new NotFoundException('User not found');
 
@@ -112,20 +112,29 @@ export class DashboardService {
     }
 
     const normalizedCode = user.employeeCode.replace(/^0+(?=\d)/, '');
-    const records = await this.prisma.attendanceRecord.findMany({
-      where: {
-        userEnrollNumber: { in: [...new Set([user.employeeCode, normalizedCode])] },
-        attendanceDate: { startsWith: month },
-      },
-      orderBy: { punchedAt: 'asc' },
-      select: {
-        id: true,
-        attendanceDate: true,
-        punchedAt: true,
-        source: true,
-        machineNo: true,
-      },
-    });
+    const [records, schedule, approvedLeaves] = await Promise.all([
+      this.prisma.attendanceRecord.findMany({
+        where: {
+          userEnrollNumber: { in: [...new Set([user.employeeCode, normalizedCode])] },
+          attendanceDate: { startsWith: month },
+        },
+        orderBy: { punchedAt: 'asc' },
+        select: {
+          id: true, attendanceDate: true, punchedAt: true, source: true, machineNo: true,
+        },
+      }),
+      this.prisma.departmentWorkSchedule.findUnique({ where: { department: user.department } }),
+      this.prisma.employeeRequest.findMany({
+        where: {
+          employeeId: userId,
+          kind: 'leave',
+          status: 'approved',
+          startsAt: { lt: new Date(`${month}-31T17:00:00.000Z`) },
+          endsAt: { gte: new Date(`${month}-01T00:00:00.000Z`) },
+        },
+        select: { startsAt: true, endsAt: true },
+      }),
+    ]);
 
     const grouped = new Map<string, typeof records>();
     for (const record of records) {
@@ -134,12 +143,50 @@ export class DashboardService {
       grouped.set(record.attendanceDate, day);
     }
 
-    const days = [...grouped.entries()]
-      .map(([date, punches]) => ({
+    const [year, monthNumber] = month.split('-').map(Number);
+    const dayCount = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const today = this.getVietnamDate();
+    const startTime = schedule?.startTime ?? '08:00';
+    const leaveDates = new Set<string>();
+    for (const leave of approvedLeaves) {
+      const cursor = new Date(leave.startsAt);
+      const end = new Date(leave.endsAt);
+      while (cursor <= end) {
+        leaveDates.add(new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit',
+        }).format(cursor));
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      }
+    }
+    const days = Array.from({ length: dayCount }, (_, index) => {
+      const date = `${month}-${String(index + 1).padStart(2, '0')}`;
+      const punches = grouped.get(date) ?? [];
+      const weekDay = new Date(`${date}T00:00:00+07:00`).getUTCDay();
+      const isSunday = weekDay === 0;
+      const isFuture = date > today;
+      const isBeforeHireDate = user.hireDate
+        ? date < user.hireDate.toISOString().slice(0, 10)
+        : false;
+      const isLeave = leaveDates.has(date);
+      const checkIn = punches[0]?.punchedAt ?? null;
+      const checkOut = punches.length > 1 ? punches[punches.length - 1].punchedAt : null;
+      const checkInTime = checkIn?.toLocaleTimeString('en-GB', {
+        timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      const status = isSunday
+        ? 'weekend'
+        : isLeave
+          ? 'leave'
+          : punches.length
+            ? checkInTime! > startTime ? 'late' : 'present'
+            : !isFuture && !isBeforeHireDate ? 'absent' : 'upcoming';
+      return {
         date,
-        checkIn: punches[0]?.punchedAt ?? null,
-        checkOut: punches.length > 1 ? punches[punches.length - 1].punchedAt : null,
+        checkIn,
+        checkOut,
         punchCount: punches.length,
+        status,
+        startTime,
         sources: [...new Set(punches.map((record) => record.source))],
         punches: punches.map((record) => ({
           id: record.id,
@@ -147,10 +194,10 @@ export class DashboardService {
           source: record.source,
           machineNo: record.machineNo,
         })),
-      }))
-      .sort((left, right) => right.date.localeCompare(left.date));
+      };
+    });
 
-    return { month, days };
+    return { month, startTime, department: user.department, days };
   }
 
   private getAllowedAttendanceMonths() {

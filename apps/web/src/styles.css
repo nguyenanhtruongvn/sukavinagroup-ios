@@ -2830,6 +2830,39 @@ h1 {
   line-height: 1.5;
 }
 
+.department-schedule-card {
+  display: grid;
+  grid-template-columns: minmax(220px, .7fr) minmax(320px, 1.3fr);
+  gap: 24px;
+  margin: 18px 0;
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 22px;
+  background: linear-gradient(135deg, rgba(239, 68, 68, .08), rgba(255, 255, 255, .035));
+}
+.department-schedule-card h3 { margin: 5px 0 7px; }
+.department-schedule-card p { margin: 0; color: var(--muted); line-height: 1.55; }
+.department-schedule-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.department-schedule-grid > label {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 15px;
+  background: rgba(0, 0, 0, .16);
+}
+.department-schedule-grid > label > span:first-child { font-size: .86rem; font-weight: 700; }
+.department-schedule-control { display: flex; gap: 8px; }
+.department-schedule-control input { min-width: 0; flex: 1; height: 40px; }
+.department-schedule-control button {
+  min-width: 58px;
+  border: 0;
+  border-radius: 11px;
+  color: #fff;
+  background: #e53935;
+  font-weight: 700;
+}
+
 .employee-workspace {
   display: grid;
   grid-template-columns: minmax(340px, 380px) minmax(0, 1fr);
@@ -3505,6 +3538,8 @@ h1 {
 }
 
 @media (max-width: 800px) {
+  .department-schedule-card { grid-template-columns: 1fr; }
+  .department-schedule-grid { grid-template-columns: 1fr; }
   .attendance-calendar-modal {
     width: calc(100vw - 16px);
   }

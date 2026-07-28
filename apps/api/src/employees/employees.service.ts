@@ -130,6 +130,42 @@ export class EmployeesService {
     private readonly contentEvents: ContentEventsService,
   ) {}
 
+  async listWorkSchedules(user: AuthUser) {
+    assertPermission(user, 'employees.manage');
+    const [employees, schedules] = await Promise.all([
+      this.prisma.employee.findMany({
+        distinct: ['department'],
+        select: { department: true },
+        orderBy: { department: 'asc' },
+      }),
+      this.prisma.departmentWorkSchedule.findMany({ orderBy: { department: 'asc' } }),
+    ]);
+    const configured = new Map(schedules.map((item) => [item.department, item]));
+    return employees
+      .filter((item) => item.department.trim())
+      .map((item) => configured.get(item.department) ?? {
+        id: '',
+        department: item.department,
+        startTime: '08:00',
+      });
+  }
+
+  async saveWorkSchedule(user: AuthUser, data: { department: string; startTime: string }) {
+    assertPermission(user, 'employees.manage');
+    const department = data.department?.trim();
+    if (!department) throw new BadRequestException('Phòng ban không hợp lệ');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.startTime)) {
+      throw new BadRequestException('Giờ vào làm không hợp lệ');
+    }
+    const schedule = await this.prisma.departmentWorkSchedule.upsert({
+      where: { department },
+      create: { department, startTime: data.startTime },
+      update: { startTime: data.startTime },
+    });
+    this.contentEvents.notify('employee_changed');
+    return schedule;
+  }
+
   list(user: AuthUser) {
     assertPermission(user, 'employees.manage');
     return this.prisma.employee.findMany({ orderBy: { createdAt: 'desc' } });
