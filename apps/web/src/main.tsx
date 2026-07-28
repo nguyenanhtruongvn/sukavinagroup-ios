@@ -2697,6 +2697,13 @@ function App() {
                         void setWebsitePasskey(true);
                       }
                     }}><span>◎</span><div><strong>{currentUser?.passkeyEnabled ? 'Tắt sinh trắc học' : 'Bật sinh trắc học'}</strong><small>{currentUser?.passkeyEnabled ? 'Passkey đang hoạt động trên website' : 'Dùng Face ID, Touch ID hoặc Windows Hello'}</small></div><b>{passkeyWorking ? '…' : currentUser?.passkeyEnabled ? '✓' : '›'}</b></button>
+                    <p className="account-popover-section-title">Quyền riêng tư và dữ liệu</p>
+                    <a href="/privacy-policy"><span>◇</span><div><strong>Chính sách quyền riêng tư</strong><small>Cách Sukavina thu thập và bảo vệ dữ liệu</small></div><b>›</b></a>
+                    <a href="/support"><span>?</span><div><strong>Hỗ trợ</strong><small>Liên hệ hỗ trợ tài khoản và ứng dụng</small></div><b>›</b></a>
+                    <button type="button" className="account-danger-action" onClick={() => {
+                      setAccountOpen(false);
+                      setDeleteAccountOpen(true);
+                    }}><span>×</span><div><strong>Xóa tài khoản</strong><small>Xóa vĩnh viễn tài khoản và dữ liệu cá nhân</small></div><b>›</b></button>
                     <button type="button" onClick={signOut}><span>↪</span><div><strong>Đăng xuất</strong><small>Kết thúc phiên trên thiết bị này</small></div><b>›</b></button>
                   </div>
                 </aside>
@@ -4296,21 +4303,6 @@ function App() {
             ) : null}
 
           </section>
-        </section>
-      ) : null}
-
-      {!isAdminRoute ? (
-        <section className="account-privacy-panel panel">
-          <div>
-            <p className="panel-label">Quyền riêng tư và tài khoản</p>
-            <h2>Kiểm soát dữ liệu cá nhân</h2>
-            <p className="panel-note">Xem chính sách dữ liệu, nhận hỗ trợ hoặc yêu cầu xóa vĩnh viễn tài khoản và hồ sơ cá nhân.</p>
-          </div>
-          <div className="account-privacy-actions">
-            <a className="ghost-button" href="/privacy-policy">Chính sách quyền riêng tư</a>
-            <a className="ghost-button" href="/support">Hỗ trợ</a>
-            <button type="button" className="danger-button" onClick={() => setDeleteAccountOpen(true)}>Xóa tài khoản</button>
-          </div>
         </section>
       ) : null}
 
