@@ -168,14 +168,10 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                    MenuGroupCard("Món nước", Icons.Default.LocalDrink, Color(0xFF62C5F4), listOf(menu?.day?.featured), Modifier.weight(1f))
-                    MenuGroupCard("Món thường", Icons.Default.Restaurant, Color(0xFFFFA568), listOf(menu?.day?.savoryMain, menu?.day?.savorySide, menu?.day?.vegetable, menu?.day?.soup), Modifier.weight(1f))
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
-                    MenuGroupCard("Món chay", Icons.Default.Eco, Color(0xFF62D58B), listOf(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide), Modifier.weight(1f))
-                    MenuGroupCard("Tăng ca", Icons.Default.DarkMode, Color(0xFFB396F5), listOf(menu?.day?.overtime), Modifier.weight(1f))
-                }
+                MenuGroupCard("Món nước", Icons.Default.LocalDrink, Color(0xFF62C5F4), listOf(menu?.day?.featured))
+                MenuGroupCard("Món thường", Icons.Default.Restaurant, Color(0xFFFFA568), listOf(menu?.day?.savoryMain, menu?.day?.savorySide, menu?.day?.vegetable, menu?.day?.soup))
+                MenuGroupCard("Món chay", Icons.Default.Eco, Color(0xFF62D58B), listOf(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide))
+                MenuGroupCard("Tăng ca", Icons.Default.DarkMode, Color(0xFFB396F5), listOf(menu?.day?.overtime))
             }
         }
         item {
@@ -225,11 +221,24 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
 }
 
 @Composable private fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
-    Card(modifier.heightIn(min = 142.dp), shape = RoundedCornerShape(19.dp), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .16f))) {
-        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Surface(shape = RoundedCornerShape(13.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(42.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(10.dp)) }
-            Text(title.uppercase(), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
-            lines.forEach { Text(it?.ifBlank { "..." } ?: "...", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+    Card(modifier.fillMaxWidth(), shape = RoundedCornerShape(19.dp), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
+        Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
+            Surface(shape = RoundedCornerShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
+                Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp))
+            }
+            Column(Modifier.padding(start = 13.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                Text(title.uppercase(), color = color, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+                lines.forEach { value ->
+                    Text(
+                        value?.ifBlank { "..." } ?: "...",
+                        fontSize = 14.sp,
+                        lineHeight = 19.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }
@@ -384,9 +393,53 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 
 @Composable private fun DateTimeField(label: String, value: LocalDateTime, changed: (LocalDateTime) -> Unit) {
     val context = LocalContext.current
-    OutlinedButton(onClick = {
-        android.app.DatePickerDialog(context, { _, y, m, d -> android.app.TimePickerDialog(context, { _, h, min -> changed(LocalDateTime.of(y, m + 1, d, h, min)) }, value.hour, value.minute, true).show() }, value.year, value.monthValue - 1, value.dayOfMonth).show()
-    }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.CalendarMonth, null); Spacer(Modifier.width(8.dp)); Text("$label: ${value.format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))}") }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(17.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f)),
+    ) {
+        Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text(label.uppercase(), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        android.app.DatePickerDialog(
+                            context,
+                            { _, year, month, day ->
+                                changed(LocalDateTime.of(year, month + 1, day, value.hour, value.minute))
+                            },
+                            value.year,
+                            value.monthValue - 1,
+                            value.dayOfMonth,
+                        ).show()
+                    },
+                    modifier = Modifier.weight(1.25f),
+                    contentPadding = PaddingValues(horizontal = 11.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Default.CalendarMonth, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text(value.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = {
+                        android.app.TimePickerDialog(
+                            context,
+                            { _, hour, minute -> changed(value.withHour(hour).withMinute(minute)) },
+                            value.hour,
+                            value.minute,
+                            true,
+                        ).show()
+                    },
+                    modifier = Modifier.weight(.9f),
+                    contentPadding = PaddingValues(horizontal = 11.dp, vertical = 10.dp),
+                ) {
+                    Icon(Icons.Default.Schedule, null, Modifier.size(18.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text(value.format(DateTimeFormatter.ofPattern("HH:mm")), maxLines = 1)
+                }
+            }
+        }
+    }
 }
 
 @Composable private fun RequestDecisionDialog(request: EmployeeRequest, working: Boolean, dismiss: () -> Unit, decide: (Boolean, String) -> Unit) {
