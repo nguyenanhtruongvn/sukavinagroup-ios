@@ -112,4 +112,38 @@ export class WeeklyMenuService {
       },
     });
   }
+
+  async update(user: AuthUser, data: WeeklyMenuData) {
+    assertPermission(user, 'content.manage');
+    if (!Array.isArray(data?.days) || data.days.length !== dayNames.length) {
+      throw new BadRequestException('Thực đơn phải có đủ 7 ngày từ Thứ 2 đến Chủ nhật.');
+    }
+
+    const days = data.days.map((day, dayIndex): WeeklyMenuDay => ({
+      dayIndex,
+      dayName: dayNames[dayIndex],
+      featured: String(day.featured ?? '').trim(),
+      savoryMain: String(day.savoryMain ?? '').trim(),
+      savorySide: String(day.savorySide ?? '').trim(),
+      vegetable: String(day.vegetable ?? '').trim(),
+      soup: String(day.soup ?? '').trim(),
+      vegetarianMain: String(day.vegetarianMain ?? '').trim(),
+      vegetarianSide: String(day.vegetarianSide ?? '').trim(),
+      overtime: String(day.overtime ?? '').trim(),
+    }));
+    const weekStart = currentWeekStart();
+    return this.prisma.weeklyMenu.upsert({
+      where: { weekStart },
+      update: {
+        data: { days },
+        importedBy: user.employeeCode,
+      },
+      create: {
+        weekStart,
+        data: { days },
+        sourceName: 'Chỉnh sửa thủ công',
+        importedBy: user.employeeCode,
+      },
+    });
+  }
 }

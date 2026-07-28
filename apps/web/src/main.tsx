@@ -409,6 +409,8 @@ function App() {
     'content',
   );
   const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null);
+  const [weeklyMenuDraft, setWeeklyMenuDraft] = useState<WeeklyMenuDay[]>([]);
+  const [menuEditing, setMenuEditing] = useState(false);
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
@@ -603,7 +605,9 @@ function App() {
       cache: 'no-store',
     });
     if (!response.ok) throw new Error('Không tải được thực đơn tuần này.');
-    setWeeklyMenu((await response.json()) as WeeklyMenu | null);
+    const result = (await response.json()) as WeeklyMenu | null;
+    setWeeklyMenu(result);
+    if (!menuEditing) setWeeklyMenuDraft(result?.data.days.map((day) => ({ ...day })) ?? []);
   };
 
   const importWeeklyMenu = async (file?: File) => {
@@ -622,6 +626,8 @@ function App() {
         throw new Error((result as { message?: string } | null)?.message || 'Không import được thực đơn.');
       }
       setWeeklyMenu(result);
+      setWeeklyMenuDraft(result.data.days.map((day) => ({ ...day })));
+      setMenuEditing(false);
       setToast({ type: 'success', message: 'Đã import và cập nhật thực đơn tuần này.' });
     } catch (importError) {
       setToast({
@@ -631,6 +637,48 @@ function App() {
     } finally {
       setMenuImporting(false);
       if (menuFileInputRef.current) menuFileInputRef.current.value = '';
+    }
+  };
+
+  const startMenuEditing = () => {
+    if (!weeklyMenu) return;
+    setWeeklyMenuDraft(weeklyMenu.data.days.map((day) => ({ ...day })));
+    setMenuEditing(true);
+  };
+
+  const updateMenuDraft = (dayIndex: number, field: keyof WeeklyMenuDay, value: string) => {
+    setWeeklyMenuDraft((current) =>
+      current.map((day) => day.dayIndex === dayIndex ? { ...day, [field]: value } : day),
+    );
+  };
+
+  const saveWeeklyMenu = async () => {
+    if (!token || weeklyMenuDraft.length !== 7) return;
+    setMenuImporting(true);
+    try {
+      const response = await fetch('/api/admin/menu', {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ days: weeklyMenuDraft }),
+      });
+      const result = (await response.json().catch(() => null)) as WeeklyMenu | { message?: string } | null;
+      if (!response.ok || !result || !('data' in result)) {
+        throw new Error((result as { message?: string } | null)?.message || 'Không lưu được thực đơn.');
+      }
+      setWeeklyMenu(result);
+      setWeeklyMenuDraft(result.data.days.map((day) => ({ ...day })));
+      setMenuEditing(false);
+      setToast({ type: 'success', message: 'Đã lưu thay đổi thực đơn tuần này.' });
+    } catch (saveError) {
+      setToast({
+        type: 'error',
+        message: saveError instanceof Error ? saveError.message : 'Không lưu được thực đơn.',
+      });
+    } finally {
+      setMenuImporting(false);
     }
   };
 
@@ -2878,10 +2926,38 @@ function App() {
                       hidden
                       onChange={(event) => void importWeeklyMenu(event.target.files?.[0])}
                     />
+                    {weeklyMenu && !menuEditing ? (
+                      <button type="button" className="menu-edit-button" onClick={startMenuEditing}>
+                        Chỉnh sửa
+                      </button>
+                    ) : null}
+                    {menuEditing ? (
+                      <>
+                        <button
+                          type="button"
+                          className="menu-edit-button"
+                          disabled={menuImporting}
+                          onClick={() => {
+                            setWeeklyMenuDraft(weeklyMenu?.data.days.map((day) => ({ ...day })) ?? []);
+                            setMenuEditing(false);
+                          }}
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          type="button"
+                          className="menu-save-button"
+                          disabled={menuImporting}
+                          onClick={() => void saveWeeklyMenu()}
+                        >
+                          {menuImporting ? 'Đang lưu...' : 'Lưu thay đổi'}
+                        </button>
+                      </>
+                    ) : null}
                     <button
                       type="button"
                       className="menu-import-button"
-                      disabled={menuImporting}
+                      disabled={menuImporting || menuEditing}
                       onClick={() => menuFileInputRef.current?.click()}
                     >
                       <span>↑</span>
@@ -2906,7 +2982,7 @@ function App() {
                       </span>
                     </div>
                     <div className="weekly-menu-grid">
-                      {weeklyMenu.data.days.map((day) => {
+                      {(menuEditing ? weeklyMenuDraft : weeklyMenu.data.days).map((day) => {
                         const date = new Date(weeklyMenu.weekStart);
                         date.setUTCDate(date.getUTCDate() + day.dayIndex);
                         const lunchItems = [
@@ -2926,10 +3002,35 @@ function App() {
                                 <strong>{day.dayName}</strong>
                                 <span>{date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })}</span>
                               </div>
-                              {day.featured ? <b>{day.featured}</b> : null}
                             </header>
                             <section className="menu-shift menu-shift-lunch">
                               <div className="menu-shift-title"><span>☀</span><strong>Ca trưa</strong></div>
+                              {menuEditing ? (
+                                <div className="menu-edit-fields">
+                                  {([
+                                    ['featured', 'Món nước'],
+                                    ['savoryMain', 'Món mặn chính'],
+                                    ['savorySide', 'Món mặn phụ'],
+                                    ['vegetable', 'Rau'],
+                                    ['soup', 'Canh'],
+                                    ['vegetarianMain', 'Món chay chính'],
+                                    ['vegetarianSide', 'Món chay phụ'],
+                                  ] as Array<[keyof WeeklyMenuDay, string]>).map(([field, label]) => (
+                                    <label key={field}>
+                                      <span>{label}</span>
+                                      <input
+                                        value={String(day[field] ?? '')}
+                                        onChange={(event) => updateMenuDraft(day.dayIndex, field, event.target.value)}
+                                      />
+                                    </label>
+                                  ))}
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="menu-water-dish">
+                                    <span>Món nước</span>
+                                    <strong>{day.featured || 'Chưa có món nước'}</strong>
+                                  </div>
                               {lunchItems.length ? (
                                 <dl>
                                   {lunchItems.map(([label, value]) => (
@@ -2943,10 +3044,20 @@ function App() {
                                   <p>{vegetarianItems.join(' · ')}</p>
                                 </div>
                               ) : null}
+                                </>
+                              )}
                             </section>
                             <section className="menu-shift menu-shift-overtime">
                               <div className="menu-shift-title"><span>☾</span><strong>Tăng ca</strong></div>
-                              <p>{day.overtime || 'Chưa có thực đơn'}</p>
+                              {menuEditing ? (
+                                <label className="menu-overtime-input">
+                                  <span>Món tăng ca</span>
+                                  <input
+                                    value={day.overtime}
+                                    onChange={(event) => updateMenuDraft(day.dayIndex, 'overtime', event.target.value)}
+                                  />
+                                </label>
+                              ) : <p>{day.overtime || 'Chưa có thực đơn'}</p>}
                             </section>
                           </article>
                         );

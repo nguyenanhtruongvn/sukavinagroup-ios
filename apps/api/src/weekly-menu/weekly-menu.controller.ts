@@ -1,6 +1,8 @@
 import {
   Controller,
+  Body,
   Get,
+  Patch,
   Post,
   Req,
   UploadedFile,
@@ -10,7 +12,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AuthUser } from '../auth/permissions';
-import { WeeklyMenuService } from './weekly-menu.service';
+import { WeeklyMenuData, WeeklyMenuService } from './weekly-menu.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('admin/menu')
@@ -29,5 +31,13 @@ export class WeeklyMenuController {
     @UploadedFile() file?: Express.Multer.File,
   ) {
     return this.weeklyMenu.import(req.user, file);
+  }
+
+  @Patch()
+  update(
+    @Req() req: { user: AuthUser },
+    @Body() body: WeeklyMenuData,
+  ) {
+    return this.weeklyMenu.update(req.user, body);
   }
 }

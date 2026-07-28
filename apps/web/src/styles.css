@@ -38,6 +38,41 @@
   display: none;
 }
 
+.weekly-menu-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.menu-edit-button,
+.menu-save-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 14px;
+  color: #e8e7e4;
+  background: rgba(255, 255, 255, .06);
+}
+
+.menu-edit-button:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, .24);
+  background: rgba(255, 255, 255, .1);
+  transform: translateY(-1px);
+}
+
+.menu-save-button {
+  border-color: rgba(101, 194, 120, .38);
+  color: #effff1;
+  background: linear-gradient(135deg, #3e9d59, #27743f);
+}
+
+.menu-save-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(45, 139, 72, .25);
+}
+
 .menu-import-button {
   display: inline-flex;
   align-items: center;
@@ -165,6 +200,67 @@
   margin: 0;
 }
 
+.menu-water-dish {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 10px 11px;
+  border: 1px solid rgba(240, 92, 75, .16);
+  border-radius: 11px;
+  background: rgba(232, 62, 51, .08);
+}
+
+.menu-water-dish span {
+  color: #ff8f81;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.menu-water-dish strong {
+  color: #f2eeeb;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.menu-edit-fields {
+  display: grid;
+  gap: 9px;
+}
+
+.menu-edit-fields label,
+.menu-overtime-input {
+  display: grid;
+  gap: 5px;
+}
+
+.menu-edit-fields label span,
+.menu-overtime-input span {
+  color: #999ba2;
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.menu-edit-fields input,
+.menu-overtime-input input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, .11);
+  border-radius: 9px;
+  color: #f0efec;
+  background: rgba(5, 7, 10, .36);
+  outline: none;
+}
+
+.menu-edit-fields input:focus,
+.menu-overtime-input input:focus {
+  border-color: rgba(239, 86, 72, .65);
+  box-shadow: 0 0 0 3px rgba(239, 70, 57, .1);
+}
+
 .menu-shift dl div {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
@@ -278,7 +374,8 @@
 @media (max-width: 540px) {
   .weekly-menu-grid { grid-template-columns: 1fr; }
   .menu-import-button { width: 100%; justify-content: center; }
-  .weekly-menu-actions { width: 100%; }
+  .weekly-menu-actions { width: 100%; justify-content: stretch; }
+  .weekly-menu-actions button { flex: 1 1 auto; }
 }
 
 html {
