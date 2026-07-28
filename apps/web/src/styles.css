@@ -34,6 +34,37 @@
   font-size: clamp(24px, 3vw, 34px);
 }
 
+.menu-week-switch {
+  display: inline-flex;
+  gap: 4px;
+  margin-top: 15px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .045);
+}
+
+.menu-week-switch button {
+  min-height: 36px;
+  padding: 0 15px;
+  border: 0;
+  border-radius: 10px;
+  color: #aaaeb5;
+  background: transparent;
+  font-weight: 700;
+}
+
+.menu-week-switch button:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, .07);
+}
+
+.menu-week-switch button.is-active {
+  color: #fff;
+  background: linear-gradient(135deg, #ef443b, #bf241f);
+  box-shadow: 0 7px 18px rgba(210, 44, 36, .25);
+}
+
 .weekly-menu-actions input {
   display: none;
 }

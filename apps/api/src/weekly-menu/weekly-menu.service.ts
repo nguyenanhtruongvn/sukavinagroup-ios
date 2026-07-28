@@ -79,16 +79,25 @@ function currentWeekStart() {
   return today;
 }
 
+function selectedWeekStart(week?: string) {
+  if (week !== undefined && week !== 'current' && week !== 'next') {
+    throw new BadRequestException('Chỉ hỗ trợ thực đơn tuần này hoặc tuần sau.');
+  }
+  const weekStart = currentWeekStart();
+  if (week === 'next') weekStart.setUTCDate(weekStart.getUTCDate() + 7);
+  return weekStart;
+}
+
 @Injectable()
 export class WeeklyMenuService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async current(user: AuthUser) {
+  async current(user: AuthUser, week?: string) {
     assertPermission(user, 'content.manage');
-    return this.prisma.weeklyMenu.findUnique({ where: { weekStart: currentWeekStart() } });
+    return this.prisma.weeklyMenu.findUnique({ where: { weekStart: selectedWeekStart(week) } });
   }
 
-  async import(user: AuthUser, file?: Express.Multer.File) {
+  async import(user: AuthUser, file?: Express.Multer.File, week?: string) {
     assertPermission(user, 'content.manage');
     if (!file) throw new BadRequestException('Vui lòng chọn file Excel.');
     if (!file.originalname.toLocaleLowerCase('vi').endsWith('.xlsx')) {
@@ -96,7 +105,7 @@ export class WeeklyMenuService {
     }
 
     const data = await parseWeeklyMenuWorkbook(file.buffer);
-    const weekStart = currentWeekStart();
+    const weekStart = selectedWeekStart(week);
     return this.prisma.weeklyMenu.upsert({
       where: { weekStart },
       update: {
@@ -113,7 +122,7 @@ export class WeeklyMenuService {
     });
   }
 
-  async update(user: AuthUser, data: WeeklyMenuData) {
+  async update(user: AuthUser, data: WeeklyMenuData, week?: string) {
     assertPermission(user, 'content.manage');
     if (!Array.isArray(data?.days) || data.days.length !== dayNames.length) {
       throw new BadRequestException('Thực đơn phải có đủ 7 ngày từ Thứ 2 đến Chủ nhật.');
@@ -131,7 +140,7 @@ export class WeeklyMenuService {
       vegetarianSide: String(day.vegetarianSide ?? '').trim(),
       overtime: String(day.overtime ?? '').trim(),
     }));
-    const weekStart = currentWeekStart();
+    const weekStart = selectedWeekStart(week);
     return this.prisma.weeklyMenu.upsert({
       where: { weekStart },
       update: {
