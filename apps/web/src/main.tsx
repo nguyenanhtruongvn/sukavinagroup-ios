@@ -423,6 +423,7 @@ function App() {
   const [employeeTab, setEmployeeTab] = useState<'home' | 'menu'>('home');
   const [todayMenu, setTodayMenu] = useState<TodayMenu | null>(null);
   const [mealSelectionSaving, setMealSelectionSaving] = useState(false);
+  const [pendingMealChoice, setPendingMealChoice] = useState<'water' | 'vegetarian' | null>(null);
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
@@ -2627,19 +2628,18 @@ function App() {
             <span className="today-menu-day">{todayMenu?.day.dayName ?? '...'}</span>
           </header>
           <div className="today-menu-layout">
-            <div className="today-menu-list">
-              {[
-                ['Món nước', todayMenu?.day.featured],
-                ['Món mặn chính', todayMenu?.day.savoryMain],
-                ['Món mặn phụ', todayMenu?.day.savorySide],
-                ['Rau', todayMenu?.day.vegetable],
-                ['Canh', todayMenu?.day.soup],
-                ['Món chay chính', todayMenu?.day.vegetarianMain],
-                ['Món chay phụ', todayMenu?.day.vegetarianSide],
-                ['Tăng ca', todayMenu?.day.overtime],
-              ].map(([label, value]) => (
-                <div key={label}><span>{label}</span><strong>{value || '...'}</strong></div>
-              ))}
+            <div className="today-menu-groups">
+              <article className="today-menu-group water"><span>♨</span><div><small>MÓN NƯỚC</small><h3>{todayMenu?.day.featured || '...'}</h3></div></article>
+              <article className="today-menu-group regular">
+                <span>♢</span><div><small>MÓN THƯỜNG</small>
+                  <p><b>Món chính</b>{todayMenu?.day.savoryMain || '...'}</p>
+                  <p><b>Món phụ</b>{todayMenu?.day.savorySide || '...'}</p>
+                  <p><b>Rau</b>{todayMenu?.day.vegetable || '...'}</p>
+                  <p><b>Canh</b>{todayMenu?.day.soup || '...'}</p>
+                </div>
+              </article>
+              <article className="today-menu-group vegetarian"><span>◒</span><div><small>MÓN CHAY</small><h3>{[todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</h3></div></article>
+              <article className="today-menu-group overtime"><span>☾</span><div><small>TĂNG CA</small><h3>{todayMenu?.day.overtime || '...'}</h3></div></article>
             </div>
             <div className="meal-choice-panel">
               <div><small>LỰA CHỌN HÔM NAY</small><h3>Bạn muốn dùng món nào?</h3><p>Có thể đổi lựa chọn trong ngày.</p></div>
@@ -2647,7 +2647,7 @@ function App() {
                 type="button"
                 className={todayMenu?.selection === 'water' ? 'is-selected water' : 'water'}
                 disabled={mealSelectionSaving}
-                onClick={() => void selectMeal('water')}
+                onClick={() => setPendingMealChoice('water')}
               >
                 <span>♨</span><div><strong>Món nước</strong><small>{todayMenu?.day.featured || '...'}</small></div>
                 <i>{todayMenu?.selection === 'water' ? '✓' : 'Chọn'}</i>
@@ -2656,7 +2656,7 @@ function App() {
                 type="button"
                 className={todayMenu?.selection === 'vegetarian' ? 'is-selected vegetarian' : 'vegetarian'}
                 disabled={mealSelectionSaving}
-                onClick={() => void selectMeal('vegetarian')}
+                onClick={() => setPendingMealChoice('vegetarian')}
               >
                 <span>◒</span><div><strong>Món chay</strong><small>{[todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</small></div>
                 <i>{todayMenu?.selection === 'vegetarian' ? '✓' : 'Chọn'}</i>
@@ -2664,6 +2664,25 @@ function App() {
             </div>
           </div>
         </section>
+      ) : null}
+
+      {pendingMealChoice ? (
+        <div className="meal-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingMealChoice(null); }}>
+          <section className="meal-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="meal-confirm-title">
+            <span className={pendingMealChoice}>✓</span>
+            <p className="panel-label">XÁC NHẬN LỰA CHỌN</p>
+            <h3 id="meal-confirm-title">Đặt {pendingMealChoice === 'water' ? 'Món nước' : 'Món chay'} hôm nay?</h3>
+            <p>Bạn vẫn có thể thay đổi lựa chọn trong ngày nếu cần.</p>
+            <div>
+              <button type="button" onClick={() => setPendingMealChoice(null)}>Quay lại</button>
+              <button type="button" className="confirm" disabled={mealSelectionSaving} onClick={() => {
+                const choice = pendingMealChoice;
+                setPendingMealChoice(null);
+                void selectMeal(choice);
+              }}>Xác nhận đặt món</button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {!isAdminRoute && employeeTab === 'home' ? (

@@ -48,10 +48,17 @@
 .today-menu-head p { margin: 0; color: #aeb0b6; text-transform: capitalize; }
 .today-menu-day { padding: 9px 14px; border: 1px solid rgba(255, 110, 94, .28); border-radius: 999px; color: #ffaaa0; background: rgba(226, 55, 47, .1); font-weight: 800; }
 .today-menu-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, .8fr); gap: 20px; }
-.today-menu-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.today-menu-list > div { min-height: 86px; padding: 15px 17px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.025)); }
-.today-menu-list span { display: block; margin-bottom: 7px; color: #a9abb1; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
-.today-menu-list strong { color: #f4f1ea; line-height: 1.45; }
+.today-menu-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.today-menu-group { display: grid; grid-template-columns: 47px 1fr; align-items: start; gap: 13px; min-height: 112px; padding: 17px; border: 1px solid rgba(255,255,255,.09); border-radius: 19px; background: linear-gradient(145deg, rgba(255,255,255,.065), rgba(255,255,255,.025)); }
+.today-menu-group > span { display: grid; width: 47px; height: 47px; place-items: center; border-radius: 15px; font-size: 23px; }
+.today-menu-group small { color: #aeb0b7; font-weight: 800; letter-spacing: .09em; }
+.today-menu-group h3 { margin: 9px 0 0; font-size: 17px; line-height: 1.45; }
+.today-menu-group p { display: grid; grid-template-columns: 84px 1fr; gap: 7px; margin: 8px 0 0; color: #eeece8; font-size: 13px; line-height: 1.35; }
+.today-menu-group p b { color: #969aa3; font-weight: 600; }
+.today-menu-group.water > span { color: #71cdfa; background: rgba(55,167,224,.16); }
+.today-menu-group.regular > span { color: #ffad71; background: rgba(226,127,55,.16); }
+.today-menu-group.vegetarian > span { color: #70df9a; background: rgba(58,184,104,.16); }
+.today-menu-group.overtime > span { color: #c1a0ff; background: rgba(130,87,211,.16); }
 .meal-choice-panel { padding: 20px; border: 1px solid rgba(255,255,255,.09); border-radius: 22px; background: rgba(8,9,11,.38); }
 .meal-choice-panel h3 { margin: 5px 0; font-size: 21px; }
 .meal-choice-panel p, .meal-choice-panel small { color: #9fa2aa; }
@@ -66,12 +73,22 @@
 .meal-choice-panel button i { padding: 5px 9px; border-radius: 999px; color: #c8c9cd; background: rgba(255,255,255,.07); font-size: 12px; font-style: normal; }
 .meal-choice-panel button.is-selected { border-color: rgba(102,211,137,.45); background: linear-gradient(135deg, rgba(53,158,89,.2), rgba(255,255,255,.05)); box-shadow: inset 0 0 0 1px rgba(94,210,132,.1); }
 .meal-choice-panel button.is-selected i { color: #102818; background: #78dc98; font-weight: 900; }
+.meal-confirm-backdrop { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgba(4,5,7,.7); backdrop-filter: blur(12px); }
+.meal-confirm-dialog { width: min(420px, 100%); padding: 27px; border: 1px solid rgba(255,255,255,.12); border-radius: 25px; background: linear-gradient(145deg, #292a2f, #17181c); box-shadow: 0 28px 80px rgba(0,0,0,.5); text-align: center; }
+.meal-confirm-dialog > span { display: grid; width: 58px; height: 58px; margin: 0 auto 17px; place-items: center; border-radius: 18px; font-size: 25px; font-weight: 900; }
+.meal-confirm-dialog > span.water { color: #8bd7ff; background: rgba(53,169,229,.17); }
+.meal-confirm-dialog > span.vegetarian { color: #89e5a9; background: rgba(61,190,107,.17); }
+.meal-confirm-dialog h3 { margin: 7px 0 9px; font-size: 23px; }
+.meal-confirm-dialog > p:not(.panel-label) { color: #aeb0b6; line-height: 1.5; }
+.meal-confirm-dialog > div { display: grid; grid-template-columns: 1fr 1.3fr; gap: 9px; margin-top: 22px; }
+.meal-confirm-dialog button { min-height: 46px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; color: #efede9; background: rgba(255,255,255,.06); }
+.meal-confirm-dialog button.confirm { border: 0; color: #fff; background: linear-gradient(135deg, #ed443c, #bd221e); font-weight: 800; }
 
 @media (max-width: 760px) {
   .employee-tabs { width: 100%; }
   .employee-tabs button { flex: 1; justify-content: center; }
   .today-menu-layout { grid-template-columns: 1fr; }
-  .today-menu-list { grid-template-columns: 1fr; }
+  .today-menu-groups { grid-template-columns: 1fr; }
 }
 
 .weekly-menu-panel {

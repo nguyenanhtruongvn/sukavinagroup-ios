@@ -122,6 +122,18 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
 @Composable private fun TodayMenuScreen(state: SessionUiState, session: SessionViewModel) {
     LaunchedEffect(Unit) { session.refreshTodayMenu() }
     val menu = state.todayMenu
+    var pendingChoice by remember { mutableStateOf<String?>(null) }
+    if (pendingChoice != null) {
+        val title = if (pendingChoice == "water") "Món nước" else "Món chay"
+        AlertDialog(
+            onDismissRequest = { pendingChoice = null },
+            icon = { Icon(if (pendingChoice == "water") Icons.Default.LocalDrink else Icons.Default.Eco, null, tint = if (pendingChoice == "water") Color(0xFF62C5F4) else Color(0xFF62D58B)) },
+            title = { Text("Xác nhận đặt $title") },
+            text = { Text("Lựa chọn được áp dụng cho hôm nay và có thể thay đổi lại trong ngày.") },
+            confirmButton = { Button(onClick = { val choice = pendingChoice!!; pendingChoice = null; session.selectMeal(choice) }) { Text("Xác nhận") } },
+            dismissButton = { TextButton(onClick = { pendingChoice = null }) { Text("Quay lại") } },
+        )
+    }
     LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("BẾP ĂN SUKAVINA", color = SukavinaRed, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp, fontSize = 12.sp)
@@ -129,24 +141,14 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
             Text(menu?.day?.dayName ?: "Đang cập nhật", color = SukavinaMuted)
         }
         item {
-            Card(shape = RoundedCornerShape(22.dp)) {
-                Column(Modifier.padding(horizontal = 17.dp, vertical = 7.dp)) {
-                    listOf(
-                        "Món nước" to menu?.day?.featured,
-                        "Món mặn chính" to menu?.day?.savoryMain,
-                        "Món mặn phụ" to menu?.day?.savorySide,
-                        "Rau" to menu?.day?.vegetable,
-                        "Canh" to menu?.day?.soup,
-                        "Món chay chính" to menu?.day?.vegetarianMain,
-                        "Món chay phụ" to menu?.day?.vegetarianSide,
-                        "Tăng ca" to menu?.day?.overtime,
-                    ).forEachIndexed { index, item ->
-                        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
-                            Text(item.first, color = SukavinaMuted, fontSize = 13.sp, modifier = Modifier.width(120.dp))
-                            Text(item.second?.ifBlank { "..." } ?: "...", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        }
-                        if (index < 7) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .13f))
-                    }
+            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                    MenuGroupCard("Món nước", Icons.Default.LocalDrink, Color(0xFF62C5F4), listOf(menu?.day?.featured), Modifier.weight(1f))
+                    MenuGroupCard("Món thường", Icons.Default.Restaurant, Color(0xFFFFA568), listOf(menu?.day?.savoryMain, menu?.day?.savorySide, menu?.day?.vegetable, menu?.day?.soup), Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(11.dp)) {
+                    MenuGroupCard("Món chay", Icons.Default.Eco, Color(0xFF62D58B), listOf(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide), Modifier.weight(1f))
+                    MenuGroupCard("Tăng ca", Icons.Default.DarkMode, Color(0xFFB396F5), listOf(menu?.day?.overtime), Modifier.weight(1f))
                 }
             }
         }
@@ -155,10 +157,20 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     Text("LỰA CHỌN HÔM NAY", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                     Text("Bạn muốn dùng món nào?", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), menu?.selection == "water", state.working) { session.selectMeal("water") }
-                    MealChoiceButton("Món chay", listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · "), Icons.Default.Eco, Color(0xFF62D58B), menu?.selection == "vegetarian", state.working) { session.selectMeal("vegetarian") }
+                    MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), menu?.selection == "water", state.working) { pendingChoice = "water" }
+                    MealChoiceButton("Món chay", listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · "), Icons.Default.Eco, Color(0xFF62D58B), menu?.selection == "vegetarian", state.working) { pendingChoice = "vegetarian" }
                 }
             }
+        }
+    }
+}
+
+@Composable private fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
+    Card(modifier.heightIn(min = 142.dp), shape = RoundedCornerShape(19.dp), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .16f))) {
+        Column(Modifier.padding(15.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(shape = RoundedCornerShape(13.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(42.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(10.dp)) }
+            Text(title.uppercase(), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+            lines.forEach { Text(it?.ifBlank { "..." } ?: "...", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
     }
 }

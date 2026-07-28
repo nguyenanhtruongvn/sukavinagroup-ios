@@ -1681,6 +1681,7 @@ private struct EmployeePortalView: View {
 
 private struct TodayMenuView: View {
     @EnvironmentObject private var session: SessionStore
+    @State private var pendingChoice: String?
 
     var body: some View {
         NavigationView {
@@ -1697,18 +1698,20 @@ private struct TodayMenuView: View {
                             .foregroundColor(AppTheme.muted)
                     }
 
-                    VStack(spacing: 0) {
-                        menuRow("Món nước", session.todayMenu?.day.featured)
-                        menuRow("Món mặn chính", session.todayMenu?.day.savoryMain)
-                        menuRow("Món mặn phụ", session.todayMenu?.day.savorySide)
-                        menuRow("Rau", session.todayMenu?.day.vegetable)
-                        menuRow("Canh", session.todayMenu?.day.soup)
-                        menuRow("Món chay chính", session.todayMenu?.day.vegetarianMain)
-                        menuRow("Món chay phụ", session.todayMenu?.day.vegetarianSide)
-                        menuRow("Tăng ca", session.todayMenu?.day.overtime, divider: false)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 11) {
+                        menuGroup("Món nước", icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, lines: [session.todayMenu?.day.featured])
+                        menuGroup("Món thường", icon: "fork.knife", color: .orange, lines: [
+                            session.todayMenu?.day.savoryMain,
+                            session.todayMenu?.day.savorySide,
+                            session.todayMenu?.day.vegetable,
+                            session.todayMenu?.day.soup
+                        ])
+                        menuGroup("Món chay", icon: "leaf.fill", color: .green, lines: [
+                            session.todayMenu?.day.vegetarianMain,
+                            session.todayMenu?.day.vegetarianSide
+                        ])
+                        menuGroup("Tăng ca", icon: "moon.stars.fill", color: .purple, lines: [session.todayMenu?.day.overtime])
                     }
-                    .background(AppTheme.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
 
                     VStack(alignment: .leading, spacing: 12) {
                         Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
@@ -1726,23 +1729,45 @@ private struct TodayMenuView: View {
             .navigationTitle("Thực đơn")
             .task { await session.refreshTodayMenu() }
             .refreshable { await session.refreshTodayMenu() }
+            .confirmationDialog(
+                "Xác nhận đặt món",
+                isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Xác nhận \(pendingChoice == "water" ? "Món nước" : "Món chay")") {
+                    guard let choice = pendingChoice else { return }
+                    pendingChoice = nil
+                    Task { await session.selectMeal(choice) }
+                }
+                Button("Hủy", role: .cancel) { pendingChoice = nil }
+            } message: {
+                Text("Lựa chọn được áp dụng cho hôm nay và có thể thay đổi lại trong ngày.")
+            }
         }
     }
 
-    private func menuRow(_ title: String, _ value: String?, divider: Bool = true) -> some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                Text(title).font(.subheadline).foregroundColor(AppTheme.muted).frame(width: 118, alignment: .leading)
-                Text(value?.isEmpty == false ? value! : "...").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading)
-            }.padding(.horizontal, 17).padding(.vertical, 13)
-            if divider { Divider().opacity(0.18).padding(.leading, 17) }
+    private func menuGroup(_ title: String, icon: String, color: Color, lines: [String?]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Image(systemName: icon).font(.headline).foregroundColor(color).frame(width: 42, height: 42).background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 13))
+            Text(title.uppercased()).font(.caption2.bold()).tracking(1).foregroundColor(AppTheme.muted)
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, value in
+                Text(value?.isEmpty == false ? value! : "...")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .padding(15)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 19).stroke(color.opacity(0.16)))
     }
 
     private func mealButton(_ title: String, detail: String?, icon: String, color: Color, choice: String) -> some View {
         let selected = session.todayMenu?.selection == choice
         return Button {
-            Task { await session.selectMeal(choice) }
+            pendingChoice = choice
         } label: {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.title3).foregroundColor(color).frame(width: 44, height: 44).background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 14))
