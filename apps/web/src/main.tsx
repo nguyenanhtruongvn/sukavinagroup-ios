@@ -622,7 +622,8 @@ function App() {
       cache: 'no-store',
     });
     if (!response.ok) throw new Error('Không tải được thực đơn đã chọn.');
-    const result = (await response.json()) as WeeklyMenu | null;
+    const responseText = await response.text();
+    const result = responseText ? JSON.parse(responseText) as WeeklyMenu : null;
     setWeeklyMenu(result);
     if (!menuEditing) setWeeklyMenuDraft(result?.data.days.map((day) => ({ ...day })) ?? []);
   };
