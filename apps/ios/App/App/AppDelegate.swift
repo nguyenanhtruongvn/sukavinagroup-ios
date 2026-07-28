@@ -2215,7 +2215,7 @@ private struct ModernAttendanceHistoryView: View {
         HStack {
             monthButton("chevron.left", target: 1)
             Spacer()
-            Text(monthTitle).font(.headline.bold()).foregroundStyle(AppTheme.text)
+            Text(monthTitle).font(.headline.bold()).foregroundStyle(Color.primary)
             Spacer()
             monthButton("chevron.right", target: -1)
         }
@@ -2260,7 +2260,7 @@ private struct ModernAttendanceHistoryView: View {
 
     private var calendarCard: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Lịch chấm công").font(.headline).foregroundStyle(AppTheme.text)
+            Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
             HStack(spacing: 4) {
                 ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
                     Text($0).font(.caption.bold()).foregroundStyle(AppTheme.muted)
@@ -2291,7 +2291,7 @@ private struct ModernAttendanceHistoryView: View {
         } label: {
             Text(String(Int(day.date.suffix(2)) ?? 0))
                 .font(.subheadline.weight(selected ? .bold : .medium))
-                .foregroundStyle(day.status == "absent" ? AppTheme.red : AppTheme.text)
+                .foregroundStyle(day.status == "absent" ? AppTheme.red : Color.primary)
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .background(dayColor(day.status))
                 .clipShape(RoundedRectangle(cornerRadius: 11))
@@ -2312,7 +2312,7 @@ private struct ModernAttendanceHistoryView: View {
     private func dayDetail(_ day: AttendanceDay) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Chi tiết ngày \(displayDate(day.date))", systemImage: "calendar")
-                .font(.headline).foregroundStyle(AppTheme.text)
+                .font(.headline).foregroundStyle(Color.primary)
             Divider()
             detailRow("Giờ vào", time(day.checkIn))
             detailRow("Giờ ra", time(day.checkOut))
