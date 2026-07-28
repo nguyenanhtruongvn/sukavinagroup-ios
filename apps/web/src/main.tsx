@@ -978,7 +978,6 @@ function App() {
     if (!token || isAdminRoute) return;
     let active = true;
     let reconnectTimer = 0;
-    let dailyResetTimer = 0;
     const controller = new AbortController();
 
     const refreshRealtimeDashboard = async () => {
@@ -1582,6 +1581,7 @@ function App() {
     if (!token || !currentUser) return;
     let active = true;
     let reconnectTimer = 0;
+    let dailyResetTimer = 0;
     const controller = new AbortController();
     const refreshMenus = () => {
       if (isAdminRoute && adminTab === 'menu' && canAccess('content.manage')) {
