@@ -118,6 +118,28 @@ type MediaItem = {
   managerEmployeeCode?: string | null;
 };
 
+type WeeklyMenuDay = {
+  dayIndex: number;
+  dayName: string;
+  featured: string;
+  savoryMain: string;
+  savorySide: string;
+  vegetable: string;
+  soup: string;
+  vegetarianMain: string;
+  vegetarianSide: string;
+  overtime: string;
+};
+
+type WeeklyMenu = {
+  id: string;
+  weekStart: string;
+  data: { days: WeeklyMenuDay[] };
+  sourceName: string;
+  importedBy: string;
+  updatedAt: string;
+};
+
 type EmployeeRequest = {
   id: string;
   kind: 'leave' | 'late' | 'early' | 'overtime' | 'business';
@@ -383,9 +405,12 @@ function App() {
   const [employeePage, setEmployeePage] = useState(1);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteAccountForm, setDeleteAccountForm] = useState({ password: '', confirmation: '' });
-  const [adminTab, setAdminTab] = useState<'content' | 'employees' | 'requests' | 'accounts'>(
+  const [adminTab, setAdminTab] = useState<'content' | 'menu' | 'employees' | 'requests' | 'accounts'>(
     'content',
   );
+  const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null);
+  const [menuImporting, setMenuImporting] = useState(false);
+  const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
   const [adminRequestQuery, setAdminRequestQuery] = useState('');
   const [adminRequestKind, setAdminRequestKind] = useState<'all' | EmployeeRequest['kind']>('all');
@@ -569,6 +594,44 @@ function App() {
     }
     setAdminRequests(result);
     setAdminRequestDetail((current) => current ? result.find((item) => item.id === current.id) ?? current : null);
+  };
+
+  const refreshWeeklyMenu = async () => {
+    if (!token || !isAdminRoute) return;
+    const response = await fetch('/api/admin/menu', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('Không tải được thực đơn tuần này.');
+    setWeeklyMenu((await response.json()) as WeeklyMenu | null);
+  };
+
+  const importWeeklyMenu = async (file?: File) => {
+    if (!token || !file) return;
+    setMenuImporting(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch('/api/admin/menu/import', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body,
+      });
+      const result = (await response.json().catch(() => null)) as WeeklyMenu | { message?: string } | null;
+      if (!response.ok || !result || !('data' in result)) {
+        throw new Error((result as { message?: string } | null)?.message || 'Không import được thực đơn.');
+      }
+      setWeeklyMenu(result);
+      setToast({ type: 'success', message: 'Đã import và cập nhật thực đơn tuần này.' });
+    } catch (importError) {
+      setToast({
+        type: 'error',
+        message: importError instanceof Error ? importError.message : 'Không import được thực đơn.',
+      });
+    } finally {
+      setMenuImporting(false);
+      if (menuFileInputRef.current) menuFileInputRef.current.value = '';
+    }
   };
 
   const deleteAdminRequest = async () => {
@@ -1301,8 +1364,9 @@ function App() {
 
   useEffect(() => {
     if (!isAdminRoute || !currentUser) return;
-    const availableTabs: Array<'content' | 'employees' | 'requests' | 'accounts'> = [];
+    const availableTabs: Array<'content' | 'menu' | 'employees' | 'requests' | 'accounts'> = [];
     if (canAccess('content.manage')) availableTabs.push('content');
+    if (canAccess('content.manage')) availableTabs.push('menu');
     if (canAccess('employees.manage')) availableTabs.push('employees');
     if (canAccess('requests.view')) availableTabs.push('requests');
     if (canAccess('accounts.manage')) availableTabs.push('accounts');
@@ -1318,6 +1382,7 @@ function App() {
         if (adminTab === 'employees' && canAccess('employees.manage')) await refreshEmployees();
         if (adminTab === 'accounts' && canAccess('accounts.manage')) await refreshAccounts();
         if (adminTab === 'content' && canAccess('content.manage')) await refreshContent();
+        if (adminTab === 'menu' && canAccess('content.manage')) await refreshWeeklyMenu();
         if (adminTab === 'requests' && canAccess('requests.view')) await refreshAdminRequests();
       } catch (tabError) {
         setError(tabError instanceof Error ? tabError.message : 'Không tải được dữ liệu quản trị');
@@ -2755,6 +2820,15 @@ function App() {
               Bài viết
             </button>
             ) : null}
+            {canAccess('content.manage') ? (
+              <button
+                type="button"
+                className={adminTab === 'menu' ? 'active' : ''}
+                onClick={() => setAdminTab('menu')}
+              >
+                Thực đơn
+              </button>
+            ) : null}
             {canAccess('employees.manage') ? (
             <button
               type="button"
@@ -2786,6 +2860,111 @@ function App() {
           </aside>
 
           <section className="admin-main">
+            {adminTab === 'menu' && canAccess('content.manage') ? (
+              <section className="weekly-menu-panel panel">
+                <header className="weekly-menu-header">
+                  <div>
+                    <p className="panel-label">Bếp ăn Sukavina</p>
+                    <h2>Thực đơn tuần này</h2>
+                    <p className="panel-note">
+                      Thực đơn từ Thứ 2 đến Chủ nhật, chia theo ca trưa và tăng ca.
+                    </p>
+                  </div>
+                  <div className="weekly-menu-actions">
+                    <input
+                      ref={menuFileInputRef}
+                      type="file"
+                      accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                      hidden
+                      onChange={(event) => void importWeeklyMenu(event.target.files?.[0])}
+                    />
+                    <button
+                      type="button"
+                      className="menu-import-button"
+                      disabled={menuImporting}
+                      onClick={() => menuFileInputRef.current?.click()}
+                    >
+                      <span>↑</span>
+                      {menuImporting ? 'Đang import...' : 'Import Excel'}
+                    </button>
+                  </div>
+                </header>
+
+                {weeklyMenu ? (
+                  <>
+                    <div className="weekly-menu-meta">
+                      <span>
+                        Tuần từ{' '}
+                        <strong>{new Date(weeklyMenu.weekStart).toLocaleDateString('vi-VN')}</strong>
+                      </span>
+                      <span>
+                        File: <strong>{weeklyMenu.sourceName}</strong>
+                      </span>
+                      <span>
+                        Cập nhật{' '}
+                        <strong>{new Date(weeklyMenu.updatedAt).toLocaleString('vi-VN')}</strong>
+                      </span>
+                    </div>
+                    <div className="weekly-menu-grid">
+                      {weeklyMenu.data.days.map((day) => {
+                        const date = new Date(weeklyMenu.weekStart);
+                        date.setUTCDate(date.getUTCDate() + day.dayIndex);
+                        const lunchItems = [
+                          ['Món chính', day.savoryMain],
+                          ['Món phụ', day.savorySide],
+                          ['Rau', day.vegetable],
+                          ['Canh', day.soup],
+                        ].filter((item) => item[1]);
+                        const vegetarianItems = [
+                          day.vegetarianMain,
+                          day.vegetarianSide,
+                        ].filter(Boolean);
+                        return (
+                          <article className={`weekly-menu-day ${day.dayIndex === 6 ? 'is-sunday' : ''}`} key={day.dayIndex}>
+                            <header>
+                              <div>
+                                <strong>{day.dayName}</strong>
+                                <span>{date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })}</span>
+                              </div>
+                              {day.featured ? <b>{day.featured}</b> : null}
+                            </header>
+                            <section className="menu-shift menu-shift-lunch">
+                              <div className="menu-shift-title"><span>☀</span><strong>Ca trưa</strong></div>
+                              {lunchItems.length ? (
+                                <dl>
+                                  {lunchItems.map(([label, value]) => (
+                                    <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+                                  ))}
+                                </dl>
+                              ) : <p className="menu-empty">Chưa có thực đơn</p>}
+                              {vegetarianItems.length ? (
+                                <div className="menu-vegetarian">
+                                  <span>Món chay</span>
+                                  <p>{vegetarianItems.join(' · ')}</p>
+                                </div>
+                              ) : null}
+                            </section>
+                            <section className="menu-shift menu-shift-overtime">
+                              <div className="menu-shift-title"><span>☾</span><strong>Tăng ca</strong></div>
+                              <p>{day.overtime || 'Chưa có thực đơn'}</p>
+                            </section>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div className="weekly-menu-empty">
+                    <span>▦</span>
+                    <h3>Chưa có thực đơn tuần này</h3>
+                    <p>Chọn “Import Excel” và tải lên file theo mẫu Thứ 2 đến Chủ nhật.</p>
+                    <button type="button" onClick={() => menuFileInputRef.current?.click()}>
+                      Chọn file thực đơn
+                    </button>
+                  </div>
+                )}
+              </section>
+            ) : null}
             {adminTab === 'requests' && canAccess('requests.view') ? (
               <section className="admin-requests-panel panel">
                 <header className="admin-requests-head">

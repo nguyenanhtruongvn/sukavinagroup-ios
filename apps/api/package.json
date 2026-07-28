@@ -88,6 +88,7 @@
     "@nestjs/platform-express": "^11.0.0",
     "@types/multer": "^2.2.0",
     "@types/nodemailer": "^8.0.1",
+    "exceljs": "^4.4.0",
     "multer": "^2.2.0",
     "nodemailer": "^9.0.3",
     "reflect-metadata": "^0.2.0",

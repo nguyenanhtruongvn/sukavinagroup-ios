@@ -12,6 +12,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MediaModule } from '../media/media.module';
 import { RequestsModule } from '../requests/requests.module';
+import { WeeklyMenuModule } from '../weekly-menu/weekly-menu.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { RequestsModule } from '../requests/requests.module';
     AccountsModule,
     MediaModule,
     RequestsModule,
+    WeeklyMenuModule,
     SeedModule,
   ],
   controllers: [AppController],
