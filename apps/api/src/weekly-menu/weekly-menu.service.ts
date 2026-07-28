@@ -88,6 +88,16 @@ function selectedWeekStart(week?: string) {
   return weekStart;
 }
 
+function todayInVietnam() {
+  const value = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
 @Injectable()
 export class WeeklyMenuService {
   constructor(private readonly prisma: PrismaService) {}
@@ -95,6 +105,51 @@ export class WeeklyMenuService {
   async current(user: AuthUser, week?: string) {
     assertPermission(user, 'content.manage');
     return this.prisma.weeklyMenu.findUnique({ where: { weekStart: selectedWeekStart(week) } });
+  }
+
+  async today(user: AuthUser) {
+    if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
+    const mealDate = todayInVietnam();
+    const weekStart = new Date(mealDate);
+    weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
+    const [menu, selection] = await Promise.all([
+      this.prisma.weeklyMenu.findUnique({ where: { weekStart } }),
+      this.prisma.mealSelection.findUnique({
+        where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
+      }),
+    ]);
+    const dayIndex = (mealDate.getUTCDay() + 6) % 7;
+    const data = menu?.data as WeeklyMenuData | undefined;
+    return {
+      date: mealDate.toISOString().slice(0, 10),
+      day: data?.days?.find((item) => item.dayIndex === dayIndex) ?? {
+        dayIndex,
+        dayName: dayNames[dayIndex],
+        featured: '',
+        savoryMain: '',
+        savorySide: '',
+        vegetable: '',
+        soup: '',
+        vegetarianMain: '',
+        vegetarianSide: '',
+        overtime: '',
+      },
+      selection: selection?.choice ?? null,
+    };
+  }
+
+  async selectMeal(user: AuthUser, choice?: string) {
+    if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
+    if (choice !== 'water' && choice !== 'vegetarian') {
+      throw new BadRequestException('Vui lòng chọn Món nước hoặc Món chay.');
+    }
+    const mealDate = todayInVietnam();
+    await this.prisma.mealSelection.upsert({
+      where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
+      update: { choice },
+      create: { employeeId: user.sub, mealDate, choice },
+    });
+    return this.today(user);
   }
 
   async import(user: AuthUser, file?: Express.Multer.File, week?: string) {

@@ -60,3 +60,11 @@ import kotlinx.serialization.Serializable
     val requestId: String? = null, val read: Boolean = false, val createdAt: String,
 )
 @Serializable data class UpdateCount(val count: Int = 0)
+@Serializable data class MenuDay(
+    val dayIndex: Int = 0, val dayName: String = "", val featured: String = "",
+    val savoryMain: String = "", val savorySide: String = "", val vegetable: String = "",
+    val soup: String = "", val vegetarianMain: String = "", val vegetarianSide: String = "",
+    val overtime: String = "",
+)
+@Serializable data class TodayMenu(val date: String = "", val day: MenuDay = MenuDay(), val selection: String? = null)
+@Serializable data class MealSelectionBody(val choice: String)

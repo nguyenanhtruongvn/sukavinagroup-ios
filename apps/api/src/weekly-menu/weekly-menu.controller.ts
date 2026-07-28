@@ -44,3 +44,22 @@ export class WeeklyMenuController {
     return this.weeklyMenu.update(req.user, body, week);
   }
 }
+
+@UseGuards(JwtAuthGuard)
+@Controller('me/menu')
+export class EmployeeWeeklyMenuController {
+  constructor(private readonly weeklyMenu: WeeklyMenuService) {}
+
+  @Get()
+  today(@Req() req: { user: AuthUser }) {
+    return this.weeklyMenu.today(req.user);
+  }
+
+  @Patch('selection')
+  select(
+    @Req() req: { user: AuthUser },
+    @Body() body: { choice?: string },
+  ) {
+    return this.weeklyMenu.selectMeal(req.user, body.choice);
+  }
+}

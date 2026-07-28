@@ -509,6 +509,29 @@ private struct ContentItem: Decodable, Identifiable {
     }
 }
 
+private struct MenuDay: Decodable {
+    let dayIndex: Int
+    let dayName: String
+    let featured: String
+    let savoryMain: String
+    let savorySide: String
+    let vegetable: String
+    let soup: String
+    let vegetarianMain: String
+    let vegetarianSide: String
+    let overtime: String
+}
+
+private struct TodayMenu: Decodable {
+    let date: String
+    let day: MenuDay
+    let selection: String?
+}
+
+private struct MealSelectionBody: Encodable {
+    let choice: String
+}
+
 private struct ArticleBlock: Identifiable {
     enum Kind {
         case heading(Int)
@@ -772,6 +795,7 @@ private final class SessionStore: ObservableObject {
     @Published var requestUnreadCount = 0
     @Published var biometricsEnabled = BiometricPreferences.enabled
     @Published var passwordChangeRequiresEmail = false
+    @Published var todayMenu: TodayMenu?
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
@@ -857,6 +881,31 @@ private final class SessionStore: ObservableObject {
             ConnectionDiagnostics.record("Sign-in failed: \(error.localizedDescription)")
             present(error)
             return false
+        }
+    }
+
+    func refreshTodayMenu() async {
+        guard let token else { return }
+        do {
+            todayMenu = try await APIClient.shared.request("me/menu", token: token)
+        } catch {
+            present(error)
+        }
+    }
+
+    func selectMeal(_ choice: String) async {
+        guard let token else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            todayMenu = try await APIClient.shared.request(
+                "me/menu/selection",
+                method: "PATCH",
+                token: token,
+                body: MealSelectionBody(choice: choice)
+            )
+        } catch {
+            present(error)
         }
     }
 
@@ -1609,6 +1658,8 @@ private struct EmployeePortalView: View {
         TabView {
             DashboardView()
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
+            TodayMenuView()
+                .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
             RequestsView()
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             NotificationsView()
@@ -1625,6 +1676,90 @@ private struct EmployeePortalView: View {
                 }
             }
         }
+    }
+}
+
+private struct TodayMenuView: View {
+    @EnvironmentObject private var session: SessionStore
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("BẾP ĂN SUKAVINA")
+                            .font(.caption.bold())
+                            .tracking(1.5)
+                            .foregroundColor(AppTheme.red)
+                        Text("Thực đơn hôm nay")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                        Text(session.todayMenu?.day.dayName ?? "Đang cập nhật")
+                            .foregroundColor(AppTheme.muted)
+                    }
+
+                    VStack(spacing: 0) {
+                        menuRow("Món nước", session.todayMenu?.day.featured)
+                        menuRow("Món mặn chính", session.todayMenu?.day.savoryMain)
+                        menuRow("Món mặn phụ", session.todayMenu?.day.savorySide)
+                        menuRow("Rau", session.todayMenu?.day.vegetable)
+                        menuRow("Canh", session.todayMenu?.day.soup)
+                        menuRow("Món chay chính", session.todayMenu?.day.vegetarianMain)
+                        menuRow("Món chay phụ", session.todayMenu?.day.vegetarianSide)
+                        menuRow("Tăng ca", session.todayMenu?.day.overtime, divider: false)
+                    }
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                        Text("Bạn muốn dùng món nào?").font(.title3.bold())
+                        mealButton("Món nước", detail: session.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
+                        mealButton("Món chay", detail: [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
+                    }
+                    .padding(18)
+                    .background(AppTheme.card.opacity(0.86))
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                }
+                .padding(18)
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Thực đơn")
+            .task { await session.refreshTodayMenu() }
+            .refreshable { await session.refreshTodayMenu() }
+        }
+    }
+
+    private func menuRow(_ title: String, _ value: String?, divider: Bool = true) -> some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                Text(title).font(.subheadline).foregroundColor(AppTheme.muted).frame(width: 118, alignment: .leading)
+                Text(value?.isEmpty == false ? value! : "...").font(.subheadline.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(.horizontal, 17).padding(.vertical, 13)
+            if divider { Divider().opacity(0.18).padding(.leading, 17) }
+        }
+    }
+
+    private func mealButton(_ title: String, detail: String?, icon: String, color: Color, choice: String) -> some View {
+        let selected = session.todayMenu?.selection == choice
+        return Button {
+            Task { await session.selectMeal(choice) }
+        } label: {
+            HStack(spacing: 13) {
+                Image(systemName: icon).font(.title3).foregroundColor(color).frame(width: 44, height: 44).background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 14))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    Text(detail?.isEmpty == false ? detail! : "...").font(.caption).foregroundColor(AppTheme.muted).lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.title3).foregroundColor(selected ? .green : AppTheme.muted)
+            }
+            .padding(13)
+            .background(selected ? Color.green.opacity(0.11) : Color.white.opacity(0.035))
+            .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 17).stroke(selected ? Color.green.opacity(0.35) : Color.white.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .disabled(session.isWorking)
     }
 }
 

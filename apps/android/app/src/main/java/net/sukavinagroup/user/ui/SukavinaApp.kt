@@ -42,7 +42,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
+private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
 
 @Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -101,7 +101,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("�
                 }, icon = {
                     val notificationCount = state.unreadCount + state.requestNotifications.count { !it.read }
                     BadgedBox(badge = { if (item == MainTab.NOTIFICATIONS && notificationCount > 0) Badge { Text(notificationCount.toString()) } }) {
-                        Icon(when(item) { MainTab.HOME -> Icons.Default.Home; MainTab.REQUESTS -> Icons.Default.Description; MainTab.NOTIFICATIONS -> Icons.Default.Notifications; MainTab.PROFILE -> Icons.Default.Person }, null)
+                        Icon(when(item) { MainTab.HOME -> Icons.Default.Home; MainTab.MENU -> Icons.Default.Restaurant; MainTab.REQUESTS -> Icons.Default.Description; MainTab.NOTIFICATIONS -> Icons.Default.Notifications; MainTab.PROFILE -> Icons.Default.Person }, null)
                     }
                 }, label = { Text(item.label) })
             }
@@ -110,10 +110,72 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("�
         Box(Modifier.padding(padding)) {
             when (tab) {
                 MainTab.HOME -> HomeScreen(state, session::refresh, { attendanceOpen = true }, { article = it })
+                MainTab.MENU -> TodayMenuScreen(state, session)
                 MainTab.REQUESTS -> RequestsScreen(state, session)
                 MainTab.NOTIFICATIONS -> NotificationsScreen(state, session) { article = it }
                 MainTab.PROFILE -> ProfileScreen(state, session)
             }
+        }
+    }
+}
+
+@Composable private fun TodayMenuScreen(state: SessionUiState, session: SessionViewModel) {
+    LaunchedEffect(Unit) { session.refreshTodayMenu() }
+    val menu = state.todayMenu
+    LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        item {
+            Text("BẾP ĂN SUKAVINA", color = SukavinaRed, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp, fontSize = 12.sp)
+            Text("Thực đơn hôm nay", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+            Text(menu?.day?.dayName ?: "Đang cập nhật", color = SukavinaMuted)
+        }
+        item {
+            Card(shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.padding(horizontal = 17.dp, vertical = 7.dp)) {
+                    listOf(
+                        "Món nước" to menu?.day?.featured,
+                        "Món mặn chính" to menu?.day?.savoryMain,
+                        "Món mặn phụ" to menu?.day?.savorySide,
+                        "Rau" to menu?.day?.vegetable,
+                        "Canh" to menu?.day?.soup,
+                        "Món chay chính" to menu?.day?.vegetarianMain,
+                        "Món chay phụ" to menu?.day?.vegetarianSide,
+                        "Tăng ca" to menu?.day?.overtime,
+                    ).forEachIndexed { index, item ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.Top) {
+                            Text(item.first, color = SukavinaMuted, fontSize = 13.sp, modifier = Modifier.width(120.dp))
+                            Text(item.second?.ifBlank { "..." } ?: "...", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        }
+                        if (index < 7) HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .13f))
+                    }
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(22.dp)) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+                    Text("LỰA CHỌN HÔM NAY", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                    Text("Bạn muốn dùng món nào?", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), menu?.selection == "water", state.working) { session.selectMeal("water") }
+                    MealChoiceButton("Món chay", listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · "), Icons.Default.Eco, Color(0xFF62D58B), menu?.selection == "vegetarian", state.working) { session.selectMeal("vegetarian") }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun MealChoiceButton(title: String, detail: String?, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, selected: Boolean, disabled: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        enabled = !disabled,
+        shape = RoundedCornerShape(17.dp),
+        color = if (selected) color.copy(alpha = .12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) color.copy(alpha = .45f) else MaterialTheme.colorScheme.outline.copy(alpha = .15f)),
+    ) {
+        Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = RoundedCornerShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(44.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp)) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text(detail?.ifBlank { "..." } ?: "...", color = SukavinaMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null, tint = if (selected) color else SukavinaMuted)
         }
     }
 }

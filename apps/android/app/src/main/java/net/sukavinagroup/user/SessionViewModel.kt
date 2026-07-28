@@ -23,6 +23,7 @@ data class SessionUiState(
     val requestNotifications: List<RequestNotification> = emptyList(),
     val biometricEnabled: Boolean = false,
     val hiddenArticleIds: Set<String> = emptySet(),
+    val todayMenu: TodayMenu? = null,
 )
 
 class SessionViewModel(application: Application) : AndroidViewModel(application) {
@@ -82,6 +83,21 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             AttendanceWidgetStore.update(getApplication(), dashboard)
             if (unread > 0) NotificationHelper.showArticleNotification(getApplication(), dashboard.contentItems.first().title, unread)
         }.onFailure { update(working = false, error = it.message) }
+    }
+
+    fun refreshTodayMenu() = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        runCatching { api.get<TodayMenu>("me/menu", token) }
+            .onSuccess { _state.value = _state.value.copy(todayMenu = it) }
+            .onFailure { update(error = it.message) }
+    }
+
+    fun selectMeal(choice: String) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        update(working = true, error = null)
+        runCatching { api.patch<TodayMenu, MealSelectionBody>("me/menu/selection", MealSelectionBody(choice), token) }
+            .onSuccess { _state.value = _state.value.copy(todayMenu = it, working = false) }
+            .onFailure { update(working = false, error = it.message) }
     }
 
     fun refreshRequests() = viewModelScope.launch {

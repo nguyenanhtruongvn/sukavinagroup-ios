@@ -142,6 +142,12 @@ type WeeklyMenu = {
 
 type MenuWeek = 'current' | 'next';
 
+type TodayMenu = {
+  date: string;
+  day: WeeklyMenuDay;
+  selection: 'water' | 'vegetarian' | null;
+};
+
 type EmployeeRequest = {
   id: string;
   kind: 'leave' | 'late' | 'early' | 'overtime' | 'business';
@@ -414,6 +420,9 @@ function App() {
   const [weeklyMenuDraft, setWeeklyMenuDraft] = useState<WeeklyMenuDay[]>([]);
   const [menuEditing, setMenuEditing] = useState(false);
   const [menuWeek, setMenuWeek] = useState<MenuWeek>('current');
+  const [employeeTab, setEmployeeTab] = useState<'home' | 'menu'>('home');
+  const [todayMenu, setTodayMenu] = useState<TodayMenu | null>(null);
+  const [mealSelectionSaving, setMealSelectionSaving] = useState(false);
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
@@ -716,6 +725,36 @@ function App() {
       });
     } finally {
       setMenuImporting(false);
+    }
+  };
+
+  const refreshTodayMenu = async () => {
+    if (!token || isAdminRoute) return;
+    const response = await fetch('/api/me/menu', {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error('Không tải được thực đơn hôm nay.');
+    setTodayMenu(await response.json() as TodayMenu);
+  };
+
+  const selectMeal = async (choice: 'water' | 'vegetarian') => {
+    if (!token) return;
+    setMealSelectionSaving(true);
+    try {
+      const response = await fetch('/api/me/menu/selection', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ choice }),
+      });
+      const result = await response.json() as TodayMenu | { message?: string };
+      if (!response.ok || !('day' in result)) throw new Error('message' in result ? result.message : 'Không lưu được lựa chọn.');
+      setTodayMenu(result);
+      setToast({ type: 'success', message: choice === 'water' ? 'Đã đặt Món nước hôm nay.' : 'Đã đặt Món chay hôm nay.' });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Không lưu được lựa chọn.' });
+    } finally {
+      setMealSelectionSaving(false);
     }
   };
 
@@ -2560,6 +2599,74 @@ function App() {
       ) : null}
 
       {!isAdminRoute ? (
+        <nav className="employee-tabs" aria-label="Điều hướng nhân viên">
+          <button type="button" className={employeeTab === 'home' ? 'is-active' : ''} onClick={() => setEmployeeTab('home')}>
+            <span>⌂</span> Trang chủ
+          </button>
+          <button
+            type="button"
+            className={employeeTab === 'menu' ? 'is-active' : ''}
+            onClick={() => {
+              setEmployeeTab('menu');
+              void refreshTodayMenu();
+            }}
+          >
+            <span>◇</span> Thực đơn
+          </button>
+        </nav>
+      ) : null}
+
+      {!isAdminRoute && employeeTab === 'menu' ? (
+        <section className="today-menu-panel panel">
+          <header className="today-menu-head">
+            <div>
+              <p className="panel-label">Bếp ăn Sukavina</p>
+              <h2>Thực đơn hôm nay</h2>
+              <p>{todayMenu ? new Date(`${todayMenu.date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Đang cập nhật thực đơn...'}</p>
+            </div>
+            <span className="today-menu-day">{todayMenu?.day.dayName ?? '...'}</span>
+          </header>
+          <div className="today-menu-layout">
+            <div className="today-menu-list">
+              {[
+                ['Món nước', todayMenu?.day.featured],
+                ['Món mặn chính', todayMenu?.day.savoryMain],
+                ['Món mặn phụ', todayMenu?.day.savorySide],
+                ['Rau', todayMenu?.day.vegetable],
+                ['Canh', todayMenu?.day.soup],
+                ['Món chay chính', todayMenu?.day.vegetarianMain],
+                ['Món chay phụ', todayMenu?.day.vegetarianSide],
+                ['Tăng ca', todayMenu?.day.overtime],
+              ].map(([label, value]) => (
+                <div key={label}><span>{label}</span><strong>{value || '...'}</strong></div>
+              ))}
+            </div>
+            <div className="meal-choice-panel">
+              <div><small>LỰA CHỌN HÔM NAY</small><h3>Bạn muốn dùng món nào?</h3><p>Có thể đổi lựa chọn trong ngày.</p></div>
+              <button
+                type="button"
+                className={todayMenu?.selection === 'water' ? 'is-selected water' : 'water'}
+                disabled={mealSelectionSaving}
+                onClick={() => void selectMeal('water')}
+              >
+                <span>♨</span><div><strong>Món nước</strong><small>{todayMenu?.day.featured || '...'}</small></div>
+                <i>{todayMenu?.selection === 'water' ? '✓' : 'Chọn'}</i>
+              </button>
+              <button
+                type="button"
+                className={todayMenu?.selection === 'vegetarian' ? 'is-selected vegetarian' : 'vegetarian'}
+                disabled={mealSelectionSaving}
+                onClick={() => void selectMeal('vegetarian')}
+              >
+                <span>◒</span><div><strong>Món chay</strong><small>{[todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</small></div>
+                <i>{todayMenu?.selection === 'vegetarian' ? '✓' : 'Chọn'}</i>
+              </button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {!isAdminRoute && employeeTab === 'home' ? (
       <section className="dashboard-grid">
         <article className="panel panel-accent">
           <p className="panel-label">Số ngày phép còn lại</p>
