@@ -527,6 +527,8 @@ private struct TodayMenu: Decodable {
     let day: MenuDay
     let selection: String?
     let receivedAt: String?
+    let orderingOpen: Bool
+    let orderingCutoff: String
 }
 
 private struct MealSelectionBody: Encodable {
@@ -1789,12 +1791,33 @@ private struct TodayMenuView: View {
                                         .padding(.vertical, 12)
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(session.todayMenu?.orderingOpen == false)
                             }
                         } else {
                             Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                             Text("Bạn muốn dùng món nào?").font(.title3.bold())
-                            mealButton("Món nước", detail: session.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
-                            mealButton("Món chay", detail: [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
+                            if session.todayMenu?.orderingOpen == false {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "clock.badge.exclamationmark.fill")
+                                        .font(.title3.bold())
+                                        .foregroundColor(.orange)
+                                        .frame(width: 42, height: 42)
+                                        .background(Color.orange.opacity(0.13))
+                                        .clipShape(RoundedRectangle(cornerRadius: 13))
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text("Đã khóa đặt món").font(.headline).foregroundColor(.orange)
+                                        Text("Vui lòng đặt món trước \(session.todayMenu?.orderingCutoff ?? "09:00").")
+                                            .font(.caption).foregroundColor(AppTheme.muted)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(14)
+                                .background(Color.orange.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                            } else {
+                                mealButton("Món nước", detail: session.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
+                                mealButton("Món chay", detail: [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
+                            }
                         }
                     }
                     .padding(18)

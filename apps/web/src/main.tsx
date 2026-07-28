@@ -147,6 +147,8 @@ type TodayMenu = {
   day: WeeklyMenuDay;
   selection: 'water' | 'vegetarian' | null;
   receivedAt: string | null;
+  orderingOpen: boolean;
+  orderingCutoff: string;
 };
 
 type MealSelectionRecord = {
@@ -2800,7 +2802,7 @@ function App() {
       {!isAdminRoute && employeeTab === 'menu' ? (
         <section className="today-menu-panel panel">
           <header className="today-menu-head">
-            <div className="meal-confirm-actions">
+            <div>
               <p className="panel-label">Bếp ăn Sukavina</p>
               <h2>Thực đơn hôm nay</h2>
               <p>{todayMenu ? new Date(`${todayMenu.date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Đang cập nhật thực đơn...'}</p>
@@ -2823,10 +2825,19 @@ function App() {
             </div>
             <div className="meal-choice-panel">
               <div><small>LỰA CHỌN HÔM NAY</small><h3>Bạn muốn dùng món nào?</h3><p>Có thể đổi lựa chọn trong ngày.</p></div>
+              {todayMenu?.orderingOpen === false ? (
+                <div className="meal-ordering-closed">
+                  <span>⌛</span>
+                  <div>
+                    <strong>Đã khóa đặt món</strong>
+                    <small>Thời gian đặt và thay đổi món kết thúc lúc {todayMenu.orderingCutoff || '09:00'}.</small>
+                  </div>
+                </div>
+              ) : null}
               <button
                 type="button"
                 className={todayMenu?.selection === 'water' ? 'is-selected water' : 'water'}
-                disabled={mealSelectionSaving || Boolean(todayMenu?.receivedAt)}
+                disabled={mealSelectionSaving || Boolean(todayMenu?.receivedAt) || todayMenu?.orderingOpen === false}
                 onClick={() => setPendingMealChoice('water')}
               >
                 <span>♨</span><div><strong>Món nước</strong><small>{todayMenu?.day.featured || '...'}</small></div>
@@ -2835,7 +2846,7 @@ function App() {
               <button
                 type="button"
                 className={todayMenu?.selection === 'vegetarian' ? 'is-selected vegetarian' : 'vegetarian'}
-                disabled={mealSelectionSaving || Boolean(todayMenu?.receivedAt)}
+                disabled={mealSelectionSaving || Boolean(todayMenu?.receivedAt) || todayMenu?.orderingOpen === false}
                 onClick={() => setPendingMealChoice('vegetarian')}
               >
                 <span>◒</span><div><strong>Món chay</strong><small>{[todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</small></div>
@@ -2850,7 +2861,7 @@ function App() {
                 <div className="meal-received-status"><span>✓</span><div><strong>Đã nhận món ăn</strong><small>Lựa chọn đã hoàn tất và không thể thay đổi</small></div></div>
               ) : null}
               {todayMenu?.selection && !todayMenu.receivedAt ? (
-                <button type="button" className="meal-cancel-selection" disabled={mealSelectionSaving} onClick={() => setPendingMealChoice('cancel')}>
+                <button type="button" className="meal-cancel-selection" disabled={mealSelectionSaving || todayMenu?.orderingOpen === false} onClick={() => setPendingMealChoice('cancel')}>
                   <span>×</span><div><strong>Hủy lựa chọn</strong><small>Bỏ món đã đặt hôm nay</small></div><i>Hủy</i>
                 </button>
               ) : null}

@@ -78,6 +78,10 @@
 .meal-choice-panel .meal-cancel-selection:hover { border-color: rgba(255,112,101,.38); background: rgba(192,52,45,.12); }
 .meal-choice-panel .meal-received-selection { border-color: rgba(79,207,132,.28); background: rgba(47,156,94,.11); }
 .meal-choice-panel .meal-received-selection > span { color: #7ee3a6; background: rgba(61,187,105,.16); }
+.meal-ordering-closed { display: grid; grid-template-columns: 42px 1fr; align-items: center; gap: 11px; margin-top: 12px; padding: 13px; border: 1px solid rgba(245,166,61,.24); border-radius: 16px; color: #ffd18a; background: rgba(193,116,25,.1); text-align: left; }
+.meal-ordering-closed > span { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: rgba(245,166,61,.13); font-size: 20px; }
+.meal-ordering-closed strong, .meal-ordering-closed small { display: block; }
+.meal-ordering-closed small { margin-top: 3px; color: #c8ad84; line-height: 1.4; }
 .meal-received-status { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; margin-top: 12px; padding: 14px; border: 1px solid rgba(94,210,132,.26); border-radius: 17px; background: rgba(48,153,89,.1); }
 .meal-received-status > span { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; color: #102818; background: #78dc98; font-weight: 900; }
 .meal-received-status strong, .meal-received-status small { display: block; }

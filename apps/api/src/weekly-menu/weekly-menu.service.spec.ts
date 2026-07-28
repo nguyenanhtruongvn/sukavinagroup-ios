@@ -1,5 +1,5 @@
 import * as ExcelJS from 'exceljs';
-import { parseWeeklyMenuWorkbook } from './weekly-menu.service';
+import { isMealOrderingOpen, parseWeeklyMenuWorkbook } from './weekly-menu.service';
 
 describe('parseWeeklyMenuWorkbook', () => {
   it('maps the weekly Excel template into lunch and overtime meals', async () => {
@@ -27,5 +27,15 @@ describe('parseWeeklyMenuWorkbook', () => {
       vegetarianMain: 'Đậu hũ',
       overtime: 'Bún mọc',
     });
+  });
+});
+
+describe('isMealOrderingOpen', () => {
+  it('allows ordering before 09:00 in Vietnam', () => {
+    expect(isMealOrderingOpen(new Date('2026-07-28T01:59:59.000Z'))).toBe(true);
+  });
+
+  it('closes ordering from 09:00 in Vietnam', () => {
+    expect(isMealOrderingOpen(new Date('2026-07-28T02:00:00.000Z'))).toBe(false);
   });
 });

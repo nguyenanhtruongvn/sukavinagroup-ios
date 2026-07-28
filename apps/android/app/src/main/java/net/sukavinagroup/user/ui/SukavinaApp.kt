@@ -202,7 +202,7 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
                             }
                         }
                         if (menu.receivedAt == null) {
-                            TextButton(onClick = { pendingChoice = "cancel" }, modifier = Modifier.fillMaxWidth()) {
+                            TextButton(onClick = { pendingChoice = "cancel" }, enabled = menu.orderingOpen, modifier = Modifier.fillMaxWidth()) {
                                 Icon(Icons.Default.Cancel, null, tint = MaterialTheme.colorScheme.error)
                                 Spacer(Modifier.width(7.dp))
                                 Text("Hủy lựa chọn món ăn", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
@@ -211,8 +211,21 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
                     } else {
                         Text("LỰA CHỌN HÔM NAY", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("Bạn muốn dùng món nào?", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                        MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), false, state.working) { pendingChoice = "water" }
-                        MealChoiceButton("Món chay", listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · "), Icons.Default.Eco, Color(0xFF62D58B), false, state.working) { pendingChoice = "vegetarian" }
+                        if (menu?.orderingOpen == false) {
+                            Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFFF5A63D).copy(alpha = .11f), modifier = Modifier.fillMaxWidth()) {
+                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Schedule, null, tint = Color(0xFFF5A63D))
+                                    Spacer(Modifier.width(10.dp))
+                                    Column {
+                                        Text("Đã khóa đặt món", color = Color(0xFFF5A63D), fontWeight = FontWeight.Bold)
+                                        Text("Vui lòng đặt món trước ${menu.orderingCutoff}.", color = SukavinaMuted, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), false, state.working) { pendingChoice = "water" }
+                            MealChoiceButton("Món chay", listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · "), Icons.Default.Eco, Color(0xFF62D58B), false, state.working) { pendingChoice = "vegetarian" }
+                        }
                     }
                 }
             }

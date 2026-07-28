@@ -99,6 +99,18 @@ function todayInVietnam() {
   return new Date(`${value}T00:00:00.000Z`);
 }
 
+export function isMealOrderingOpen(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return Number(values.hour) < 9;
+}
+
 @Injectable()
 export class WeeklyMenuService {
   constructor(
@@ -173,10 +185,15 @@ export class WeeklyMenuService {
       },
       selection: selection?.choice ?? null,
       receivedAt: selection?.receivedAt?.toISOString() ?? null,
+      orderingOpen: isMealOrderingOpen(),
+      orderingCutoff: '09:00',
     };
   }
 
   async selectMeal(user: AuthUser, choice?: string) {
+    if (!isMealOrderingOpen()) {
+      throw new BadRequestException('Đã hết thời gian đặt món. Vui lòng đặt món trước 09:00.');
+    }
     if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
     if (choice !== 'water' && choice !== 'vegetarian') {
       throw new BadRequestException('Vui lòng chọn Món nước hoặc Món chay.');
@@ -215,6 +232,9 @@ export class WeeklyMenuService {
   }
 
   async cancelMealSelection(user: AuthUser) {
+    if (!isMealOrderingOpen()) {
+      throw new BadRequestException('Đã hết thời gian thay đổi món. Chỉ có thể hủy trước 09:00.');
+    }
     if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
     const mealDate = todayInVietnam();
     const selection = await this.prisma.mealSelection.findUnique({
