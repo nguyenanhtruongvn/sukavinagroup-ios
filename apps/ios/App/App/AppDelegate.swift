@@ -909,6 +909,21 @@ private final class SessionStore: ObservableObject {
         }
     }
 
+    func cancelMealSelection() async {
+        guard let token else { return }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            todayMenu = try await APIClient.shared.request(
+                "me/menu/selection",
+                method: "DELETE",
+                token: token
+            )
+        } catch {
+            present(error)
+        }
+    }
+
     var biometricName: String {
         let context = LAContext()
         _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
@@ -1718,6 +1733,18 @@ private struct TodayMenuView: View {
                         Text("Bạn muốn dùng món nào?").font(.title3.bold())
                         mealButton("Món nước", detail: session.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
                         mealButton("Món chay", detail: [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
+                        if session.todayMenu?.selection != nil {
+                            Button {
+                                pendingChoice = "cancel"
+                            } label: {
+                                Label("Hủy lựa chọn hôm nay", systemImage: "xmark.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(.red.opacity(0.86))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(18)
                     .background(AppTheme.card.opacity(0.86))
@@ -1729,19 +1756,53 @@ private struct TodayMenuView: View {
             .navigationTitle("Thực đơn")
             .task { await session.refreshTodayMenu() }
             .refreshable { await session.refreshTodayMenu() }
-            .confirmationDialog(
-                "Xác nhận đặt món",
-                isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } }),
-                titleVisibility: .visible
-            ) {
-                Button("Xác nhận \(pendingChoice == "water" ? "Món nước" : "Món chay")") {
-                    guard let choice = pendingChoice else { return }
-                    pendingChoice = nil
-                    Task { await session.selectMeal(choice) }
+            .sheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
+                let choice = pendingChoice ?? "water"
+                let cancelling = choice == "cancel"
+                let title = choice == "water" ? "Món nước" : "Món chay"
+                let detail = choice == "water"
+                    ? (session.todayMenu?.day.featured ?? "...")
+                    : [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                VStack(spacing: 18) {
+                    Capsule().fill(AppTheme.muted.opacity(0.35)).frame(width: 42, height: 5)
+                    Image(systemName: cancelling ? "xmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill"))
+                        .font(.system(size: 28, weight: .bold))
+                        .foregroundColor(cancelling ? .red : (choice == "water" ? .cyan : .green))
+                        .frame(width: 64, height: 64)
+                        .background((cancelling ? Color.red : (choice == "water" ? Color.cyan : Color.green)).opacity(0.13))
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                    VStack(spacing: 7) {
+                        Text(cancelling ? "Hủy lựa chọn hôm nay?" : "Xác nhận \(title)")
+                            .font(.title2.bold())
+                        Text(cancelling ? "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." : "Kiểm tra món trước khi xác nhận đặt.")
+                            .font(.subheadline).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
+                    }
+                    if !cancelling {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(title.uppercased()).font(.caption.bold()).tracking(1).foregroundColor(AppTheme.muted)
+                            Text(detail.isEmpty ? "..." : detail).font(.headline)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    Button {
+                        pendingChoice = nil
+                        Task {
+                            if cancelling { await session.cancelMealSelection() }
+                            else { await session.selectMeal(choice) }
+                        }
+                    } label: {
+                        Text(cancelling ? "Xác nhận hủy" : "Xác nhận đặt món")
+                            .font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 15)
+                            .background(cancelling ? Color.red : AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    Button("Quay lại") { pendingChoice = nil }
+                        .font(.headline).foregroundColor(AppTheme.muted).padding(.vertical, 5)
                 }
-                Button("Hủy", role: .cancel) { pendingChoice = nil }
-            } message: {
-                Text("Lựa chọn được áp dụng cho hôm nay và có thể thay đổi lại trong ngày.")
+                .padding(22)
+                .presentationDetents([.height(cancelling ? 370 : 450)])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(28)
             }
         }
     }

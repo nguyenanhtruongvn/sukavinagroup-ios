@@ -73,14 +73,22 @@
 .meal-choice-panel button i { padding: 5px 9px; border-radius: 999px; color: #c8c9cd; background: rgba(255,255,255,.07); font-size: 12px; font-style: normal; }
 .meal-choice-panel button.is-selected { border-color: rgba(102,211,137,.45); background: linear-gradient(135deg, rgba(53,158,89,.2), rgba(255,255,255,.05)); box-shadow: inset 0 0 0 1px rgba(94,210,132,.1); }
 .meal-choice-panel button.is-selected i { color: #102818; background: #78dc98; font-weight: 900; }
+.meal-choice-panel .meal-cancel-selection { border-color: rgba(255,112,101,.18); color: #f3c2bd; background: rgba(192,52,45,.07); }
+.meal-choice-panel .meal-cancel-selection > span { color: #ff8980; background: rgba(215,65,55,.14); }
+.meal-choice-panel .meal-cancel-selection:hover { border-color: rgba(255,112,101,.38); background: rgba(192,52,45,.12); }
 .meal-confirm-backdrop { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgba(4,5,7,.7); backdrop-filter: blur(12px); }
 .meal-confirm-dialog { width: min(420px, 100%); padding: 27px; border: 1px solid rgba(255,255,255,.12); border-radius: 25px; background: linear-gradient(145deg, #292a2f, #17181c); box-shadow: 0 28px 80px rgba(0,0,0,.5); text-align: center; }
 .meal-confirm-dialog > span { display: grid; width: 58px; height: 58px; margin: 0 auto 17px; place-items: center; border-radius: 18px; font-size: 25px; font-weight: 900; }
 .meal-confirm-dialog > span.water { color: #8bd7ff; background: rgba(53,169,229,.17); }
 .meal-confirm-dialog > span.vegetarian { color: #89e5a9; background: rgba(61,190,107,.17); }
+.meal-confirm-dialog > span.cancel { color: #ff968e; background: rgba(213,61,51,.17); }
 .meal-confirm-dialog h3 { margin: 7px 0 9px; font-size: 23px; }
 .meal-confirm-dialog > p:not(.panel-label) { color: #aeb0b6; line-height: 1.5; }
-.meal-confirm-dialog > div { display: grid; grid-template-columns: 1fr 1.3fr; gap: 9px; margin-top: 22px; }
+.meal-confirm-preview { margin-top: 17px; padding: 15px; border: 1px solid rgba(255,255,255,.09); border-radius: 16px; background: rgba(255,255,255,.045); text-align: left; }
+.meal-confirm-preview small, .meal-confirm-preview strong { display: block; }
+.meal-confirm-preview small { margin-bottom: 6px; color: #999da5; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.meal-confirm-preview strong { line-height: 1.45; }
+.meal-confirm-actions { display: grid; grid-template-columns: 1fr 1.3fr; gap: 9px; margin-top: 22px; }
 .meal-confirm-dialog button { min-height: 46px; border: 1px solid rgba(255,255,255,.1); border-radius: 14px; color: #efede9; background: rgba(255,255,255,.06); }
 .meal-confirm-dialog button.confirm { border: 0; color: #fff; background: linear-gradient(135deg, #ed443c, #bd221e); font-weight: 800; }
 

@@ -423,7 +423,7 @@ function App() {
   const [employeeTab, setEmployeeTab] = useState<'home' | 'menu'>('home');
   const [todayMenu, setTodayMenu] = useState<TodayMenu | null>(null);
   const [mealSelectionSaving, setMealSelectionSaving] = useState(false);
-  const [pendingMealChoice, setPendingMealChoice] = useState<'water' | 'vegetarian' | null>(null);
+  const [pendingMealChoice, setPendingMealChoice] = useState<'water' | 'vegetarian' | 'cancel' | null>(null);
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
@@ -754,6 +754,24 @@ function App() {
       setToast({ type: 'success', message: choice === 'water' ? 'Đã đặt Món nước hôm nay.' : 'Đã đặt Món chay hôm nay.' });
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Không lưu được lựa chọn.' });
+    } finally {
+      setMealSelectionSaving(false);
+    }
+  };
+
+  const cancelMealSelection = async () => {
+    if (!token) return;
+    setMealSelectionSaving(true);
+    try {
+      const response = await fetch('/api/me/menu/selection', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) throw new Error('Không hủy được lựa chọn.');
+      setTodayMenu(await response.json() as TodayMenu);
+      setToast({ type: 'success', message: 'Đã hủy lựa chọn món hôm nay.' });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Không hủy được lựa chọn.' });
     } finally {
       setMealSelectionSaving(false);
     }
@@ -2620,7 +2638,7 @@ function App() {
       {!isAdminRoute && employeeTab === 'menu' ? (
         <section className="today-menu-panel panel">
           <header className="today-menu-head">
-            <div>
+            <div className="meal-confirm-actions">
               <p className="panel-label">Bếp ăn Sukavina</p>
               <h2>Thực đơn hôm nay</h2>
               <p>{todayMenu ? new Date(`${todayMenu.date}T00:00:00`).toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Đang cập nhật thực đơn...'}</p>
@@ -2661,6 +2679,11 @@ function App() {
                 <span>◒</span><div><strong>Món chay</strong><small>{[todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</small></div>
                 <i>{todayMenu?.selection === 'vegetarian' ? '✓' : 'Chọn'}</i>
               </button>
+              {todayMenu?.selection ? (
+                <button type="button" className="meal-cancel-selection" disabled={mealSelectionSaving} onClick={() => setPendingMealChoice('cancel')}>
+                  <span>×</span><div><strong>Hủy lựa chọn</strong><small>Bỏ món đã đặt hôm nay</small></div><i>Hủy</i>
+                </button>
+              ) : null}
             </div>
           </div>
         </section>
@@ -2669,17 +2692,24 @@ function App() {
       {pendingMealChoice ? (
         <div className="meal-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setPendingMealChoice(null); }}>
           <section className="meal-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="meal-confirm-title">
-            <span className={pendingMealChoice}>✓</span>
+            <span className={pendingMealChoice}>{pendingMealChoice === 'cancel' ? '×' : '✓'}</span>
             <p className="panel-label">XÁC NHẬN LỰA CHỌN</p>
-            <h3 id="meal-confirm-title">Đặt {pendingMealChoice === 'water' ? 'Món nước' : 'Món chay'} hôm nay?</h3>
-            <p>Bạn vẫn có thể thay đổi lựa chọn trong ngày nếu cần.</p>
+            <h3 id="meal-confirm-title">{pendingMealChoice === 'cancel' ? 'Hủy món đã chọn hôm nay?' : `Đặt ${pendingMealChoice === 'water' ? 'Món nước' : 'Món chay'} hôm nay?`}</h3>
+            <p>{pendingMealChoice === 'cancel' ? 'Sau khi hủy, bạn có thể chọn lại món khác bất cứ lúc nào trong ngày.' : 'Kiểm tra lại lựa chọn trước khi xác nhận. Bạn vẫn có thể đổi món trong ngày.'}</p>
+            {pendingMealChoice !== 'cancel' ? (
+              <div className="meal-confirm-preview">
+                <small>{pendingMealChoice === 'water' ? 'MÓN NƯỚC' : 'MÓN CHAY'}</small>
+                <strong>{pendingMealChoice === 'water' ? todayMenu?.day.featured || '...' : [todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</strong>
+              </div>
+            ) : null}
             <div>
               <button type="button" onClick={() => setPendingMealChoice(null)}>Quay lại</button>
               <button type="button" className="confirm" disabled={mealSelectionSaving} onClick={() => {
                 const choice = pendingMealChoice;
                 setPendingMealChoice(null);
-                void selectMeal(choice);
-              }}>Xác nhận đặt món</button>
+                if (choice === 'cancel') void cancelMealSelection();
+                else void selectMeal(choice);
+              }}>{pendingMealChoice === 'cancel' ? 'Xác nhận hủy' : 'Xác nhận đặt món'}</button>
             </div>
           </section>
         </div>

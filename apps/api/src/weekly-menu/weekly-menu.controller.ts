@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Body,
   Get,
   Patch,
@@ -61,5 +62,10 @@ export class EmployeeWeeklyMenuController {
     @Body() body: { choice?: string },
   ) {
     return this.weeklyMenu.selectMeal(req.user, body.choice);
+  }
+
+  @Delete('selection')
+  cancelSelection(@Req() req: { user: AuthUser }) {
+    return this.weeklyMenu.cancelMealSelection(req.user);
   }
 }

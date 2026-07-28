@@ -124,13 +124,29 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
     val menu = state.todayMenu
     var pendingChoice by remember { mutableStateOf<String?>(null) }
     if (pendingChoice != null) {
+        val cancelling = pendingChoice == "cancel"
         val title = if (pendingChoice == "water") "Món nước" else "Món chay"
+        val detail = if (pendingChoice == "water") menu?.day?.featured else listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · ")
         AlertDialog(
             onDismissRequest = { pendingChoice = null },
-            icon = { Icon(if (pendingChoice == "water") Icons.Default.LocalDrink else Icons.Default.Eco, null, tint = if (pendingChoice == "water") Color(0xFF62C5F4) else Color(0xFF62D58B)) },
-            title = { Text("Xác nhận đặt $title") },
-            text = { Text("Lựa chọn được áp dụng cho hôm nay và có thể thay đổi lại trong ngày.") },
-            confirmButton = { Button(onClick = { val choice = pendingChoice!!; pendingChoice = null; session.selectMeal(choice) }) { Text("Xác nhận") } },
+            icon = {
+                Surface(shape = RoundedCornerShape(18.dp), color = (if (cancelling) Color(0xFFFF6F67) else if (pendingChoice == "water") Color(0xFF62C5F4) else Color(0xFF62D58B)).copy(alpha = .14f), modifier = Modifier.size(58.dp)) {
+                    Icon(if (cancelling) Icons.Default.Cancel else if (pendingChoice == "water") Icons.Default.LocalDrink else Icons.Default.Eco, null, tint = if (cancelling) Color(0xFFFF6F67) else if (pendingChoice == "water") Color(0xFF62C5F4) else Color(0xFF62D58B), modifier = Modifier.padding(15.dp))
+                }
+            },
+            title = { Text(if (cancelling) "Hủy lựa chọn hôm nay?" else "Xác nhận $title", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
+                    Text(if (cancelling) "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." else "Kiểm tra món trước khi xác nhận đặt.", color = SukavinaMuted)
+                    if (!cancelling) Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                        Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                            Text(title.uppercase(), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
+                            Text(detail?.ifBlank { "..." } ?: "...", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
+                        }
+                    }
+                }
+            },
+            confirmButton = { Button(onClick = { val choice = pendingChoice!!; pendingChoice = null; if (choice == "cancel") session.cancelMealSelection() else session.selectMeal(choice) }, colors = ButtonDefaults.buttonColors(containerColor = if (cancelling) MaterialTheme.colorScheme.error else SukavinaRed)) { Text(if (cancelling) "Xác nhận hủy" else "Đặt món") } },
             dismissButton = { TextButton(onClick = { pendingChoice = null }) { Text("Quay lại") } },
         )
     }
@@ -159,6 +175,11 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
                     Text("Bạn muốn dùng món nào?", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), menu?.selection == "water", state.working) { pendingChoice = "water" }
                     MealChoiceButton("Món chay", listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · "), Icons.Default.Eco, Color(0xFF62D58B), menu?.selection == "vegetarian", state.working) { pendingChoice = "vegetarian" }
+                    if (menu?.selection != null) TextButton(onClick = { pendingChoice = "cancel" }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Cancel, null, tint = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.width(7.dp))
+                        Text("Hủy lựa chọn hôm nay", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

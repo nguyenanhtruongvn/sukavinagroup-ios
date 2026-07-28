@@ -152,6 +152,15 @@ export class WeeklyMenuService {
     return this.today(user);
   }
 
+  async cancelMealSelection(user: AuthUser) {
+    if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
+    const mealDate = todayInVietnam();
+    await this.prisma.mealSelection.deleteMany({
+      where: { employeeId: user.sub, mealDate },
+    });
+    return this.today(user);
+  }
+
   async import(user: AuthUser, file?: Express.Multer.File, week?: string) {
     assertPermission(user, 'content.manage');
     if (!file) throw new BadRequestException('Vui lòng chọn file Excel.');
