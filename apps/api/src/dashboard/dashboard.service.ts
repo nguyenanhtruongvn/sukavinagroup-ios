@@ -161,7 +161,8 @@ export class DashboardService {
     const days = Array.from({ length: dayCount }, (_, index) => {
       const date = `${month}-${String(index + 1).padStart(2, '0')}`;
       const punches = grouped.get(date) ?? [];
-      const weekDay = new Date(`${date}T00:00:00+07:00`).getUTCDay();
+      // Noon UTC stays on the same calendar date in Vietnam and avoids a previous-day shift.
+      const weekDay = new Date(`${date}T12:00:00.000Z`).getUTCDay();
       const isSunday = weekDay === 0;
       const isFuture = date > today;
       const isBeforeHireDate = user.hireDate
