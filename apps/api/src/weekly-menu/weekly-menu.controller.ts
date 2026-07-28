@@ -26,6 +26,11 @@ export class WeeklyMenuController {
     return this.weeklyMenu.current(req.user, week);
   }
 
+  @Get('selections')
+  selections(@Req() req: { user: AuthUser }, @Query('week') week?: string) {
+    return this.weeklyMenu.selections(req.user, week);
+  }
+
   @Post('import')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024 } }))
   import(

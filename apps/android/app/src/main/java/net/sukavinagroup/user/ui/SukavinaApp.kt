@@ -196,10 +196,12 @@ private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thự
                                 Text("Đã nhận món", color = Color(0xFF42B878), fontWeight = FontWeight.Bold)
                             }
                         }
-                        TextButton(onClick = { pendingChoice = "cancel" }, modifier = Modifier.fillMaxWidth()) {
-                            Icon(Icons.Default.Cancel, null, tint = MaterialTheme.colorScheme.error)
-                            Spacer(Modifier.width(7.dp))
-                            Text("Hủy lựa chọn món ăn", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                        if (menu.receivedAt == null) {
+                            TextButton(onClick = { pendingChoice = "cancel" }, modifier = Modifier.fillMaxWidth()) {
+                                Icon(Icons.Default.Cancel, null, tint = MaterialTheme.colorScheme.error)
+                                Spacer(Modifier.width(7.dp))
+                                Text("Hủy lựa chọn món ăn", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     } else {
                         Text("LỰA CHỌN HÔM NAY", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)

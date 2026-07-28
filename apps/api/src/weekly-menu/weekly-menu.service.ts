@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import { AuthUser, assertPermission } from '../auth/permissions';
 import { PrismaService } from '../prisma/prisma.service';
+import { ContentEventsService } from '../dashboard/content-events.service';
 
 const dayNames = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
 
@@ -100,11 +101,39 @@ function todayInVietnam() {
 
 @Injectable()
 export class WeeklyMenuService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: ContentEventsService,
+  ) {}
 
   async current(user: AuthUser, week?: string) {
     assertPermission(user, 'content.manage');
     return this.prisma.weeklyMenu.findUnique({ where: { weekStart: selectedWeekStart(week) } });
+  }
+
+  async selections(user: AuthUser, week?: string) {
+    assertPermission(user, 'content.manage');
+    const start = selectedWeekStart(week);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 7);
+    return this.prisma.mealSelection.findMany({
+      where: { mealDate: { gte: start, lt: end } },
+      select: {
+        id: true,
+        mealDate: true,
+        choice: true,
+        receivedAt: true,
+        createdAt: true,
+        employee: {
+          select: {
+            employeeCode: true,
+            fullName: true,
+            department: true,
+          },
+        },
+      },
+      orderBy: [{ mealDate: 'desc' }, { createdAt: 'desc' }],
+    });
   }
 
   async today(user: AuthUser) {
@@ -145,11 +174,18 @@ export class WeeklyMenuService {
       throw new BadRequestException('Vui lòng chọn Món nước hoặc Món chay.');
     }
     const mealDate = todayInVietnam();
+    const current = await this.prisma.mealSelection.findUnique({
+      where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
+    });
+    if (current?.receivedAt) {
+      throw new BadRequestException('Món ăn đã được xác nhận nhận nên không thể thay đổi.');
+    }
     await this.prisma.mealSelection.upsert({
       where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
       update: { choice, receivedAt: null },
       create: { employeeId: user.sub, mealDate, choice },
     });
+    this.events.notify('meal_changed');
     return this.today(user);
   }
 
@@ -166,15 +202,23 @@ export class WeeklyMenuService {
       where: { id: selection.id },
       data: { receivedAt: new Date() },
     });
+    this.events.notify('meal_changed');
     return this.today(user);
   }
 
   async cancelMealSelection(user: AuthUser) {
     if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
     const mealDate = todayInVietnam();
+    const selection = await this.prisma.mealSelection.findUnique({
+      where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
+    });
+    if (selection?.receivedAt) {
+      throw new BadRequestException('Món ăn đã được xác nhận nhận nên không thể hủy.');
+    }
     await this.prisma.mealSelection.deleteMany({
       where: { employeeId: user.sub, mealDate },
     });
+    this.events.notify('meal_changed');
     return this.today(user);
   }
 

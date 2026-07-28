@@ -146,6 +146,20 @@ type TodayMenu = {
   date: string;
   day: WeeklyMenuDay;
   selection: 'water' | 'vegetarian' | null;
+  receivedAt: string | null;
+};
+
+type MealSelectionRecord = {
+  id: string;
+  mealDate: string;
+  choice: 'water' | 'vegetarian';
+  receivedAt: string | null;
+  createdAt: string;
+  employee: {
+    employeeCode: string;
+    fullName: string;
+    department: string;
+  };
 };
 
 type EmployeeRequest = {
@@ -418,12 +432,13 @@ function App() {
   );
   const [weeklyMenu, setWeeklyMenu] = useState<WeeklyMenu | null>(null);
   const [weeklyMenuDraft, setWeeklyMenuDraft] = useState<WeeklyMenuDay[]>([]);
+  const [mealSelections, setMealSelections] = useState<MealSelectionRecord[]>([]);
   const [menuEditing, setMenuEditing] = useState(false);
   const [menuWeek, setMenuWeek] = useState<MenuWeek>('current');
   const [employeeTab, setEmployeeTab] = useState<'home' | 'menu'>('home');
   const [todayMenu, setTodayMenu] = useState<TodayMenu | null>(null);
   const [mealSelectionSaving, setMealSelectionSaving] = useState(false);
-  const [pendingMealChoice, setPendingMealChoice] = useState<'water' | 'vegetarian' | 'cancel' | null>(null);
+  const [pendingMealChoice, setPendingMealChoice] = useState<'water' | 'vegetarian' | 'received' | 'cancel' | null>(null);
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
   const [adminRequests, setAdminRequests] = useState<EmployeeRequest[]>([]);
@@ -636,6 +651,12 @@ function App() {
     const result = responseText ? JSON.parse(responseText) as WeeklyMenu : null;
     setWeeklyMenu(result);
     if (!menuEditing) setWeeklyMenuDraft(result?.data.days.map((day) => ({ ...day })) ?? []);
+    const selectionsResponse = await fetch(`/api/admin/menu/selections?week=${selectedWeek}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
+    if (!selectionsResponse.ok) throw new Error('Không tải được danh sách đặt món.');
+    setMealSelections(await selectionsResponse.json() as MealSelectionRecord[]);
   };
 
   const importWeeklyMenu = async (file?: File) => {
@@ -772,6 +793,28 @@ function App() {
       setToast({ type: 'success', message: 'Đã hủy lựa chọn món hôm nay.' });
     } catch (error) {
       setToast({ type: 'error', message: error instanceof Error ? error.message : 'Không hủy được lựa chọn.' });
+    } finally {
+      setMealSelectionSaving(false);
+    }
+  };
+
+  const receiveMealSelection = async () => {
+    if (!token) return;
+    setMealSelectionSaving(true);
+    try {
+      const response = await fetch('/api/me/menu/selection/received', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const result = await response.json() as TodayMenu | { message?: string };
+      if (!response.ok || !('day' in result)) {
+        throw new Error('message' in result ? result.message : 'Không xác nhận được món ăn.');
+      }
+      setTodayMenu(result);
+      setToast({ type: 'success', message: 'Đã xác nhận nhận món ăn.' });
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Không xác nhận được món ăn.' });
     } finally {
       setMealSelectionSaving(false);
     }
@@ -1533,6 +1576,55 @@ function App() {
     };
     void loadTab();
   }, [adminTab, token, currentUser]);
+
+  useEffect(() => {
+    if (!token || !currentUser) return;
+    let active = true;
+    let reconnectTimer = 0;
+    const controller = new AbortController();
+    const refreshMenus = () => {
+      if (isAdminRoute && adminTab === 'menu' && canAccess('content.manage')) {
+        void refreshWeeklyMenu().catch(() => undefined);
+      } else if (!isAdminRoute && employeeTab === 'menu') {
+        void refreshTodayMenu().catch(() => undefined);
+      }
+    };
+    const connect = async () => {
+      try {
+        const response = await fetch('/api/public/news/events', {
+          headers: { Accept: 'text/event-stream' },
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (!response.ok || !response.body) throw new Error('Realtime unavailable');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (active) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() ?? '';
+          for (const event of events) {
+            const dataLine = event.split('\n').find((line) => line.startsWith('data:'));
+            if (!dataLine) continue;
+            const payload = JSON.parse(dataLine.slice(5).trim()) as { type?: string };
+            if (payload.type === 'meal_changed') refreshMenus();
+          }
+        }
+      } catch {
+        // Reconnect after a dropped stream while preserving the visible data.
+      }
+      if (active) reconnectTimer = window.setTimeout(() => void connect(), 2000);
+    };
+    void connect();
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(reconnectTimer);
+    };
+  }, [token, currentUser, isAdminRoute, adminTab, employeeTab, menuWeek]);
 
   useEffect(() => {
     if (!token || !currentUser || !isAdminRoute || !canAccess('requests.view')) return;
@@ -2664,7 +2756,7 @@ function App() {
               <button
                 type="button"
                 className={todayMenu?.selection === 'water' ? 'is-selected water' : 'water'}
-                disabled={mealSelectionSaving}
+                disabled={mealSelectionSaving || Boolean(todayMenu?.receivedAt)}
                 onClick={() => setPendingMealChoice('water')}
               >
                 <span>♨</span><div><strong>Món nước</strong><small>{todayMenu?.day.featured || '...'}</small></div>
@@ -2673,13 +2765,21 @@ function App() {
               <button
                 type="button"
                 className={todayMenu?.selection === 'vegetarian' ? 'is-selected vegetarian' : 'vegetarian'}
-                disabled={mealSelectionSaving}
+                disabled={mealSelectionSaving || Boolean(todayMenu?.receivedAt)}
                 onClick={() => setPendingMealChoice('vegetarian')}
               >
                 <span>◒</span><div><strong>Món chay</strong><small>{[todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</small></div>
                 <i>{todayMenu?.selection === 'vegetarian' ? '✓' : 'Chọn'}</i>
               </button>
-              {todayMenu?.selection ? (
+              {todayMenu?.selection && !todayMenu.receivedAt ? (
+                <button type="button" className="meal-received-selection" disabled={mealSelectionSaving} onClick={() => setPendingMealChoice('received')}>
+                  <span>✓</span><div><strong>Xác nhận đã nhận món</strong><small>Hoàn tất nhận phần ăn hôm nay</small></div><i>Xác nhận</i>
+                </button>
+              ) : null}
+              {todayMenu?.receivedAt ? (
+                <div className="meal-received-status"><span>✓</span><div><strong>Đã nhận món ăn</strong><small>Lựa chọn đã hoàn tất và không thể thay đổi</small></div></div>
+              ) : null}
+              {todayMenu?.selection && !todayMenu.receivedAt ? (
                 <button type="button" className="meal-cancel-selection" disabled={mealSelectionSaving} onClick={() => setPendingMealChoice('cancel')}>
                   <span>×</span><div><strong>Hủy lựa chọn</strong><small>Bỏ món đã đặt hôm nay</small></div><i>Hủy</i>
                 </button>
@@ -2694,9 +2794,9 @@ function App() {
           <section className="meal-confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="meal-confirm-title">
             <span className={pendingMealChoice}>{pendingMealChoice === 'cancel' ? '×' : '✓'}</span>
             <p className="panel-label">XÁC NHẬN LỰA CHỌN</p>
-            <h3 id="meal-confirm-title">{pendingMealChoice === 'cancel' ? 'Hủy món đã chọn hôm nay?' : `Đặt ${pendingMealChoice === 'water' ? 'Món nước' : 'Món chay'} hôm nay?`}</h3>
-            <p>{pendingMealChoice === 'cancel' ? 'Sau khi hủy, bạn có thể chọn lại món khác bất cứ lúc nào trong ngày.' : 'Kiểm tra lại lựa chọn trước khi xác nhận. Bạn vẫn có thể đổi món trong ngày.'}</p>
-            {pendingMealChoice !== 'cancel' ? (
+            <h3 id="meal-confirm-title">{pendingMealChoice === 'cancel' ? 'Hủy món đã chọn hôm nay?' : pendingMealChoice === 'received' ? 'Xác nhận đã nhận món ăn?' : `Đặt ${pendingMealChoice === 'water' ? 'Món nước' : 'Món chay'} hôm nay?`}</h3>
+            <p>{pendingMealChoice === 'cancel' ? 'Sau khi hủy, bạn có thể chọn lại món khác bất cứ lúc nào trong ngày.' : pendingMealChoice === 'received' ? 'Sau khi xác nhận, lựa chọn món sẽ hoàn tất và không thể hủy hoặc thay đổi.' : 'Kiểm tra lại lựa chọn trước khi xác nhận. Bạn vẫn có thể đổi món trong ngày.'}</p>
+            {pendingMealChoice !== 'cancel' && pendingMealChoice !== 'received' ? (
               <div className="meal-confirm-preview">
                 <small>{pendingMealChoice === 'water' ? 'MÓN NƯỚC' : 'MÓN CHAY'}</small>
                 <strong>{pendingMealChoice === 'water' ? todayMenu?.day.featured || '...' : [todayMenu?.day.vegetarianMain, todayMenu?.day.vegetarianSide].filter(Boolean).join(' · ') || '...'}</strong>
@@ -2708,8 +2808,9 @@ function App() {
                 const choice = pendingMealChoice;
                 setPendingMealChoice(null);
                 if (choice === 'cancel') void cancelMealSelection();
+                else if (choice === 'received') void receiveMealSelection();
                 else void selectMeal(choice);
-              }}>{pendingMealChoice === 'cancel' ? 'Xác nhận hủy' : 'Xác nhận đặt món'}</button>
+              }}>{pendingMealChoice === 'cancel' ? 'Xác nhận hủy' : pendingMealChoice === 'received' ? 'Đã nhận món' : 'Xác nhận đặt món'}</button>
             </div>
           </section>
         </div>
@@ -3282,6 +3383,39 @@ function App() {
                         );
                       })}
                     </div>
+                    <section className="meal-orders-summary">
+                      <header>
+                        <div>
+                          <p className="panel-label">TỔNG HỢP ĐẶT MÓN</p>
+                          <h3>Danh sách nhân viên đặt món</h3>
+                          <p className="panel-note">Theo dõi lựa chọn và trạng thái nhận món trong tuần đang xem.</p>
+                        </div>
+                        <div className="meal-orders-stats">
+                          <span><small>Tổng đặt</small><strong>{mealSelections.length}</strong></span>
+                          <span><small>Đã nhận</small><strong>{mealSelections.filter((item) => item.receivedAt).length}</strong></span>
+                          <span><small>Chờ nhận</small><strong>{mealSelections.filter((item) => !item.receivedAt).length}</strong></span>
+                        </div>
+                      </header>
+                      <div className="meal-orders-table">
+                        <div className="meal-orders-table-head">
+                          <span>Nhân viên</span><span>Ngày</span><span>Loại món</span><span>Trạng thái</span><span>Thời gian</span>
+                        </div>
+                        {mealSelections.length ? mealSelections.map((item) => (
+                          <div className="meal-orders-row" key={item.id}>
+                            <span className="meal-order-employee">
+                              <i>{item.employee.fullName.split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase()}</i>
+                              <span><strong>{item.employee.fullName}</strong><small>{item.employee.employeeCode} · {item.employee.department || 'Chưa cập nhật'}</small></span>
+                            </span>
+                            <span>{new Date(item.mealDate).toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit' })}</span>
+                            <span><b className={`meal-order-choice ${item.choice}`}>{item.choice === 'water' ? 'Món nước' : 'Món chay'}</b></span>
+                            <span><b className={`meal-order-status ${item.receivedAt ? 'received' : 'waiting'}`}>{item.receivedAt ? 'Đã nhận' : 'Chờ nhận'}</b></span>
+                            <span>{new Date(item.receivedAt ?? item.createdAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
+                          </div>
+                        )) : (
+                          <div className="meal-orders-empty"><strong>Chưa có nhân viên đặt món</strong><p>Dữ liệu sẽ xuất hiện ngay sau khi nhân viên lựa chọn.</p></div>
+                        )}
+                      </div>
+                    </section>
                 </>
               </section>
             ) : null}

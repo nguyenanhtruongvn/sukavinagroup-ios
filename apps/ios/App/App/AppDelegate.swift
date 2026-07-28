@@ -1778,16 +1778,18 @@ private struct TodayMenuView: View {
                                     .background(Color.green.opacity(0.11))
                                     .clipShape(RoundedRectangle(cornerRadius: 16))
                             }
-                            Button {
-                                pendingChoice = "cancel"
-                            } label: {
-                                Label("Hủy lựa chọn hôm nay", systemImage: "xmark.circle.fill")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundColor(.red.opacity(0.86))
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
+                            if session.todayMenu?.receivedAt == nil {
+                                Button {
+                                    pendingChoice = "cancel"
+                                } label: {
+                                    Label("Hủy lựa chọn hôm nay", systemImage: "xmark.circle.fill")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.red.opacity(0.86))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         } else {
                             Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                             Text("Bạn muốn dùng món nào?").font(.title3.bold())

@@ -76,6 +76,12 @@
 .meal-choice-panel .meal-cancel-selection { border-color: rgba(255,112,101,.18); color: #f3c2bd; background: rgba(192,52,45,.07); }
 .meal-choice-panel .meal-cancel-selection > span { color: #ff8980; background: rgba(215,65,55,.14); }
 .meal-choice-panel .meal-cancel-selection:hover { border-color: rgba(255,112,101,.38); background: rgba(192,52,45,.12); }
+.meal-choice-panel .meal-received-selection { border-color: rgba(79,207,132,.28); background: rgba(47,156,94,.11); }
+.meal-choice-panel .meal-received-selection > span { color: #7ee3a6; background: rgba(61,187,105,.16); }
+.meal-received-status { display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; margin-top: 12px; padding: 14px; border: 1px solid rgba(94,210,132,.26); border-radius: 17px; background: rgba(48,153,89,.1); }
+.meal-received-status > span { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; color: #102818; background: #78dc98; font-weight: 900; }
+.meal-received-status strong, .meal-received-status small { display: block; }
+.meal-received-status small { margin-top: 4px; color: #9ed3ae; }
 .meal-confirm-backdrop { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px; background: rgba(4,5,7,.7); backdrop-filter: blur(12px); }
 .meal-confirm-dialog { width: min(420px, 100%); padding: 27px; border: 1px solid rgba(255,255,255,.12); border-radius: 25px; background: linear-gradient(145deg, #292a2f, #17181c); box-shadow: 0 28px 80px rgba(0,0,0,.5); text-align: center; }
 .meal-confirm-dialog > span { display: grid; width: 58px; height: 58px; margin: 0 auto 17px; place-items: center; border-radius: 18px; font-size: 25px; font-weight: 900; }
@@ -102,6 +108,35 @@
 .weekly-menu-panel {
   padding: clamp(20px, 3vw, 34px);
   overflow: hidden;
+}
+.meal-orders-summary { margin-top: 22px; padding: 20px; border: 1px solid rgba(255,255,255,.09); border-radius: 22px; background: rgba(8,9,11,.28); }
+.meal-orders-summary > header { display: flex; justify-content: space-between; gap: 20px; align-items: flex-end; margin-bottom: 16px; }
+.meal-orders-summary h3 { margin: 4px 0; font-size: 22px; }
+.meal-orders-stats { display: flex; gap: 8px; }
+.meal-orders-stats span { min-width: 84px; padding: 10px 13px; border: 1px solid rgba(255,255,255,.08); border-radius: 14px; background: rgba(255,255,255,.04); }
+.meal-orders-stats small, .meal-orders-stats strong { display: block; }
+.meal-orders-stats small { color: #9fa2aa; font-size: 11px; }
+.meal-orders-stats strong { margin-top: 3px; font-size: 20px; }
+.meal-orders-table { overflow: hidden; border: 1px solid rgba(255,255,255,.08); border-radius: 17px; }
+.meal-orders-table-head, .meal-orders-row { display: grid; grid-template-columns: minmax(220px,1.5fr) .7fr .7fr .7fr .9fr; align-items: center; gap: 14px; padding: 13px 15px; }
+.meal-orders-table-head { color: #92959e; background: rgba(255,255,255,.04); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.meal-orders-row { border-top: 1px solid rgba(255,255,255,.07); }
+.meal-order-employee { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.meal-order-employee > i { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border-radius: 12px; color: #fff; background: linear-gradient(145deg,#e94d43,#b72424); font-size: 12px; font-style: normal; font-weight: 900; }
+.meal-order-employee strong, .meal-order-employee small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meal-order-employee small { margin-top: 3px; color: #92959e; }
+.meal-order-choice, .meal-order-status { display: inline-flex; width: fit-content; padding: 5px 9px; border-radius: 999px; font-size: 12px; }
+.meal-order-choice.water { color: #87d5ff; background: rgba(57,157,215,.15); }
+.meal-order-choice.vegetarian { color: #83e4a4; background: rgba(53,171,94,.15); }
+.meal-order-status.waiting { color: #ffd17b; background: rgba(219,151,35,.14); }
+.meal-order-status.received { color: #83e4a4; background: rgba(53,171,94,.15); }
+.meal-orders-empty { padding: 32px; text-align: center; color: #9fa2aa; }
+.meal-orders-empty strong { color: #fff; }
+@media (max-width: 900px) {
+  .meal-orders-summary > header { align-items: stretch; flex-direction: column; }
+  .meal-orders-stats span { flex: 1; min-width: 0; }
+  .meal-orders-table { overflow-x: auto; }
+  .meal-orders-table-head, .meal-orders-row { min-width: 780px; }
 }
 
 .weekly-menu-header,
