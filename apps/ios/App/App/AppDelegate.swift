@@ -2207,6 +2207,8 @@ private struct AttendanceHistoryView: View {
 }
 
 private struct ModernAttendanceHistoryView: View {
+    private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
+
     @EnvironmentObject private var session: SessionStore
     @State private var selectedMonth = Self.monthValue(Date())
     @State private var history: AttendanceMonth?
@@ -2256,8 +2258,9 @@ private struct ModernAttendanceHistoryView: View {
             selectedMonth = options[target]
         } label: {
             Image(systemName: icon).font(.caption.bold())
+                .foregroundStyle(Color.primary.opacity(0.78))
                 .frame(width: 40, height: 40)
-                .background(AppTheme.red.opacity(0.12))
+                .background(Color.gray.opacity(0.2))
                 .clipShape(RoundedRectangle(cornerRadius: 11))
         }
         .buttonStyle(.plain)
@@ -2270,7 +2273,7 @@ private struct ModernAttendanceHistoryView: View {
             summary(count("present"), "Ngày công", .green)
             summary(count("late"), "Đi trễ", .orange)
             summary(count("leave"), "Nghỉ phép", EmployeeRequestKind.leave.color)
-            summary(count("absent"), "Vắng", AppTheme.red)
+            summary(count("absent"), "Vắng", Self.absentColor)
         }
     }
 
@@ -2291,7 +2294,7 @@ private struct ModernAttendanceHistoryView: View {
             ("Đi trễ", countStatus("late"), EmployeeRequestKind.late.color),
             ("Về sớm", countStatus("early"), EmployeeRequestKind.early.color),
             ("Nghỉ phép", countStatus("leave"), EmployeeRequestKind.leave.color),
-            ("Vắng", countStatus("absent"), AppTheme.red),
+            ("Vắng", countStatus("absent"), Self.absentColor),
             ("Làm thêm", countStatus("overtime"), EmployeeRequestKind.overtime.color),
         ].filter { $0.value > 0 }
     }
@@ -2326,7 +2329,7 @@ private struct ModernAttendanceHistoryView: View {
                 if countStatus("late") > 0 { legend("Đi trễ", EmployeeRequestKind.late.color.opacity(0.34)) }
                 if countStatus("early") > 0 { legend("Về sớm", EmployeeRequestKind.early.color.opacity(0.36)) }
                 if countStatus("leave") > 0 { legend("Nghỉ phép", EmployeeRequestKind.leave.color.opacity(0.32)) }
-                if countStatus("absent") > 0 { legend("Vắng", AppTheme.red.opacity(0.32)) }
+                if countStatus("absent") > 0 { legend("Vắng", Self.absentColor.opacity(0.46)) }
                 if countStatus("overtime") > 0 { legend("Làm thêm", EmployeeRequestKind.overtime.color.opacity(0.36)) }
               }
             }
@@ -2342,7 +2345,7 @@ private struct ModernAttendanceHistoryView: View {
         } label: {
             Text(String(Int(day.date.suffix(2)) ?? 0))
                 .font(.subheadline.weight(selected ? .bold : .medium))
-                .foregroundStyle(dayStatuses(day).contains("absent") ? AppTheme.red : Color.primary)
+                .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
                 .frame(maxWidth: .infinity, minHeight: 50)
                 .background(dayBackground(day))
                 .clipShape(RoundedRectangle(cornerRadius: 11))
@@ -2420,7 +2423,7 @@ private struct ModernAttendanceHistoryView: View {
         case "late": return .orange.opacity(0.34)
         case "early": return EmployeeRequestKind.early.color.opacity(0.36)
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
-        case "absent": return AppTheme.red.opacity(0.32)
+        case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
         case "weekend": return .gray.opacity(0.13)
         default: return AppTheme.muted.opacity(0.1)
