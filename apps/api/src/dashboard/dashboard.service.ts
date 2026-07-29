@@ -147,6 +147,7 @@ export class DashboardService {
     const dayCount = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     const today = this.getVietnamDate();
     const startTime = schedule?.startTime ?? '08:00';
+    const endTime = schedule?.endTime ?? '17:00';
     const leaveDates = new Set<string>();
     for (const leave of approvedLeaves) {
       const cursor = new Date(leave.startsAt);
@@ -174,20 +175,32 @@ export class DashboardService {
       const checkInTime = checkIn?.toLocaleTimeString('en-GB', {
         timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hour12: false,
       });
-      const status = isSunday
-        ? 'weekend'
-        : isLeave
-          ? 'leave'
-          : punches.length
-            ? checkInTime! > startTime ? 'late' : 'present'
-            : !isFuture && !isBeforeHireDate ? 'absent' : 'upcoming';
+      const checkOutTime = checkOut?.toLocaleTimeString('en-GB', {
+        timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      let statuses: string[];
+      if (isSunday) {
+        statuses = punches.length ? ['overtime'] : ['weekend'];
+      } else if (isLeave) {
+        statuses = ['leave'];
+      } else if (!punches.length) {
+        statuses = !isFuture && !isBeforeHireDate ? ['absent'] : ['upcoming'];
+      } else {
+        statuses = [];
+        if (checkInTime! > startTime) statuses.push('late');
+        if (checkOutTime && checkOutTime < endTime) statuses.push('early');
+        if (!statuses.length) statuses.push('present');
+      }
+      const status = statuses[0];
       return {
         date,
         checkIn,
         checkOut,
         punchCount: punches.length,
         status,
+        statuses,
         startTime,
+        endTime,
         sources: [...new Set(punches.map((record) => record.source))],
         punches: punches.map((record) => ({
           id: record.id,
@@ -198,7 +211,7 @@ export class DashboardService {
       };
     });
 
-    return { month, startTime, department: user.department, days };
+    return { month, startTime, endTime, department: user.department, days };
   }
 
   private getAllowedAttendanceMonths() {

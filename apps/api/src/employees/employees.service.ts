@@ -147,20 +147,27 @@ export class EmployeesService {
         id: '',
         department: item.department,
         startTime: '08:00',
+        endTime: '17:00',
       });
   }
 
-  async saveWorkSchedule(user: AuthUser, data: { department: string; startTime: string }) {
+  async saveWorkSchedule(user: AuthUser, data: { department: string; startTime: string; endTime: string }) {
     assertPermission(user, 'employees.manage');
     const department = data.department?.trim();
     if (!department) throw new BadRequestException('Phòng ban không hợp lệ');
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.startTime)) {
       throw new BadRequestException('Giờ vào làm không hợp lệ');
     }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(data.endTime)) {
+      throw new BadRequestException('Giờ ra về không hợp lệ');
+    }
+    if (data.endTime <= data.startTime) {
+      throw new BadRequestException('Giờ ra về phải sau giờ vào làm');
+    }
     const schedule = await this.prisma.departmentWorkSchedule.upsert({
       where: { department },
-      create: { department, startTime: data.startTime },
-      update: { startTime: data.startTime },
+      create: { department, startTime: data.startTime, endTime: data.endTime },
+      update: { startTime: data.startTime, endTime: data.endTime },
     });
     this.contentEvents.notify('employee_changed');
     return schedule;

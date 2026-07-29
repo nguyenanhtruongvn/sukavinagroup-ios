@@ -2835,7 +2835,7 @@ h1 {
   grid-template-columns: minmax(220px, .7fr) minmax(320px, 1.3fr);
   gap: 24px;
   margin: 18px 0;
-  padding: 22px;
+  padding: 18px;
   border: 1px solid rgba(255, 255, 255, .1);
   border-radius: 22px;
   background: linear-gradient(135deg, rgba(239, 68, 68, .08), rgba(255, 255, 255, .035));
@@ -2852,8 +2852,9 @@ h1 {
   background: rgba(0, 0, 0, .16);
 }
 .department-schedule-grid > label > span:first-child { font-size: .86rem; font-weight: 700; }
-.department-schedule-control { display: flex; gap: 8px; }
-.department-schedule-control input { min-width: 0; flex: 1; height: 40px; }
+.department-schedule-control { display: grid; grid-template-columns: auto minmax(78px, 1fr) auto minmax(78px, 1fr) auto; align-items: center; gap: 7px; }
+.department-schedule-control small { color: var(--muted); font-size: .7rem; font-weight: 700; }
+.department-schedule-control input { min-width: 0; width: 100%; height: 38px; padding: 0 8px; }
 .department-schedule-control button {
   min-width: 58px;
   border: 0;

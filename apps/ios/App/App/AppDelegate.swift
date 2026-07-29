@@ -728,6 +728,7 @@ private enum AttendanceWidgetBridge {
 private struct AttendanceMonth: Decodable {
     let month: String
     let startTime: String?
+    let endTime: String?
     let department: String?
     let days: [AttendanceDay]
 }
@@ -738,7 +739,9 @@ private struct AttendanceDay: Decodable, Identifiable {
     let checkOut: String?
     let punchCount: Int
     let status: String?
+    let statuses: [String]?
     let startTime: String?
+    let endTime: String?
     let sources: [String]?
     let punches: [AttendancePunch]?
     var id: String { date }
@@ -2194,7 +2197,7 @@ private struct ModernAttendanceHistoryView: View {
         ScrollView {
             VStack(spacing: 14) {
                 monthNavigation
-                summaryCards
+                enhancedSummaryCards
                 calendarCard
                 if isLoading {
                     ProgressView("Đang tải bảng công...").tint(AppTheme.red)
@@ -2249,6 +2252,28 @@ private struct ModernAttendanceHistoryView: View {
         }
     }
 
+    private var enhancedSummaryCards: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(4, max(1, visibleSummaries.count))),
+            spacing: 8
+        ) {
+            ForEach(visibleSummaries, id: \.title) { item in
+                summary(item.value, item.title, item.color)
+            }
+        }
+    }
+
+    private var visibleSummaries: [(title: String, value: Int, color: Color)] {
+        [
+            ("Ngày công", countStatus("present"), .green),
+            ("Đi trễ", countStatus("late"), EmployeeRequestKind.late.color),
+            ("Về sớm", countStatus("early"), EmployeeRequestKind.early.color),
+            ("Nghỉ phép", countStatus("leave"), EmployeeRequestKind.leave.color),
+            ("Vắng", countStatus("absent"), AppTheme.red),
+            ("Làm thêm", countStatus("overtime"), EmployeeRequestKind.overtime.color),
+        ].filter { $0.value > 0 }
+    }
+
     private func summary(_ value: Int, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
             Text("\(value)").font(.title3.bold()).foregroundStyle(color)
@@ -2273,11 +2298,15 @@ private struct ModernAttendanceHistoryView: View {
                 }
                 ForEach(history?.days ?? []) { day in dayCell(day) }
             }
-            HStack(spacing: 9) {
-                legend("Đủ công", .green.opacity(0.22))
-                legend("Đi trễ", .orange.opacity(0.22))
-                legend("Nghỉ phép", EmployeeRequestKind.leave.color.opacity(0.2))
-                legend("Vắng", AppTheme.red.opacity(0.2))
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 9) {
+                if countStatus("present") > 0 { legend("Đủ công", .green.opacity(0.22)) }
+                if countStatus("late") > 0 { legend("Đi trễ", EmployeeRequestKind.late.color.opacity(0.22)) }
+                if countStatus("early") > 0 { legend("Về sớm", EmployeeRequestKind.early.color.opacity(0.22)) }
+                if countStatus("leave") > 0 { legend("Nghỉ phép", EmployeeRequestKind.leave.color.opacity(0.2)) }
+                if countStatus("absent") > 0 { legend("Vắng", AppTheme.red.opacity(0.2)) }
+                if countStatus("overtime") > 0 { legend("Làm thêm", EmployeeRequestKind.overtime.color.opacity(0.2)) }
+              }
             }
         }
         .padding(18).background(AppTheme.card)
@@ -2291,9 +2320,9 @@ private struct ModernAttendanceHistoryView: View {
         } label: {
             Text(String(Int(day.date.suffix(2)) ?? 0))
                 .font(.subheadline.weight(selected ? .bold : .medium))
-                .foregroundStyle(day.status == "absent" ? AppTheme.red : Color.primary)
+                .foregroundStyle(dayStatuses(day).contains("absent") ? AppTheme.red : Color.primary)
                 .frame(maxWidth: .infinity, minHeight: 50)
-                .background(dayColor(day.status))
+                .background(dayBackground(day))
                 .clipShape(RoundedRectangle(cornerRadius: 11))
                 .overlay {
                     RoundedRectangle(cornerRadius: 11)
@@ -2316,9 +2345,9 @@ private struct ModernAttendanceHistoryView: View {
             Divider()
             detailRow("Giờ vào", time(day.checkIn))
             detailRow("Giờ ra", time(day.checkOut))
-            detailRow("Trạng thái", statusTitle(day.status))
-            detailRow("Giờ chuẩn \(history?.department ?? "phòng ban")",
-                      day.startTime ?? history?.startTime ?? "08:00")
+            detailRow("Trạng thái", dayStatuses(day).map(statusTitle).joined(separator: " · "))
+            detailRow("Khung giờ \(history?.department ?? "phòng ban")",
+                      "\(day.startTime ?? history?.startTime ?? "--:--") - \(day.endTime ?? history?.endTime ?? "--:--")")
         }
         .padding(18).background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -2346,12 +2375,31 @@ private struct ModernAttendanceHistoryView: View {
         return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
     }
     private func count(_ status: String) -> Int { history?.days.filter { $0.status == status }.count ?? 0 }
+    private func countStatus(_ status: String) -> Int {
+        history?.days.filter { dayStatuses($0).contains(status) }.count ?? 0
+    }
+    private func dayStatuses(_ day: AttendanceDay) -> [String] {
+        day.statuses ?? day.status.map { [$0] } ?? []
+    }
+    @ViewBuilder private func dayBackground(_ day: AttendanceDay) -> some View {
+        let statuses = dayStatuses(day)
+        if statuses.contains("late") && statuses.contains("early") {
+            HStack(spacing: 0) {
+                EmployeeRequestKind.late.color.opacity(0.22)
+                EmployeeRequestKind.early.color.opacity(0.22)
+            }
+        } else {
+            dayColor(statuses.first)
+        }
+    }
     private func dayColor(_ status: String?) -> Color {
         switch status {
         case "present": return .green.opacity(0.2)
         case "late": return .orange.opacity(0.2)
+        case "early": return EmployeeRequestKind.early.color.opacity(0.2)
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.2)
         case "absent": return AppTheme.red.opacity(0.18)
+        case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.2)
         case "weekend": return .gray.opacity(0.08)
         default: return AppTheme.muted.opacity(0.06)
         }
@@ -2360,8 +2408,10 @@ private struct ModernAttendanceHistoryView: View {
         switch status {
         case "present": return "Đủ công"
         case "late": return "Đi trễ"
+        case "early": return "Về sớm"
         case "leave": return "Nghỉ phép"
         case "absent": return "Vắng"
+        case "overtime": return "Làm thêm giờ"
         case "weekend": return "Cuối tuần"
         default: return "Chưa đến"
         }

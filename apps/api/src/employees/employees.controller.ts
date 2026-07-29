@@ -33,7 +33,7 @@ export class EmployeesController {
   @Post('work-schedules')
   saveWorkSchedule(
     @Req() req: { user: { employeeCode?: string; role?: string } },
-    @Body() body: { department: string; startTime: string },
+    @Body() body: { department: string; startTime: string; endTime: string },
   ) {
     return this.employeesService.saveWorkSchedule(req.user, body);
   }

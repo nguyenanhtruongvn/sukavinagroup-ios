@@ -58,6 +58,7 @@ type DepartmentWorkSchedule = {
   id?: string;
   department: string;
   startTime: string;
+  endTime: string;
 };
 
 type AttendanceMonth = {
@@ -3643,13 +3644,14 @@ function App() {
                   <div>
                     <p className="panel-label">Quy định chấm công</p>
                     <h3>Giờ vào làm theo phòng ban</h3>
-                    <p>Giờ này dùng để xác định đi trễ hoặc vắng. Chủ nhật luôn là ngày cuối tuần.</p>
+                    <p>Thiết lập khung giờ chuẩn để tính đi trễ, về sớm và vắng.</p>
                   </div>
                   <div className="department-schedule-grid">
                     {departmentSchedules.map((schedule) => (
                       <label key={schedule.department}>
                         <span>{schedule.department}</span>
                         <span className="department-schedule-control">
+                          <small>Vào</small>
                           <input
                             type="time"
                             value={schedule.startTime}
@@ -3658,6 +3660,20 @@ function App() {
                                 current.map((item) =>
                                   item.department === schedule.department
                                     ? { ...item, startTime: event.target.value }
+                                    : item,
+                                ),
+                              )
+                            }
+                          />
+                          <small>Ra</small>
+                          <input
+                            type="time"
+                            value={schedule.endTime}
+                            onChange={(event) =>
+                              setDepartmentSchedules((current) =>
+                                current.map((item) =>
+                                  item.department === schedule.department
+                                    ? { ...item, endTime: event.target.value }
                                     : item,
                                 ),
                               )
