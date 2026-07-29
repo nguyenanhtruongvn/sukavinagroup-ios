@@ -148,7 +148,7 @@ private enum NetworkError: LocalizedError {
         switch self {
         case .invalidResponse: return "Máy chủ trả về dữ liệu không hợp lệ."
         case .server(let message): return message
-        case .offline: return "Không thể kết nối máy chủ. Vui lòng kiểm tra Internet."
+        case .offline: return "Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại."
         case .cellularRestricted: return "iPhone đang không cấp đường truyền di động cho Sukavina. Vào Cài đặt > Di động, bật Sukavina rồi mở lại ứng dụng."
         case .invalidCredentials: return "Mã nhân viên hoặc mật khẩu không chính xác."
         case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
@@ -1154,6 +1154,10 @@ private final class SessionStore: ObservableObject {
                   case .invalidCredentials = networkError {
             errorTitle = "Sai thông tin đăng nhập"
             errorOffersSettings = false
+        } else if let networkError = error as? NetworkError,
+                  case .offline = networkError {
+            errorTitle = "Kiểm tra kết nối Internet"
+            errorOffersSettings = false
         } else {
             errorTitle = "Chưa thể thực hiện"
             errorOffersSettings = false
@@ -1424,7 +1428,7 @@ private struct ElegantAppAlert: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else {
-                Button("Đã hiểu", action: dismiss)
+                Button(title == "Kiểm tra kết nối Internet" ? "Đóng" : "Đã hiểu", action: dismiss)
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -1441,6 +1445,7 @@ private struct ElegantAppAlert: View {
 
     private var alertIcon: String {
         if offersSettings { return "antenna.radiowaves.left.and.right.slash" }
+        if title == "Kiểm tra kết nối Internet" { return "wifi.slash" }
         if title == "Cần cập nhật email" { return "envelope.badge.fill" }
         return "exclamationmark.shield.fill"
     }

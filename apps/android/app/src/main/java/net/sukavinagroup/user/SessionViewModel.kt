@@ -70,6 +70,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             }.onFailure { update(working = false, error = it.message) }
     }
 
+    fun dismissError() {
+        update(error = null)
+    }
+
     fun refresh() = viewModelScope.launch {
         val token = _state.value.token ?: return@launch
         runCatching {

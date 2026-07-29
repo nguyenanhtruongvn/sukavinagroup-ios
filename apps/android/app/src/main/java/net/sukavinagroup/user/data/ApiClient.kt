@@ -66,7 +66,7 @@ class ApiClient {
         } catch (error: ApiException) {
             throw error
         } catch (_: IOException) {
-            throw ApiException("Không thể kết nối máy chủ. Vui lòng kiểm tra Internet.")
+            throw ApiException("Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.")
         }
     }
 

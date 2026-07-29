@@ -53,13 +53,18 @@ private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
             state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn)
+            state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError)
             else -> MainScreen(state, session)
         }
     }
 }
 
-@Composable private fun LoginScreen(state: SessionUiState, signIn: (String, String) -> Unit, biometricSignIn: () -> Unit = {}) {
+@Composable private fun LoginScreen(
+    state: SessionUiState,
+    signIn: (String, String) -> Unit,
+    biometricSignIn: () -> Unit = {},
+    dismissError: () -> Unit = {},
+) {
     val activity = LocalActivity.current as? MainActivity
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -80,7 +85,9 @@ private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
         OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu") },
             leadingIcon = { Icon(Icons.Default.Lock, null) }, visualTransformation = PasswordVisualTransformation(),
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
-        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp)) }
+        state.error?.takeUnless(String::isConnectionError)?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
+        }
         Button(onClick = { signIn(login, password) }, enabled = login.isNotBlank() && password.isNotBlank() && !state.working,
             modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = RoundedCornerShape(16.dp)) {
             if (state.working) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
@@ -88,7 +95,40 @@ private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
         }
         if (state.biometricEnabled) OutlinedButton(onClick = { activity?.authenticateBiometric(biometricSignIn) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = RoundedCornerShape(16.dp)) { Icon(Icons.Default.Fingerprint, null); Spacer(Modifier.width(8.dp)); Text("Đăng nhập bằng sinh trắc học") }
     }
+    state.error?.takeIf(String::isConnectionError)?.let {
+        InternetConnectionAlert(dismissError)
+    }
 }
+
+@Composable private fun InternetConnectionAlert(dismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        icon = {
+            Surface(Modifier.size(54.dp), RoundedCornerShape(17.dp), color = SukavinaRed.copy(alpha = .14f)) {
+                Icon(Icons.Default.WifiOff, null, tint = SukavinaRed, modifier = Modifier.padding(14.dp))
+            }
+        },
+        title = { Text("Kiểm tra kết nối Internet", fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Text(
+                "Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.",
+                color = SukavinaMuted,
+                lineHeight = 21.sp,
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = dismiss,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SukavinaRed, contentColor = Color.White),
+            ) { Text("Đóng", fontWeight = FontWeight.Bold) }
+        },
+    )
+}
+
+private fun String.isConnectionError() =
+    contains("kết nối", ignoreCase = true) &&
+        (contains("Internet", ignoreCase = true) || contains("máy chủ", ignoreCase = true))
 
 @Composable private fun MainScreen(state: SessionUiState, session: SessionViewModel) {
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
