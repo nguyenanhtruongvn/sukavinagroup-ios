@@ -6296,3 +6296,598 @@ body {
   .attendance-day { padding: 5px 4px; border-radius: 7px; }
   .attendance-day > small { padding: 2px 3px; }
 }
+
+/* iOS Dark is the canonical web palette. Layout stays on Workspace V2. */
+:root {
+  color-scheme: dark;
+  --workspace-bg: #121217;
+  --workspace-surface: #1f1f26;
+  --workspace-soft: #25252e;
+  --workspace-border: rgba(255, 255, 255, .09);
+  --workspace-ink: #f7f7f8;
+  --workspace-muted: #a8a6ad;
+  --workspace-red: #e81f29;
+  --workspace-red-dark: #b90f19;
+  --workspace-shadow: 0 18px 48px rgba(0, 0, 0, .28);
+  --ios-bg: #121217;
+  --ios-card: #1f1f26;
+  --ios-card-raised: #25252e;
+  --ios-field: rgba(255, 255, 255, .055);
+  --ios-border: rgba(255, 255, 255, .08);
+  --ios-border-strong: rgba(255, 255, 255, .12);
+  --ios-text: #f7f7f8;
+  --ios-muted: #a8a6ad;
+  --muted: #a8a6ad;
+  color: #f7f7f8;
+  background:
+    radial-gradient(circle at 12% -10%, rgba(115, 10, 18, .38), transparent 30%),
+    #121217;
+  scrollbar-color: rgba(232, 31, 41, .58) rgba(255, 255, 255, .04);
+}
+
+body {
+  color: #f7f7f8;
+  background:
+    radial-gradient(circle at 12% -10%, rgba(115, 10, 18, .38), transparent 30%),
+    radial-gradient(circle at 100% 15%, rgba(232, 31, 41, .08), transparent 26%),
+    #121217;
+}
+
+.auth-card,
+.topbar,
+.panel,
+.admin-nav,
+.access-card,
+.employee-form-card,
+.employee-list-card,
+.weekly-menu-panel {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(31, 31, 38, .96);
+  box-shadow: var(--workspace-shadow);
+}
+
+.auth-card .brand h1,
+.topbar h1,
+.panel h2,
+.today-menu-head h2,
+.weekly-menu-header h2,
+.meal-choice-panel h3,
+.meal-orders-summary h3 {
+  color: #f7f7f8;
+}
+
+.auth-card .lead,
+.topbar .lead,
+.lead,
+.panel-note,
+.today-menu-head p {
+  color: #a8a6ad;
+}
+
+.auth-form,
+.stat-card,
+.employee-filter-bar,
+.employee-table-head,
+.notification-item,
+.permission-option,
+.access-empty-state,
+.meal-choice-panel,
+.meal-orders-summary {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .045);
+}
+
+.auth-form label,
+.admin-form label,
+.request-field > span,
+.request-kind-picker legend,
+.checkbox-row {
+  color: #e8e7eb;
+}
+
+.auth-form input,
+.admin-form input,
+.admin-form textarea,
+.admin-form select,
+.request-field input,
+.request-field textarea,
+.request-decision-box textarea,
+.search-box input,
+.employee-filter-bar select,
+.employee-filter-bar input,
+.department-schedule-control input,
+.menu-edit-fields input,
+.menu-overtime-input input,
+select:not([multiple]) {
+  color: #f7f7f8 !important;
+  border-color: rgba(255, 255, 255, .12) !important;
+  background-color: rgba(255, 255, 255, .055) !important;
+  box-shadow: none;
+}
+
+select:not([multiple]) {
+  color-scheme: dark;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #ff777d 50%),
+    linear-gradient(135deg, #ff777d 50%, transparent 50%),
+    linear-gradient(to right, rgba(255,255,255,.1), rgba(255,255,255,.1)) !important;
+}
+
+select option,
+select optgroup,
+.admin-form select option {
+  color: #f7f7f8;
+  background: #25252e;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(168, 166, 173, .72) !important;
+}
+
+.public-footer {
+  border-color: rgba(255, 255, 255, .08);
+  color: #85838a;
+}
+
+.public-footer a {
+  color: #b8b6bd;
+}
+
+.auth-divider {
+  color: #85838a;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  background: rgba(255, 255, 255, .1);
+}
+
+.passkey-login-button {
+  color: #f7f7f8 !important;
+  border-color: rgba(255, 255, 255, .12) !important;
+  background: rgba(255, 255, 255, .065) !important;
+}
+
+.passkey-login-button:hover {
+  border-color: rgba(232, 31, 41, .5) !important;
+  background: rgba(232, 31, 41, .1) !important;
+}
+
+.panel-head {
+  border-color: rgba(255, 255, 255, .08);
+}
+
+.panel-label,
+.eyebrow {
+  color: #ff858a;
+}
+
+.employee-tabs {
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .055);
+}
+
+.employee-tabs button {
+  color: #aaa8af;
+}
+
+.employee-tabs button:hover:not(.is-active) {
+  color: #fff;
+  background: rgba(255, 255, 255, .08);
+}
+
+.admin-nav button {
+  color: #aaa8af;
+}
+
+.admin-nav button:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .065);
+}
+
+.admin-nav button.active,
+.employee-tabs button.is-active,
+.primary-button,
+.content-save-button,
+.auth-form button[type='submit'] {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f0444c, #e81f29);
+  box-shadow: 0 10px 25px rgba(232, 31, 41, .24);
+}
+
+.ghost-button,
+.notification-button,
+.account-menu-button,
+.employee-actions-row button,
+.request-modal-close,
+.content-composer-close,
+.menu-edit-button {
+  color: #f3f2f5;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .07);
+}
+
+.notification-button:hover,
+.account-menu-button:hover,
+.account-menu-button.active {
+  color: #fff;
+  border-color: rgba(232, 31, 41, .42);
+  background: rgba(232, 31, 41, .12);
+}
+
+.stat-card,
+.employee-row,
+.employee-row-modern,
+.content-item,
+.news-card,
+.request-item,
+.admin-request-row {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .04);
+}
+
+.employee-row-modern:nth-child(even),
+.admin-request-row:nth-child(even) {
+  background: rgba(255, 255, 255, .025);
+}
+
+.employee-row:hover,
+.content-item:hover,
+.news-card:hover,
+.request-item:hover {
+  border-color: rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .07);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .2);
+}
+
+.employee-table-head,
+.admin-request-table-head,
+.meal-orders-table-head {
+  color: #aaa8af;
+  background: rgba(255, 255, 255, .055);
+}
+
+.notification-popover,
+.account-popover,
+.article-modal,
+.request-composer,
+.content-composer,
+.password-dialog,
+.meal-confirm-dialog,
+.admin-account-picker {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .12);
+  background: #25252e;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .5);
+}
+
+.article-modal-header,
+.request-composer-header,
+.content-composer-header,
+.notification-popover-head {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .08);
+  background: #1f1f26;
+}
+
+.account-popover-profile strong,
+.account-popover-details strong,
+.account-popover-actions button strong,
+.account-popover-actions a strong {
+  color: #f7f7f8;
+}
+
+.account-popover-profile small,
+.account-popover-details small,
+.account-popover-actions small {
+  color: #a8a6ad;
+}
+
+.account-popover-details,
+.password-email-card {
+  border-color: rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .05);
+}
+
+.account-popover-actions button,
+.account-popover-actions a {
+  color: #f1f0f3;
+}
+
+.account-popover-actions button:hover,
+.account-popover-actions a:hover {
+  background: rgba(255, 255, 255, .065);
+}
+
+.account-popover-close,
+.password-dialog-head button {
+  color: #aaa8af;
+  border-color: rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .07);
+}
+
+.request-modal-backdrop,
+.article-modal-backdrop,
+.content-composer-backdrop,
+.meal-confirm-backdrop {
+  background: rgba(5, 5, 8, .76);
+}
+
+.request-composer-header {
+  background:
+    radial-gradient(circle at 14% 8%, rgba(232, 31, 41, .2), transparent 42%),
+    #1f1f26;
+}
+
+.request-kind-picker button {
+  color: #aaa8af;
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .04);
+  box-shadow: none;
+}
+
+.request-kind-picker button:hover:not(.active) {
+  color: #fff;
+  border-color: rgba(232, 31, 41, .3);
+  background: rgba(232, 31, 41, .08);
+}
+
+.request-kind-picker button.active {
+  color: #fff;
+  border-color: rgba(255, 105, 110, .55);
+  background: linear-gradient(145deg, rgba(232,31,41,.28), rgba(232,31,41,.12));
+  box-shadow: 0 8px 24px rgba(115, 10, 18, .22);
+}
+
+/* Dark menu surfaces retain semantic category colors. */
+.today-menu-panel,
+.weekly-menu-panel {
+  color: #f7f7f8;
+}
+
+.today-menu-head {
+  border-color: rgba(255, 255, 255, .08);
+}
+
+.today-menu-day {
+  color: #ff9a9f;
+  border-color: rgba(232, 31, 41, .34);
+  background: rgba(232, 31, 41, .12);
+}
+
+.today-menu-group {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .04);
+  box-shadow: none;
+}
+
+.today-menu-group small,
+.today-menu-group p b {
+  color: #aaa8af;
+}
+
+.today-menu-group h3,
+.today-menu-group p,
+.meal-choice-panel button strong {
+  color: #f7f7f8;
+}
+
+.today-menu-group.water { background: linear-gradient(145deg, rgba(39,139,194,.17), rgba(255,255,255,.035) 62%); }
+.today-menu-group.regular { background: linear-gradient(145deg, rgba(226,127,48,.17), rgba(255,255,255,.035) 62%); }
+.today-menu-group.vegetarian { background: linear-gradient(145deg, rgba(44,154,87,.17), rgba(255,255,255,.035) 62%); }
+.today-menu-group.overtime { background: linear-gradient(145deg, rgba(117,87,184,.2), rgba(255,255,255,.035) 62%); }
+
+.meal-choice-panel > button {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .05);
+  box-shadow: none;
+}
+
+.meal-choice-panel > button:hover {
+  border-color: rgba(255, 255, 255, .2);
+  background: rgba(255, 255, 255, .075);
+}
+
+.meal-choice-panel button i {
+  color: #c3c1c8;
+  background: rgba(255, 255, 255, .08);
+}
+
+.meal-choice-panel button.is-selected {
+  border-color: rgba(82, 194, 120, .48);
+  background: rgba(44, 154, 87, .2);
+}
+
+.meal-confirm-preview {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .05);
+}
+
+.meal-confirm-dialog > p:not(.panel-label),
+.meal-confirm-preview small {
+  color: #a8a6ad;
+}
+
+.meal-confirm-dialog button:not(.confirm) {
+  color: #f1f0f3;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .07);
+}
+
+.menu-week-switch,
+.weekly-menu-meta span {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .05);
+}
+
+.menu-week-switch button,
+.weekly-menu-meta span {
+  color: #aaa8af;
+}
+
+.menu-week-switch button:hover:not(:disabled):not(.is-active) {
+  color: #fff;
+  background: rgba(255, 255, 255, .08);
+}
+
+.weekly-menu-meta strong,
+.weekly-menu-day > header strong,
+.menu-shift-title,
+.menu-shift dd,
+.menu-water-dish strong {
+  color: #f7f7f8;
+}
+
+.weekly-menu-day {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .035);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .15);
+}
+
+.weekly-menu-day > header {
+  border-color: rgba(255, 255, 255, .08);
+  background: rgba(255, 255, 255, .045);
+}
+
+.weekly-menu-day.is-sunday {
+  border-color: rgba(232, 31, 41, .28);
+  background: rgba(232, 31, 41, .06);
+}
+
+.menu-water-dish { border-color: rgba(39,139,194,.3); background: rgba(39,139,194,.14); }
+.menu-vegetarian { border-color: rgba(44,154,87,.3); background: rgba(44,154,87,.14); }
+.menu-shift-overtime { border-color: rgba(117,87,184,.28); background: rgba(117,87,184,.13); }
+.menu-shift dt,
+.menu-edit-fields label span,
+.menu-overtime-input span { color: #aaa8af; }
+
+.meal-orders-table {
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .025);
+}
+
+.meal-orders-row {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .07);
+}
+
+.meal-orders-row:nth-child(odd) {
+  background: rgba(255, 255, 255, .025);
+}
+
+.meal-orders-empty,
+.meal-orders-stats small,
+.meal-order-employee small {
+  color: #aaa8af;
+}
+
+.meal-orders-empty strong {
+  color: #f7f7f8;
+}
+
+/* Dark attendance calendar with distinct early and overtime palettes. */
+.attendance-calendar-modal {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .12);
+  background: #1f1f26;
+}
+
+.attendance-calendar-modal .article-modal-header {
+  border-color: rgba(255, 255, 255, .08);
+}
+
+.attendance-calendar-modal .article-modal-header h2,
+.attendance-month-nav > div strong {
+  color: #f7f7f8;
+}
+
+.attendance-month-nav {
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .055);
+}
+
+.attendance-month-nav button {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .07);
+  box-shadow: none;
+}
+
+.attendance-summary-card {
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .05);
+  box-shadow: none;
+}
+
+.attendance-summary-card span {
+  color: #aaa8af;
+}
+
+.attendance-weekdays strong {
+  border-color: rgba(255, 255, 255, .08);
+  background: #26374e;
+  color: #eaf3ff;
+}
+
+.attendance-weekdays strong:nth-child(7) {
+  border-color: rgba(232, 31, 41, .2);
+  background: #51242a;
+  color: #ffb7bb;
+}
+
+.attendance-day {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .09);
+  background: rgba(255, 255, 255, .04);
+  box-shadow: none;
+}
+
+.attendance-day-head strong { color: #f7f7f8; }
+.attendance-day-head span,
+.attendance-time span,
+.attendance-status-label { color: #aaa8af; }
+
+.attendance-day-empty,
+.attendance-day-future,
+.attendance-status-weekend,
+.attendance-status-upcoming {
+  border-color: rgba(255, 255, 255, .06);
+  background: rgba(255, 255, 255, .025);
+}
+
+.attendance-status-present { border-color: rgba(67,184,107,.3); background: rgba(67,184,107,.17); }
+.attendance-status-late { border-color: rgba(255,179,79,.34); background: rgba(255,179,79,.19); }
+.attendance-status-early { border-color: rgba(214,66,134,.38); background: rgba(214,66,134,.2); }
+.attendance-status-leave { border-color: rgba(94,167,255,.34); background: rgba(94,167,255,.18); }
+.attendance-status-absent,
+.attendance-day-missing { border-color: rgba(255,111,103,.34); background: rgba(255,111,103,.19); }
+.attendance-status-overtime { border-color: rgba(100,112,255,.4); background: rgba(79,91,213,.23); }
+.attendance-status-late-early {
+  border-color: rgba(225,123,91,.36);
+  background: linear-gradient(90deg, rgba(255,179,79,.2) 0 50%, rgba(214,66,134,.21) 50% 100%);
+}
+
+.attendance-day > small {
+  color: #8fc7ff;
+  background: rgba(94, 167, 255, .13);
+}
+
+.attendance-time-in strong { color: #55d27e; }
+.attendance-time-out strong { color: #ff7770; }
+.attendance-status-early .attendance-status-label { color: #f08ab9; }
+.attendance-status-overtime .attendance-status-label { color: #a9b0ff; }
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, .035);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(232, 31, 41, .58);
+}
