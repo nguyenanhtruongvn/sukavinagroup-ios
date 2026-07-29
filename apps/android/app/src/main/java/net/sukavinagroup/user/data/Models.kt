@@ -42,8 +42,13 @@ import kotlinx.serialization.Serializable
     val date: String, val checkIn: String? = null, val checkOut: String? = null,
     val punchCount: Int = 0, val sources: List<String> = emptyList(),
     val punches: List<AttendancePunch> = emptyList(),
+    val status: String? = null, val statuses: List<String> = emptyList(),
+    val startTime: String? = null, val endTime: String? = null,
 )
-@Serializable data class AttendanceMonth(val month: String, val days: List<AttendanceDay> = emptyList())
+@Serializable data class AttendanceMonth(
+    val month: String, val startTime: String? = null, val endTime: String? = null,
+    val department: String? = null, val days: List<AttendanceDay> = emptyList(),
+)
 @Serializable data class ApiError(val message: String = "Yêu cầu không thành công")
 
 @Serializable data class EmployeeSummary(val fullName: String = "", val employeeCode: String = "")

@@ -7,6 +7,8 @@ import android.widget.TextView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -23,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -581,33 +584,191 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     val months = remember { (0..1).map { YearMonth.now().minusMonths(it.toLong()) } }
     var selected by remember { mutableStateOf(months.first()) }
     var history by remember { mutableStateOf<AttendanceMonth?>(null) }
+    var selectedDate by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(selected) { loading = true; session.attendance(selected.toString()).onSuccess { history = it; error = null }.onFailure { history = null; error = it.message }; loading = false }
-    Scaffold(topBar = { TopAppBar(title = { Text("Bảng chấm công") }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Quay lại") } }) }) { padding ->
-        Column(Modifier.padding(padding).padding(horizontal = 18.dp)) {
-            SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(vertical = 14.dp)) {
-                months.forEachIndexed { index, month -> SegmentedButton(selected == month, { selected = month }, SegmentedButtonDefaults.itemShape(index, months.size)) { Text(month.format(DateTimeFormatter.ofPattern("MM/yyyy"))) } }
+    LaunchedEffect(selected) {
+        loading = true
+        session.attendance(selected.toString())
+            .onSuccess {
+                history = it
+                error = null
+                selectedDate = it.days.firstOrNull { day -> day.date == LocalDate.now().toString() }?.date
+                    ?: it.days.lastOrNull()?.date
             }
+            .onFailure { history = null; error = it.message }
+        loading = false
+    }
+    Scaffold(topBar = { TopAppBar(title = { Text("Bảng chấm công") }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Quay lại") } }) }) { padding ->
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            AttendanceMonthSelector(months, selected) { selected = it }
             when {
                 loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 30.dp)) {
-                    items(history?.days.orEmpty(), key = { it.date }) { day -> AttendanceRow(day) }
-                    if (history?.days.isNullOrEmpty()) item { Text("Không có dữ liệu trong tháng này.", color = SukavinaMuted, modifier = Modifier.padding(top = 35.dp)) }
+                error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
+                else -> Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    val data = history
+                    if (data != null) {
+                        AttendanceSummary(data)
+                        AttendanceCalendar(data, selectedDate) { selectedDate = it }
+                        data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) }
+                        Spacer(Modifier.height(28.dp))
+                    }
                 }
             }
         }
     }
 }
 
-@Composable private fun AttendanceRow(day: AttendanceDay) = Card {
-    Row(Modifier.fillMaxWidth().padding(17.dp), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) { Text(day.date.toDayLabel(), fontWeight = FontWeight.Bold); Text("${day.punchCount} lượt ghi nhận", color = SukavinaMuted, fontSize = 12.sp) }
-        Column(horizontalAlignment = Alignment.End) { Text("Vào", color = SukavinaMuted, fontSize = 11.sp); Text(day.checkIn.toTime(), fontWeight = FontWeight.Bold) }
-        Spacer(Modifier.width(22.dp))
-        Column(horizontalAlignment = Alignment.End) { Text("Ra", color = SukavinaMuted, fontSize = 11.sp); Text(day.checkOut.toTime(), fontWeight = FontWeight.Bold, color = SukavinaRed) }
+@Composable private fun AttendanceMonthSelector(months: List<YearMonth>, selected: YearMonth, select: (YearMonth) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface).padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        months.forEachIndexed { index, month ->
+            FilterChip(
+                selected = selected == month,
+                onClick = { select(month) },
+                label = { Text(if (index == 0) "Tháng này" else "Tháng trước", fontWeight = FontWeight.Bold) },
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
+}
+
+private data class AttendanceMetric(val key: String, val title: String, val color: Color, val count: Int)
+
+@Composable private fun AttendanceSummary(month: AttendanceMonth) {
+    val metrics = listOf(
+        Triple("present", "Ngày công", Color(0xFF43B86B)),
+        Triple("late", "Đi trễ", requestKind("late").color),
+        Triple("early", "Về sớm", requestKind("early").color),
+        Triple("leave", "Nghỉ phép", requestKind("leave").color),
+        Triple("absent", "Vắng", Color(0xFFFF6F67)),
+        Triple("overtime", "Làm thêm", requestKind("overtime").color),
+    ).map { item -> AttendanceMetric(item.first, item.second, item.third, month.days.count { item.first in it.allStatuses() }) }
+        .filter { it.count > 0 }
+    if (metrics.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        metrics.chunked(3).forEach { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                row.forEach { metric ->
+                    Surface(Modifier.weight(1f), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+                        Column(Modifier.padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(metric.count.toString(), color = metric.color, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+                            Text(metric.title, color = SukavinaMuted, fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable private fun AttendanceCalendar(month: AttendanceMonth, selectedDate: String?, select: (String) -> Unit) {
+    val days = month.days
+    val leading = days.firstOrNull()?.date?.let { LocalDate.parse(it).dayOfWeek.value - 1 } ?: 0
+    val cells: List<AttendanceDay?> = List(leading) { null } + days
+    Card(shape = RoundedCornerShape(22.dp)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            Text("Lịch chấm công", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+            Row(Modifier.fillMaxWidth()) {
+                listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN").forEach {
+                    Text(it, Modifier.weight(1f), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            }
+            cells.chunked(7).forEach { week ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    repeat(7) { index ->
+                        AttendanceDayCell(week.getOrNull(index), selectedDate, select)
+                    }
+                }
+            }
+            AttendanceLegend(month)
+        }
+    }
+}
+
+@Composable private fun RowScope.AttendanceDayCell(day: AttendanceDay?, selectedDate: String?, select: (String) -> Unit) {
+    if (day == null) {
+        Spacer(Modifier.weight(1f).aspectRatio(0.92f))
+        return
+    }
+    val statuses = day.allStatuses()
+    val shape = RoundedCornerShape(11.dp)
+    Box(
+        Modifier.weight(1f).aspectRatio(0.92f).clip(shape)
+            .then(if (day.date == selectedDate) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
+            .clickable { select(day.date) },
+        contentAlignment = Alignment.Center,
+    ) {
+        if ("late" in statuses && "early" in statuses) {
+            Row(Modifier.matchParentSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight().background(requestKind("late").color.copy(alpha = .28f)))
+                Box(Modifier.weight(1f).fillMaxHeight().background(requestKind("early").color.copy(alpha = .28f)))
+            }
+        } else {
+            Box(Modifier.matchParentSize().background(attendanceColor(statuses.firstOrNull()).copy(alpha = .22f)))
+        }
+        Text(LocalDate.parse(day.date).dayOfMonth.toString(), fontWeight = if (day.date == selectedDate) FontWeight.ExtraBold else FontWeight.Medium)
+    }
+}
+
+@Composable private fun AttendanceLegend(month: AttendanceMonth) {
+    val values = listOf(
+        "present" to "Đủ công", "late" to "Đi trễ", "early" to "Về sớm",
+        "leave" to "Nghỉ phép", "absent" to "Vắng", "overtime" to "Làm thêm",
+    ).filter { item -> month.days.any { item.first in it.allStatuses() } }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        values.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { item ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(attendanceColor(item.first).copy(alpha = .5f)))
+                        Text(item.second, Modifier.padding(start = 4.dp), color = SukavinaMuted, fontSize = 10.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun AttendanceDayDetail(month: AttendanceMonth, day: AttendanceDay) = Card(shape = RoundedCornerShape(22.dp)) {
+    Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Chi tiết ngày ${LocalDate.parse(day.date).format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
+        HorizontalDivider()
+        AttendanceDetailLine("Giờ vào", day.checkIn.toTime())
+        AttendanceDetailLine("Giờ ra", day.checkOut.toTime())
+        AttendanceDetailLine("Trạng thái", day.allStatuses().joinToString(" · ") { attendanceTitle(it) })
+        AttendanceDetailLine("Khung giờ ${month.department ?: "phòng ban"}", "${day.startTime ?: month.startTime ?: "--:--"} - ${day.endTime ?: month.endTime ?: "--:--"}")
+    }
+}
+
+@Composable private fun AttendanceDetailLine(label: String, value: String) = Row(Modifier.fillMaxWidth()) {
+    Text(label, color = SukavinaMuted)
+    Spacer(Modifier.weight(1f))
+    Text(value, fontWeight = FontWeight.Bold)
+}
+
+private fun AttendanceDay.allStatuses() = statuses.ifEmpty { listOfNotNull(status) }
+private fun attendanceColor(status: String?) = when (status) {
+    "present" -> Color(0xFF43B86B)
+    "late" -> requestKind("late").color
+    "early" -> requestKind("early").color
+    "leave" -> requestKind("leave").color
+    "absent" -> Color(0xFFFF6F67)
+    "overtime" -> requestKind("overtime").color
+    "weekend" -> Color(0xFF9FA6B2)
+    else -> Color(0xFF9FA6B2)
+}
+private fun attendanceTitle(status: String) = when (status) {
+    "present" -> "Đủ công"; "late" -> "Đi trễ"; "early" -> "Về sớm"
+    "leave" -> "Nghỉ phép"; "absent" -> "Vắng"; "overtime" -> "Làm thêm giờ"
+    "weekend" -> "Cuối tuần"; else -> "Chưa đến"
 }
 
 @Composable private fun ProfileScreen(state: SessionUiState, session: SessionViewModel) {
