@@ -5589,3 +5589,422 @@ body {
   .auth-card { padding: 24px 18px; border-radius: 23px; }
   .auth-form { padding: 18px 14px; }
 }
+
+/* Menu readability: semantic color without sacrificing light-mode contrast. */
+.today-menu-panel,
+.weekly-menu-panel {
+  color: #172033;
+}
+
+.today-menu-head {
+  align-items: center;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #d2d8e1;
+}
+
+.today-menu-head h2,
+.weekly-menu-header h2,
+.meal-choice-panel h3,
+.meal-orders-summary h3 {
+  color: #172033;
+}
+
+.today-menu-head p {
+  color: #566172;
+  font-weight: 650;
+}
+
+.today-menu-day {
+  color: #a71922;
+  border-color: #e59aa0;
+  background: #ffe7e9;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .7);
+}
+
+.today-menu-layout {
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr);
+  align-items: stretch;
+}
+
+.today-menu-groups {
+  gap: 14px;
+}
+
+.today-menu-group {
+  min-height: 126px;
+  padding: 18px;
+  border-color: #c5ccd6;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(31, 42, 59, .07);
+}
+
+.today-menu-group small {
+  color: #525d6e;
+  font-size: .72rem;
+}
+
+.today-menu-group h3 {
+  color: #172033;
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
+.today-menu-group p {
+  color: #263244;
+}
+
+.today-menu-group p b {
+  color: #5a6575;
+  font-weight: 750;
+}
+
+.today-menu-group.water {
+  border-left: 5px solid #278bc2;
+  background: linear-gradient(145deg, #e9f7ff, #fff 62%);
+}
+
+.today-menu-group.regular {
+  border-left: 5px solid #e27f30;
+  background: linear-gradient(145deg, #fff2e6, #fff 62%);
+}
+
+.today-menu-group.vegetarian {
+  border-left: 5px solid #2c9a57;
+  background: linear-gradient(145deg, #e9f8ee, #fff 62%);
+}
+
+.today-menu-group.overtime {
+  border-left: 5px solid #7557b8;
+  background: linear-gradient(145deg, #f1ebff, #fff 62%);
+}
+
+.today-menu-group.water > span {
+  color: #126995;
+  background: #cceeff;
+}
+
+.today-menu-group.regular > span {
+  color: #a95618;
+  background: #ffe0c4;
+}
+
+.today-menu-group.vegetarian > span {
+  color: #16743a;
+  background: #ccefd8;
+}
+
+.today-menu-group.overtime > span {
+  color: #593a9c;
+  background: #ded2f7;
+}
+
+.meal-choice-panel {
+  padding: 20px;
+  border-color: #bec6d1;
+  background: #eef1f5;
+  box-shadow: inset 0 1px 0 #fff;
+}
+
+.meal-choice-panel p,
+.meal-choice-panel small {
+  color: #586374;
+}
+
+.meal-choice-panel > button {
+  color: #202a39;
+  border-color: #bdc5d0;
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(31, 42, 59, .055);
+}
+
+.meal-choice-panel > button:hover {
+  border-color: #929dac;
+  background: #f9fafb;
+}
+
+.meal-choice-panel button strong {
+  color: #172033;
+}
+
+.meal-choice-panel button i {
+  color: #4f5a69;
+  background: #e6e9ee;
+  font-weight: 750;
+}
+
+.meal-choice-panel .water > span {
+  color: #126995;
+  background: #d6f1ff;
+}
+
+.meal-choice-panel .vegetarian > span {
+  color: #16743a;
+  background: #d7f3e0;
+}
+
+.meal-choice-panel button.is-selected {
+  border-color: #4ba96d;
+  background: #e4f6ea;
+  box-shadow: inset 4px 0 0 #2c9a57;
+}
+
+.meal-choice-panel button.is-selected i {
+  color: #fff;
+  background: #25864c;
+}
+
+.meal-choice-panel .meal-cancel-selection {
+  color: #a71922;
+  border-color: #e3a0a5;
+  background: #fff0f1;
+}
+
+.meal-choice-panel .meal-cancel-selection > span {
+  color: #b71923;
+  background: #ffdadd;
+}
+
+.meal-choice-panel .meal-received-selection,
+.meal-received-status {
+  color: #185f34;
+  border-color: #7dbe94;
+  background: #e3f5e9;
+}
+
+.meal-ordering-closed {
+  color: #835011;
+  border-color: #e0b36f;
+  background: #fff2d9;
+}
+
+.meal-ordering-closed small {
+  color: #765d36;
+}
+
+.meal-confirm-dialog {
+  color: #172033;
+  border-color: #b9c2ce;
+  background: #fff;
+}
+
+.meal-confirm-dialog > p:not(.panel-label) {
+  color: #586374;
+}
+
+.meal-confirm-preview {
+  border-color: #c8ced8;
+  background: #f0f2f5;
+}
+
+.meal-confirm-preview small {
+  color: #5a6575;
+}
+
+.meal-confirm-dialog button:not(.confirm) {
+  color: #263244;
+  border-color: #bbc4cf;
+  background: #edf0f4;
+}
+
+.menu-week-switch {
+  border-color: #bfc7d2;
+  background: #e5e9ef;
+}
+
+.menu-week-switch button {
+  color: #495466;
+}
+
+.menu-week-switch button:hover:not(:disabled):not(.is-active) {
+  color: #172033;
+  background: #fff;
+}
+
+.weekly-menu-meta span {
+  color: #4f5b6c;
+  border-color: #c5ccd6;
+  background: #f1f3f6;
+}
+
+.weekly-menu-meta strong {
+  color: #202a39;
+  font-weight: 750;
+}
+
+.weekly-menu-grid {
+  gap: 15px;
+}
+
+.weekly-menu-day {
+  border-color: #c2cad5;
+  background: #fff;
+  box-shadow: 0 7px 20px rgba(31, 42, 59, .075);
+}
+
+.weekly-menu-day.is-sunday {
+  border-color: #e09a9f;
+  background: #fff8f8;
+}
+
+.weekly-menu-day > header {
+  border-color: #ccd3dc;
+  background: #eef1f5;
+}
+
+.weekly-menu-day > header strong {
+  color: #172033;
+}
+
+.weekly-menu-day > header span {
+  color: #596474;
+}
+
+.weekly-menu-day > header b {
+  color: #a71922;
+  background: #ffe1e3;
+}
+
+.menu-shift {
+  color: #202a39;
+}
+
+.menu-shift-title {
+  color: #202a39;
+}
+
+.menu-water-dish {
+  border-color: #9dccdf;
+  background: #e4f5fc;
+}
+
+.menu-water-dish span {
+  color: #176c91;
+}
+
+.menu-water-dish strong {
+  color: #172033;
+}
+
+.menu-shift dt {
+  color: #576273;
+  font-weight: 700;
+}
+
+.menu-shift dd {
+  color: #202a39;
+  font-weight: 620;
+}
+
+.menu-vegetarian {
+  border: 1px solid #9dd2ae;
+  background: #e6f6eb;
+}
+
+.menu-vegetarian span {
+  color: #1c7840;
+}
+
+.menu-vegetarian p {
+  color: #205c35;
+}
+
+.menu-shift-overtime {
+  border-color: #d0c3ea;
+  background: #f1ecfa;
+}
+
+.menu-shift-overtime p {
+  color: #67459e;
+}
+
+.menu-empty {
+  color: #687383;
+}
+
+.menu-edit-button {
+  color: #273142;
+  border-color: #b9c2ce;
+  background: #eef1f5;
+}
+
+.menu-edit-button:hover:not(:disabled) {
+  border-color: #929dab;
+  background: #fff;
+}
+
+.menu-edit-fields label span,
+.menu-overtime-input span {
+  color: #4f5b6c;
+}
+
+.menu-edit-fields input,
+.menu-overtime-input input {
+  color: #172033;
+  border-color: #aeb8c5;
+  background: #fff;
+}
+
+.meal-orders-summary {
+  border-color: #c2cad5;
+  background: #f1f3f6;
+}
+
+.meal-orders-stats span {
+  border-color: #c3cbd5;
+  background: #fff;
+}
+
+.meal-orders-stats small,
+.meal-order-employee small {
+  color: #596474;
+}
+
+.meal-orders-stats span.water strong,
+.meal-order-choice.water {
+  color: #176c91;
+}
+
+.meal-orders-stats span.vegetarian strong,
+.meal-order-choice.vegetarian,
+.meal-order-status.received {
+  color: #1c7840;
+}
+
+.meal-order-choice.water { background: #dff3fc; }
+.meal-order-choice.vegetarian,
+.meal-order-status.received { background: #e0f3e6; }
+.meal-order-status.waiting {
+  color: #84520d;
+  background: #ffebc7;
+}
+
+.meal-orders-table {
+  border-color: #bfc7d2;
+  background: #fff;
+}
+
+.meal-orders-table-head {
+  color: #4c5768;
+  background: #e5e9ef;
+}
+
+.meal-orders-row {
+  color: #202a39;
+  border-color: #d0d6de;
+}
+
+.meal-orders-row:nth-child(odd) {
+  background: #f8f9fb;
+}
+
+.meal-orders-empty {
+  color: #596474;
+}
+
+.meal-orders-empty strong {
+  color: #172033;
+}
+
+@media (max-width: 760px) {
+  .today-menu-layout { grid-template-columns: 1fr; }
+}
