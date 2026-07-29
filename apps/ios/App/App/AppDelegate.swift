@@ -3144,7 +3144,7 @@ private struct SwipeDeleteRow<Content: View>: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contentShape(Rectangle())
-        .highPriorityGesture(swipeGesture, including: .all)
+        .simultaneousGesture(swipeGesture, including: .all)
     }
 
     private var swipeGesture: some Gesture {
