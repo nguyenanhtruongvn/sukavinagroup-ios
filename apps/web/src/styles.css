@@ -4185,3 +4185,239 @@ select option:checked { background: #a82a2d; color: #fff; }
   .request-modal-backdrop,
   .content-composer-backdrop { background: rgba(42, 31, 27, .42); }
 }
+
+/* iOS dark theme parity. Public and admin surfaces share one visual system. */
+:root {
+  color-scheme: dark;
+  --ios-bg: #121217;
+  --ios-card: #1f1f26;
+  --ios-card-raised: #25252e;
+  --ios-field: rgba(255, 255, 255, .055);
+  --ios-border: rgba(255, 255, 255, .08);
+  --ios-border-strong: rgba(255, 255, 255, .12);
+  --ios-text: #f7f7f8;
+  --ios-muted: #a8a6ad;
+  --ios-red: #e81f29;
+  --ios-red-deep: #730a12;
+  --ios-overlay: rgba(5, 5, 8, .76);
+  --muted: var(--ios-muted);
+  color: var(--ios-text);
+  background:
+    radial-gradient(circle at 18% -12%, rgba(115, 10, 18, .34), transparent 34%),
+    radial-gradient(circle at 104% 24%, rgba(232, 31, 41, .08), transparent 28%),
+    var(--ios-bg);
+  scrollbar-color: rgba(232, 31, 41, .58) rgba(255, 255, 255, .035);
+}
+
+html,
+body,
+#root,
+.auth-shell,
+.dashboard-shell {
+  color: var(--ios-text);
+  background-color: transparent;
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% -12%, rgba(115, 10, 18, .34), transparent 34%),
+    radial-gradient(circle at 104% 24%, rgba(232, 31, 41, .08), transparent 28%),
+    var(--ios-bg);
+  background-attachment: fixed;
+}
+
+:is(
+  .auth-card,
+  .panel,
+  .admin-nav,
+  .access-card,
+  .employee-form-card,
+  .employee-list-card,
+  .employee-row-modern,
+  .content-item,
+  .news-card,
+  .request-item,
+  .weekly-menu-panel
+) {
+  color: var(--ios-text);
+  border-color: var(--ios-border);
+  background: rgba(31, 31, 38, .92);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .22);
+}
+
+:is(
+  .auth-form,
+  .stat-card,
+  .employee-row,
+  .employee-filter-bar,
+  .employee-table-head,
+  .notification-item,
+  .request-notification-meta span,
+  .request-notification-reason,
+  .request-notification-note,
+  .permission-option,
+  .admin-picker-item,
+  .access-empty-state,
+  .meal-choice-panel,
+  .meal-orders-summary
+) {
+  color: var(--ios-text);
+  border-color: var(--ios-border);
+  background: var(--ios-field);
+}
+
+.panel-accent,
+.stat-card-primary {
+  border-color: rgba(232, 31, 41, .2);
+  background: linear-gradient(145deg, rgba(115, 10, 18, .34), rgba(31, 31, 38, .94) 68%);
+}
+
+:is(
+  .notification-popover,
+  .article-modal,
+  .request-composer,
+  .request-notification-modal,
+  .admin-account-picker,
+  .content-composer,
+  .meal-confirm-dialog,
+  .password-dialog,
+  .delete-account-dialog,
+  .admin-request-delete-dialog
+) {
+  color: var(--ios-text);
+  border-color: var(--ios-border-strong);
+  background: var(--ios-card-raised);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .5);
+}
+
+:is(
+  .notification-popover-head,
+  .article-modal-header,
+  .request-composer-header,
+  .request-notification-header,
+  .admin-picker-head,
+  .content-composer-header
+) {
+  color: var(--ios-text);
+  border-color: var(--ios-border);
+  background: rgba(31, 31, 38, .96);
+}
+
+:is(
+  .article-modal-backdrop,
+  .request-modal-backdrop,
+  .content-composer-backdrop,
+  .meal-confirm-backdrop,
+  .password-dialog-backdrop,
+  .delete-account-backdrop
+) {
+  background: var(--ios-overlay);
+}
+
+:is(
+  .auth-form input,
+  .admin-form input,
+  .admin-form textarea,
+  .admin-form select,
+  .request-field input,
+  .request-field textarea,
+  .request-decision-box textarea,
+  .search-box input,
+  .employee-filter-bar select,
+  .employee-filter-bar input,
+  .department-schedule-control input,
+  select:not([multiple])
+) {
+  color: var(--ios-text);
+  border-color: var(--ios-border-strong);
+  background-color: var(--ios-field);
+}
+
+:is(input, textarea)::placeholder {
+  color: rgba(168, 166, 173, .72);
+}
+
+:is(
+  .lead,
+  .panel-note,
+  .content-meta,
+  .request-time,
+  .employee-muted small,
+  .employee-status-cell small,
+  .access-identity p,
+  .admin-picker-item p,
+  .notification-item p,
+  .notification-item time,
+  .news-card p,
+  .today-menu-head p,
+  .meal-choice-panel p,
+  .meal-choice-panel small
+) {
+  color: var(--ios-muted);
+}
+
+.panel-label,
+.eyebrow,
+.news-read-more {
+  color: #ff8f8f;
+}
+
+.admin-nav button {
+  color: var(--ios-muted);
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.admin-nav button:hover {
+  color: var(--ios-text);
+  border-color: var(--ios-border);
+  background: var(--ios-field);
+}
+
+.admin-nav button.active,
+.primary-button,
+.content-save-button,
+.auth-form button:not(.auth-switch-button) {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f0444c, var(--ios-red));
+  box-shadow: 0 10px 28px rgba(232, 31, 41, .22);
+}
+
+:is(
+  .ghost-button,
+  .notification-button,
+  .employee-actions-row button,
+  .request-modal-close,
+  .content-composer-close
+) {
+  color: var(--ios-text);
+  border-color: var(--ios-border);
+  background: var(--ios-field);
+}
+
+.notification-item.notification-unread {
+  border-color: rgba(232, 31, 41, .28);
+  background: linear-gradient(100deg, rgba(232, 31, 41, .14), rgba(255, 255, 255, .055) 58%);
+  box-shadow: inset 3px 0 0 var(--ios-red);
+}
+
+:where(button, [role='button']):focus-visible,
+:is(input, textarea, select):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px var(--ios-bg),
+    0 0 0 6px rgba(232, 31, 41, .42);
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, .035);
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(232, 31, 41, .58);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(240, 68, 76, .8);
+}
