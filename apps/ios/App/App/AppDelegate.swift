@@ -3000,16 +3000,16 @@ private struct NotificationsView: View {
     private var totalUnread: Int { session.unreadCount + requestNotifications.filter { !$0.read }.count }
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(spacing: 12) {
+            List {
                     HStack {
                         Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
                         if !requestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                     ForEach(requestNotifications) { item in
-                        SwipeDeleteRow(onDelete: { Task { await deleteNotification(item) } }) {
-                          Button { Task { await open(item) } } label: {
+                        Button { Task { await open(item) } } label: {
                           HStack(alignment: .top, spacing: 14) {
                             Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 6) {
@@ -3023,12 +3023,20 @@ private struct NotificationsView: View {
                             Spacer()
                             if !item.read { Circle().fill(AppTheme.red).frame(width: 8, height: 8) }
                           }.padding(16).background(item.read ? AppTheme.card : Color.white.opacity(0.115)).overlay { RoundedRectangle(cornerRadius: 20).stroke(item.read ? Color.clear : notificationColor(item).opacity(0.32)) }.clipShape(RoundedRectangle(cornerRadius: 20))
-                          }.buttonStyle(.plain)
+                        }.buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                Task { await deleteNotification(item) }
+                            } label: {
+                                Label("Xóa", systemImage: "trash.fill")
+                            }
                         }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        SwipeDeleteRow(onDelete: { hideArticle(item) }) {
-                          NavigationLink(destination: ArticleDetailView(item: item)) {
+                        NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 6) {
@@ -3038,12 +3046,27 @@ private struct NotificationsView: View {
                                 }
                                 Spacer(minLength: 0)
                             }.padding(16).background(index < session.unreadCount ? Color.white.opacity(0.115) : AppTheme.card).overlay { RoundedRectangle(cornerRadius: 20).stroke(index < session.unreadCount ? AppTheme.red.opacity(0.3) : Color.clear) }.clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                          }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
+                        }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                hideArticle(item)
+                            } label: {
+                                Label("Xóa", systemImage: "trash.fill")
+                            }
                         }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
-                    if items.isEmpty && requestNotifications.isEmpty { ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash").padding(.top, 70) }
-                }.padding(16)
-            }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
+                    if items.isEmpty && requestNotifications.isEmpty {
+                        ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
                 .onChange(of: session.requestUnreadCount) { _, _ in Task { await loadRequestNotifications() } }
