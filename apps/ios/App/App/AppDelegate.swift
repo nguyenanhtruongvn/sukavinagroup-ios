@@ -3462,6 +3462,7 @@ private struct ProfileView: View {
     @State private var showPasswordChange = false
     @State private var showPasswordChangeLimit = false
     @State private var legalPage: LegalPage?
+    @State private var showSignOutConfirmation = false
 
     var body: some View {
         NavigationView {
@@ -3561,7 +3562,13 @@ private struct ProfileView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     accountSectionTitle("PHIÊN ĐĂNG NHẬP")
-                    Button("Đăng xuất", role: .destructive) { session.signOut() }
+                    Button {
+                        showSignOutConfirmation = true
+                    } label: {
+                        Label("Đăng xuất", systemImage: "rectangle.portrait.and.arrow.right")
+                            .font(.headline)
+                            .foregroundColor(AppTheme.red)
+                    }
                         .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: 52)
                         .background(AppTheme.card)
@@ -3604,6 +3611,12 @@ private struct ProfileView: View {
             Button("Đã hiểu", role: .cancel) {}
         } message: {
             Text("Bạn chỉ được đổi mật khẩu một lần mỗi tháng. Bạn có thể đổi lại từ ngày 01/\(nextPasswordChangeMonth).")
+        }
+        .alert("Xác nhận đăng xuất?", isPresented: $showSignOutConfirmation) {
+            Button("Hủy", role: .cancel) {}
+            Button("Đăng xuất", role: .destructive) { session.signOut() }
+        } message: {
+            Text("Bạn sẽ cần đăng nhập lại để tiếp tục sử dụng Sukavina trên thiết bị này.")
         }
     }
 
@@ -3716,6 +3729,7 @@ private struct NativeLegalView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Đóng") { dismiss() }
                         .fontWeight(.semibold)
+                        .foregroundColor(AppTheme.red)
                 }
             }
         }

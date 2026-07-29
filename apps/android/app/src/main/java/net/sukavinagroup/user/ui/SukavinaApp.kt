@@ -775,6 +775,7 @@ private fun attendanceTitle(status: String) = when (status) {
 @Composable private fun ProfileScreen(state: SessionUiState, session: SessionViewModel) {
     var deleteOpen by remember { mutableStateOf(false) }; var password by remember { mutableStateOf("") }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }; var passwordChangeOpen by remember { mutableStateOf(false) }
     var legalPage by remember { mutableStateOf<LegalPage?>(null) }
+    var signOutConfirmation by remember { mutableStateOf(false) }
     val activity = LocalActivity.current as? MainActivity
     val profile = state.profile
     Column(
@@ -823,7 +824,11 @@ private fun attendanceTitle(status: String) = when (status) {
                 }
             }
         }
-        OutlinedButton(onClick = session::signOut, modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(52.dp)) { Icon(Icons.Default.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
+        OutlinedButton(
+            onClick = { signOutConfirmation = true },
+            modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(52.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
+        ) { Icon(Icons.Default.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
         OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp)) { Icon(Icons.Default.Key, null); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
         if (profile?.protected != true && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
     }
@@ -831,6 +836,24 @@ private fun attendanceTitle(status: String) = when (status) {
     if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
     if (passwordChangeOpen) PasswordChangeDialog(state, session) { passwordChangeOpen = false }
     legalPage?.let { page -> NativeLegalSheet(page) { legalPage = null } }
+    if (signOutConfirmation) AlertDialog(
+        onDismissRequest = { signOutConfirmation = false },
+        icon = { Icon(Icons.Default.Logout, null, tint = MaterialTheme.colorScheme.error) },
+        title = { Text("Xác nhận đăng xuất?") },
+        text = { Text("Bạn sẽ cần đăng nhập lại để tiếp tục sử dụng Sukavina trên thiết bị này.") },
+        confirmButton = {
+            Button(
+                onClick = { signOutConfirmation = false; session.signOut() },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) { Text("Đăng xuất") }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = { signOutConfirmation = false },
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = SukavinaMuted),
+            ) { Text("Hủy") }
+        },
+    )
 }
 
 @Composable private fun NativeLegalSheet(page: LegalPage, dismiss: () -> Unit) {
@@ -869,7 +892,11 @@ private fun attendanceTitle(status: String) = when (status) {
                 LegalSection("Dữ liệu được xử lý", "Tài khoản ứng dụng và dữ liệu không còn cần thiết sẽ bị xóa. Hồ sơ lao động, chấm công hoặc dữ liệu bắt buộc có thể được giữ theo chính sách Công ty và quy định áp dụng.")
                 LegalSection("Lưu ý", "Xóa tài khoản là thao tác không thể hoàn tác. Hãy liên hệ Nhân sự nếu bạn chỉ cần sửa thông tin hồ sơ.")
             }
-            Button(onClick = dismiss, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Đóng", fontWeight = FontWeight.Bold) }
+            Button(
+                onClick = dismiss,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = SukavinaRed, contentColor = Color.White),
+            ) { Text("Đóng", fontWeight = FontWeight.Bold) }
             Spacer(Modifier.height(24.dp))
         }
     }
