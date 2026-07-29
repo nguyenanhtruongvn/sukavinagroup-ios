@@ -2603,7 +2603,7 @@ private struct RequestsView: View {
     @State private var composing = false
     @State private var reviewing: EmployeeRequest?
     @State private var cancelling: EmployeeRequest?
-    @State private var pageOffset: CGFloat = 0
+    @State private var filterIndex = 0
     private var combinedRequests: [EmployeeRequest] {
         var seen = Set<String>()
         return (store.approvals + store.requests)
@@ -2615,47 +2615,30 @@ private struct RequestsView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
-                ScrollView {
-                    VStack(spacing: 16) {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                filterButton("Tất cả", nil)
-                                ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
-                            }
+                VStack(spacing: 10) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            filterButton("Tất cả", nil)
+                            ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
                         }
-                        if visible.isEmpty {
-                            ContentUnavailableView("Chưa có đơn", systemImage: "doc.text", description: Text("Các đơn đã gửi sẽ xuất hiện tại đây."))
-                                .padding(.top, 70)
-                        } else {
-                            LazyVStack(spacing: 12) {
-                                ForEach(visible) { request in
-                                    if store.approvals.contains(where: { $0.id == request.id && $0.status == .pending }) {
-                                        Button { reviewing = request } label: { RequestCard(request: request, canCancel: false, cancel: {}) }.buttonStyle(.plain)
-                                    } else {
-                                        RequestCard(request: request) { cancelling = request }
-                                    }
-                                }
-                            }
+                        .padding(.horizontal, 16)
+                    }
+
+                    TabView(selection: $filterIndex) {
+                        ForEach(filterOptions.indices, id: \.self) { index in
+                            requestPage(filterOptions[index])
+                                .tag(index)
                         }
-                    }.padding(16).padding(.bottom, 82)
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .animation(.easeInOut(duration: 0.22), value: filterIndex)
                 }
-                .offset(x: pageOffset)
-                .contentShape(Rectangle())
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 28)
-                        .onChanged { value in
-                            guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
-                            pageOffset = value.translation.width * 0.82
-                        }
-                        .onEnded { value in
-                            guard abs(value.translation.width) > abs(value.translation.height) * 1.2,
-                                  abs(value.translation.width) > 62 else {
-                                withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) { pageOffset = 0 }
-                                return
-                            }
-                            moveFilter(value.translation.width < 0 ? 1 : -1)
-                        }
-                )
+                .padding(.top, 8)
+                .onChange(of: filterIndex) { _, newIndex in
+                    guard filterOptions.indices.contains(newIndex) else { return }
+                    filter = filterOptions[newIndex]
+                    UISelectionFeedbackGenerator().selectionChanged()
+                }
 
                 Button { composing = true } label: {
                     Image(systemName: "plus")
@@ -2700,27 +2683,52 @@ private struct RequestsView: View {
     }
 
     private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
-        Button(title) { filter = value }.font(.subheadline.bold()).padding(.horizontal, 14).padding(.vertical, 9)
+        Button(title) {
+            guard let index = filterOptions.firstIndex(where: { $0 == value }) else { return }
+            withAnimation(.easeInOut(duration: 0.22)) {
+                filter = value
+                filterIndex = index
+            }
+        }.font(.subheadline.bold()).padding(.horizontal, 14).padding(.vertical, 9)
             .background(filter == value ? AppTheme.red : AppTheme.card)
             .foregroundStyle(filter == value ? Color.white : Color.primary)
             .overlay(Capsule().stroke(filter == value ? Color.clear : Color.primary.opacity(0.12), lineWidth: 1))
             .clipShape(Capsule())
     }
 
-    private func moveFilter(_ direction: Int) {
-        let filters: [EmployeeRequestStatus?] = [nil] + EmployeeRequestStatus.allCases.map(Optional.some)
-        guard let index = filters.firstIndex(where: { $0 == filter }) else { return }
-        let target = min(max(index + direction, 0), filters.count - 1)
-        guard target != index else { return }
-        let width = UIScreen.main.bounds.width
-        let exitOffset = direction > 0 ? -width : width
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        withAnimation(.easeInOut(duration: 0.18)) { pageOffset = exitOffset }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            filter = filters[target]
-            pageOffset = -exitOffset
-            withAnimation(.spring(response: 0.36, dampingFraction: 0.88)) { pageOffset = 0 }
+    private var filterOptions: [EmployeeRequestStatus?] {
+        [nil] + EmployeeRequestStatus.allCases.map(Optional.some)
+    }
+
+    @ViewBuilder private func requestPage(_ status: EmployeeRequestStatus?) -> some View {
+        let requests = status.map { value in combinedRequests.filter { $0.status == value } } ?? combinedRequests
+        ScrollView {
+            if requests.isEmpty {
+                ContentUnavailableView(
+                    "Chưa có đơn",
+                    systemImage: "doc.text",
+                    description: Text("Không có đơn trong trạng thái này.")
+                )
+                .padding(.top, 70)
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(requests) { request in
+                        if store.approvals.contains(where: { $0.id == request.id && $0.status == .pending }) {
+                            Button { reviewing = request } label: {
+                                RequestCard(request: request, canCancel: false, cancel: {})
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            RequestCard(request: request) { cancelling = request }
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 6)
+                .padding(.bottom, 92)
+            }
         }
+        .refreshable { await store.load(session.token) }
     }
 }
 
@@ -3133,25 +3141,29 @@ private struct SwipeDeleteRow<Content: View>: View {
 
             content
                 .offset(x: offset)
-                .gesture(
-                    DragGesture(minimumDistance: 18)
-                        .onChanged { value in
-                            guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                            offset = min(0, max(-260, value.translation.width))
-                        }
-                        .onEnded { value in
-                            if value.translation.width < -165 || value.predictedEndTranslation.width < -250 {
-                                performDelete()
-                            } else if value.translation.width < -42 {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = -88 }
-                            } else {
-                                withAnimation(.snappy(duration: 0.25)) { offset = 0 }
-                            }
-                        }
-                )
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(Rectangle())
+        .highPriorityGesture(swipeGesture, including: .all)
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .onChanged { value in
+                guard value.translation.width < 0,
+                      abs(value.translation.width) > abs(value.translation.height) * 1.05 else { return }
+                offset = max(-260, value.translation.width)
+            }
+            .onEnded { value in
+                if value.translation.width < -165 || value.predictedEndTranslation.width < -250 {
+                    performDelete()
+                } else if value.translation.width < -36 {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = -88 }
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) { offset = 0 }
+                }
+            }
     }
 
     private func performDelete() {
