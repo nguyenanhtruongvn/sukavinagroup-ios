@@ -47,6 +47,7 @@ import java.time.format.FormatStyle
 import java.util.Locale
 
 private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
+private enum class LegalPage { PRIVACY, SUPPORT }
 
 @Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -773,6 +774,7 @@ private fun attendanceTitle(status: String) = when (status) {
 
 @Composable private fun ProfileScreen(state: SessionUiState, session: SessionViewModel) {
     var deleteOpen by remember { mutableStateOf(false) }; var password by remember { mutableStateOf("") }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }; var passwordChangeOpen by remember { mutableStateOf(false) }
+    var legalPage by remember { mutableStateOf<LegalPage?>(null) }
     val activity = LocalActivity.current as? MainActivity
     val profile = state.profile
     Column(
@@ -794,21 +796,21 @@ private fun attendanceTitle(status: String) = when (status) {
                 }
                 HorizontalDivider()
                 TextButton(
-                    onClick = { activity?.openUrl("https://sukavinagroup.net/privacy-policy") },
+                    onClick = { legalPage = LegalPage.PRIVACY },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 ) {
                     Icon(Icons.Default.PrivacyTip, null)
                     Text("Chính sách quyền riêng tư", Modifier.padding(start = 12.dp).weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Start)
-                    Icon(Icons.Default.OpenInNew, null)
+                    Icon(Icons.Default.ChevronRight, null)
                 }
                 HorizontalDivider()
                 TextButton(
-                    onClick = { activity?.openUrl("https://sukavinagroup.net/support") },
+                    onClick = { legalPage = LegalPage.SUPPORT },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 ) {
                     Icon(Icons.Default.SupportAgent, null)
                     Text("Hỗ trợ người dùng", Modifier.padding(start = 12.dp).weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Start)
-                    Icon(Icons.Default.OpenInNew, null)
+                    Icon(Icons.Default.ChevronRight, null)
                 }
                 HorizontalDivider()
                 TextButton(
@@ -828,6 +830,53 @@ private fun attendanceTitle(status: String) = when (status) {
     if (deleteOpen) AlertDialog(onDismissRequest = { deleteOpen = false }, title = { Text("Xóa tài khoản vĩnh viễn?") }, text = { OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { TextButton(onClick = { session.deleteAccount(password); deleteOpen = false }) { Text("Xóa vĩnh viễn", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { deleteOpen = false }) { Text("Hủy") } })
     if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
     if (passwordChangeOpen) PasswordChangeDialog(state, session) { passwordChangeOpen = false }
+    legalPage?.let { page -> NativeLegalSheet(page) { legalPage = null } }
+}
+
+@Composable private fun NativeLegalSheet(page: LegalPage, dismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = dismiss) {
+        Column(
+            Modifier.fillMaxWidth().fillMaxHeight(.92f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Surface(Modifier.size(62.dp), RoundedCornerShape(20.dp), color = SukavinaRed.copy(alpha = .15f)) {
+                Icon(
+                    if (page == LegalPage.PRIVACY) Icons.Default.PrivacyTip else Icons.Default.SupportAgent,
+                    null,
+                    tint = SukavinaRed,
+                    modifier = Modifier.padding(17.dp),
+                )
+            }
+            Text(if (page == LegalPage.PRIVACY) "Chính sách quyền riêng tư" else "Hỗ trợ người dùng", fontSize = 26.sp, fontWeight = FontWeight.Black)
+            Text(
+                if (page == LegalPage.PRIVACY) "Cập nhật lần cuối: 29/07/2026" else "Hỗ trợ dành riêng cho nhân viên Sukavina",
+                color = SukavinaMuted,
+            )
+            if (page == LegalPage.PRIVACY) {
+                LegalSection("Ứng dụng nội bộ", "Sukavina chỉ dành cho nhân viên và người được Công ty ủy quyền. Tài khoản do Công ty tạo, cấp và quản lý; ứng dụng không có đăng ký công khai.")
+                LegalSection("Dữ liệu được xử lý", "Hệ thống xử lý hồ sơ công việc, thông tin liên hệ, chấm công, đơn từ, lựa chọn suất ăn, thông báo và dữ liệu bảo mật cần thiết để vận hành.")
+                LegalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ, camera hoặc micro.")
+                LegalSection("Sinh trắc học", "Sinh trắc học được hệ điều hành xử lý trên thiết bị. Sukavina chỉ nhận kết quả xác thực, không nhận hoặc lưu khuôn mặt, vân tay hay mẫu sinh trắc học.")
+                LegalSection("Lưu trữ và quyền của nhân viên", "Dữ liệu được truyền qua HTTPS và giới hạn truy cập theo tài khoản. Nhân viên có thể yêu cầu xem, sửa hoặc xóa dữ liệu trong phạm vi cho phép; hồ sơ bắt buộc có thể được lưu theo quy định.")
+            } else {
+                LegalSection("Liên hệ hỗ trợ", "Email: group@sukavina.com")
+                LegalSection("Khi báo lỗi", "Vui lòng cung cấp mã nhân viên, mô tả sự cố, thời điểm xảy ra và ảnh chụp màn hình nếu có.")
+                LegalSection("Bảo vệ tài khoản", "Không gửi mật khẩu hoặc mã OTP cho bất kỳ ai, kể cả khi yêu cầu hỗ trợ.")
+                LegalSection("Xóa tài khoản", "Bạn có thể gửi yêu cầu trong tab Tài khoản. Nếu không thể đăng nhập, hãy gửi yêu cầu từ email đã liên kết tới group@sukavina.com.")
+            }
+            Button(onClick = dismiss, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Đóng", fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable private fun LegalSection(title: String, content: String) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text(content, color = SukavinaMuted, lineHeight = 21.sp)
+        }
+    }
 }
 
 @Composable private fun PasswordChangeDialog(state: SessionUiState, session: SessionViewModel, dismiss: () -> Unit) {
