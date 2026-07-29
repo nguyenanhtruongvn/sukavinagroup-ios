@@ -995,17 +995,39 @@ private final class SessionStore: ObservableObject {
         }
     }
 
-    func setBiometricLogin(enabled: Bool) {
+    func setBiometricLogin(enabled: Bool) async {
         if enabled {
             let context = LAContext()
+            context.localizedCancelTitle = "Hủy"
             var evaluationError: NSError?
             guard let employeeCode = profile?.employeeCode,
                   context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &evaluationError),
-                  let token,
-                  BiometricKeychain.save(token: token) else {
+                  let token else {
                 biometricsEnabled = false
                 errorTitle = "Không thể bật sinh trắc học"
                 errorMessage = "Thiết bị chưa thiết lập Face ID/Touch ID hoặc chưa bật mật mã màn hình."
+                return
+            }
+            do {
+                let confirmed = try await context.evaluatePolicy(
+                    .deviceOwnerAuthenticationWithBiometrics,
+                    localizedReason: "Xác nhận bật \(biometricName) để đăng nhập Sukavina"
+                )
+                guard confirmed, BiometricKeychain.save(token: token) else {
+                    biometricsEnabled = false
+                    errorTitle = "Không thể bật sinh trắc học"
+                    errorMessage = "Không thể lưu thông tin đăng nhập sinh trắc học. Vui lòng thử lại."
+                    return
+                }
+            } catch {
+                biometricsEnabled = false
+                errorTitle = "Chưa bật sinh trắc học"
+                if let authenticationError = error as? LAError,
+                   authenticationError.code == .userCancel || authenticationError.code == .appCancel {
+                    errorMessage = "Bạn đã hủy xác nhận. Sinh trắc học vẫn đang tắt."
+                } else {
+                    errorMessage = "Không thể xác nhận \(biometricName). Vui lòng quét lại và thử lần nữa."
+                }
                 return
             }
             BiometricPreferences.enabled = true
@@ -2300,12 +2322,12 @@ private struct ModernAttendanceHistoryView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
               HStack(spacing: 9) {
-                if countStatus("present") > 0 { legend("Đủ công", .green.opacity(0.22)) }
-                if countStatus("late") > 0 { legend("Đi trễ", EmployeeRequestKind.late.color.opacity(0.22)) }
-                if countStatus("early") > 0 { legend("Về sớm", EmployeeRequestKind.early.color.opacity(0.22)) }
-                if countStatus("leave") > 0 { legend("Nghỉ phép", EmployeeRequestKind.leave.color.opacity(0.2)) }
-                if countStatus("absent") > 0 { legend("Vắng", AppTheme.red.opacity(0.2)) }
-                if countStatus("overtime") > 0 { legend("Làm thêm", EmployeeRequestKind.overtime.color.opacity(0.2)) }
+                if countStatus("present") > 0 { legend("Đủ công", .green.opacity(0.34)) }
+                if countStatus("late") > 0 { legend("Đi trễ", EmployeeRequestKind.late.color.opacity(0.34)) }
+                if countStatus("early") > 0 { legend("Về sớm", EmployeeRequestKind.early.color.opacity(0.36)) }
+                if countStatus("leave") > 0 { legend("Nghỉ phép", EmployeeRequestKind.leave.color.opacity(0.32)) }
+                if countStatus("absent") > 0 { legend("Vắng", AppTheme.red.opacity(0.32)) }
+                if countStatus("overtime") > 0 { legend("Làm thêm", EmployeeRequestKind.overtime.color.opacity(0.36)) }
               }
             }
         }
@@ -2385,8 +2407,8 @@ private struct ModernAttendanceHistoryView: View {
         let statuses = dayStatuses(day)
         if statuses.contains("late") && statuses.contains("early") {
             HStack(spacing: 0) {
-                EmployeeRequestKind.late.color.opacity(0.22)
-                EmployeeRequestKind.early.color.opacity(0.22)
+                EmployeeRequestKind.late.color.opacity(0.34)
+                EmployeeRequestKind.early.color.opacity(0.36)
             }
         } else {
             dayColor(statuses.first)
@@ -2394,14 +2416,14 @@ private struct ModernAttendanceHistoryView: View {
     }
     private func dayColor(_ status: String?) -> Color {
         switch status {
-        case "present": return .green.opacity(0.2)
-        case "late": return .orange.opacity(0.2)
-        case "early": return EmployeeRequestKind.early.color.opacity(0.2)
-        case "leave": return EmployeeRequestKind.leave.color.opacity(0.2)
-        case "absent": return AppTheme.red.opacity(0.18)
-        case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.2)
-        case "weekend": return .gray.opacity(0.08)
-        default: return AppTheme.muted.opacity(0.06)
+        case "present": return .green.opacity(0.32)
+        case "late": return .orange.opacity(0.34)
+        case "early": return EmployeeRequestKind.early.color.opacity(0.36)
+        case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
+        case "absent": return AppTheme.red.opacity(0.32)
+        case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
+        case "weekend": return .gray.opacity(0.13)
+        default: return AppTheme.muted.opacity(0.1)
         }
     }
     private func statusTitle(_ status: String?) -> String {
@@ -2527,8 +2549,8 @@ private enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .leave: return .blue
         case .late: return .orange
-        case .early: return .purple
-        case .overtime: return .indigo
+        case .early: return Color(red: 0.9, green: 0.22, blue: 0.52)
+        case .overtime: return Color(red: 0.32, green: 0.4, blue: 0.96)
         case .business: return .teal
         }
     }
@@ -3485,7 +3507,9 @@ private struct ProfileView: View {
                         Spacer(minLength: 8)
                         Toggle("", isOn: Binding(
                             get: { session.biometricsEnabled },
-                            set: { session.setBiometricLogin(enabled: $0) }
+                            set: { enabled in
+                                Task { await session.setBiometricLogin(enabled: enabled) }
+                            }
                         ))
                         .labelsHidden()
                         .tint(AppTheme.red)
