@@ -63,11 +63,18 @@ type DepartmentWorkSchedule = {
 
 type AttendanceMonth = {
   month: string;
+  startTime?: string;
+  endTime?: string;
+  department?: string;
   days: Array<{
     date: string;
     checkIn: string | null;
     checkOut: string | null;
     punchCount: number;
+    status?: string;
+    statuses?: string[];
+    startTime?: string;
+    endTime?: string;
     sources: string[];
     punches: Array<{
       id: string;
@@ -85,6 +92,17 @@ const formatAttendanceTime = (value?: string | null) =>
         minute: '2-digit',
       })
     : '--:--';
+
+const attendanceStatusMeta: Record<string, { label: string; color: string }> = {
+  present: { label: 'Đủ công', color: '#43B86B' },
+  late: { label: 'Đi trễ', color: '#FFB34F' },
+  early: { label: 'Về sớm', color: '#C49AFF' },
+  leave: { label: 'Nghỉ phép', color: '#5EA7FF' },
+  absent: { label: 'Vắng', color: '#FF6F67' },
+  overtime: { label: 'Làm thêm', color: '#8C82FF' },
+  weekend: { label: 'Cuối tuần', color: '#9FA6B2' },
+  upcoming: { label: 'Chưa tới', color: '#9FA6B2' },
+};
 
 type PermissionKey =
   | 'content.manage'
@@ -2545,23 +2563,16 @@ function App() {
   const effectiveAttendanceDays =
     attendanceHistory?.month === attendanceMonth ? attendanceHistory.days : [];
   const attendanceByDate = new Map(effectiveAttendanceDays.map((day) => [day.date, day]));
-  const restOrMissingDayCount = Array.from({ length: calendarDayCount }, (_, index) => index + 1)
-    .filter((day) => {
-      const date = `${attendanceMonth}-${String(day).padStart(2, '0')}`;
-      if (attendanceByDate.has(date)) return false;
-      const dayDate = new Date(calendarYear, calendarMonthNumber - 1, day, 23, 59, 59);
-      const isSunday = dayDate.getDay() === 0;
-      const isFuture = dayDate.getTime() > Date.now() && dayDate.toDateString() !== new Date().toDateString();
-      return isSunday || !isFuture;
-    }).length;
-  const workedMinutes = effectiveAttendanceDays.reduce((total, day) => {
-    if (!day.checkIn || !day.checkOut) return total;
-    return total + Math.max(0, Math.round((new Date(day.checkOut).getTime() - new Date(day.checkIn).getTime()) / 60000));
-  }, 0);
+  const attendanceStatuses = (day?: AttendanceMonth['days'][number]) =>
+    day?.statuses?.length ? day.statuses : day?.status ? [day.status] : [];
+  const attendanceSummary = ['present', 'late', 'early', 'leave', 'absent', 'overtime']
+    .map((status) => ({
+      status,
+      count: effectiveAttendanceDays.filter((day) => attendanceStatuses(day).includes(status)).length,
+      ...attendanceStatusMeta[status],
+    }))
+    .filter((item) => item.count > 0);
   const formatMinutes = (minutes: number) => `${Math.floor(minutes / 60)} giờ ${String(minutes % 60).padStart(2, '0')} phút`;
-  const averageMinutes = effectiveAttendanceDays.length
-    ? Math.round(workedMinutes / effectiveAttendanceDays.length)
-    : 0;
   const selectedAttendanceMonthIndex = attendanceMonthOptions.findIndex((option) => option.value === attendanceMonth);
   const showPreviousAttendanceMonth = () => {
     const previous = attendanceMonthOptions[selectedAttendanceMonthIndex + 1];
@@ -3193,10 +3204,12 @@ function App() {
               </nav>
               {attendanceLoading ? <p className="loading">Đang tải bảng công...</p> : null}
               <div className="attendance-summary-grid">
-                <div className="attendance-summary-card"><span>Tổng giờ làm việc</span><strong>{formatMinutes(workedMinutes)}</strong></div>
-                <div className="attendance-summary-card"><span>Số ngày công</span><strong>{effectiveAttendanceDays.length} ngày</strong></div>
-                <div className="attendance-summary-card"><span>Trung bình/ngày</span><strong>{formatMinutes(averageMinutes)}</strong></div>
-                <div className="attendance-summary-card"><span>Nghỉ / chưa ghi nhận</span><strong>{restOrMissingDayCount} ngày</strong></div>
+                {attendanceSummary.map((item) => (
+                  <div className={`attendance-summary-card attendance-summary-${item.status}`} key={item.status}>
+                    <span>{item.label}</span>
+                    <strong style={{ color: item.color }}>{item.count} ngày</strong>
+                  </div>
+                ))}
               </div>
               <div className="attendance-weekdays">
                 {[
@@ -3212,15 +3225,15 @@ function App() {
                   if (!day) return <div className="attendance-day attendance-day-empty" key={`empty-${index}`} />;
                   const date = `${attendanceMonth}-${String(day).padStart(2, '0')}`;
                   const attendanceDay = attendanceByDate.get(date);
+                  const statuses = attendanceStatuses(attendanceDay);
                   const weekdayIndex = index % 7;
                   const isSunday = weekdayIndex === 6;
-                  const dayDate = new Date(calendarYear, calendarMonthNumber - 1, day, 23, 59, 59);
-                  const isFuture = dayDate.getTime() > Date.now() && dayDate.toDateString() !== new Date().toDateString();
-                  const isRestOrMissing = !attendanceDay && (isSunday || !isFuture);
+                  const statusClasses = statuses.map((status) => `attendance-status-${status}`).join(' ');
+                  const statusLabel = statuses.map((status) => attendanceStatusMeta[status]?.label || status).join(' · ');
                   return (
-                    <div className={`attendance-day${isSunday ? ' attendance-day-sunday' : ''}${isRestOrMissing ? ' attendance-day-missing' : ''}${isFuture && !isSunday ? ' attendance-day-future' : ''}`} key={date}>
+                    <div className={`attendance-day${isSunday ? ' attendance-day-sunday' : ''} ${statusClasses}${statuses.includes('late') && statuses.includes('early') ? ' attendance-status-late-early' : ''}`} key={date}>
                       <div className="attendance-day-head"><strong>{day}</strong>{attendanceDay ? <span>{attendanceDay.punchCount} lượt</span> : null}</div>
-                      {attendanceDay ? (
+                      {attendanceDay?.punchCount ? (
                         <>
                           <div className="attendance-time attendance-time-in"><span>Vào</span><strong>{formatAttendanceTime(attendanceDay.checkIn)}</strong></div>
                           <div className="attendance-time attendance-time-out"><span>Ra</span><strong>{formatAttendanceTime(attendanceDay.checkOut)}</strong></div>
@@ -3231,8 +3244,9 @@ function App() {
                           )}</small>
                         </>
                       ) : (
-                        <p>{isSunday ? 'Nghỉ' : isFuture ? 'Chưa tới' : 'Chưa ghi nhận'}</p>
+                        <p>{statusLabel || 'Chưa ghi nhận'}</p>
                       )}
+                      {attendanceDay?.punchCount ? <em className="attendance-status-label">{statusLabel}</em> : null}
                     </div>
                   );
                 })}
