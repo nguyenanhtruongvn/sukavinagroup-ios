@@ -1,6 +1,6 @@
 # Sukavina Store Release Readiness
 
-Last reviewed: 2026-07-24
+Last reviewed: 2026-07-29
 
 ## Technical Status
 
@@ -27,21 +27,42 @@ Last reviewed: 2026-07-24
 The account deletion page must remain accessible without signing in. It explains both
 the in-app deletion flow and how to submit a deletion request outside the app.
 
+## Internal App Positioning
+
+Sukavina is an employee-only app. Accounts are provisioned and administered by
+Sukavina Group; the mobile apps do not offer public self-registration. This does not
+mean the apps can declare "no data collected": employee records and work activity are
+transmitted to and stored on the company server.
+
+Recommended store description:
+
+> Sukavina is an internal workforce application available only to authorized
+> employees. It contains no advertising, does not track users across apps or
+> websites, and does not sell personal data.
+
+Do not state that the app "collects no personal data." Store declarations use the
+technical meaning of collection, which includes linked data transmitted off-device.
+
 ## Data Disclosure Baseline
 
 Store declarations must match the production behavior and privacy policy:
 
-- Name
-- Email address
-- Phone number
-- Employee or user identifier
-- Attendance records
-- Internal request forms and approval history
-- Product interaction and operational security logs
+- Personal information: name, email address, phone number, employee/user identifier.
+- Employment information: department, job title, manager, hire date, contract type,
+  leave balance.
+- Other user content: attendance records, internal requests and approval notes, meal
+  selections, internal notifications and their read state.
+- Product interaction: authentication, security events and minimal operational logs.
 
 The data is linked to the employee account, used for app functionality, security,
-support, and employee communications. The app does not use advertising SDKs and does
-not declare cross-app tracking.
+account management, support, and employee communications. It is required for the
+app's internal functions. The app does not use advertising or analytics SDKs and does
+not declare cross-app tracking, advertising, marketing, location, contacts, photos,
+camera, microphone, health, financial, or purchase data.
+
+Biometric templates are not collected. Face ID, Touch ID, and Android biometric
+matching happen through operating-system APIs on the device; the app receives only
+the authentication result.
 
 ## App Store Connect Checklist
 
@@ -52,6 +73,8 @@ not declare cross-app tracking.
   for App Store submission.
 - Enter the privacy policy and support URLs above.
 - Complete App Privacy answers using the data disclosure baseline.
+- Mark disclosed data as linked to the user, not used for tracking, and used for App
+  Functionality. Use Developer Communications for email where applicable.
 - Complete export compliance, content rights, age rating, and availability questions.
 - Add screenshots and store metadata for supported device sizes.
 - Provide a working reviewer employee account and explain how to reach attendance,
@@ -71,6 +94,9 @@ not declare cross-app tracking.
 - Upload the signed release AAB, not the debug APK.
 - Enter the privacy policy and account deletion URLs above.
 - Complete Data safety using the data disclosure baseline.
+- Mark disclosed data as collected, required, encrypted in transit, not shared for
+  advertising, and used for App functionality and Account management. Operational
+  security events may also use Fraud prevention, security, and compliance.
 - Complete App access with a working reviewer employee account and instructions.
 - Complete content rating, ads declaration, target audience, and store listing.
 - Add phone and tablet screenshots plus the required feature graphic.

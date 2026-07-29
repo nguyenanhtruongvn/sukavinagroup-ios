@@ -339,47 +339,61 @@ function LegalPage({ page }: { page: 'privacy' | 'support' | 'deletion' }) {
       <article className="legal-card">
         <p className="panel-label">{isPrivacy ? 'Quyền riêng tư' : isDeletion ? 'Quyền kiểm soát dữ liệu' : 'Trung tâm hỗ trợ'}</p>
         <h1>{isPrivacy ? 'Chính sách quyền riêng tư' : isDeletion ? 'Yêu cầu xóa tài khoản' : 'Hỗ trợ người dùng'}</h1>
-        <p className="legal-updated">Cập nhật lần cuối: 24/07/2026</p>
+        <p className="legal-updated">Cập nhật lần cuối: 29/07/2026</p>
         {isPrivacy ? (
           <>
             <section>
-              <h2>1. Phạm vi áp dụng</h2>
-              <p>Chính sách này áp dụng cho website và ứng dụng Sukavina Portal, được sử dụng để quản lý tài khoản nhân viên, thông báo nội bộ và thông tin công việc.</p>
+              <h2>1. Ứng dụng nội bộ và phạm vi áp dụng</h2>
+              <p>Sukavina là hệ thống nội bộ dành riêng cho nhân viên và người được Công ty TNHH Sukavina Group ủy quyền. Tài khoản do Công ty tạo, cấp và quản lý; ứng dụng không cung cấp chức năng đăng ký tài khoản công khai.</p>
+              <p>Chính sách này áp dụng cho ứng dụng Sukavina trên iOS, Android, website nhân viên và website quản trị. Công ty là đơn vị chịu trách nhiệm quản lý dữ liệu được xử lý trong hệ thống.</p>
             </section>
             <section>
-              <h2>2. Dữ liệu chúng tôi thu thập</h2>
+              <h2>2. Dữ liệu nội bộ được xử lý</h2>
+              <p>Ứng dụng không thu thập thông tin từ công chúng cho quảng cáo hoặc kinh doanh dữ liệu. Để cung cấp chức năng nội bộ, hệ thống xử lý dữ liệu do Công ty cấp và dữ liệu phát sinh trong quá trình làm việc:</p>
               <div className="privacy-data-grid">
-                <div><strong>Họ và tên</strong><span>Nhận diện và hiển thị hồ sơ nhân viên.</span></div>
-                <div><strong>Địa chỉ Gmail</strong><span>Xác minh tài khoản và gửi thông báo liên quan.</span></div>
-                <div><strong>Số điện thoại</strong><span>Liên hệ và hỗ trợ đăng nhập khi được cung cấp.</span></div>
-                <div><strong>Mã nhân viên</strong><span>Định danh tài khoản trong hệ thống Sukavina.</span></div>
-                <div><strong>Dữ liệu sử dụng</strong><span>Nhật ký truy cập, thao tác và lỗi kỹ thuật phục vụ bảo mật, vận hành.</span></div>
-                <div><strong>Dữ liệu chấm công</strong><span>Thời gian vào, ra và lịch sử chấm công phục vụ quản lý công việc.</span></div>
-                <div><strong>Đơn từ nội bộ</strong><span>Loại đơn, thời gian, lý do và trạng thái phê duyệt.</span></div>
+                <div><strong>Hồ sơ công việc</strong><span>Họ tên, mã nhân viên, phòng ban, chức danh, quản lý, ngày vào làm, loại hợp đồng và số ngày phép.</span></div>
+                <div><strong>Thông tin liên hệ</strong><span>Email và số điện thoại do Công ty lưu để hỗ trợ tài khoản, xác minh và liên lạc nghiệp vụ.</span></div>
+                <div><strong>Dữ liệu chấm công</strong><span>Ngày, giờ vào, giờ ra và trạng thái công để hiển thị lịch sử chấm công.</span></div>
+                <div><strong>Đơn từ và phê duyệt</strong><span>Loại đơn, thời gian, lý do, người xử lý, ghi chú và trạng thái.</span></div>
+                <div><strong>Suất ăn nội bộ</strong><span>Lựa chọn món và trạng thái nhận món trong ngày.</span></div>
+                <div><strong>Nội dung và thông báo</strong><span>Bài viết nội bộ, thông báo được nhận và trạng thái đã đọc.</span></div>
+                <div><strong>Dữ liệu bảo mật</strong><span>Phiên đăng nhập, khóa xác thực, giới hạn đăng nhập và nhật ký lỗi tối thiểu để bảo vệ, vận hành hệ thống.</span></div>
               </div>
             </section>
             <section>
-              <h2>3. Cách sử dụng và chia sẻ dữ liệu</h2>
-              <p>Dữ liệu chỉ được dùng để cung cấp dịch vụ, xác minh danh tính, vận hành nội bộ, hỗ trợ người dùng và bảo vệ hệ thống. Sukavina không bán dữ liệu cá nhân. Dữ liệu chỉ được chia sẻ với nhà cung cấp hạ tầng cần thiết hoặc cơ quan có thẩm quyền khi pháp luật yêu cầu.</p>
+              <h2>3. Mục đích xử lý</h2>
+              <p>Dữ liệu chỉ được dùng để xác thực nhân viên, cung cấp chức năng chấm công, đơn từ, thực đơn, thông báo nội bộ, quản trị nhân sự, hỗ trợ kỹ thuật, phòng chống truy cập trái phép và thực hiện nghĩa vụ của Công ty theo quy định áp dụng.</p>
             </section>
             <section>
-              <h2>4. Lưu trữ và bảo mật</h2>
-              <p>Dữ liệu được lưu trên máy chủ có kiểm soát truy cập, HTTPS, tường lửa và cơ chế giám sát đăng nhập. Dữ liệu được giữ trong thời gian tài khoản hoạt động hoặc lâu hơn khi có nghĩa vụ pháp lý hợp lệ.</p>
+              <h2>4. Không quảng cáo, theo dõi hoặc bán dữ liệu</h2>
+              <p>Sukavina không hiển thị quảng cáo, không sử dụng mã nhận dạng quảng cáo, không theo dõi người dùng giữa các ứng dụng hoặc website và không bán dữ liệu. Ứng dụng không truy cập vị trí, danh bạ, ảnh, camera hoặc micro. Dữ liệu chỉ được chuyển cho nhà cung cấp hạ tầng hoạt động theo chỉ dẫn của Công ty, hoặc cơ quan có thẩm quyền khi có yêu cầu hợp pháp.</p>
             </section>
             <section>
-              <h2>5. Quyền của người dùng</h2>
-              <p>Bạn có thể yêu cầu truy cập, sửa hoặc xóa dữ liệu. Người dùng có thể khởi tạo xóa toàn bộ tài khoản trong khu vực tài khoản sau khi đăng nhập. Một số dữ liệu có thể được giữ lại nếu pháp luật yêu cầu.</p>
+              <h2>5. Sinh trắc học và thông báo thiết bị</h2>
+              <p>Face ID, Touch ID hoặc sinh trắc học Android được hệ điều hành xử lý trên thiết bị. Sukavina chỉ nhận kết quả xác thực thành công hoặc thất bại, không nhận và không lưu khuôn mặt, vân tay hay mẫu sinh trắc học. Quyền thông báo là tùy chọn và có thể thay đổi trong cài đặt thiết bị.</p>
             </section>
             <section>
-              <h2>6. Liên hệ</h2>
+              <h2>6. Lưu trữ và bảo mật</h2>
+              <p>Dữ liệu được truyền qua HTTPS, giới hạn theo quyền tài khoản và lưu trên hệ thống do Công ty kiểm soát. Thông tin xác thực được bảo vệ bằng cơ chế băm hoặc kho bảo mật của hệ điều hành. Dữ liệu được giữ trong thời gian cần thiết cho quan hệ lao động, vận hành, giải quyết tranh chấp và nghĩa vụ lưu trữ theo quy định; dữ liệu không còn cần thiết sẽ được xóa hoặc ẩn danh.</p>
+            </section>
+            <section>
+              <h2>7. Quyền và yêu cầu của nhân viên</h2>
+              <p>Nhân viên có thể yêu cầu xem, sửa, hạn chế xử lý hoặc xóa dữ liệu thuộc phạm vi cho phép. Vì tài khoản do Công ty cấp và có thể gắn với hồ sơ lao động, một số dữ liệu chấm công, đơn từ hoặc hồ sơ bắt buộc có thể tiếp tục được lưu theo quy định ngay cả khi tài khoản ứng dụng bị xóa.</p>
+            </section>
+            <section>
+              <h2>8. Liên hệ</h2>
               <p>Mọi câu hỏi về quyền riêng tư gửi tới <a href="mailto:group@sukavina.com">group@sukavina.com</a>.</p>
             </section>
           </>
         ) : isDeletion ? (
           <>
             <section>
-              <h2>Xóa trực tiếp trong ứng dụng</h2>
-              <p>Mở Sukavina, chọn tab “Tài khoản”, kéo tới “Vùng nguy hiểm” và chọn “Yêu cầu xóa tài khoản”. Sau khi nhập mật khẩu và xác nhận, tài khoản cùng dữ liệu cá nhân liên quan sẽ bị xóa vĩnh viễn.</p>
+              <h2>Tài khoản do Công ty cấp</h2>
+              <p>Sukavina không cho phép đăng ký tài khoản công khai. Tài khoản nhân viên được Công ty tạo và quản lý theo quan hệ công việc. Nhân viên vẫn có thể chủ động gửi yêu cầu xóa tài khoản ứng dụng và dữ liệu liên quan.</p>
+            </section>
+            <section>
+              <h2>Yêu cầu trực tiếp trong ứng dụng</h2>
+              <p>Mở Sukavina, chọn tab “Tài khoản” và chọn “Yêu cầu xóa tài khoản”. Sau bước xác nhận, yêu cầu sẽ xóa tài khoản ứng dụng và dữ liệu có thể xóa theo chính sách của Công ty.</p>
             </section>
             <section>
               <h2>Không thể đăng nhập?</h2>
@@ -391,14 +405,14 @@ function LegalPage({ page }: { page: 'privacy' | 'support' | 'deletion' }) {
             </section>
             <section>
               <h2>Dữ liệu bị xóa và dữ liệu cần lưu giữ</h2>
-              <p>Hồ sơ tài khoản, thông tin liên hệ và dữ liệu liên kết sẽ bị xóa sau khi xác minh yêu cầu. Nếu một phần dữ liệu phải được lưu theo nghĩa vụ pháp lý, bảo mật hoặc phòng chống gian lận, Sukavina sẽ thông báo phạm vi và thời hạn lưu giữ cho người yêu cầu.</p>
+              <p>Thông tin đăng nhập và dữ liệu ứng dụng không còn cần thiết sẽ bị xóa sau khi xác minh yêu cầu. Hồ sơ lao động, chấm công, đơn từ, giao dịch quản trị hoặc dữ liệu cần cho bảo mật và nghĩa vụ pháp lý có thể được giữ trong thời hạn bắt buộc, sau đó được xóa hoặc ẩn danh.</p>
             </section>
           </>
         ) : (
           <>
             <section>
               <h2>Liên hệ hỗ trợ</h2>
-              <p>Nếu gặp lỗi đăng nhập, xác minh Gmail, thông báo hoặc dữ liệu tài khoản, hãy liên hệ đội ngũ Sukavina.</p>
+              <p>Nếu gặp lỗi đăng nhập, xác minh email, thông báo hoặc dữ liệu tài khoản nội bộ, hãy liên hệ đội ngũ Sukavina.</p>
               <div className="support-contact">
                 <span>Email hỗ trợ</span>
                 <a href="mailto:group@sukavina.com">group@sukavina.com</a>
@@ -406,11 +420,11 @@ function LegalPage({ page }: { page: 'privacy' | 'support' | 'deletion' }) {
             </section>
             <section>
               <h2>Thông tin nên cung cấp</h2>
-              <p>Vui lòng gửi mã nhân viên, mô tả sự cố, thời điểm xảy ra và ảnh chụp màn hình nếu có. Không gửi mật khẩu hoặc mã xác minh Gmail.</p>
+              <p>Vui lòng gửi mã nhân viên, mô tả sự cố, thời điểm xảy ra và ảnh chụp màn hình nếu có. Không gửi mật khẩu hoặc mã OTP.</p>
             </section>
             <section>
               <h2>Quản lý và xóa tài khoản</h2>
-              <p>Sau khi đăng nhập, mở phần “Quyền riêng tư và tài khoản” rồi chọn “Xóa tài khoản”. Bạn cần nhập lại mật khẩu và xác nhận trước khi dữ liệu được xóa vĩnh viễn.</p>
+              <p>Sau khi đăng nhập, mở tab “Tài khoản” rồi chọn “Yêu cầu xóa tài khoản”. Nếu không thể đăng nhập, gửi yêu cầu từ email đã liên kết tới group@sukavina.com.</p>
             </section>
           </>
         )}
@@ -4521,7 +4535,7 @@ function App() {
           <section className="delete-account-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-account-title" onMouseDown={(event) => event.stopPropagation()}>
             <p className="panel-label">Hành động không thể hoàn tác</p>
             <h2 id="delete-account-title">Xóa tài khoản vĩnh viễn</h2>
-            <p>Toàn bộ hồ sơ cá nhân gồm tên, Gmail, số điện thoại và mã nhân viên sẽ bị xóa khỏi hệ thống.</p>
+            <p>Tài khoản ứng dụng và dữ liệu không còn cần thiết sẽ bị xóa. Hồ sơ lao động hoặc dữ liệu bắt buộc lưu giữ vẫn được quản lý theo chính sách của Công ty và quy định áp dụng.</p>
             <label>
               <span>Mật khẩu hiện tại</span>
               <input type="password" autoComplete="current-password" value={deleteAccountForm.password} onChange={(event) => setDeleteAccountForm((current) => ({ ...current, password: event.target.value }))} />
