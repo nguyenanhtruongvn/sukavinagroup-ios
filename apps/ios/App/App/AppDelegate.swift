@@ -2616,12 +2616,20 @@ private struct RequestsView: View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 10) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            filterButton("Tất cả", nil)
-                            ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
+                    ScrollViewReader { proxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                filterButton("Tất cả", nil)
+                                ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
+                            }
+                            .padding(.horizontal, 16)
                         }
-                        .padding(.horizontal, 16)
+                        .onChange(of: filterIndex) { _, newIndex in
+                            guard filterOptions.indices.contains(newIndex) else { return }
+                            withAnimation(.easeInOut(duration: 0.24)) {
+                                proxy.scrollTo(filterID(filterOptions[newIndex]), anchor: .center)
+                            }
+                        }
                     }
 
                     TabView(selection: $filterIndex) {
@@ -2694,6 +2702,11 @@ private struct RequestsView: View {
             .foregroundStyle(filter == value ? Color.white : Color.primary)
             .overlay(Capsule().stroke(filter == value ? Color.clear : Color.primary.opacity(0.12), lineWidth: 1))
             .clipShape(Capsule())
+            .id(filterID(value))
+    }
+
+    private func filterID(_ value: EmployeeRequestStatus?) -> String {
+        value?.rawValue ?? "all"
     }
 
     private var filterOptions: [EmployeeRequestStatus?] {
@@ -3111,6 +3124,7 @@ private struct SwipeDeleteRow<Content: View>: View {
     let onDelete: () -> Void
     let content: Content
     @State private var offset: CGFloat = 0
+    @State private var isSwiping = false
 
     init(onDelete: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.onDelete = onDelete
@@ -3119,12 +3133,15 @@ private struct SwipeDeleteRow<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            LinearGradient(
-                colors: [Color(red: 0.96, green: 0.22, blue: 0.24), Color(red: 0.67, green: 0.04, blue: 0.08)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .overlay(alignment: .trailing) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                LinearGradient(
+                    colors: [Color(red: 0.96, green: 0.22, blue: 0.24), Color(red: 0.67, green: 0.04, blue: 0.08)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: 90)
+                .overlay {
                 Button(action: performDelete) {
                     VStack(spacing: 5) {
                         Image(systemName: "trash.fill").font(.title3.bold())
@@ -3136,11 +3153,13 @@ private struct SwipeDeleteRow<Content: View>: View {
                 .buttonStyle(.plain)
                 .scaleEffect(offset < -35 ? 1 : 0.78)
                 .opacity(offset < -10 ? 1 : 0)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             content
                 .offset(x: offset)
+                .allowsHitTesting(!isSwiping && offset == 0)
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contentShape(Rectangle())
@@ -3150,9 +3169,13 @@ private struct SwipeDeleteRow<Content: View>: View {
     private var swipeGesture: some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .local)
             .onChanged { value in
-                guard value.translation.width < 0,
-                      abs(value.translation.width) > abs(value.translation.height) * 1.05 else { return }
-                offset = max(-260, value.translation.width)
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.05 else { return }
+                isSwiping = true
+                if value.translation.width > 0, offset < 0 {
+                    offset = min(0, -88 + value.translation.width)
+                } else if value.translation.width < 0 {
+                    offset = max(-260, value.translation.width)
+                }
             }
             .onEnded { value in
                 if value.translation.width < -165 || value.predictedEndTranslation.width < -250 {
@@ -3162,11 +3185,13 @@ private struct SwipeDeleteRow<Content: View>: View {
                     withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = -88 }
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) { offset = 0 }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isSwiping = false }
                 }
             }
     }
 
     private func performDelete() {
+        isSwiping = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation(.easeIn(duration: 0.2)) { offset = -UIScreen.main.bounds.width }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { onDelete() }
