@@ -4765,3 +4765,250 @@ select optgroup,
     padding-inline: 1px;
   }
 }
+
+/* High-contrast refinement for the iOS light palette. */
+:root {
+  --ios-bg: #dfe3e9;
+  --ios-border: #c8ced8;
+  --ios-border-strong: #aeb6c3;
+  --ios-text: #151820;
+  --ios-muted: #515866;
+  --muted: var(--ios-muted);
+  color: var(--ios-text);
+  background:
+    radial-gradient(circle at 8% -10%, rgba(232, 31, 41, .11), transparent 28%),
+    linear-gradient(145deg, #eef1f5 0%, var(--ios-bg) 62%, #e5e8ed 100%);
+}
+
+body {
+  color: var(--ios-text);
+  background:
+    radial-gradient(circle at 8% -10%, rgba(232, 31, 41, .11), transparent 28%),
+    linear-gradient(145deg, #eef1f5 0%, var(--ios-bg) 62%, #e5e8ed 100%);
+}
+
+:is(
+  .auth-card,
+  .panel,
+  .admin-nav,
+  .access-card,
+  .employee-form-card,
+  .employee-list-card,
+  .employee-row-modern,
+  .content-item,
+  .news-card,
+  .request-item,
+  .weekly-menu-panel
+) {
+  color: var(--ios-text);
+  border-color: var(--ios-border);
+  background: #fff;
+  box-shadow:
+    0 14px 34px rgba(35, 43, 56, .1),
+    0 1px 2px rgba(35, 43, 56, .08);
+}
+
+:is(
+  .auth-form,
+  .stat-card,
+  .employee-row,
+  .employee-filter-bar,
+  .employee-table-head,
+  .notification-item,
+  .request-notification-meta span,
+  .request-notification-reason,
+  .request-notification-note,
+  .permission-option,
+  .admin-picker-item,
+  .access-empty-state,
+  .meal-choice-panel,
+  .meal-orders-summary
+) {
+  color: var(--ios-text);
+  border-color: #cbd1da;
+  background: #f1f3f6;
+}
+
+.panel-accent,
+.stat-card-primary {
+  border-color: #e6a9ad;
+  background: linear-gradient(145deg, #ffe9ea, #fff 68%);
+}
+
+:is(
+  .lead,
+  .panel-note,
+  .content-meta,
+  .request-time,
+  .employee-muted small,
+  .employee-status-cell small,
+  .access-identity p,
+  .admin-picker-item p,
+  .notification-item p,
+  .notification-item time,
+  .news-card p,
+  .today-menu-head p,
+  .meal-choice-panel p,
+  .meal-choice-panel small
+) {
+  color: #515866;
+}
+
+:is(
+  .auth-form label,
+  .admin-form label,
+  .request-field > span,
+  .request-kind-picker legend,
+  .checkbox-row,
+  .permission-option strong,
+  .notification-item > div,
+  .employee-person h3,
+  .content-item h3,
+  .news-card h3
+) {
+  color: #1b1f28;
+}
+
+:is(
+  .auth-form input,
+  .admin-form input,
+  .admin-form textarea,
+  .admin-form select,
+  .request-field input,
+  .request-field textarea,
+  .request-decision-box textarea,
+  .search-box input,
+  .employee-filter-bar select,
+  .employee-filter-bar input,
+  .department-schedule-control input,
+  select:not([multiple])
+) {
+  color: #151820 !important;
+  border-color: #aeb6c3 !important;
+  background-color: #fff !important;
+  box-shadow:
+    inset 0 1px 2px rgba(35, 43, 56, .06),
+    0 1px 0 rgba(255, 255, 255, .8);
+}
+
+:is(input, textarea)::placeholder {
+  color: #6e7581;
+  opacity: 1;
+}
+
+.admin-nav button {
+  color: #414958;
+  font-weight: 720;
+}
+
+.admin-nav button:hover {
+  color: #151820;
+  border-color: #bcc3ce;
+  background: #e9ecf1;
+}
+
+.admin-nav button.active {
+  color: #fff;
+  border-color: #d91c27;
+  background: linear-gradient(135deg, #f0444c, #d91c27);
+  box-shadow: 0 10px 24px rgba(217, 28, 39, .24);
+}
+
+:is(
+  .ghost-button,
+  .notification-button,
+  .employee-actions-row button,
+  .request-modal-close,
+  .content-composer-close
+) {
+  color: #252a34;
+  border-color: #bfc6d0;
+  background: #e9ecf1;
+}
+
+.notification-item.notification-unread {
+  color: #151820;
+  border-color: #e18b91;
+  background: linear-gradient(100deg, #ffe3e5, #fff 68%);
+  box-shadow: inset 4px 0 0 #e81f29;
+}
+
+.attendance-calendar-modal {
+  border-color: #b7bec9;
+  box-shadow: 0 28px 80px rgba(28, 34, 45, .26);
+}
+
+.attendance-month-nav {
+  border-color: #bdc4cf;
+  background: #e5e8ed;
+}
+
+.attendance-month-nav button {
+  color: #20242c;
+  border: 1px solid #c4cad4;
+  background: #fff;
+}
+
+.attendance-summary-card {
+  border-color: #bfc6d0;
+  background: #fff;
+  box-shadow: 0 5px 14px rgba(35, 43, 56, .09);
+}
+
+.attendance-summary-card span {
+  color: #555d69;
+  font-weight: 750;
+}
+
+.attendance-weekdays strong {
+  border-color: #c1c8d3;
+  background: #dce5f1;
+  color: #15375f;
+}
+
+.attendance-weekdays strong:nth-child(7) {
+  background: #f7d9dc;
+  color: #a71922;
+}
+
+.attendance-calendar-grid {
+  border-color: #bbc3ce;
+  background: #fff;
+}
+
+.attendance-day {
+  border-color: #c3cad4;
+  background: #fff;
+}
+
+.attendance-day-empty,
+.attendance-day-future,
+.attendance-status-weekend,
+.attendance-status-upcoming {
+  background: #e9ecf1;
+}
+
+.attendance-status-present { background: #ccefd8; }
+.attendance-status-late { background: #ffe3b2; }
+.attendance-status-early { background: #e5d2ff; }
+.attendance-status-leave { background: #cfe2ff; }
+.attendance-status-absent,
+.attendance-day-missing { background: #ffd0ce; }
+.attendance-status-overtime { background: #d9d5ff; }
+.attendance-status-late-early {
+  background: linear-gradient(90deg, #ffe3b2 0 50%, #e5d2ff 50% 100%);
+}
+
+.attendance-day-head strong {
+  color: #171b23;
+  font-weight: 850;
+}
+
+.attendance-day-head span,
+.attendance-time span,
+.attendance-status-label {
+  color: #4f5763;
+}
+
+.attendance-time-in strong { color: #168944; }
+.attendance-time-out strong { color: #d52f2a; }
