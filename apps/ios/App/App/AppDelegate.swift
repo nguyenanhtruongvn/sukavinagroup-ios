@@ -2603,6 +2603,7 @@ private struct RequestsView: View {
     @State private var composing = false
     @State private var reviewing: EmployeeRequest?
     @State private var cancelling: EmployeeRequest?
+    @State private var pageOffset: CGFloat = 0
     private var combinedRequests: [EmployeeRequest] {
         var seen = Set<String>()
         return (store.approvals + store.requests)
@@ -2638,12 +2639,20 @@ private struct RequestsView: View {
                         }
                     }.padding(16).padding(.bottom, 82)
                 }
+                .offset(x: pageOffset)
                 .contentShape(Rectangle())
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 28)
+                        .onChanged { value in
+                            guard abs(value.translation.width) > abs(value.translation.height) * 1.2 else { return }
+                            pageOffset = value.translation.width * 0.82
+                        }
                         .onEnded { value in
-                            guard abs(value.translation.width) > abs(value.translation.height) * 1.35,
-                                  abs(value.translation.width) > 65 else { return }
+                            guard abs(value.translation.width) > abs(value.translation.height) * 1.2,
+                                  abs(value.translation.width) > 62 else {
+                                withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) { pageOffset = 0 }
+                                return
+                            }
                             moveFilter(value.translation.width < 0 ? 1 : -1)
                         }
                 )
@@ -2703,8 +2712,15 @@ private struct RequestsView: View {
         guard let index = filters.firstIndex(where: { $0 == filter }) else { return }
         let target = min(max(index + direction, 0), filters.count - 1)
         guard target != index else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.snappy(duration: 0.3)) { filter = filters[target] }
+        let width = UIScreen.main.bounds.width
+        let exitOffset = direction > 0 ? -width : width
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.18)) { pageOffset = exitOffset }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            filter = filters[target]
+            pageOffset = -exitOffset
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.88)) { pageOffset = 0 }
+        }
     }
 }
 
@@ -3045,13 +3061,13 @@ private struct NotificationsView: View {
 
     private func deleteNotification(_ item: RequestNotification) async {
         guard let token = session.token else { return }
-        let _: UpdateCount? = try? await APIClient.shared.request(
-            "me/requests/notifications/\(item.id)", method: "DELETE", token: token
-        )
         withAnimation(.snappy(duration: 0.28)) {
             requestNotifications.removeAll { $0.id == item.id }
         }
         session.requestUnreadCount = requestNotifications.filter { !$0.read }.count
+        let _: UpdateCount? = try? await APIClient.shared.request(
+            "me/requests/notifications/\(item.id)", method: "DELETE", token: token
+        )
     }
 
     private func hideArticle(_ item: ContentItem) {
@@ -3101,12 +3117,15 @@ private struct SwipeDeleteRow<Content: View>: View {
                 endPoint: .trailing
             )
             .overlay(alignment: .trailing) {
-                VStack(spacing: 5) {
-                    Image(systemName: "trash.fill").font(.title3.bold())
-                    Text("Xóa").font(.caption.bold())
+                Button(action: performDelete) {
+                    VStack(spacing: 5) {
+                        Image(systemName: "trash.fill").font(.title3.bold())
+                        Text("Xóa").font(.caption.bold())
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 88, height: 64)
                 }
-                .foregroundStyle(.white)
-                .frame(width: 86)
+                .buttonStyle(.plain)
                 .scaleEffect(offset < -35 ? 1 : 0.78)
                 .opacity(offset < -10 ? 1 : 0)
             }
@@ -3118,23 +3137,27 @@ private struct SwipeDeleteRow<Content: View>: View {
                     DragGesture(minimumDistance: 18)
                         .onChanged { value in
                             guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                            offset = min(0, max(-96, value.translation.width))
+                            offset = min(0, max(-260, value.translation.width))
                         }
                         .onEnded { value in
-                            guard value.translation.width < -68 else {
+                            if value.translation.width < -165 || value.predictedEndTranslation.width < -250 {
+                                performDelete()
+                            } else if value.translation.width < -42 {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = -88 }
+                            } else {
                                 withAnimation(.snappy(duration: 0.25)) { offset = 0 }
-                                return
-                            }
-                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                            withAnimation(.snappy(duration: 0.2)) { offset = -96 }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                                onDelete()
-                                offset = 0
                             }
                         }
                 )
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func performDelete() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.easeIn(duration: 0.2)) { offset = -UIScreen.main.bounds.width }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { onDelete() }
     }
 }
 
