@@ -3451,6 +3451,7 @@ private struct ProfileView: View {
     private enum LegalPage: String, Identifiable {
         case privacy
         case support
+        case deletion
 
         var id: String { rawValue }
     }
@@ -3545,9 +3546,12 @@ private struct ProfileView: View {
                         }
                         .buttonStyle(.plain)
                         Divider().padding(.leading, 58)
-                        Link(destination: URL(string: "https://sukavinagroup.net/account-deletion")!) {
-                            accountLink(icon: "person.crop.circle.badge.minus", title: "Hướng dẫn xóa tài khoản")
+                        Button {
+                            legalPage = .deletion
+                        } label: {
+                            accountLink(icon: "person.crop.circle.badge.minus", title: "Hướng dẫn xóa tài khoản", opensExternally: false)
                         }
+                        .buttonStyle(.plain)
                         Divider().padding(.leading, 58)
                         Link(destination: URL(string: UIApplication.openNotificationSettingsURLString)!) {
                             accountLink(icon: "bell.badge.fill", title: "Cài đặt thông báo")
@@ -3588,7 +3592,13 @@ private struct ProfileView: View {
             PasswordChangeView().environmentObject(session)
         }
         .sheet(item: $legalPage) { page in
-            NativeLegalView(page: page == .privacy ? .privacy : .support)
+            NativeLegalView(page: {
+                switch page {
+                case .privacy: return .privacy
+                case .support: return .support
+                case .deletion: return .deletion
+                }
+            }())
         }
         .alert("Chưa thể đổi mật khẩu", isPresented: $showPasswordChangeLimit) {
             Button("Đã hiểu", role: .cancel) {}
@@ -3655,6 +3665,7 @@ private struct NativeLegalView: View {
     enum Page {
         case privacy
         case support
+        case deletion
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -3668,13 +3679,13 @@ private struct NativeLegalView: View {
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
                             .fill(AppTheme.red.opacity(0.15))
                             .frame(width: 62, height: 62)
-                        Image(systemName: page == .privacy ? "hand.raised.fill" : "questionmark.bubble.fill")
+                        Image(systemName: page == .privacy ? "hand.raised.fill" : page == .support ? "questionmark.bubble.fill" : "person.crop.circle.badge.minus")
                             .font(.title2)
                             .foregroundColor(AppTheme.red)
                     }
-                    Text(page == .privacy ? "Quyền riêng tư tại Sukavina" : "Chúng tôi có thể hỗ trợ gì?")
+                    Text(page == .privacy ? "Quyền riêng tư tại Sukavina" : page == .support ? "Chúng tôi có thể hỗ trợ gì?" : "Kiểm soát tài khoản của bạn")
                         .font(.title2.bold())
-                    Text(page == .privacy ? "Cập nhật lần cuối: 29/07/2026" : "Hỗ trợ dành riêng cho nhân viên Sukavina")
+                    Text(page == .privacy ? "Cập nhật lần cuối: 29/07/2026" : page == .support ? "Hỗ trợ dành riêng cho nhân viên Sukavina" : "Hướng dẫn dành cho tài khoản nội bộ")
                         .font(.subheadline)
                         .foregroundColor(AppTheme.muted)
 
@@ -3684,17 +3695,22 @@ private struct NativeLegalView: View {
                         legalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi người dùng giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ, camera hoặc micro.")
                         legalSection("Sinh trắc học", "Face ID và Touch ID được xử lý trên thiết bị. Sukavina chỉ nhận kết quả xác thực, không nhận hoặc lưu khuôn mặt, vân tay hay mẫu sinh trắc học.")
                         legalSection("Lưu trữ và quyền của nhân viên", "Dữ liệu được bảo vệ bằng HTTPS và giới hạn truy cập theo tài khoản. Nhân viên có thể yêu cầu xem, sửa hoặc xóa dữ liệu trong phạm vi cho phép; hồ sơ bắt buộc có thể được lưu theo quy định.")
-                    } else {
+                    } else if page == .support {
                         legalSection("Liên hệ hỗ trợ", "Email: group@sukavina.com")
                         legalSection("Khi báo lỗi", "Vui lòng cung cấp mã nhân viên, mô tả sự cố, thời điểm xảy ra và ảnh chụp màn hình nếu có.")
                         legalSection("Bảo vệ tài khoản", "Không gửi mật khẩu hoặc mã OTP cho bất kỳ ai, kể cả khi yêu cầu hỗ trợ.")
                         legalSection("Xóa tài khoản", "Bạn có thể gửi yêu cầu trong tab Tài khoản. Nếu không thể đăng nhập, hãy gửi yêu cầu từ email đã liên kết tới group@sukavina.com.")
+                    } else {
+                        legalSection("Xóa trong ứng dụng", "Quay lại tab Tài khoản, chọn “Yêu cầu xóa tài khoản” ở cuối trang, nhập mật khẩu và xác nhận.")
+                        legalSection("Không thể đăng nhập", "Gửi yêu cầu từ email đã liên kết tới group@sukavina.com. Hãy cung cấp họ tên và mã nhân viên, không gửi mật khẩu hoặc mã OTP.")
+                        legalSection("Dữ liệu được xử lý", "Tài khoản ứng dụng và dữ liệu không còn cần thiết sẽ bị xóa. Hồ sơ lao động, chấm công hoặc dữ liệu bắt buộc có thể được giữ theo chính sách Công ty và quy định áp dụng.")
+                        legalSection("Lưu ý", "Xóa tài khoản là thao tác không thể hoàn tác. Hãy liên hệ Nhân sự nếu bạn chỉ cần sửa thông tin hồ sơ.")
                     }
                 }
                 .padding(22)
             }
             .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle(page == .privacy ? "Chính sách quyền riêng tư" : "Hỗ trợ")
+            .navigationTitle(page == .privacy ? "Chính sách quyền riêng tư" : page == .support ? "Hỗ trợ" : "Xóa tài khoản")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

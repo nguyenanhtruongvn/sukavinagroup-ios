@@ -47,7 +47,7 @@ import java.time.format.FormatStyle
 import java.util.Locale
 
 private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
-private enum class LegalPage { PRIVACY, SUPPORT }
+private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
 
 @Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -814,12 +814,12 @@ private fun attendanceTitle(status: String) = when (status) {
                 }
                 HorizontalDivider()
                 TextButton(
-                    onClick = { activity?.openUrl("https://sukavinagroup.net/account-deletion") },
+                    onClick = { legalPage = LegalPage.DELETION },
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
                 ) {
                     Icon(Icons.Default.ManageAccounts, null)
                     Text("Hướng dẫn xóa tài khoản", Modifier.padding(start = 12.dp).weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Start)
-                    Icon(Icons.Default.OpenInNew, null)
+                    Icon(Icons.Default.ChevronRight, null)
                 }
             }
         }
@@ -841,15 +841,15 @@ private fun attendanceTitle(status: String) = when (status) {
         ) {
             Surface(Modifier.size(62.dp), RoundedCornerShape(20.dp), color = SukavinaRed.copy(alpha = .15f)) {
                 Icon(
-                    if (page == LegalPage.PRIVACY) Icons.Default.PrivacyTip else Icons.Default.SupportAgent,
+                    if (page == LegalPage.PRIVACY) Icons.Default.PrivacyTip else if (page == LegalPage.SUPPORT) Icons.Default.SupportAgent else Icons.Default.ManageAccounts,
                     null,
                     tint = SukavinaRed,
                     modifier = Modifier.padding(17.dp),
                 )
             }
-            Text(if (page == LegalPage.PRIVACY) "Chính sách quyền riêng tư" else "Hỗ trợ người dùng", fontSize = 26.sp, fontWeight = FontWeight.Black)
+            Text(if (page == LegalPage.PRIVACY) "Chính sách quyền riêng tư" else if (page == LegalPage.SUPPORT) "Hỗ trợ người dùng" else "Hướng dẫn xóa tài khoản", fontSize = 26.sp, fontWeight = FontWeight.Black)
             Text(
-                if (page == LegalPage.PRIVACY) "Cập nhật lần cuối: 29/07/2026" else "Hỗ trợ dành riêng cho nhân viên Sukavina",
+                if (page == LegalPage.PRIVACY) "Cập nhật lần cuối: 29/07/2026" else if (page == LegalPage.SUPPORT) "Hỗ trợ dành riêng cho nhân viên Sukavina" else "Hướng dẫn dành cho tài khoản nội bộ",
                 color = SukavinaMuted,
             )
             if (page == LegalPage.PRIVACY) {
@@ -858,11 +858,16 @@ private fun attendanceTitle(status: String) = when (status) {
                 LegalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ, camera hoặc micro.")
                 LegalSection("Sinh trắc học", "Sinh trắc học được hệ điều hành xử lý trên thiết bị. Sukavina chỉ nhận kết quả xác thực, không nhận hoặc lưu khuôn mặt, vân tay hay mẫu sinh trắc học.")
                 LegalSection("Lưu trữ và quyền của nhân viên", "Dữ liệu được truyền qua HTTPS và giới hạn truy cập theo tài khoản. Nhân viên có thể yêu cầu xem, sửa hoặc xóa dữ liệu trong phạm vi cho phép; hồ sơ bắt buộc có thể được lưu theo quy định.")
-            } else {
+            } else if (page == LegalPage.SUPPORT) {
                 LegalSection("Liên hệ hỗ trợ", "Email: group@sukavina.com")
                 LegalSection("Khi báo lỗi", "Vui lòng cung cấp mã nhân viên, mô tả sự cố, thời điểm xảy ra và ảnh chụp màn hình nếu có.")
                 LegalSection("Bảo vệ tài khoản", "Không gửi mật khẩu hoặc mã OTP cho bất kỳ ai, kể cả khi yêu cầu hỗ trợ.")
                 LegalSection("Xóa tài khoản", "Bạn có thể gửi yêu cầu trong tab Tài khoản. Nếu không thể đăng nhập, hãy gửi yêu cầu từ email đã liên kết tới group@sukavina.com.")
+            } else {
+                LegalSection("Xóa trong ứng dụng", "Quay lại tab Tài khoản, chọn “Yêu cầu xóa tài khoản” ở cuối trang, nhập mật khẩu và xác nhận.")
+                LegalSection("Không thể đăng nhập", "Gửi yêu cầu từ email đã liên kết tới group@sukavina.com. Hãy cung cấp họ tên và mã nhân viên, không gửi mật khẩu hoặc mã OTP.")
+                LegalSection("Dữ liệu được xử lý", "Tài khoản ứng dụng và dữ liệu không còn cần thiết sẽ bị xóa. Hồ sơ lao động, chấm công hoặc dữ liệu bắt buộc có thể được giữ theo chính sách Công ty và quy định áp dụng.")
+                LegalSection("Lưu ý", "Xóa tài khoản là thao tác không thể hoàn tác. Hãy liên hệ Nhân sự nếu bạn chỉ cần sửa thông tin hồ sơ.")
             }
             Button(onClick = dismiss, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Đóng", fontWeight = FontWeight.Bold) }
             Spacer(Modifier.height(24.dp))
