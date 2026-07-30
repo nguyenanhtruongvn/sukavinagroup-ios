@@ -4418,6 +4418,262 @@ body {
   background-color: rgba(232, 31, 41, .58);
 }
 
+/* Final admin polish. This block intentionally stays last in the cascade. */
+.admin-layout {
+  --admin-panel-final: #1f1f26;
+  --admin-raised-final: #25252e;
+  --admin-field-final: #2b2b33;
+  --admin-border-final: rgba(255, 255, 255, .1);
+  --admin-muted-final: #aaa8af;
+}
+
+.admin-layout .meal-orders-summary,
+.admin-layout .employee-filter-bar,
+.admin-layout .admin-request-filters,
+.admin-layout .department-schedule-card,
+.admin-layout .access-card {
+  color: #f7f7f8;
+  border-color: var(--admin-border-final);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .018), transparent 55%),
+    var(--admin-raised-final);
+  box-shadow: none;
+}
+
+.admin-layout .meal-orders-summary > header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--admin-border-final);
+}
+
+.admin-layout .meal-orders-summary h3,
+.admin-layout .meal-orders-empty strong,
+.admin-layout .meal-order-employee strong {
+  color: #f7f7f8;
+}
+
+.admin-layout .meal-orders-summary .panel-note,
+.admin-layout .meal-orders-empty p,
+.admin-layout .meal-orders-stats small,
+.admin-layout .meal-order-employee small {
+  color: var(--admin-muted-final);
+}
+
+.admin-layout .meal-orders-stats {
+  flex-wrap: wrap;
+}
+
+.admin-layout .meal-orders-stats span {
+  color: #f7f7f8;
+  border-color: var(--admin-border-final);
+  background: rgba(255, 255, 255, .055);
+}
+
+.admin-layout .meal-orders-stats span.water {
+  border-color: rgba(74, 181, 238, .3);
+  background: rgba(57, 157, 215, .14);
+}
+
+.admin-layout .meal-orders-stats span.vegetarian {
+  border-color: rgba(83, 205, 126, .3);
+  background: rgba(53, 171, 94, .14);
+}
+
+.admin-layout .meal-orders-table {
+  border-color: var(--admin-border-final);
+  background: #1c1c22;
+}
+
+.admin-layout .meal-orders-table-head {
+  color: #b9b7be;
+  border-color: var(--admin-border-final);
+  background: rgba(255, 255, 255, .07);
+}
+
+.admin-layout .meal-orders-row {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .075);
+  background: transparent;
+}
+
+.admin-layout .meal-orders-empty {
+  color: var(--admin-muted-final);
+  border-color: transparent;
+  background: rgba(255, 255, 255, .035);
+}
+
+.admin-layout .employee-filter-bar,
+.admin-layout .admin-request-filters {
+  padding: 12px;
+  border-radius: 16px;
+}
+
+.admin-layout .employee-filter-bar .search-box,
+.admin-layout .admin-request-search {
+  border-color: var(--admin-border-final);
+  background: var(--admin-field-final);
+}
+
+.admin-layout .employee-filter-bar input,
+.admin-layout .admin-request-search input {
+  color: #f7f7f8 !important;
+  background: transparent !important;
+}
+
+/* Avoid Chrome's experimental base-select rendering, which can enlarge arrows. */
+.admin-layout select:not([multiple]) {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  color-scheme: dark;
+  min-height: 42px;
+  padding: 8px 42px 8px 13px !important;
+  color: #f7f7f8 !important;
+  border: 1px solid rgba(255, 255, 255, .13) !important;
+  background-color: var(--admin-field-final) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='8' viewBox='0 0 14 8'%3E%3Cpath d='M2 1.5 7 6.5l5-5' fill='none' stroke='%23ff858b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-position: right 14px center !important;
+  background-size: 14px 8px !important;
+  background-repeat: no-repeat !important;
+  box-shadow: none !important;
+}
+
+.admin-layout select:not([multiple]):hover:not(:disabled) {
+  border-color: rgba(255, 133, 139, .42) !important;
+  background-color: #303039 !important;
+}
+
+.admin-layout select:not([multiple]):focus {
+  border-color: rgba(255, 133, 139, .7) !important;
+  box-shadow: 0 0 0 3px rgba(232, 31, 41, .14) !important;
+}
+
+.admin-layout select:not([multiple]):disabled {
+  color: #b8b6bd !important;
+  border-color: rgba(255, 255, 255, .08) !important;
+  background-color: rgba(255, 255, 255, .045) !important;
+  filter: none;
+  opacity: .78;
+}
+
+.admin-layout select option,
+.admin-layout select optgroup {
+  color: #f7f7f8;
+  background: var(--admin-raised-final);
+}
+
+.admin-layout .department-schedule-card {
+  grid-template-columns: minmax(240px, .62fr) minmax(0, 1.38fr);
+  align-items: start;
+}
+
+.admin-layout .department-schedule-card p,
+.admin-layout .department-schedule-control small {
+  color: var(--admin-muted-final);
+}
+
+.admin-layout .department-schedule-grid > label {
+  color: #f7f7f8;
+  border-color: var(--admin-border-final);
+  background: rgba(12, 12, 16, .22);
+}
+
+.admin-layout .department-schedule-control {
+  grid-template-columns: auto minmax(118px, 1fr) auto minmax(118px, 1fr);
+  gap: 8px;
+}
+
+.admin-layout .department-schedule-control input {
+  min-width: 118px;
+  color: #f7f7f8 !important;
+  border-color: var(--admin-border-final) !important;
+  background: var(--admin-field-final) !important;
+}
+
+.admin-layout .department-schedule-control button {
+  grid-column: 1 / -1;
+  width: fit-content;
+  min-width: 74px;
+  margin-top: 2px;
+  justify-self: end;
+  padding: 8px 18px;
+  background: linear-gradient(135deg, #f0444c, #e81f29);
+}
+
+.admin-layout .access-card {
+  border-radius: 18px;
+}
+
+.admin-layout .access-identity h3,
+.admin-layout .permission-option strong,
+.admin-layout .access-role-row label > span {
+  color: #f7f7f8;
+}
+
+.admin-layout .access-identity p,
+.admin-layout .permission-option small {
+  color: var(--admin-muted-final);
+}
+
+.admin-layout .access-role-row select {
+  width: 100%;
+}
+
+.admin-layout .permission-option {
+  color: #f7f7f8;
+  border-color: var(--admin-border-final);
+  background: rgba(255, 255, 255, .045);
+}
+
+.admin-layout .permission-option input:disabled + span strong {
+  color: #c7c5cb;
+}
+
+.admin-layout .permission-option input:disabled + span small {
+  color: #8f8d95;
+}
+
+.admin-layout .permission-option input:checked {
+  accent-color: #e81f29;
+}
+
+.admin-layout .access-actions button:disabled {
+  color: #b6b3ba;
+  border: 1px solid rgba(255, 255, 255, .075);
+  background: rgba(255, 255, 255, .055);
+  opacity: 1;
+}
+
+@media (max-width: 1180px) {
+  .admin-layout .department-schedule-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .admin-layout .department-schedule-card {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-layout .meal-orders-summary > header {
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-layout .department-schedule-control {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .admin-layout .department-schedule-control button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .admin-layout .meal-orders-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Admin palette lock. Keep every admin surface aligned with the employee portal. */
 .admin-layout {
   --admin-bg: #121217;
@@ -7333,4 +7589,230 @@ textarea::placeholder {
 
 *::-webkit-scrollbar-thumb {
   background-color: rgba(232, 31, 41, .58);
+}
+
+/* Admin fixes must remain after every shared light/dark compatibility layer. */
+.admin-layout .meal-orders-summary,
+.admin-layout .employee-filter-bar,
+.admin-layout .admin-request-filters,
+.admin-layout .department-schedule-card,
+.admin-layout .access-card {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .1);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .018), transparent 55%),
+    #25252e;
+  box-shadow: none;
+}
+
+.admin-layout .meal-orders-summary > header {
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .1);
+}
+
+.admin-layout .meal-orders-summary h3,
+.admin-layout .meal-orders-empty strong,
+.admin-layout .meal-order-employee strong,
+.admin-layout .access-identity h3,
+.admin-layout .permission-option strong,
+.admin-layout .access-role-row label > span {
+  color: #f7f7f8;
+}
+
+.admin-layout .meal-orders-summary .panel-note,
+.admin-layout .meal-orders-empty p,
+.admin-layout .meal-orders-stats small,
+.admin-layout .meal-order-employee small,
+.admin-layout .access-identity p,
+.admin-layout .permission-option small,
+.admin-layout .department-schedule-card p,
+.admin-layout .department-schedule-control small {
+  color: #aaa8af;
+}
+
+.admin-layout .meal-orders-stats {
+  flex-wrap: wrap;
+}
+
+.admin-layout .meal-orders-stats span,
+.admin-layout .permission-option {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .055);
+}
+
+.admin-layout .meal-orders-stats span.water {
+  border-color: rgba(74, 181, 238, .3);
+  background: rgba(57, 157, 215, .14);
+}
+
+.admin-layout .meal-orders-stats span.vegetarian {
+  border-color: rgba(83, 205, 126, .3);
+  background: rgba(53, 171, 94, .14);
+}
+
+.admin-layout .meal-orders-table {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .1);
+  background: #1c1c22;
+}
+
+.admin-layout .meal-orders-table-head {
+  color: #b9b7be;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(255, 255, 255, .07);
+}
+
+.admin-layout .meal-orders-row {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .075);
+  background: transparent;
+}
+
+.admin-layout .meal-orders-empty {
+  color: #aaa8af;
+  border-color: transparent;
+  background: rgba(255, 255, 255, .035);
+}
+
+.admin-layout .employee-filter-bar,
+.admin-layout .admin-request-filters {
+  padding: 12px;
+  border-radius: 16px;
+}
+
+.admin-layout .employee-filter-bar .search-box,
+.admin-layout .admin-request-search {
+  border-color: rgba(255, 255, 255, .1);
+  background: #2b2b33;
+}
+
+.admin-layout .employee-filter-bar input,
+.admin-layout .admin-request-search input {
+  color: #f7f7f8 !important;
+  background: transparent !important;
+}
+
+.admin-layout select:not([multiple]) {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  color-scheme: dark;
+  min-height: 42px;
+  padding: 8px 42px 8px 13px !important;
+  color: #f7f7f8 !important;
+  border: 1px solid rgba(255, 255, 255, .13) !important;
+  background-color: #2b2b33 !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='8' viewBox='0 0 14 8'%3E%3Cpath d='M2 1.5 7 6.5l5-5' fill='none' stroke='%23ff858b' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  background-position: right 14px center !important;
+  background-size: 14px 8px !important;
+  background-repeat: no-repeat !important;
+  box-shadow: none !important;
+}
+
+.admin-layout select:not([multiple]):hover:not(:disabled) {
+  border-color: rgba(255, 133, 139, .42) !important;
+  background-color: #303039 !important;
+}
+
+.admin-layout select:not([multiple]):focus {
+  border-color: rgba(255, 133, 139, .7) !important;
+  box-shadow: 0 0 0 3px rgba(232, 31, 41, .14) !important;
+}
+
+.admin-layout select:not([multiple]):disabled {
+  color: #b8b6bd !important;
+  border-color: rgba(255, 255, 255, .08) !important;
+  background-color: rgba(255, 255, 255, .045) !important;
+  filter: none;
+  opacity: .78;
+}
+
+.admin-layout select option,
+.admin-layout select optgroup {
+  color: #f7f7f8;
+  background: #25252e;
+}
+
+.admin-layout .department-schedule-card {
+  grid-template-columns: minmax(240px, .62fr) minmax(0, 1.38fr);
+  align-items: start;
+}
+
+.admin-layout .department-schedule-grid > label {
+  color: #f7f7f8;
+  border-color: rgba(255, 255, 255, .1);
+  background: rgba(12, 12, 16, .22);
+}
+
+.admin-layout .department-schedule-control {
+  grid-template-columns: auto minmax(118px, 1fr) auto minmax(118px, 1fr);
+  gap: 8px;
+}
+
+.admin-layout .department-schedule-control input {
+  min-width: 118px;
+  color: #f7f7f8 !important;
+  border-color: rgba(255, 255, 255, .1) !important;
+  background: #2b2b33 !important;
+}
+
+.admin-layout .department-schedule-control button {
+  grid-column: 1 / -1;
+  width: fit-content;
+  min-width: 74px;
+  margin-top: 2px;
+  padding: 8px 18px;
+  justify-self: end;
+  background: linear-gradient(135deg, #f0444c, #e81f29);
+}
+
+.admin-layout .permission-option input:disabled + span strong {
+  color: #c7c5cb;
+}
+
+.admin-layout .permission-option input:disabled + span small {
+  color: #8f8d95;
+}
+
+.admin-layout .permission-option input:checked {
+  accent-color: #e81f29;
+}
+
+.admin-layout .access-actions button:disabled {
+  color: #b6b3ba;
+  border: 1px solid rgba(255, 255, 255, .075);
+  background: rgba(255, 255, 255, .055);
+  opacity: 1;
+}
+
+@media (max-width: 1180px) {
+  .admin-layout .department-schedule-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 820px) {
+  .admin-layout .department-schedule-card {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-layout .meal-orders-summary > header {
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-layout .department-schedule-control {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .admin-layout .department-schedule-control button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .admin-layout .meal-orders-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
