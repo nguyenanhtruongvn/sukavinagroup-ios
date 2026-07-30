@@ -9,6 +9,8 @@ import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import net.sukavinagroup.user.data.*
 import okhttp3.Response
@@ -27,6 +29,8 @@ data class SessionUiState(
 )
 
 class SessionViewModel(application: Application) : AndroidViewModel(application) {
+    private enum class RefreshResult { SUCCESS, UNAUTHORIZED, DEFERRED }
+
     private val api = ApiClient()
     private val preferences = EncryptedSharedPreferences.create(
         application, "sukavina-secure-session",
@@ -37,6 +41,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private val _state = MutableStateFlow(SessionUiState())
     val state = _state.asStateFlow()
     private var events: EventSource? = null
+    private var sessionRefreshJob: Job? = null
     private var knownArticles = preferences.getStringSet("known_articles", emptySet()).orEmpty()
     private var hiddenArticles = preferences.getStringSet("hidden_notification_articles", emptySet()).orEmpty()
 
@@ -48,25 +53,56 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private fun restore() = viewModelScope.launch {
         val token = preferences.getString("token", null)
         if (token == null) return@launch update(restoring = false)
-        runCatching { api.get<Profile>("auth/me", token) }
+        _state.value = _state.value.copy(restoring = false, token = token)
+        runCatching {
+            val profile = api.get<Profile>("auth/me", token)
+            if (preferences.getString("refresh_token", null).isNullOrBlank() ||
+                preferences.getString("widget_token", null).isNullOrBlank()
+            ) {
+                val upgraded = api.post<LoginResponse, EmptyBody>("auth/session/upgrade", EmptyBody(), token)
+                saveSession(upgraded)
+                _state.value = _state.value.copy(token = upgraded.accessToken)
+            }
+            profile
+        }
             .onSuccess { profile ->
-                _state.value = _state.value.copy(restoring = false, token = token, profile = profile)
-                refresh(); refreshRequests(); startEvents()
-            }.onFailure { signOut() }
+                _state.value = _state.value.copy(profile = profile, error = null)
+                refresh(); refreshRequests(); startEvents(); startSessionRefresh()
+            }.onFailure { error ->
+                if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
+                    viewModelScope.launch {
+                        when (refreshSession()) {
+                            RefreshResult.SUCCESS -> {
+                                refresh(); refreshRequests(); startEvents(); startSessionRefresh()
+                            }
+                            RefreshResult.UNAUTHORIZED -> signOut()
+                            RefreshResult.DEFERRED -> {
+                                update(restoring = false, error = "Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.")
+                                startSessionRefresh()
+                            }
+                        }
+                    }
+                } else {
+                    update(restoring = false, error = error.message)
+                    startEvents()
+                    startSessionRefresh()
+                }
+            }
     }
 
     fun signIn(loginId: String, password: String) = viewModelScope.launch {
         update(working = true, error = null)
         runCatching { api.post<LoginResponse, LoginBody>("auth/login", LoginBody(loginId.trim(), password)) }
             .onSuccess { response ->
-                preferences.edit().putString("token", response.accessToken).putString("last_login", loginId.trim()).apply()
+                saveSession(response)
+                preferences.edit().putString("last_login", loginId.trim()).apply()
                 _state.value = SessionUiState(
                     restoring = false, token = response.accessToken,
                     profile = Profile(employeeCode = response.user.employeeCode, name = response.user.name,
                         role = response.user.role, accountType = response.user.accountType,
                         permissions = response.user.permissions, protected = response.user.protected),
                 )
-                refresh(); refreshRequests(); startEvents()
+                refresh(); refreshRequests(); startEvents(); startSessionRefresh()
             }.onFailure { update(working = false, error = it.message) }
     }
 
@@ -233,7 +269,8 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun clearError() = update(error = null)
     fun signOut() {
         events?.cancel(); events = null
-        preferences.edit().remove("token").apply()
+        sessionRefreshJob?.cancel(); sessionRefreshJob = null
+        preferences.edit().remove("token").remove("refresh_token").remove("widget_token").apply()
         AttendanceWidgetStore.clear(getApplication())
         _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
     }
@@ -252,6 +289,49 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         })
+    }
+
+    private fun saveSession(response: LoginResponse) {
+        preferences.edit()
+            .putString("token", response.accessToken)
+            .apply {
+                if (response.refreshToken.isNotBlank()) putString("refresh_token", response.refreshToken)
+                if (response.widgetToken.isNotBlank()) putString("widget_token", response.widgetToken)
+            }
+            .apply()
+    }
+
+    private suspend fun refreshSession(): RefreshResult {
+        val refreshToken = preferences.getString("refresh_token", null) ?: return RefreshResult.UNAUTHORIZED
+        return runCatching {
+            api.post<LoginResponse, RefreshSessionBody>("auth/refresh", RefreshSessionBody(refreshToken))
+        }.onSuccess { response ->
+            saveSession(response)
+            _state.value = _state.value.copy(token = response.accessToken, error = null)
+            AttendanceWidgetProvider.renderAll(getApplication())
+        }.fold(
+            onSuccess = { RefreshResult.SUCCESS },
+            onFailure = { error ->
+                if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
+                    RefreshResult.UNAUTHORIZED
+                } else {
+                    RefreshResult.DEFERRED
+                }
+            },
+        )
+    }
+
+    private fun startSessionRefresh() {
+        sessionRefreshJob?.cancel()
+        sessionRefreshJob = viewModelScope.launch {
+            while (isActive) {
+                delay(12 * 60 * 60 * 1000L)
+                if (refreshSession() != RefreshResult.SUCCESS) continue
+                refresh()
+                refreshRequests()
+                startEvents()
+            }
+        }
     }
 
     private fun update(

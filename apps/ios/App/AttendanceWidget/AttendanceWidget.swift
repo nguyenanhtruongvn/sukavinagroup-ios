@@ -29,11 +29,19 @@ private enum WidgetStorage {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 15
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
         request.httpBody = try? JSONEncoder().encode(TokenBody(widgetToken: token))
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.waitsForConnectivity = false
+            configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            configuration.urlCache = nil
+            configuration.timeoutIntervalForRequest = 15
+            configuration.timeoutIntervalForResource = 20
+            let (data, response) = try await URLSession(configuration: configuration).data(for: request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                   let payload = try? JSONDecoder().decode(AttendancePayload.self, from: data) else {
                 return load()

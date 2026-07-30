@@ -462,7 +462,7 @@ private struct RefreshSessionBody: Encodable {
     let refreshToken: String
 }
 
-private struct Profile: Decodable {
+private struct Profile: Codable {
     let id: String
     let employeeCode: String
     let name: String
@@ -472,6 +472,24 @@ private struct Profile: Decodable {
     let protected: Bool
     let email: String?
     let passwordChangedAt: Date?
+}
+
+private enum SessionCache {
+    private static let profileKey = "cached-session-profile-v1"
+
+    static func save(profile: Profile) {
+        guard let data = try? JSONEncoder().encode(profile) else { return }
+        UserDefaults.standard.set(data, forKey: profileKey)
+    }
+
+    static func loadProfile() -> Profile? {
+        guard let data = UserDefaults.standard.data(forKey: profileKey) else { return nil }
+        return try? JSONDecoder().decode(Profile.self, from: data)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: profileKey)
+    }
 }
 
 private struct ContentItem: Decodable, Identifiable {
@@ -817,20 +835,26 @@ private final class SessionStore: ObservableObject {
     private var isMonitoringNetwork = false
     private var lastPathStatus: NWPath.Status?
     private var lastPathWasCellular: Bool?
+    private var foregroundRefreshTask: Task<Void, Never>?
 
     func restore() async {
         startNetworkMonitoring()
         try? await Task.sleep(nanoseconds: 250_000_000)
-        guard KeychainStore.loadToken() != nil || KeychainStore.loadRefreshToken() != nil else {
+        let savedToken = KeychainStore.loadToken()
+        let savedRefreshToken = KeychainStore.loadRefreshToken()
+        guard savedToken != nil || savedRefreshToken != nil else {
             state = .signedOut
             return
         }
+        token = savedToken
+        profile = SessionCache.loadProfile()
+        state = .signedIn
         loadKnownArticles()
         do {
-            if let savedToken = KeychainStore.loadToken() {
-                token = savedToken
+            if let savedToken {
                 do {
                     profile = try await APIClient.shared.request("auth/me", token: savedToken)
+                    if let profile { SessionCache.save(profile: profile) }
                     if KeychainStore.loadRefreshToken() == nil {
                         let upgraded: LoginResponse = try await APIClient.shared.request(
                             "auth/session/upgrade",
@@ -855,8 +879,31 @@ private final class SessionStore: ObservableObject {
         } catch NetworkError.unauthorized {
             signOut()
         } catch {
+            // Keep the locally restored session while offline and retry after reconnection.
             present(error)
             startRealTimeUpdates()
+            startSessionRefresh()
+        }
+    }
+
+    func appBecameActive() {
+        guard state == .signedIn else { return }
+        foregroundRefreshTask?.cancel()
+        foregroundRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.refreshSession()
+            } catch NetworkError.unauthorized {
+                self.signOut()
+                return
+            } catch {
+                ConnectionDiagnostics.record("Foreground session refresh deferred: \(error.localizedDescription)")
+            }
+            guard !Task.isCancelled else { return }
+            await self.refreshProfile()
+            await self.refreshDashboard()
+            self.startRealTimeUpdates()
+            self.startSessionRefresh()
         }
     }
 
@@ -1071,7 +1118,10 @@ private final class SessionStore: ObservableObject {
         eventStreamTask = nil
         sessionRefreshTask?.cancel()
         sessionRefreshTask = nil
+        foregroundRefreshTask?.cancel()
+        foregroundRefreshTask = nil
         KeychainStore.clear()
+        SessionCache.clear()
         token = nil
         profile = nil
         dashboard = nil
@@ -1097,6 +1147,7 @@ private final class SessionStore: ObservableObject {
             email: nil,
             passwordChangedAt: nil
         )
+        if let profile { SessionCache.save(profile: profile) }
     }
 
     private func refreshSession() async throws {
@@ -1224,6 +1275,7 @@ private final class SessionStore: ObservableObject {
         guard let token else { return }
         do {
             profile = try await APIClient.shared.request("auth/me", token: token)
+            if let profile { SessionCache.save(profile: profile) }
         } catch {
             present(error)
         }
@@ -1331,6 +1383,7 @@ private final class SessionStore: ObservableObject {
 }
 
 private struct SukavinaAppView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var session = SessionStore()
 
     var body: some View {
@@ -1365,6 +1418,11 @@ private struct SukavinaAppView: View {
             }
         }
         .task { await session.restore() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                session.appBecameActive()
+            }
+        }
         .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.errorMessage)
     }
 }

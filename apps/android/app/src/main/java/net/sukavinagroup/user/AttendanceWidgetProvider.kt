@@ -15,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.sukavinagroup.user.data.ApiClient
 import net.sukavinagroup.user.data.Dashboard
+import net.sukavinagroup.user.data.WidgetTokenBody
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -35,8 +36,11 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
                 )
-                val token = preferences.getString("token", null) ?: return@runCatching
-                val dashboard = ApiClient().get<Dashboard>("me/dashboard", token)
+                val widgetToken = preferences.getString("widget_token", null) ?: return@runCatching
+                val dashboard = ApiClient().post<Dashboard, WidgetTokenBody>(
+                    "public/widget/attendance",
+                    WidgetTokenBody(widgetToken),
+                )
                 AttendanceWidgetStore.update(context, dashboard)
             }
             renderAll(context)

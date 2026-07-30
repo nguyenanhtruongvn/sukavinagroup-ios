@@ -12,7 +12,14 @@ import kotlinx.serialization.Serializable
     val accountType: String = "EMPLOYEE", val permissions: List<String> = emptyList(),
     val protected: Boolean = false,
 )
-@Serializable data class LoginResponse(val accessToken: String, val user: UserSummary)
+@Serializable data class LoginResponse(
+    val accessToken: String,
+    val refreshToken: String = "",
+    val widgetToken: String = "",
+    val user: UserSummary,
+)
+@Serializable data class RefreshSessionBody(val refreshToken: String)
+@Serializable data class WidgetTokenBody(val widgetToken: String)
 @Serializable data class Profile(
     val id: String = "", val employeeCode: String = "", val name: String = "",
     val role: String = "", val accountType: String = "EMPLOYEE",

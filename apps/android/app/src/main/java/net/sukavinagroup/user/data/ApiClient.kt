@@ -59,7 +59,7 @@ class ApiClient {
                 val text = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
                     val message = runCatching { json.decodeFromString<ApiError>(text).message }.getOrNull()
-                    throw ApiException(message ?: "Yêu cầu không thành công (${response.code})")
+                    throw ApiException(message ?: "Yêu cầu không thành công (${response.code})", response.code)
                 }
                 json.decodeFromString<T>(text)
             }
@@ -77,4 +77,4 @@ class ApiClient {
     }
 }
 
-class ApiException(message: String) : Exception(message)
+class ApiException(message: String, val statusCode: Int? = null) : Exception(message)
