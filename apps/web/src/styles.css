@@ -4418,6 +4418,344 @@ body {
   background-color: rgba(232, 31, 41, .58);
 }
 
+/* Admin palette lock. Keep every admin surface aligned with the employee portal. */
+.admin-layout {
+  --admin-bg: #121217;
+  --admin-panel: #1f1f26;
+  --admin-raised: #25252e;
+  --admin-field: rgba(255, 255, 255, .055);
+  --admin-hover: rgba(255, 255, 255, .085);
+  --admin-border: rgba(255, 255, 255, .1);
+  --admin-border-strong: rgba(255, 255, 255, .16);
+  --admin-text: #f7f7f8;
+  --admin-muted: #aaa8af;
+  --admin-accent: #e81f29;
+  color: var(--admin-text);
+}
+
+.admin-layout .admin-nav,
+.admin-layout .panel,
+.admin-layout .employee-hub,
+.admin-layout .employee-form-card,
+.admin-layout .employee-list-card,
+.admin-layout .access-panel,
+.admin-layout .admin-requests-panel,
+.admin-layout .weekly-menu-panel,
+.admin-layout .content-list {
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .018), transparent 46%),
+    var(--admin-panel);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .22);
+}
+
+.admin-layout .admin-nav {
+  background:
+    radial-gradient(circle at 24% 8%, rgba(232, 31, 41, .12), transparent 34%),
+    var(--admin-panel);
+}
+
+.admin-layout .admin-nav button {
+  color: var(--admin-muted);
+  border-color: transparent;
+  background: transparent;
+}
+
+.admin-layout .admin-nav button:hover {
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+  background: var(--admin-hover);
+}
+
+.admin-layout .admin-nav button.active {
+  color: #fff;
+  border-color: rgba(255, 105, 110, .24);
+  background: linear-gradient(135deg, #f0444c, var(--admin-accent));
+  box-shadow: 0 10px 24px rgba(232, 31, 41, .24);
+}
+
+.admin-layout h1,
+.admin-layout h2,
+.admin-layout h3,
+.admin-layout strong,
+.admin-layout label,
+.admin-layout .employee-name,
+.admin-layout .content-item h3,
+.admin-layout .weekly-menu-day h3 {
+  color: var(--admin-text);
+}
+
+.admin-layout p,
+.admin-layout small,
+.admin-layout .panel-note,
+.admin-layout .employee-muted,
+.admin-layout .content-meta,
+.admin-layout .weekly-menu-meta,
+.admin-layout .access-card small,
+.admin-layout .permission-option small {
+  color: var(--admin-muted);
+}
+
+.admin-layout .panel-label {
+  color: #ff989d;
+}
+
+.admin-layout input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.admin-layout select,
+.admin-layout textarea,
+.admin-layout .editor-source {
+  color: var(--admin-text) !important;
+  border-color: var(--admin-border) !important;
+  background: var(--admin-field) !important;
+  box-shadow: none !important;
+}
+
+.admin-layout input::placeholder,
+.admin-layout textarea::placeholder {
+  color: #77757e;
+  opacity: 1;
+}
+
+.admin-layout input:focus,
+.admin-layout select:focus,
+.admin-layout textarea:focus,
+.admin-layout .editor-source:focus {
+  border-color: rgba(255, 105, 110, .68) !important;
+  box-shadow: 0 0 0 3px rgba(232, 31, 41, .14) !important;
+}
+
+.admin-layout select option {
+  color: var(--admin-text);
+  background: var(--admin-raised);
+}
+
+.admin-layout .stat-card,
+.admin-layout .employee-row,
+.admin-layout .employee-row-modern,
+.admin-layout .access-card,
+.admin-layout .permission-option,
+.admin-layout .content-item,
+.admin-layout .admin-request-row,
+.admin-layout .department-schedule-card,
+.admin-layout .weekly-menu-day,
+.admin-layout .meal-orders-table {
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .038);
+  box-shadow: none;
+}
+
+.admin-layout .stat-card-primary {
+  border-color: rgba(232, 31, 41, .3);
+  background: linear-gradient(145deg, rgba(232, 31, 41, .18), rgba(255, 255, 255, .035));
+}
+
+.admin-layout .employee-row-modern:nth-child(even),
+.admin-layout .admin-request-row:nth-child(even),
+.admin-layout .meal-orders-row:nth-child(odd) {
+  background: rgba(255, 255, 255, .024);
+}
+
+.admin-layout .employee-row:hover,
+.admin-layout .access-card:hover,
+.admin-layout .content-item:hover,
+.admin-layout .admin-request-row:hover,
+.admin-layout .permission-option:hover {
+  border-color: var(--admin-border-strong);
+  background: var(--admin-hover);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .18);
+}
+
+.admin-layout .employee-table-shell,
+.admin-layout .employee-table,
+.admin-layout .admin-request-table,
+.admin-layout .meal-orders-table {
+  border-color: var(--admin-border);
+  background: rgba(10, 10, 14, .18);
+}
+
+.admin-layout .employee-table-head,
+.admin-layout .admin-request-table-head,
+.admin-layout .meal-orders-table-head {
+  color: var(--admin-muted);
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .06);
+}
+
+.admin-layout .employee-filter-bar,
+.admin-layout .employee-toolbar,
+.admin-layout .access-group-head,
+.admin-layout .weekly-menu-header,
+.admin-layout .weekly-menu-meta,
+.admin-layout .admin-requests-head,
+.admin-layout .admin-request-filters,
+.admin-layout .admin-request-pagination,
+.admin-layout .meal-orders-summary {
+  border-color: var(--admin-border);
+}
+
+.admin-layout .employee-tabs,
+.admin-layout .menu-week-switch,
+.admin-layout .admin-request-stats {
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .045);
+}
+
+.admin-layout .employee-tabs button,
+.admin-layout .menu-week-switch button,
+.admin-layout .admin-request-stats button {
+  color: var(--admin-muted);
+  border-color: transparent;
+  background: transparent;
+}
+
+.admin-layout .employee-tabs button:hover,
+.admin-layout .menu-week-switch button:hover:not(:disabled),
+.admin-layout .admin-request-stats button:hover {
+  color: var(--admin-text);
+  background: var(--admin-hover);
+}
+
+.admin-layout .employee-tabs button.is-active,
+.admin-layout .menu-week-switch button.is-active,
+.admin-layout .admin-request-stats button.active {
+  color: #fff;
+  border-color: rgba(255, 105, 110, .28);
+  background: rgba(232, 31, 41, .2);
+}
+
+.admin-layout .ghost-button,
+.admin-layout .employee-actions-row button,
+.admin-layout .menu-edit-button,
+.admin-layout .admin-request-pagination button,
+.admin-layout .editor-toolbar button {
+  color: #f1f0f3;
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .065);
+  box-shadow: none;
+}
+
+.admin-layout .ghost-button:hover:not(:disabled),
+.admin-layout .employee-actions-row button:hover:not(:disabled),
+.admin-layout .menu-edit-button:hover:not(:disabled),
+.admin-layout .admin-request-pagination button:hover:not(:disabled),
+.admin-layout .editor-toolbar button:hover:not(:disabled) {
+  color: #fff;
+  border-color: rgba(255, 105, 110, .36);
+  background: rgba(232, 31, 41, .12);
+  transform: translateY(-1px);
+}
+
+.admin-layout .primary-button,
+.admin-layout .employee-add-button,
+.admin-layout .menu-import-button,
+.admin-layout .menu-save-button,
+.admin-layout .content-save-button {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f0444c, var(--admin-accent));
+  box-shadow: 0 10px 24px rgba(232, 31, 41, .22);
+}
+
+.admin-layout .employee-export-button,
+.admin-layout .employee-import-button {
+  color: #f1f0f3;
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .065);
+}
+
+.admin-layout .employee-department-badge,
+.admin-layout .status-pill {
+  color: #dddbe1;
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .07);
+}
+
+.admin-layout .status-pill.status-on {
+  color: #87dfa4;
+  border-color: rgba(67, 184, 107, .3);
+  background: rgba(67, 184, 107, .14);
+}
+
+.admin-layout .status-pill.status-off {
+  color: #ffb0ad;
+  border-color: rgba(255, 111, 103, .3);
+  background: rgba(255, 111, 103, .13);
+}
+
+.admin-layout .employee-protected-badge {
+  color: #aaa8af;
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .045);
+}
+
+.admin-layout .editor-shell,
+.admin-layout .editor-toolbar,
+.admin-layout .editor-field {
+  border-color: var(--admin-border);
+  background: var(--admin-raised);
+}
+
+.admin-layout .editor-canvas {
+  color: #24242a;
+  border-color: rgba(255, 255, 255, .12);
+  background: #f7f7f5;
+}
+
+.admin-layout .editor-toolbar {
+  background: #1c1c22;
+}
+
+.admin-layout .weekly-menu-day > header,
+.admin-layout .menu-shift,
+.admin-layout .menu-edit-fields,
+.admin-layout .meal-orders-row {
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .035);
+}
+
+.admin-layout .weekly-menu-day.is-sunday {
+  border-color: rgba(232, 31, 41, .28);
+  background: rgba(232, 31, 41, .065);
+}
+
+.admin-layout .access-empty-state,
+.admin-layout .employee-empty-state,
+.admin-layout .admin-request-empty,
+.admin-layout .meal-orders-empty {
+  color: var(--admin-muted);
+  border-color: var(--admin-border);
+  background: rgba(255, 255, 255, .03);
+}
+
+.admin-layout + .article-modal-backdrop .article-modal,
+.admin-layout .article-modal,
+.admin-layout .content-composer,
+.admin-layout .admin-account-picker,
+.admin-layout .password-dialog,
+.admin-layout .admin-request-detail {
+  color: var(--admin-text);
+  border-color: var(--admin-border-strong);
+  background: var(--admin-raised);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, .55);
+}
+
+.admin-layout .content-composer-header,
+.admin-layout .admin-picker-head,
+.admin-layout .password-dialog-head {
+  color: var(--admin-text);
+  border-color: var(--admin-border);
+  background: var(--admin-panel);
+}
+
+@media (max-width: 760px) {
+  .admin-layout .admin-nav,
+  .admin-layout .panel {
+    box-shadow: 0 12px 30px rgba(0, 0, 0, .18);
+  }
+}
+
 .auth-card .auth-form {
   color: #f7f7f8;
   border-color: rgba(255, 255, 255, .1);
