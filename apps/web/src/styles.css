@@ -4674,6 +4674,136 @@ body {
   }
 }
 
+/* High-contrast typography for the admin weekly menu. */
+.admin-layout .weekly-menu-panel {
+  color: #f7f7f8;
+}
+
+.admin-layout .weekly-menu-header h2 {
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .18);
+}
+
+.admin-layout .weekly-menu-header .panel-note {
+  color: #c4c2c9;
+}
+
+.admin-layout .menu-week-switch button {
+  color: #c8c6cd;
+  font-weight: 750;
+}
+
+.admin-layout .menu-week-switch button.is-active {
+  color: #ffffff;
+}
+
+.admin-layout .weekly-menu-meta span {
+  color: #b9b7bf;
+}
+
+.admin-layout .weekly-menu-meta strong {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.admin-layout .weekly-menu-day {
+  color: #f7f7f8;
+}
+
+.admin-layout .weekly-menu-day > header strong {
+  color: #ffffff;
+  font-size: .96rem;
+  font-weight: 850;
+}
+
+.admin-layout .weekly-menu-day > header span,
+.admin-layout .weekly-menu-day > header b {
+  color: #c0bec5;
+  font-weight: 650;
+}
+
+.admin-layout .menu-shift-title {
+  color: #ffffff;
+  font-weight: 850;
+}
+
+.admin-layout .menu-shift-title strong {
+  color: #ffffff;
+}
+
+.admin-layout .menu-shift-lunch .menu-shift-title span {
+  color: #ffd16f;
+}
+
+.admin-layout .menu-shift-overtime .menu-shift-title span {
+  color: #c4adff;
+}
+
+.admin-layout .menu-shift dt {
+  color: #b9b7bf;
+  font-weight: 700;
+}
+
+.admin-layout .menu-shift dd {
+  color: #ffffff;
+  font-weight: 750;
+  line-height: 1.42;
+}
+
+.admin-layout .menu-water-dish span {
+  color: #8ed8ff;
+  font-weight: 800;
+}
+
+.admin-layout .menu-water-dish strong {
+  color: #ffffff;
+  font-weight: 850;
+  line-height: 1.42;
+}
+
+.admin-layout .menu-vegetarian span {
+  color: #83e4a4;
+  font-weight: 800;
+}
+
+.admin-layout .menu-vegetarian p {
+  color: #f4f8f5;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.admin-layout .menu-shift-overtime p {
+  color: #f5f1ff;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.admin-layout .menu-edit-fields label span,
+.admin-layout .menu-overtime-input span {
+  color: #d0ced4;
+  font-weight: 750;
+}
+
+.admin-layout .menu-edit-fields input,
+.admin-layout .menu-overtime-input input {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, .14) !important;
+  background: #2b2b33 !important;
+}
+
+.admin-layout .menu-edit-fields input::placeholder,
+.admin-layout .menu-overtime-input input::placeholder {
+  color: #85838b;
+}
+
+.admin-layout .weekly-menu-empty h3 {
+  color: #ffffff;
+}
+
+.admin-layout .weekly-menu-empty p {
+  color: #bbb9c0;
+}
+
 /* Admin palette lock. Keep every admin surface aligned with the employee portal. */
 .admin-layout {
   --admin-bg: #121217;
@@ -7592,6 +7722,133 @@ textarea::placeholder {
 }
 
 /* Admin fixes must remain after every shared light/dark compatibility layer. */
+/* High-contrast typography for the admin weekly menu. */
+.admin-layout .weekly-menu-panel {
+  color: #f7f7f8;
+}
+
+.admin-layout .weekly-menu-header h2 {
+  color: #ffffff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .18);
+}
+
+.admin-layout .weekly-menu-header .panel-note {
+  color: #c4c2c9;
+}
+
+.admin-layout .menu-week-switch button {
+  color: #c8c6cd;
+  font-weight: 750;
+}
+
+.admin-layout .menu-week-switch button.is-active {
+  color: #ffffff;
+}
+
+.admin-layout .weekly-menu-meta span {
+  color: #b9b7bf;
+}
+
+.admin-layout .weekly-menu-meta strong {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.admin-layout .weekly-menu-day {
+  color: #f7f7f8;
+}
+
+.admin-layout .weekly-menu-day > header strong {
+  color: #ffffff;
+  font-size: .96rem;
+  font-weight: 850;
+}
+
+.admin-layout .weekly-menu-day > header span,
+.admin-layout .weekly-menu-day > header b {
+  color: #c0bec5;
+  font-weight: 650;
+}
+
+.admin-layout .menu-shift-title,
+.admin-layout .menu-shift-title strong {
+  color: #ffffff;
+  font-weight: 850;
+}
+
+.admin-layout .menu-shift-lunch .menu-shift-title span {
+  color: #ffd16f;
+}
+
+.admin-layout .menu-shift-overtime .menu-shift-title span {
+  color: #c4adff;
+}
+
+.admin-layout .menu-shift dt {
+  color: #b9b7bf;
+  font-weight: 700;
+}
+
+.admin-layout .menu-shift dd {
+  color: #ffffff;
+  font-weight: 750;
+  line-height: 1.42;
+}
+
+.admin-layout .menu-water-dish span {
+  color: #8ed8ff;
+  font-weight: 800;
+}
+
+.admin-layout .menu-water-dish strong {
+  color: #ffffff;
+  font-weight: 850;
+  line-height: 1.42;
+}
+
+.admin-layout .menu-vegetarian span {
+  color: #83e4a4;
+  font-weight: 800;
+}
+
+.admin-layout .menu-vegetarian p {
+  color: #f4f8f5;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.admin-layout .menu-shift-overtime p {
+  color: #f5f1ff;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.admin-layout .menu-edit-fields label span,
+.admin-layout .menu-overtime-input span {
+  color: #d0ced4;
+  font-weight: 750;
+}
+
+.admin-layout .menu-edit-fields input,
+.admin-layout .menu-overtime-input input {
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, .14) !important;
+  background: #2b2b33 !important;
+}
+
+.admin-layout .menu-edit-fields input::placeholder,
+.admin-layout .menu-overtime-input input::placeholder {
+  color: #85838b;
+}
+
+.admin-layout .weekly-menu-empty h3 {
+  color: #ffffff;
+}
+
+.admin-layout .weekly-menu-empty p {
+  color: #bbb9c0;
+}
+
 .admin-layout .meal-orders-summary,
 .admin-layout .employee-filter-bar,
 .admin-layout .admin-request-filters,
