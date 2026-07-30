@@ -26,8 +26,8 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    void this.autoApproveExpired();
-    this.timer = setInterval(() => void this.autoApproveExpired(), 60_000);
+    void this.autoRejectExpired();
+    this.timer = setInterval(() => void this.autoRejectExpired(), 60_000);
   }
 
   onModuleDestroy() {
@@ -35,7 +35,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async list(employeeId: string) {
-    await this.autoApproveExpired();
+    await this.autoRejectExpired();
     return this.prisma.employeeRequest.findMany({
       where: { employeeId }, orderBy: { createdAt: 'desc' }, take: 100,
     });
@@ -43,7 +43,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
 
   async adminList(user: AuthUser) {
     assertPermission(user, 'requests.view');
-    await this.autoApproveExpired();
+    await this.autoRejectExpired();
     return this.prisma.employeeRequest.findMany({
       include: {
         employee: {
@@ -75,7 +75,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async approvals(managerEmployeeId: string) {
-    await this.autoApproveExpired();
+    await this.autoRejectExpired();
     return this.prisma.employeeRequest.findMany({
       where: { managerEmployeeId },
       include: { employee: { select: { fullName: true, employeeCode: true } } },
@@ -168,7 +168,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async decide(managerEmployeeId: string, id: string, input: { status?: string; note?: string }) {
-    await this.autoApproveExpired();
+    await this.autoRejectExpired();
     const status = String(input.status ?? '');
     const note = String(input.note ?? '').trim();
     if (!['approved', 'rejected'].includes(status)) throw new BadRequestException('Quyết định không hợp lệ');
@@ -213,7 +213,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     return cancelled;
   }
 
-  private async autoApproveExpired() {
+  private async autoRejectExpired() {
     const expired = await this.prisma.employeeRequest.findMany({
       where: { status: 'pending', dueAt: { lte: new Date() } }, select: { id: true, employeeId: true }, take: 100,
     });
@@ -221,11 +221,11 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     for (const request of expired) {
       const result = await this.prisma.employeeRequest.updateMany({
         where: { id: request.id, status: 'pending' },
-        data: { status: 'approved', autoApproved: true, decidedAt: new Date(), decisionNote: 'Tự động duyệt sau 4 giờ.' },
+        data: { status: 'rejected', autoApproved: false, decidedAt: new Date(), decisionNote: 'Tự động từ chối sau 4 giờ.' },
       });
       if (result.count) await this.prisma.userNotification.create({ data: {
-        id: randomUUID(), recipientId: request.employeeId, type: 'request_auto_approved', requestId: request.id,
-        title: 'Đơn đã được tự động duyệt', message: 'Đơn chưa được xử lý trong 4 giờ nên hệ thống đã tự động duyệt.',
+        id: randomUUID(), recipientId: request.employeeId, type: 'request_auto_rejected', requestId: request.id,
+        title: 'Đơn đã bị từ chối tự động', message: 'Đơn chưa được xử lý trong 4 giờ nên hệ thống đã tự động từ chối.',
       } });
     }
     this.events.notify('request_changed');
