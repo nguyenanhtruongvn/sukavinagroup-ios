@@ -117,12 +117,7 @@ private struct AttendanceWidgetView: View {
 
     var body: some View {
         ZStack {
-            if renderingMode == .fullColor {
-                widgetArtwork
-                Color.black.opacity(0.18)
-            } else {
-                Color.clear
-            }
+            stripedWhiteBackground
 
             VStack(spacing: 12) {
                 weekStrip
@@ -134,7 +129,7 @@ private struct AttendanceWidgetView: View {
                         tint: Color(red: 0.55, green: 0.90, blue: 0.70)
                     )
                     Rectangle()
-                        .fill(.white.opacity(0.38))
+                        .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.22))
                         .frame(width: 1, height: 54)
                         .padding(.horizontal, 18)
                     timeValue(
@@ -171,6 +166,20 @@ private struct AttendanceWidgetView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        }
+    }
+
+    private var stripedWhiteBackground: some View {
+        ZStack {
+            Color(red: 0.97, green: 0.985, blue: 0.99)
+            HStack(spacing: 7) {
+                ForEach(0..<60, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.09))
+                        .frame(width: 1)
+                }
+            }
+            .padding(.horizontal, 4)
         }
     }
 
@@ -220,14 +229,6 @@ private struct AttendanceWidgetView: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                HStack(spacing: 7) {
-                    ForEach(0..<36, id: \.self) { _ in
-                        Rectangle()
-                            .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.10))
-                            .frame(width: 1)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(Color.white.opacity(0.92), lineWidth: 1)
             }
@@ -263,10 +264,10 @@ private struct AttendanceWidgetView: View {
             Text(title)
                 .font(.caption2.weight(.bold))
                 .tracking(0.7)
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
             Text(value)
                     .font(.title2.monospacedDigit().weight(.semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
                 .minimumScaleFactor(0.75)
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
             }
