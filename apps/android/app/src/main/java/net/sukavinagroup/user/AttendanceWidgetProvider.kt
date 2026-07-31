@@ -96,7 +96,7 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
                     "setBackgroundResource",
                     if (isToday) R.drawable.attendance_widget_today else 0,
                 )
-                views.setTextColor(viewId, if (isToday) Color.rgb(211, 18, 52) else Color.WHITE)
+                views.setTextColor(viewId, if (isToday) Color.WHITE else Color.rgb(35, 45, 54))
             }
         }
     }

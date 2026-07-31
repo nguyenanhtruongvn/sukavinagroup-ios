@@ -35,3 +35,21 @@ cd /opt/projects/sukavina
 docker compose up -d --build
 docker compose ps
 ```
+
+## GitHub to VPS sync
+
+Android Studio and the local development workspace use the GitHub repository as
+the source of truth. The workflow `.github/workflows/sync-vps.yml` pulls `main`
+onto the VPS after every push and rebuilds the Docker stack when a Compose file
+is present.
+
+Configure these GitHub repository secrets before enabling the workflow:
+
+- `VPS_HOST`: VPS IP or hostname
+- `VPS_PORT`: SSH port, normally `22`
+- `VPS_USER`: SSH user, for example `root`
+- `VPS_SSH_PRIVATE_KEY`: private deploy key whose public key is in the VPS user's `authorized_keys`
+- `VPS_PROJECT_DIR`: optional project path; defaults to `/opt/projects/sukavina`
+
+The workflow uses `git pull --ff-only`, so it stops safely if the VPS contains
+local commits or uncommitted changes instead of overwriting them.

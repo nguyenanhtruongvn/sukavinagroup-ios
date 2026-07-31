@@ -180,10 +180,10 @@ private struct AttendanceWidgetView: View {
                 VStack(spacing: 5) {
                     Text(day.label)
                         .font(.caption2.weight(.heavy))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
                     Text(day.number)
                         .font(.caption.monospacedDigit().weight(.medium))
-                        .foregroundStyle(day.isToday && renderingMode != .fullColor ? Color.black.opacity(0.76) : Color.white)
+                        .foregroundStyle(day.isToday ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
                         .frame(width: 27, height: 27)
                         .background {
                             if day.isToday {
@@ -207,7 +207,31 @@ private struct AttendanceWidgetView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background {
+            ZStack {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.96),
+                                Color(red: 0.88, green: 0.93, blue: 0.95).opacity(0.92),
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                HStack(spacing: 7) {
+                    ForEach(0..<36, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.10))
+                            .frame(width: 1)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.white.opacity(0.92), lineWidth: 1)
+            }
+        }
     }
 
     private var weekDays: [WeekDay] {
