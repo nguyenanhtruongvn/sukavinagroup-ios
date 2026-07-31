@@ -36,5 +36,25 @@ jobs:
           VPS_PROJECT_DIR: ${{ secrets.VPS_PROJECT_DIR || '/opt/projects/sukavina' }}
         run: |
           set -euo pipefail
-          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "cd '$VPS_PROJECT_DIR' && git pull --ff-only origin main && if docker compose version >/dev/null 2>&1; then docker compose up -d --build; elif command -v docker-compose >/dev/null 2>&1; then docker-compose up -d --build; fi"
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" bash -s -- "$VPS_PROJECT_DIR" <<'REMOTE'
+          set -euo pipefail
+          project_dir="$1"
+          cd "$project_dir"
+
+          # Keep the VPS-specific compose file and local environment intact.
+          compose_backup="$(mktemp)"
+          trap 'rm -f "$compose_backup"' EXIT
+          cp docker-compose.yml "$compose_backup"
+          git checkout -- docker-compose.yml
+          git pull --ff-only origin main
+          cp "$compose_backup" docker-compose.yml
+
+          if docker compose version >/dev/null 2>&1; then
+            docker compose up -d --build
+          elif command -v docker-compose >/dev/null 2>&1; then
+            docker-compose up -d --build
+          else
+            echo "Docker Compose is not installed" >&2
+            exit 1
+          fi
+          REMOTE
