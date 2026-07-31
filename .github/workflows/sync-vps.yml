@@ -37,4 +37,4 @@ jobs:
         run: |
           set -euo pipefail
           ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "cd '$VPS_PROJECT_DIR' && git pull --ff-only origin main && if [ -f docker-compose.yml ] || [ -f compose.yml ]; then docker compose up -d --build; fi"
+            "cd '$VPS_PROJECT_DIR' && git pull --ff-only origin main && if docker compose version >/dev/null 2>&1; then docker compose up -d --build; elif command -v docker-compose >/dev/null 2>&1; then docker-compose up -d --build; fi"
