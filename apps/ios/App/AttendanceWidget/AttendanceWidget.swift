@@ -106,6 +106,7 @@ private struct AttendanceProvider: TimelineProvider {
 private struct AttendanceWidgetView: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
     @Environment(\.widgetFamily) private var widgetFamily
+    @Environment(\.showsWidgetContainerBackground) private var showsWidgetContainerBackground
 
     let entry: AttendanceEntry
 
@@ -125,7 +126,6 @@ private struct AttendanceWidgetView: View {
 
     var body: some View {
         ZStack {
-            stripedWhiteBackground
             if widgetFamily == .systemLarge {
                 largeLayout
             } else {
@@ -135,7 +135,7 @@ private struct AttendanceWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .containerBackground(for: .widget) {
-            Color.clear
+            stripedWhiteBackground
         }
     }
 
@@ -264,19 +264,21 @@ private struct AttendanceWidgetView: View {
         .clipped()
         .background {
             ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.96),
-                                Color(red: 0.88, green: 0.93, blue: 0.95).opacity(0.92),
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                if showsWidgetContainerBackground {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.96),
+                                    Color(red: 0.88, green: 0.93, blue: 0.95).opacity(0.92),
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.white.opacity(0.92), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.92), lineWidth: 1)
+                }
             }
         }
     }
@@ -322,12 +324,14 @@ private struct AttendanceWidgetView: View {
         }
         .padding(12)
         .background {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.white.opacity(0.82))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.96), lineWidth: 1)
-                }
+            if showsWidgetContainerBackground {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white.opacity(0.82))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(Color.white.opacity(0.96), lineWidth: 1)
+                    }
+            }
         }
     }
 
@@ -423,6 +427,7 @@ private struct SukavinaAttendanceWidget: Widget {
         .description("Xem nhanh giờ vào và giờ ra hôm nay.")
         .supportedFamilies([.systemMedium, .systemLarge])
         .contentMarginsDisabled()
+        .containerBackgroundRemovable(true)
     }
 }
 
