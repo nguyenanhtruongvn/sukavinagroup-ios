@@ -184,49 +184,45 @@ private struct AttendanceWidgetView: View {
     }
 
     private var weekStrip: some View {
-        GeometryReader { proxy in
-            let contentWidth = max(1, proxy.size.width - 24)
-            let columnWidth = contentWidth / 7
-            HStack(spacing: 0) {
-                ForEach(weekDays) { day in
-                    VStack(spacing: 2) {
-                        Text(day.label)
-                            .font(.system(size: 10, weight: .heavy))
-                            .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .frame(width: columnWidth)
-                        Text(day.number)
-                            .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(day.isToday ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.65)
-                            .frame(width: 28, height: 28)
-                            .background {
-                                if day.isToday {
-                                    Circle()
-                                        .fill(
-                                            renderingMode == .fullColor
-                                                ? Color(red: 0.92, green: 0.12, blue: 0.18)
-                                                : Color.white.opacity(0.92)
-                                        )
-                                        .overlay {
-                                            Circle()
-                                                .stroke(Color.white.opacity(0.95), lineWidth: 2)
-                                        }
-                                        .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
-                                }
+        let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 0), count: 7)
+        LazyVGrid(columns: columns, alignment: .center, spacing: 2) {
+            ForEach(weekDays) { day in
+                VStack(spacing: 2) {
+                    Text(day.label)
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(maxWidth: .infinity)
+                    Text(day.number)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(day.isToday ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .frame(width: 28, height: 28)
+                        .background {
+                            if day.isToday {
+                                Circle()
+                                    .fill(
+                                        renderingMode == .fullColor
+                                            ? Color(red: 0.92, green: 0.12, blue: 0.18)
+                                            : Color.white.opacity(0.92)
+                                    )
+                                    .overlay {
+                                        Circle()
+                                            .stroke(Color.white.opacity(0.95), lineWidth: 2)
+                                    }
+                                    .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
                             }
-                    }
-                    .frame(width: columnWidth, height: 44)
+                        }
                 }
+                .frame(maxWidth: .infinity, minHeight: 44, maxHeight: 44)
             }
-            .padding(.vertical, 7)
-            .frame(width: contentWidth, height: 58)
-            .frame(width: proxy.size.width, height: 58)
-            .clipped()
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
         .frame(height: 58)
+        .clipped()
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
