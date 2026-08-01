@@ -186,14 +186,18 @@ private struct AttendanceWidgetView: View {
     private var weekStrip: some View {
         HStack(spacing: 0) {
             ForEach(weekDays) { day in
-                VStack(spacing: 5) {
+                VStack(spacing: 2) {
                     Text(day.label)
-                        .font(.caption2.weight(.heavy))
+                        .font(.system(size: 10, weight: .heavy))
                         .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     Text(day.number)
-                        .font(.caption.monospacedDigit().weight(.medium))
+                        .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(day.isToday ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
-                        .frame(width: 27, height: 27)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                        .frame(width: 30, height: 28)
                         .background {
                             if day.isToday {
                                 Circle()
@@ -213,8 +217,9 @@ private struct AttendanceWidgetView: View {
                 .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 7)
+        .frame(height: 58)
         .frame(maxWidth: .infinity)
         .background {
             ZStack {
