@@ -16,12 +16,40 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 30
     env:
-      APP_VERSION: 2.0.${{ github.run_number }}
       APP_BUILD: ${{ github.run_number }}
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+
+      - name: Select next store-compliant version
+        env:
+          SIDESTORE_SOURCE_URL: https://raw.githubusercontent.com/nguyenanhtruongvn/sukavina-sidestore/main/apps.json
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          with urllib.request.urlopen(os.environ["SIDESTORE_SOURCE_URL"]) as response:
+              source = json.load(response)
+          current = source["apps"][0]["versions"][0]["version"]
+          major, minor, patch = (int(part) for part in current.split("."))
+          if patch >= 99:
+              patch = 1
+              if minor >= 99:
+                  major += 1
+                  minor = 0
+              else:
+                  minor += 1
+          else:
+              patch += 1
+          version = f"{major}.{minor}.{patch}"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              env_file.write(f"APP_VERSION={version}\n")
+          print(f"Building iOS version {version} after {current}")
+          PY
 
       - name: Build iOS app without code signing
         run: |
