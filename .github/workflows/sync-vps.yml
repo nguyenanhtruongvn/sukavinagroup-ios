@@ -58,7 +58,12 @@ jobs:
           if docker compose version >/dev/null 2>&1; then
             docker compose up -d --build
           elif command -v docker-compose >/dev/null 2>&1; then
-            docker-compose up -d --build
+            # Compose v1 cannot recreate containers from newer Docker images
+            # reliably (KeyError: ContainerConfig). Build first, then replace
+            # only the stateless app containers while keeping Postgres intact.
+            docker-compose build api web
+            docker-compose rm -sf api web
+            docker-compose up -d
           else
             echo "Docker Compose is not installed" >&2
             exit 1
