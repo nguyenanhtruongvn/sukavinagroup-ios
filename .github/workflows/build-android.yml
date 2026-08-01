@@ -45,7 +45,7 @@ jobs:
         run: |
           gradle --no-daemon \
             -PversionCode="${GITHUB_RUN_NUMBER}" \
-            -PversionName="1.0.${GITHUB_RUN_NUMBER}" \
+            -PversionName="2.0.${GITHUB_RUN_NUMBER}" \
             lintDebug assembleDebug lintRelease bundleRelease
 
       - uses: actions/upload-artifact@v4

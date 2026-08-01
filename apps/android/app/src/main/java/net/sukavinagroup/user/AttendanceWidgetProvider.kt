@@ -7,6 +7,13 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.Typeface
+import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
+import android.text.style.StyleSpan
 import android.widget.RemoteViews
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -22,6 +29,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
+import java.util.Locale
 
 class AttendanceWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
@@ -48,6 +56,15 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        manager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: Bundle,
+    ) {
+        render(context, manager, intArrayOf(appWidgetId))
+    }
+
     companion object {
         fun renderAll(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
@@ -65,13 +82,74 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
             ids.forEach { id ->
-                val views = RemoteViews(context.packageName, R.layout.attendance_widget)
+                val options = manager.getAppWidgetOptions(id)
+                val isLarge = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) >= 250
+                val views = RemoteViews(
+                    context.packageName,
+                    if (isLarge) R.layout.attendance_widget_large else R.layout.attendance_widget,
+                )
                 views.setOnClickPendingIntent(R.id.widget_root, openApp)
                 views.setTextViewText(R.id.widget_check_in, state.checkIn)
                 views.setTextViewText(R.id.widget_check_out, state.checkOut)
-                bindWeek(views)
+                if (isLarge) bindMonth(views) else bindWeek(views)
                 manager.updateAppWidget(id, views)
             }
+        }
+
+        private fun bindMonth(views: RemoteViews) {
+            val zone = ZoneId.of("Asia/Ho_Chi_Minh")
+            val today = LocalDate.now(zone)
+            val firstDay = today.withDayOfMonth(1)
+            val gridStart = firstDay.minusDays((firstDay.dayOfWeek.value - 1).toLong())
+            val text = StringBuilder()
+            val ranges = mutableListOf<Triple<IntRange, Boolean, Boolean>>()
+            repeat(42) { index ->
+                val date = gridStart.plusDays(index.toLong())
+                val start = text.length
+                text.append(String.format(Locale.US, "%2d", date.dayOfMonth))
+                ranges += Triple(start until text.length, date.month == today.month, date == today)
+                if (index % 7 == 6) {
+                    if (index != 41) text.append('\n')
+                } else {
+                    text.append("  ")
+                }
+            }
+            val calendarText = SpannableString(text.toString())
+            ranges.forEach { (range, isInMonth, isToday) ->
+                if (!isInMonth) {
+                    calendarText.setSpan(
+                        ForegroundColorSpan(Color.rgb(150, 160, 166)),
+                        range.first,
+                        range.last + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+                if (isToday) {
+                    calendarText.setSpan(
+                        BackgroundColorSpan(Color.rgb(233, 32, 45)),
+                        range.first,
+                        range.last + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                    calendarText.setSpan(
+                        ForegroundColorSpan(Color.WHITE),
+                        range.first,
+                        range.last + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                    calendarText.setSpan(
+                        StyleSpan(Typeface.BOLD),
+                        range.first,
+                        range.last + 1,
+                        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                    )
+                }
+            }
+            views.setTextViewText(
+                R.id.widget_month_title,
+                today.format(DateTimeFormatter.ofPattern("'Tháng' M • yyyy", Locale("vi", "VN"))),
+            )
+            views.setTextViewText(R.id.widget_month_grid, calendarText)
         }
 
         private fun bindWeek(views: RemoteViews) {

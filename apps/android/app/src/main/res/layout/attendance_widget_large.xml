@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/attendance_widget_background"
+    android:orientation="vertical"
+    android:padding="10dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:background="@drawable/attendance_widget_week"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <TextView
+            android:id="@+id/widget_month_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tháng 8 • 2026"
+            android:textColor="#1F2B33"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:text=" T2   T3   T4   T5   T6   T7   CN"
+            android:textColor="#5A6670"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widget_month_grid"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="4dp"
+            android:layout_weight="1"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:lineSpacingExtra="5dp"
+            android:text=" 27   28   29   30   31    1    2&#10;  3    4    5    6    7    8    9&#10; 10   11   12   13   14   15   16&#10; 17   18   19   20   21   22   23&#10; 24   25   26   27   28   29   30&#10; 31    1    2    3    4    5    6"
+            android:textColor="#1F2B33"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_marginTop="8dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:background="@drawable/attendance_widget_checkin_icon"
+                android:gravity="center"
+                android:text="⇥"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GIỜ VÀO" android:textColor="#5A6670" android:textSize="9sp" android:textStyle="bold" />
+                <TextView android:id="@+id/widget_check_in" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--:--" android:textColor="#1F2B33" android:textSize="22sp" android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <TextView android:layout_width="1dp" android:layout_height="48dp" android:background="#330B2630" android:text="" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:orientation="horizontal">
+            <TextView
+                android:layout_width="30dp"
+                android:layout_height="30dp"
+                android:background="@drawable/attendance_widget_checkout_icon"
+                android:gravity="center"
+                android:text="⇤"
+                android:textColor="#FFFFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:orientation="vertical">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="GIỜ RA" android:textColor="#5A6670" android:textSize="9sp" android:textStyle="bold" />
+                <TextView android:id="@+id/widget_check_out" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="--:--" android:textColor="#1F2B33" android:textSize="22sp" android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
