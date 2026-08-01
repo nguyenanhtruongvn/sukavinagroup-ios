@@ -105,6 +105,7 @@ private struct AttendanceProvider: TimelineProvider {
 
 private struct AttendanceWidgetView: View {
     @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.widgetFamily) private var widgetFamily
 
     let entry: AttendanceEntry
 
@@ -115,38 +116,66 @@ private struct AttendanceWidgetView: View {
         let isToday: Bool
     }
 
+    private struct MonthDay: Identifiable {
+        let id: Int
+        let number: String
+        let isInMonth: Bool
+        let isToday: Bool
+    }
+
     var body: some View {
         ZStack {
             stripedWhiteBackground
-
-            VStack(spacing: 8) {
-                weekStrip
-                HStack(spacing: 8) {
-                    timeValue(
-                        title: "GIỜ VÀO",
-                        value: timeLabel(entry.state?.checkIn),
-                        symbol: "arrow.right.to.line",
-                        tint: Color(red: 0.55, green: 0.90, blue: 0.70)
-                    )
-                    Rectangle()
-                        .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.22))
-                        .frame(width: 1, height: 48)
-                    timeValue(
-                        title: "GIỜ RA",
-                        value: timeLabel(entry.state?.checkOut),
-                        symbol: "arrow.left.to.line",
-                        tint: Color(red: 1.00, green: 0.52, blue: 0.55)
-                    )
-                }
-                .frame(height: 54)
+            if widgetFamily == .systemLarge {
+                largeLayout
+            } else {
+                mediumLayout
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .containerBackground(for: .widget) {
             Color.clear
+        }
+    }
+
+    private var mediumLayout: some View {
+        VStack(spacing: 6) {
+            weekStrip
+            attendanceTimes
+                .frame(maxHeight: .infinity)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+    }
+
+    private var largeLayout: some View {
+        VStack(spacing: 8) {
+            monthCalendar
+                .frame(maxHeight: .infinity)
+            attendanceTimes
+                .frame(height: 58)
+        }
+        .padding(12)
+    }
+
+    private var attendanceTimes: some View {
+        HStack(spacing: 8) {
+            timeValue(
+                title: "GIỜ VÀO",
+                value: timeLabel(entry.state?.checkIn),
+                symbol: "arrow.right.to.line",
+                tint: Color(red: 0.55, green: 0.90, blue: 0.70)
+            )
+            Rectangle()
+                .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.22))
+                .frame(width: 1, height: 48)
+            timeValue(
+                title: "GIỜ RA",
+                value: timeLabel(entry.state?.checkOut),
+                symbol: "arrow.left.to.line",
+                tint: Color(red: 1.00, green: 0.52, blue: 0.55)
+            )
         }
     }
 
@@ -252,6 +281,84 @@ private struct AttendanceWidgetView: View {
         }
     }
 
+    private var monthCalendar: some View {
+        VStack(spacing: 6) {
+            Text(monthTitle)
+                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            LazyVGrid(
+                columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 0), count: 7),
+                spacing: 4
+            ) {
+                ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) { label in
+                    Text(label)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
+                        .frame(maxWidth: .infinity, minHeight: 18)
+                }
+                ForEach(monthDays) { day in
+                    Text(day.number)
+                        .font(.system(size: 13, weight: day.isToday ? .bold : .medium, design: .rounded).monospacedDigit())
+                        .foregroundStyle(
+                            day.isToday
+                                ? Color.white
+                                : Color(red: 0.12, green: 0.16, blue: 0.20).opacity(day.isInMonth ? 1 : 0.28)
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .background {
+                            if day.isToday {
+                                Circle()
+                                    .fill(Color(red: 0.92, green: 0.12, blue: 0.18))
+                                    .frame(width: 28, height: 28)
+                                    .overlay {
+                                        Circle().stroke(Color.white.opacity(0.95), lineWidth: 1.5)
+                                    }
+                            }
+                        }
+                }
+            }
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color.white.opacity(0.82))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(Color.white.opacity(0.96), lineWidth: 1)
+                }
+        }
+    }
+
+    private var monthTitle: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = "'Tháng' M • yyyy"
+        return formatter.string(from: entry.date)
+    }
+
+    private var monthDays: [MonthDay] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "vi_VN")
+        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let today = calendar.startOfDay(for: entry.date)
+        let components = calendar.dateComponents([.year, .month], from: today)
+        guard let firstDay = calendar.date(from: components) else { return [] }
+        let mondayOffset = (calendar.component(.weekday, from: firstDay) + 5) % 7
+        guard let gridStart = calendar.date(byAdding: .day, value: -mondayOffset, to: firstDay) else { return [] }
+        return (0..<42).compactMap { index in
+            guard let date = calendar.date(byAdding: .day, value: index, to: gridStart) else { return nil }
+            return MonthDay(
+                id: index,
+                number: String(calendar.component(.day, from: date)),
+                isInMonth: calendar.isDate(date, equalTo: firstDay, toGranularity: .month),
+                isToday: calendar.isDate(date, inSameDayAs: today)
+            )
+        }
+    }
+
     private var weekDays: [WeekDay] {
         var calendar = Calendar(identifier: .iso8601)
         calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
@@ -314,7 +421,7 @@ private struct SukavinaAttendanceWidget: Widget {
         }
         .configurationDisplayName("Chấm công hôm nay")
         .description("Xem nhanh giờ vào và giờ ra hôm nay.")
-        .supportedFamilies([.systemMedium])
+        .supportedFamilies([.systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }
 }
