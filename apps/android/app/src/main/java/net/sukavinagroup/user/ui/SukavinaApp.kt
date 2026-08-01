@@ -85,9 +85,6 @@ private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
         OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu") },
             leadingIcon = { Icon(Icons.Default.Lock, null) }, visualTransformation = PasswordVisualTransformation(),
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
-        state.error?.takeUnless(String::isConnectionError)?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 10.dp))
-        }
         Button(onClick = { signIn(login, password) }, enabled = login.isNotBlank() && password.isNotBlank() && !state.working,
             modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = RoundedCornerShape(16.dp)) {
             if (state.working) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
@@ -97,6 +94,15 @@ private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
     }
     state.error?.takeIf(String::isConnectionError)?.let {
         InternetConnectionAlert(dismissError)
+    }
+    state.error?.takeUnless(String::isConnectionError)?.let { message ->
+        AlertDialog(
+            onDismissRequest = dismissError,
+            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Sai thông tin đăng nhập") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = dismissError) { Text("Đã hiểu") } },
+        )
     }
 }
 

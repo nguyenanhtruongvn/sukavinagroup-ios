@@ -52,7 +52,9 @@ export class AuthService {
 
     if (!user) {
       await this.loginRateLimit.recordFailure(normalized, clientIp);
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(
+        'Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác.',
+      );
     }
 
     if (!user.gmailVerified) {
@@ -68,7 +70,9 @@ export class AuthService {
     const ok = await compare(password, user.passwordHash);
     if (!ok) {
       await this.loginRateLimit.recordFailure(normalized, clientIp);
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException(
+        'Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác.',
+      );
     }
 
     await this.loginRateLimit.clear(normalized, clientIp);

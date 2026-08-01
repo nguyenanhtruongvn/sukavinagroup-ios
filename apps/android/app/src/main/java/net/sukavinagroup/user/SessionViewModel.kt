@@ -103,7 +103,18 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                         permissions = response.user.permissions, protected = response.user.protected),
                 )
                 refresh(); refreshRequests(); startEvents(); startSessionRefresh()
-            }.onFailure { update(working = false, error = it.message) }
+            }.onFailure { error ->
+                val message = if (
+                    error is ApiException &&
+                    error.statusCode in listOf(401, 403) &&
+                    error.message == "Invalid credentials"
+                ) {
+                    "Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác."
+                } else {
+                    error.message ?: "Đăng nhập không thành công. Vui lòng thử lại."
+                }
+                update(working = false, error = message)
+            }
     }
 
     fun dismissError() {

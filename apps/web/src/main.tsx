@@ -1090,7 +1090,10 @@ function App() {
 
       if (!response.ok) {
         const result = (await response.json().catch(() => null)) as { message?: string } | null;
-        throw new Error(result?.message || 'Sai tài khoản hoặc mật khẩu');
+        const message = result?.message === 'Invalid credentials'
+          ? 'Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác.'
+          : result?.message;
+        throw new Error(message || 'Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác.');
       }
 
       const data = (await response.json()) as {
