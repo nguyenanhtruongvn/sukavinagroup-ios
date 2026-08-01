@@ -116,40 +116,35 @@ private struct AttendanceWidgetView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                stripedWhiteBackground
+        ZStack {
+            stripedWhiteBackground
 
-                VStack(spacing: 8) {
-                    weekStrip
-                    HStack(spacing: 8) {
-                        timeValue(
-                            title: "GIỜ VÀO",
-                            value: timeLabel(entry.state?.checkIn),
-                            symbol: "arrow.right.to.line",
-                            tint: Color(red: 0.55, green: 0.90, blue: 0.70)
-                        )
-                        Rectangle()
-                            .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.22))
-                            .frame(width: 1, height: 48)
-                        timeValue(
-                            title: "GIỜ RA",
-                            value: timeLabel(entry.state?.checkOut),
-                            symbol: "arrow.left.to.line",
-                            tint: Color(red: 1.00, green: 0.52, blue: 0.55)
-                        )
-                    }
-                    .frame(height: 54)
+            VStack(spacing: 8) {
+                weekStrip
+                HStack(spacing: 8) {
+                    timeValue(
+                        title: "GIỜ VÀO",
+                        value: timeLabel(entry.state?.checkIn),
+                        symbol: "arrow.right.to.line",
+                        tint: Color(red: 0.55, green: 0.90, blue: 0.70)
+                    )
+                    Rectangle()
+                        .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.22))
+                        .frame(width: 1, height: 48)
+                    timeValue(
+                        title: "GIỜ RA",
+                        value: timeLabel(entry.state?.checkOut),
+                        symbol: "arrow.left.to.line",
+                        tint: Color(red: 1.00, green: 0.52, blue: 0.55)
+                    )
                 }
-                .frame(
-                    width: max(0, proxy.size.width - 24),
-                    height: max(0, proxy.size.height - 20)
-                )
-                .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                .frame(height: 54)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
-            .clipped()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
         .containerBackground(for: .widget) {
             Color.clear
         }
@@ -177,15 +172,22 @@ private struct AttendanceWidgetView: View {
     private var stripedWhiteBackground: some View {
         ZStack {
             Color(red: 0.97, green: 0.985, blue: 0.99)
-            HStack(spacing: 7) {
-                ForEach(0..<60, id: \.self) { _ in
-                    Rectangle()
-                        .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.09))
-                        .frame(width: 1)
+            Canvas { context, size in
+                var x: CGFloat = 4
+                while x < size.width {
+                    var stripe = Path()
+                    stripe.move(to: CGPoint(x: x, y: 0))
+                    stripe.addLine(to: CGPoint(x: x, y: size.height))
+                    context.stroke(
+                        stripe,
+                        with: .color(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.09)),
+                        lineWidth: 1
+                    )
+                    x += 8
                 }
             }
-            .padding(.horizontal, 4)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var weekStrip: some View {
