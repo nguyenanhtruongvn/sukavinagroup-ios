@@ -184,8 +184,11 @@ private struct AttendanceWidgetView: View {
     }
 
     private var weekStrip: some View {
-        let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 0), count: 7)
-        LazyVGrid(columns: columns, alignment: .center, spacing: 2) {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(minimum: 0), spacing: 0), count: 7),
+            alignment: .center,
+            spacing: 2
+        ) {
             ForEach(weekDays) { day in
                 VStack(spacing: 2) {
                     Text(day.label)
