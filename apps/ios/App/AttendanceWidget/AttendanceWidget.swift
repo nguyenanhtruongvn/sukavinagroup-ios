@@ -124,6 +124,10 @@ private struct AttendanceWidgetView: View {
         let isToday: Bool
     }
 
+    private var usesGlassSurfaces: Bool {
+        showsWidgetContainerBackground && renderingMode == .fullColor
+    }
+
     var body: some View {
         ZStack {
             if widgetFamily == .systemLarge {
@@ -135,7 +139,11 @@ private struct AttendanceWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipped()
         .containerBackground(for: .widget) {
-            stripedWhiteBackground
+            if usesGlassSurfaces {
+                stripedWhiteBackground
+            } else {
+                Color.clear
+            }
         }
     }
 
@@ -264,7 +272,7 @@ private struct AttendanceWidgetView: View {
         .clipped()
         .background {
             ZStack {
-                if showsWidgetContainerBackground {
+                if usesGlassSurfaces {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(
                             LinearGradient(
@@ -324,7 +332,7 @@ private struct AttendanceWidgetView: View {
         }
         .padding(12)
         .background {
-            if showsWidgetContainerBackground {
+            if usesGlassSurfaces {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(Color.white.opacity(0.82))
                     .overlay {
