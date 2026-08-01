@@ -184,43 +184,47 @@ private struct AttendanceWidgetView: View {
     }
 
     private var weekStrip: some View {
-        HStack(spacing: 0) {
-            ForEach(weekDays) { day in
-                VStack(spacing: 2) {
-                    Text(day.label)
-                        .font(.system(size: 10, weight: .heavy))
-                        .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                    Text(day.number)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(day.isToday ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                        .frame(width: 30, height: 28)
-                        .background {
-                            if day.isToday {
-                                Circle()
-                                    .fill(
-                                        renderingMode == .fullColor
-                                            ? Color(red: 0.92, green: 0.12, blue: 0.18)
-                                            : Color.white.opacity(0.92)
-                                    )
-                                    .overlay {
-                                        Circle()
-                                            .stroke(Color.white.opacity(0.95), lineWidth: 2)
-                                    }
-                                    .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
+        GeometryReader { proxy in
+            let columnWidth = max(1, (proxy.size.width - 12) / 7)
+            HStack(spacing: 0) {
+                ForEach(weekDays) { day in
+                    VStack(spacing: 2) {
+                        Text(day.label)
+                            .font(.system(size: 10, weight: .heavy))
+                            .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        Text(day.number)
+                            .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
+                            .foregroundStyle(day.isToday ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
+                            .frame(width: 28, height: 28)
+                            .background {
+                                if day.isToday {
+                                    Circle()
+                                        .fill(
+                                            renderingMode == .fullColor
+                                                ? Color(red: 0.92, green: 0.12, blue: 0.18)
+                                                : Color.white.opacity(0.92)
+                                        )
+                                        .overlay {
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.95), lineWidth: 2)
+                                        }
+                                        .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
+                                }
                             }
-                        }
+                    }
+                    .frame(width: columnWidth, height: 44)
                 }
-                .frame(maxWidth: .infinity)
             }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 7)
+            .frame(width: proxy.size.width, height: 58)
+            .clipped()
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 7)
         .frame(height: 58)
-        .frame(maxWidth: .infinity)
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
