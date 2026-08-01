@@ -116,35 +116,40 @@ private struct AttendanceWidgetView: View {
     }
 
     var body: some View {
-        ZStack {
-            stripedWhiteBackground
+        GeometryReader { proxy in
+            ZStack {
+                stripedWhiteBackground
 
-            VStack(spacing: 12) {
-                weekStrip
-                HStack(spacing: 0) {
-                    timeValue(
-                        title: "GIỜ VÀO",
-                        value: timeLabel(entry.state?.checkIn),
-                        symbol: "arrow.right.to.line",
-                        tint: Color(red: 0.55, green: 0.90, blue: 0.70)
-                    )
-                    Rectangle()
-                        .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.22))
-                        .frame(width: 1, height: 54)
-                        .padding(.horizontal, 18)
-                    timeValue(
-                        title: "GIỜ RA",
-                        value: timeLabel(entry.state?.checkOut),
-                        symbol: "arrow.left.to.line",
-                        tint: Color(red: 1.00, green: 0.52, blue: 0.55)
-                    )
+                VStack(spacing: 8) {
+                    weekStrip
+                    HStack(spacing: 8) {
+                        timeValue(
+                            title: "GIỜ VÀO",
+                            value: timeLabel(entry.state?.checkIn),
+                            symbol: "arrow.right.to.line",
+                            tint: Color(red: 0.55, green: 0.90, blue: 0.70)
+                        )
+                        Rectangle()
+                            .fill(Color(red: 0.18, green: 0.25, blue: 0.30).opacity(0.22))
+                            .frame(width: 1, height: 48)
+                        timeValue(
+                            title: "GIỜ RA",
+                            value: timeLabel(entry.state?.checkOut),
+                            symbol: "arrow.left.to.line",
+                            tint: Color(red: 1.00, green: 0.52, blue: 0.55)
+                        )
+                    }
+                    .frame(height: 54)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(
+                    width: max(0, proxy.size.width - 24),
+                    height: max(0, proxy.size.height - 20)
+                )
+                .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .containerBackground(for: .widget) {
             Color.clear
         }
@@ -264,25 +269,29 @@ private struct AttendanceWidgetView: View {
     }
 
     private func timeValue(title: String, value: String, symbol: String, tint: Color) -> some View {
-        HStack(spacing: 11) {
-            Image(systemName: symbol)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(Color.white)
-                .frame(width: 36, height: 36)
-                .background(tint.opacity(0.34), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2.weight(.bold))
-                .tracking(0.7)
-                .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
-            Text(value)
-                    .font(.title2.monospacedDigit().weight(.semibold))
-                .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
-                .minimumScaleFactor(0.75)
-                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+        VStack(spacing: 3) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.white)
+                    .frame(width: 26, height: 26)
+                    .background(tint.opacity(0.42), in: Circle())
+                Text(title)
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(0.4)
+                    .foregroundStyle(Color(red: 0.35, green: 0.40, blue: 0.45))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
+            Text(value)
+                .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipped()
     }
 
     private func timeLabel(_ value: String?) -> String {
