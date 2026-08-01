@@ -145,8 +145,8 @@ private struct AttendanceWidgetView: View {
             attendanceTimes
                 .frame(maxHeight: .infinity)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
     }
 
     private var largeLayout: some View {
