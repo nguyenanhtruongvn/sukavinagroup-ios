@@ -3864,7 +3864,7 @@ private struct PasswordChangeView: View {
 
                     if otpSent {
                         VStack(spacing: 14) {
-                            NativeField(title: "Mã OTP gồm 6 số", text: $code, icon: "number", keyboard: .numberPad)
+                            NativeField(title: "Mã OTP gồm 6 số", text: $code, icon: "number", keyboard: .numberPad, textContentType: .oneTimeCode)
                             NativeSecureField(title: "Mật khẩu mới, ít nhất 6 ký tự", text: $newPassword)
                             NativeSecureField(title: "Nhập lại mật khẩu mới", text: $confirmPassword)
                             if !confirmPassword.isEmpty && newPassword != confirmPassword {
@@ -3949,12 +3949,14 @@ private struct NativeField: View {
     @Binding var text: String
     let icon: String
     var keyboard: UIKeyboardType = .default
+    var textContentType: UITextContentType? = nil
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon).frame(width: 22).foregroundColor(AppTheme.muted)
             TextField(title, text: $text)
                 .keyboardType(keyboard)
+                .textContentType(textContentType)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }
