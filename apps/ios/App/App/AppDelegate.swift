@@ -152,7 +152,7 @@ private enum NetworkError: LocalizedError {
         case .server(let message): return message
         case .offline: return "Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại."
         case .cellularRestricted: return "iPhone đang không cấp đường truyền di động cho Sukavina. Vào Cài đặt > Di động, bật Sukavina rồi mở lại ứng dụng."
-        case .invalidCredentials: return "Mã nhân viên hoặc mật khẩu không chính xác."
+        case .invalidCredentials: return "MSNV hoặc mật khẩu không chính xác."
         case .unauthorized: return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại."
         }
     }
@@ -1582,7 +1582,7 @@ private struct LoginForm: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            NativeField(title: "Mã nhân viên, Gmail hoặc số điện thoại", text: $loginId, icon: "person.text.rectangle")
+            NativeField(title: "MSNV", text: $loginId, icon: "person.text.rectangle")
             NativeSecureField(title: "Mật khẩu", text: $password)
             Button {
                 Task { _ = await session.signIn(loginId: loginId, password: password) }
