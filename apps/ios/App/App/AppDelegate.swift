@@ -2491,6 +2491,8 @@ private struct ModernAttendanceHistoryView: View {
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
         case "weekend": return .gray.opacity(0.13)
+        case "not-started": return .gray.opacity(0.18)
+        case "upcoming": return AppTheme.muted.opacity(0.1)
         default: return AppTheme.muted.opacity(0.1)
         }
     }
@@ -2503,7 +2505,9 @@ private struct ModernAttendanceHistoryView: View {
         case "absent": return "Vắng"
         case "overtime": return "Làm thêm giờ"
         case "weekend": return "Cuối tuần"
-        default: return "Chưa đến"
+        case "not-started": return "Chưa vào làm"
+        case "upcoming": return "Chưa tới"
+        default: return "Chưa xác định"
         }
     }
     private func time(_ value: String?) -> String {
