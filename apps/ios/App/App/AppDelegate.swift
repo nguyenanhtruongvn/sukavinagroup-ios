@@ -1784,15 +1784,20 @@ private struct EmployeePortalView: View {
     var body: some View {
         TabView {
             DashboardView()
+                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
             TodayMenuView()
+                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
             RequestsView()
+                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             NotificationsView()
+                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount + session.requestUnreadCount)
             ProfileView()
+                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
         .accentColor(AppTheme.red)
@@ -1803,6 +1808,13 @@ private struct EmployeePortalView: View {
                 }
             }
         }
+    }
+
+    private var tabBarClearance: some View {
+        Color.clear
+            .frame(height: 76)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
