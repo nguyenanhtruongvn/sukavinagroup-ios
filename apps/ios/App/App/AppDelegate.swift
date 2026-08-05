@@ -135,6 +135,54 @@ private extension View {
 
 }
 
+private final class AttendanceScrollInsetNeutralizingView: UIView {
+    private weak var managedScrollView: UIScrollView?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        resolveAndApply()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        resolveAndApply()
+    }
+
+    private func resolveAndApply() {
+        if managedScrollView == nil {
+            var candidate = superview
+            while let view = candidate {
+                if let scrollView = view as? UIScrollView {
+                    managedScrollView = scrollView
+                    break
+                }
+                candidate = view.superview
+            }
+        }
+        guard let scrollView = managedScrollView else { return }
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.automaticallyAdjustsScrollIndicatorInsets = false
+        if scrollView.contentInset.bottom != 0 {
+            var inset = scrollView.contentInset
+            inset.bottom = 0
+            scrollView.contentInset = inset
+        }
+        if scrollView.verticalScrollIndicatorInsets.bottom != 0 {
+            var inset = scrollView.verticalScrollIndicatorInsets
+            inset.bottom = 0
+            scrollView.verticalScrollIndicatorInsets = inset
+        }
+    }
+}
+
+private struct AttendanceScrollInsetNeutralizer: UIViewRepresentable {
+    func makeUIView(context: Context) -> AttendanceScrollInsetNeutralizingView {
+        AttendanceScrollInsetNeutralizingView(frame: .zero)
+    }
+
+    func updateUIView(_ uiView: AttendanceScrollInsetNeutralizingView, context: Context) {}
+}
+
 private struct APIErrorPayload: Decodable {
     let message: APIMessage
 }
@@ -2356,6 +2404,7 @@ private struct ModernAttendanceHistoryView: View {
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 16)
+            .background(AttendanceScrollInsetNeutralizer())
         }
         .hidesPortalBottomScrollEdgeEffect()
     }
