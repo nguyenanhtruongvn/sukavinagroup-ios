@@ -1,11 +1,17 @@
 package net.sukavinagroup.user.ui
 
+import android.app.ActivityManager
+import android.content.Context
+import android.os.Build
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
 val SukavinaRed = Color(0xFFE92A31)
 val SukavinaInk = Color(0xFF111115)
@@ -27,6 +33,20 @@ private val lightColors = lightColorScheme(
     secondary = Color(0xFF287A4B), outline = Color(0xFF8E949E),
 )
 
-@Composable fun SukavinaTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColors else lightColors, content = content)
+@Composable
+fun SukavinaTheme(content: @Composable () -> Unit) {
+    val context = LocalContext.current
+    val useExpressive = remember(context) {
+        val activityManager =
+            context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA &&
+            activityManager?.isLowRamDevice != true
+    }
+    val colors = if (isSystemInDarkTheme()) darkColors else lightColors
+
+    if (useExpressive) {
+        MaterialExpressiveTheme(colorScheme = colors, content = content)
+    } else {
+        MaterialTheme(colorScheme = colors, content = content)
+    }
 }
