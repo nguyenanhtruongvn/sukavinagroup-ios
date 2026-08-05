@@ -2374,7 +2374,13 @@ private struct ModernAttendanceHistoryView: View {
             monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
             TabView(selection: $monthIndex) {
                 ForEach(options.indices, id: \.self) { index in
-                    attendanceMonthPage
+                    Group {
+                        if index == monthIndex {
+                            attendanceMonthPage
+                        } else {
+                            preloadedMonthPage(index)
+                        }
+                    }
                         .tag(index)
                 }
             }
@@ -2418,6 +2424,95 @@ private struct ModernAttendanceHistoryView: View {
             .background(AttendanceScrollInsetNeutralizer())
         }
         .hidesPortalBottomScrollEdgeEffect()
+    }
+
+    private func preloadedMonthPage(_ index: Int) -> some View {
+        let month = options[index]
+        let data = cache[month]
+        return ScrollView {
+            VStack(spacing: 14) {
+                if let data {
+                    preloadedSummaryCards(data)
+                    preloadedCalendarCard(data)
+                } else {
+                    ProgressView("Đang tải tháng kế bên...")
+                        .tint(AppTheme.red)
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                        .background(AppTheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 112)
+            .background(AttendanceScrollInsetNeutralizer())
+        }
+        .hidesPortalBottomScrollEdgeEffect()
+        .task(id: month) { await preloadMonth(month) }
+    }
+
+    private func preloadedSummaryCards(_ data: AttendanceMonth) -> some View {
+        let values: [(String, Int, Color)] = [
+            ("Ngày công", preloadedCount("present", in: data), .green),
+            ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
+            ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
+            ("Nghỉ phép", preloadedCount("leave", in: data), EmployeeRequestKind.leave.color),
+            ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
+            ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
+        ].filter { $0.1 > 0 }
+        return LazyVGrid(
+            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(4, max(1, values.count))),
+            spacing: 8
+        ) {
+            ForEach(Array(values.enumerated()), id: \.offset) { _, item in
+                summary(item.1, item.0, item.2)
+            }
+        }
+    }
+
+    private func preloadedCalendarCard(_ data: AttendanceMonth) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
+            HStack(spacing: 4) {
+                ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
+                    Text($0).font(.caption.bold()).foregroundStyle(AppTheme.muted)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 7) {
+                ForEach(0..<preloadedLeadingEmptyDays(data), id: \.self) { _ in
+                    Color.clear.frame(height: 50)
+                }
+                ForEach(data.days) { day in
+                    Text(String(Int(day.date.suffix(2)) ?? 0))
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .background(dayBackground(day))
+                        .clipShape(RoundedRectangle(cornerRadius: 11))
+                }
+            }
+        }
+        .padding(18)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func preloadedCount(_ status: String, in data: AttendanceMonth) -> Int {
+        data.days.filter { dayStatuses($0).contains(status) }.count
+    }
+
+    private func preloadedLeadingEmptyDays(_ data: AttendanceMonth) -> Int {
+        guard let value = data.days.first?.date, let date = Self.dayParser.date(from: value) else { return 0 }
+        return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
+    }
+
+    private func preloadMonth(_ month: String) async {
+        guard cache[month] == nil, let token = session.token else { return }
+        if let loaded: AttendanceMonth = try? await APIClient.shared.request(
+            "me/attendance?month=\(month)", token: token
+        ) {
+            cache[month] = loaded
+        }
     }
 
     private func moveMonth(by offset: Int) {
