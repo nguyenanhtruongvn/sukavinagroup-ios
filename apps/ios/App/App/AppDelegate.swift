@@ -2300,7 +2300,32 @@ private struct ModernAttendanceHistoryView: View {
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationTitle("Bảng chấm công")
+        .simultaneousGesture(monthSwipeGesture)
         .task(id: selectedMonth) { await loadHistory() }
+    }
+
+    private var monthSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 22, coordinateSpace: .local)
+            .onEnded { value in
+                // Keep the native NavigationStack back swipe at the left screen edge.
+                guard value.startLocation.x > 36 else { return }
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                let predicted = value.predictedEndTranslation.width
+                guard abs(horizontal) > abs(vertical) * 1.25 else { return }
+                guard abs(horizontal) > 52 || abs(predicted) > 115 else { return }
+                moveMonth(by: horizontal > 0 ? 1 : -1)
+            }
+    }
+
+    private func moveMonth(by offset: Int) {
+        let index = options.firstIndex(of: selectedMonth) ?? 0
+        let target = index + offset
+        guard options.indices.contains(target) else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.snappy(duration: 0.3)) {
+            selectedMonth = options[target]
+        }
     }
 
     private var monthNavigation: some View {
@@ -2319,8 +2344,7 @@ private struct ModernAttendanceHistoryView: View {
         let index = options.firstIndex(of: selectedMonth) ?? 0
         let target = index + offset
         return Button {
-            guard options.indices.contains(target) else { return }
-            selectedMonth = options[target]
+            moveMonth(by: offset)
         } label: {
             Image(systemName: icon).font(.caption.bold())
                 .foregroundStyle(Color.primary.opacity(0.78))
