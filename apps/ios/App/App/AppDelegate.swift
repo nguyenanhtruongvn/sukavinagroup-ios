@@ -125,11 +125,13 @@ private extension View {
             self
                 .scrollIndicators(.hidden)
                 .ignoresSafeArea(.container, edges: .bottom)
+                .scrollBounceBehavior(.always, axes: .vertical)
                 .scrollEdgeEffectHidden(true, for: .bottom)
         } else {
             self
                 .scrollIndicators(.hidden)
                 .ignoresSafeArea(.container, edges: .bottom)
+                .scrollBounceBehavior(.always, axes: .vertical)
         }
     }
 
@@ -1996,6 +1998,7 @@ private struct TodayMenuView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
                 .padding(18)
+                .padding(.bottom, 94)
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
@@ -2160,6 +2163,7 @@ private struct DashboardView: View {
 
                 }
                 .padding(20)
+                .padding(.bottom, 92)
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
@@ -2246,6 +2250,7 @@ private struct AttendanceHistoryView: View {
                 }
             }
             .padding(20)
+            .padding(.bottom, 92)
         }
         .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
@@ -2960,7 +2965,7 @@ private struct RequestsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
-                .padding(.bottom, 16)
+                .padding(.bottom, 112)
             }
         }
         .hidesPortalBottomScrollEdgeEffect()
@@ -3334,6 +3339,12 @@ private struct NotificationsView: View {
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                     }
+                    Color.clear
+                        .frame(height: 112)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityHidden(true)
             }
             .listStyle(.plain)
             .hidesPortalBottomScrollEdgeEffect()
@@ -3528,6 +3539,7 @@ private struct NewsView: View {
                     }
                 }
                 .padding(18)
+                .padding(.bottom, 94)
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
@@ -3581,6 +3593,7 @@ private struct ArticleDetailView: View {
                 }
             }
             .padding(22)
+            .padding(.bottom, 90)
         }
         .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
@@ -3831,6 +3844,7 @@ private struct ProfileView: View {
                     }
                 }
                 .padding(22)
+                .padding(.bottom, 90)
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
