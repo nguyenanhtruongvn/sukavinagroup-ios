@@ -2281,6 +2281,7 @@ private struct ModernAttendanceHistoryView: View {
     @State private var isLoading = false
     @State private var message: String?
     @State private var cache: [String: AttendanceMonth] = [:]
+    @GestureState private var monthDragOffset: CGFloat = 0
 
     var body: some View {
         ScrollView {
@@ -2297,15 +2298,29 @@ private struct ModernAttendanceHistoryView: View {
                 }
             }
             .padding(16)
+            .offset(x: monthDragOffset)
+            .opacity(1 - min(abs(monthDragOffset) / 900, 0.12))
         }
+        .clipped()
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationTitle("Bảng chấm công")
         .simultaneousGesture(monthSwipeGesture)
         .task(id: selectedMonth) { await loadHistory() }
+        .task { await preloadAdjacentMonths() }
     }
 
     private var monthSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 22, coordinateSpace: .local)
+            .updating($monthDragOffset) { value, offset, transaction in
+                transaction.animation = .interactiveSpring(response: 0.34, dampingFraction: 0.88)
+                guard value.startLocation.x > 36 else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.12 else { return }
+                let direction = value.translation.width > 0 ? 1 : -1
+                let index = options.firstIndex(of: selectedMonth) ?? 0
+                let canMove = options.indices.contains(index + direction)
+                let resistance: CGFloat = canMove ? 0.72 : 0.14
+                offset = value.translation.width * resistance
+            }
             .onEnded { value in
                 // Keep the native NavigationStack back swipe at the left screen edge.
                 guard value.startLocation.x > 36 else { return }
@@ -2323,7 +2338,7 @@ private struct ModernAttendanceHistoryView: View {
         let target = index + offset
         guard options.indices.contains(target) else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.snappy(duration: 0.3)) {
+        withAnimation(.interactiveSpring(response: 0.36, dampingFraction: 0.86, blendDuration: 0.12)) {
             selectedMonth = options[target]
         }
     }
@@ -2562,6 +2577,16 @@ private struct ModernAttendanceHistoryView: View {
             selectedDate = loaded.days.first(where: { $0.date == Self.dayValue(Date()) })?.date ?? loaded.days.last?.date
         } catch {
             history = nil; message = error.localizedDescription
+        }
+    }
+    private func preloadAdjacentMonths() async {
+        guard let token = session.token else { return }
+        for month in options where month != selectedMonth && cache[month] == nil {
+            if let loaded: AttendanceMonth = try? await APIClient.shared.request(
+                "me/attendance?month=\(month)", token: token
+            ) {
+                cache[month] = loaded
+            }
         }
     }
     private static func monthValue(_ date: Date) -> String {
