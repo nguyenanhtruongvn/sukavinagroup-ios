@@ -2281,7 +2281,8 @@ private struct ModernAttendanceHistoryView: View {
     @State private var isLoading = false
     @State private var message: String?
     @State private var cache: [String: AttendanceMonth] = [:]
-    @GestureState private var monthDragOffset: CGFloat = 0
+    @State private var monthDragOffset: CGFloat = 0
+    @State private var isPagingMonth = false
 
     var body: some View {
         ScrollView {
@@ -2311,35 +2312,77 @@ private struct ModernAttendanceHistoryView: View {
 
     private var monthSwipeGesture: some Gesture {
         DragGesture(minimumDistance: 22, coordinateSpace: .local)
-            .updating($monthDragOffset) { value, offset, transaction in
-                transaction.animation = .interactiveSpring(response: 0.34, dampingFraction: 0.88)
+            .onChanged { value in
+                guard !isPagingMonth else { return }
                 guard value.startLocation.x > 36 else { return }
                 guard abs(value.translation.width) > abs(value.translation.height) * 1.12 else { return }
                 let direction = value.translation.width > 0 ? 1 : -1
                 let index = options.firstIndex(of: selectedMonth) ?? 0
                 let canMove = options.indices.contains(index + direction)
                 let resistance: CGFloat = canMove ? 0.72 : 0.14
-                offset = value.translation.width * resistance
+                monthDragOffset = value.translation.width * resistance
             }
             .onEnded { value in
+                guard !isPagingMonth else { return }
                 // Keep the native NavigationStack back swipe at the left screen edge.
-                guard value.startLocation.x > 36 else { return }
+                guard value.startLocation.x > 36 else {
+                    settleMonthPage()
+                    return
+                }
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
                 let predicted = value.predictedEndTranslation.width
-                guard abs(horizontal) > abs(vertical) * 1.25 else { return }
-                guard abs(horizontal) > 52 || abs(predicted) > 115 else { return }
-                moveMonth(by: horizontal > 0 ? 1 : -1)
+                guard abs(horizontal) > abs(vertical) * 1.25 else {
+                    settleMonthPage()
+                    return
+                }
+                guard abs(horizontal) > 52 || abs(predicted) > 115 else {
+                    settleMonthPage()
+                    return
+                }
+                pageMonth(by: horizontal > 0 ? 1 : -1)
             }
     }
 
     private func moveMonth(by offset: Int) {
+        pageMonth(by: offset)
+    }
+
+    private func settleMonthPage() {
+        withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.88)) {
+            monthDragOffset = 0
+        }
+    }
+
+    private func pageMonth(by offset: Int) {
         let index = options.firstIndex(of: selectedMonth) ?? 0
         let target = index + offset
-        guard options.indices.contains(target) else { return }
+        guard options.indices.contains(target), !isPagingMonth else {
+            settleMonthPage()
+            return
+        }
+        isPagingMonth = true
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        withAnimation(.interactiveSpring(response: 0.36, dampingFraction: 0.86, blendDuration: 0.12)) {
+        let width = max(UIScreen.main.bounds.width, 320)
+        let exitOffset = offset > 0 ? width : -width
+        withAnimation(.easeOut(duration: 0.18)) {
+            monthDragOffset = exitOffset
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             selectedMonth = options[target]
+            if let loaded = cache[selectedMonth] {
+                history = loaded
+                selectedDate = loaded.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
+                    ?? loaded.days.last?.date
+                message = nil
+            }
+            monthDragOffset = -exitOffset
+            withAnimation(.interactiveSpring(response: 0.36, dampingFraction: 0.88)) {
+                monthDragOffset = 0
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+                isPagingMonth = false
+            }
         }
     }
 
