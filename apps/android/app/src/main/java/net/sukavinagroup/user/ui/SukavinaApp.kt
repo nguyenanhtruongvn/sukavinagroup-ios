@@ -51,7 +51,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 
-private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
+private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("Đơn từ"), MENU("Thực đơn"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
 private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
 private enum class AppShapeRole { MEDIUM, LARGE, EXTRA_LARGE }
 
@@ -163,20 +163,52 @@ private fun String.isConnectionError() =
     Scaffold(bottomBar = {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
             MainTab.entries.forEach { item ->
-                NavigationBarItem(selected = tab == item, onClick = {
-                    tab = item
-                }, icon = {
-                    val notificationCount = state.unreadCount + state.requestNotifications.count { !it.read }
-                    BadgedBox(badge = { if (item == MainTab.NOTIFICATIONS && notificationCount > 0) Badge { Text(notificationCount.toString()) } }) {
-                        Icon(when(item) { MainTab.HOME -> Icons.Default.Home; MainTab.MENU -> Icons.Default.Restaurant; MainTab.REQUESTS -> Icons.Default.Description; MainTab.NOTIFICATIONS -> Icons.Default.Notifications; MainTab.PROFILE -> Icons.Default.Person }, null)
-                    }
-                }, label = { Text(item.label) })
+                val selected = tab == item
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = { tab = item },
+                    colors = if (item == MainTab.MENU) {
+                        NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent)
+                    } else {
+                        NavigationBarItemDefaults.colors()
+                    },
+                    icon = {
+                        val notificationCount = state.unreadCount + state.requestNotifications.count { !it.read }
+                        if (item == MainTab.MENU) {
+                            Surface(
+                                modifier = Modifier
+                                    .offset(y = (-11).dp)
+                                    .size(if (selected) 64.dp else 58.dp),
+                                shape = CircleShape,
+                                color = if (selected) SukavinaRed else MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = if (selected) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
+                                tonalElevation = 8.dp,
+                                shadowElevation = 9.dp,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    2.dp,
+                                    if (selected) Color.White.copy(alpha = .72f) else SukavinaRed.copy(alpha = .22f),
+                                ),
+                            ) {
+                                Icon(
+                                    Icons.Default.Restaurant,
+                                    item.label,
+                                    modifier = Modifier.padding(if (selected) 17.dp else 16.dp),
+                                )
+                            }
+                        } else {
+                            BadgedBox(badge = { if (item == MainTab.NOTIFICATIONS && notificationCount > 0) Badge { Text(notificationCount.toString()) } }) {
+                                Icon(when(item) { MainTab.HOME -> Icons.Default.Home; MainTab.MENU -> Icons.Default.Restaurant; MainTab.REQUESTS -> Icons.Default.Description; MainTab.NOTIFICATIONS -> Icons.Default.Notifications; MainTab.PROFILE -> Icons.Default.Person }, null)
+                            }
+                        }
+                    },
+                    label = { Text(item.label, fontWeight = if (item == MainTab.MENU) FontWeight.Bold else FontWeight.Medium) },
+                )
             }
         }
     }) { padding ->
         Box(Modifier.padding(padding)) {
             when (tab) {
-                MainTab.HOME -> HomeScreen(state, session::refresh, { attendanceOpen = true }, { article = it })
+                MainTab.HOME -> HomeScreen(state, { attendanceOpen = true }, { article = it })
                 MainTab.MENU -> TodayMenuScreen(state, session)
                 MainTab.REQUESTS -> RequestsScreen(state, session)
                 MainTab.NOTIFICATIONS -> NotificationsScreen(state, session) { article = it }
@@ -339,7 +371,7 @@ private fun String.isConnectionError() =
     }
 }
 
-@Composable private fun HomeScreen(state: SessionUiState, refresh: () -> Unit, openAttendance: () -> Unit, openArticle: (ContentItem) -> Unit) {
+@Composable private fun HomeScreen(state: SessionUiState, openAttendance: () -> Unit, openArticle: (ContentItem) -> Unit) {
     val dashboard = state.dashboard
     LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         item {
@@ -354,7 +386,6 @@ private fun String.isConnectionError() =
             }
         }
         item { AttendanceTodayCard(dashboard, openAttendance) }
-        item { OutlinedButton(onClick = refresh, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Refresh, null); Spacer(Modifier.width(8.dp)); Text("Làm mới dữ liệu") } }
     }
 }
 
@@ -1033,6 +1064,6 @@ private fun String?.accountLabel() = when (this) { "SUPER_ADMIN" -> "Quản tr�
                 ),
             ),
         ),
-        refresh = {}, openAttendance = {}, openArticle = {},
+        openAttendance = {}, openArticle = {},
     )
 }

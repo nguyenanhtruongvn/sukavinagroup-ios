@@ -2,11 +2,6 @@ name: Build native Android APK and AAB
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths:
-      - 'apps/android/**'
-      - '.github/workflows/build-android.yml'
 
 permissions:
   contents: read
