@@ -18,6 +18,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -73,7 +76,7 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("Đơn từ"), MENU("Thực đơn"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
+private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
 private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
 private enum class AppShapeRole { MEDIUM, LARGE, EXTRA_LARGE }
 
@@ -231,8 +234,6 @@ private fun String.isConnectionError() =
     var article by remember { mutableStateOf<ContentItem?>(null) }
     var attendanceOpen by remember { mutableStateOf(false) }
     BackHandler(article != null || attendanceOpen) { article = null; attendanceOpen = false }
-    if (article != null) return ArticleDetail(article!!) { article = null }
-    if (attendanceOpen) return AttendanceScreen(session) { attendanceOpen = false }
 
     val haptics = LocalHapticFeedback.current
     Scaffold(bottomBar = {
@@ -271,6 +272,8 @@ private fun String.isConnectionError() =
                         selected = selected,
                         onClick = {
                             if (tab != item) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            article = null
+                            attendanceOpen = false
                             tab = item
                         },
                         colors = NavigationBarItemDefaults.colors(
@@ -315,7 +318,7 @@ private fun String.isConnectionError() =
     }) { padding ->
         AnimatedContent(
             targetState = tab,
-            modifier = Modifier.padding(padding),
+            modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal
                 (slideInHorizontally(spring(stiffness = 520f, dampingRatio = .86f)) {
@@ -327,12 +330,16 @@ private fun String.isConnectionError() =
             },
             label = "main-tab-transition",
         ) { activeTab ->
-            when (activeTab) {
-                MainTab.HOME -> HomeScreen(state, { attendanceOpen = true }, { article = it })
-                MainTab.MENU -> TodayMenuScreen(state, session)
-                MainTab.REQUESTS -> RequestsScreen(state, session)
-                MainTab.NOTIFICATIONS -> NotificationsScreen(state, session) { article = it }
-                MainTab.PROFILE -> ProfileScreen(state, session)
+            when {
+                attendanceOpen -> AttendanceScreen(session) { attendanceOpen = false }
+                article != null -> ArticleDetail(article!!) { article = null }
+                else -> when (activeTab) {
+                    MainTab.HOME -> HomeScreen(state, { attendanceOpen = true }, { article = it })
+                    MainTab.MENU -> TodayMenuScreen(state, session)
+                    MainTab.REQUESTS -> RequestsScreen(state, session)
+                    MainTab.NOTIFICATIONS -> NotificationsScreen(state, session) { article = it }
+                    MainTab.PROFILE -> ProfileScreen(state, session)
+                }
             }
         }
     }
@@ -378,7 +385,7 @@ private fun String.isConnectionError() =
             dismissButton = { TextButton(onClick = { pendingChoice = null }) { Text("Quay lại") } },
         )
     }
-    LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
             Text("BẾP ĂN SUKAVINA", color = SukavinaRed, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp, fontSize = 12.sp)
             Text("Thực đơn hôm nay", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
@@ -493,7 +500,7 @@ private fun String.isConnectionError() =
 
 @Composable private fun HomeScreen(state: SessionUiState, openAttendance: () -> Unit, openArticle: (ContentItem) -> Unit) {
     val dashboard = state.dashboard
-    LazyColumn(contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         item {
             Text("Xin chào,", color = SukavinaMuted)
             Text(dashboard?.name ?: state.profile?.name ?: "Nhân viên", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
@@ -572,7 +579,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
                 },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(visible, key = { it.id }) { request ->
                         RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
                             onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
@@ -846,23 +853,36 @@ private fun SwipeDeleteItem(
             },
             modifier = Modifier.fillMaxSize(),
         ) {
-        LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             items(state.requestNotifications, key = { it.id }) { item ->
                 val request = item.requestId?.let(requests::get); val kind = request?.let { requestKind(it.kind) }
                 val tone = kind?.color ?: when { item.type.contains("rejected") -> Color(0xFFFF6F67); item.type.contains("cancelled") -> Color(0xFFAAB1BD); else -> Color(0xFF55D881) }
                 SwipeDeleteItem(onDelete = { session.deleteNotification(item.id) }) {
-                    Card(onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } }, colors = CardDefaults.cardColors(containerColor = if (item.read) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant), border = androidx.compose.foundation.BorderStroke(1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .35f))) {
+                    Surface(
+                        onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },
+                        shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
+                        color = if (item.read) MaterialTheme.colorScheme.surface else tone.copy(alpha = .20f),
+                        border = androidx.compose.foundation.BorderStroke(if (item.read) 1.dp else 1.5.dp, if (item.read) Color.Transparent else tone.copy(alpha = .58f)),
+                        shadowElevation = if (item.read) 0.dp else 7.dp,
+                    ) {
                         Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
                             Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
                             Column(Modifier.padding(horizontal = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(item.title, fontWeight = FontWeight.Bold); kind?.let { Text(it.title, color = it.color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }; Text(item.message, color = SukavinaMuted, fontSize = 13.sp); Text(item.createdAt.toDateTimeLabel(), color = tone, fontSize = 11.sp) }
-                            if (!item.read) Surface(Modifier.size(8.dp), CircleShape, color = SukavinaRed) {}
+                            if (!item.read) Surface(shape = CircleShape, color = tone.copy(alpha = .18f)) { Text("Mới", color = tone, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) }
                         }
                     }
                 }
             }
-            items(visibleArticles, key = { "article-${it.id}" }) { item ->
+            itemsIndexed(visibleArticles, key = { _, item -> "article-${item.id}" }) { index, item ->
+                val isUnread = index < state.unreadCount
                 SwipeDeleteItem(onDelete = { session.hideArticleNotification(item.id) }) {
-                    Card(onClick = { session.markArticlesRead(); openArticle(item) }) { Row(Modifier.padding(15.dp)) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) } } }
+                    Surface(
+                        onClick = { session.markArticlesRead(); openArticle(item) },
+                        shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
+                        color = if (isUnread) SukavinaRed.copy(alpha = .20f) else MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(if (isUnread) 1.5.dp else 1.dp, if (isUnread) SukavinaRed.copy(alpha = .58f) else Color.Transparent),
+                        shadowElevation = if (isUnread) 7.dp else 0.dp,
+                    ) { Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }; if (isUnread) Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .18f)) { Text("Mới", color = SukavinaRed, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) } } }
                 }
             }
             if (state.requestNotifications.isEmpty() && visibleArticles.isEmpty()) item { Text("Chưa có thông báo.", color = SukavinaMuted, modifier = Modifier.padding(top = 50.dp)) }
@@ -907,40 +927,73 @@ private fun SwipeDeleteItem(
 }
 
 @Composable private fun AttendanceScreen(session: SessionViewModel, back: () -> Unit) {
-    val months = remember { (0..1).map { YearMonth.now().minusMonths(it.toLong()) } }
-    var selected by remember { mutableStateOf(months.first()) }
-    var history by remember { mutableStateOf<AttendanceMonth?>(null) }
-    var selectedDate by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(selected) {
-        loading = true
-        session.attendance(selected.toString())
-            .onSuccess {
-                history = it
-                error = null
-                selectedDate = it.days.firstOrNull { day -> day.date == LocalDate.now().toString() }?.date
-                    ?: it.days.lastOrNull()?.date
+    val months = remember { listOf(YearMonth.now().minusMonths(1), YearMonth.now()) }
+    val pagerState = rememberPagerState(initialPage = months.lastIndex, pageCount = { months.size })
+    val scope = rememberCoroutineScope()
+    val cache = remember { mutableStateMapOf<YearMonth, AttendanceMonth>() }
+    val errors = remember { mutableStateMapOf<YearMonth, String>() }
+    val selectedDates = remember { mutableStateMapOf<YearMonth, String>() }
+
+    LaunchedEffect(Unit) {
+        months.forEach { month ->
+            launch {
+                session.attendance(month.toString())
+                    .onSuccess { data ->
+                        cache[month] = data
+                        errors.remove(month)
+                        selectedDates[month] = data.days.firstOrNull { it.date == LocalDate.now().toString() }?.date
+                            ?: data.days.lastOrNull()?.date.orEmpty()
+                    }
+                    .onFailure { errors[month] = it.message ?: "Không thể tải bảng chấm công." }
             }
-            .onFailure { history = null; error = it.message }
-        loading = false
+        }
     }
+
     Scaffold(topBar = { TopAppBar(title = { Text("Bảng chấm công") }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Quay lại") } }) }) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            AttendanceMonthSelector(months, selected) { selected = it }
-            when {
-                loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
-                else -> Column(
-                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clip(appShape(18.dp, AppShapeRole.LARGE))
+                    .background(MaterialTheme.colorScheme.surface).padding(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconButton(
+                    onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) } },
+                    enabled = pagerState.currentPage > 0,
+                ) { Icon(Icons.Default.ChevronLeft, "Tháng trước") }
+                Text(
+                    "Tháng ${months[pagerState.currentPage].monthValue} / ${months[pagerState.currentPage].year}",
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+                IconButton(
+                    onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } },
+                    enabled = pagerState.currentPage < months.lastIndex,
+                ) { Icon(Icons.Default.ChevronRight, "Tháng sau") }
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1,
+                pageSpacing = 0.dp,
+            ) { page ->
+                val month = months[page]
+                val data = cache[month]
+                Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp).padding(bottom = 112.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    val data = history
-                    if (data != null) {
-                        AttendanceSummary(data)
-                        AttendanceCalendar(data, selectedDate) { selectedDate = it }
-                        data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) }
-                        Spacer(Modifier.height(28.dp))
+                    when {
+                        data != null -> {
+                            AttendanceSummary(data)
+                            AttendanceCalendar(data, selectedDates[month]) { selectedDates[month] = it }
+                            data.days.firstOrNull { it.date == selectedDates[month] }?.let { AttendanceDayDetail(data, it) }
+                        }
+                        errors[month] != null -> Text(errors[month].orEmpty(), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
+                        else -> Box(Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
                     }
                 }
             }
@@ -1104,7 +1157,7 @@ private fun attendanceTitle(status: String) = when (status) {
     val activity = LocalActivity.current as? MainActivity
     val profile = state.profile
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp).padding(bottom = 90.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Spacer(Modifier.height(30.dp)); Surface(Modifier.size(92.dp), CircleShape, color = SukavinaRed.copy(alpha = .15f)) { Box(contentAlignment = Alignment.Center) { Text(profile?.name.initials(), color = SukavinaRed, fontSize = 26.sp, fontWeight = FontWeight.Bold) } }
