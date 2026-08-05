@@ -2368,31 +2368,18 @@ private struct ModernAttendanceHistoryView: View {
     @State private var message: String?
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var monthIndex = 1
-    @State private var monthMoveDirection = 1
-    @State private var monthDragOffset: CGFloat = 0
-    @State private var monthDragTargetIndex: Int?
-    @State private var isCompletingMonthSwipe = false
 
     var body: some View {
         VStack(spacing: 0) {
             monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
-            GeometryReader { geometry in
-                ZStack {
+            TabView(selection: $monthIndex) {
+                ForEach(options.indices, id: \.self) { index in
                     attendanceMonthPage
-                        .id(monthIndex)
-                        .offset(x: monthDragOffset)
-
-                    if let target = monthDragTargetIndex, options.indices.contains(target) {
-                        adjacentMonthPage(target)
-                            .offset(
-                                x: (target > monthIndex ? geometry.size.width : -geometry.size.width)
-                                    + monthDragOffset
-                            )
-                    }
+                        .tag(index)
                 }
-                .contentShape(Rectangle())
-                .simultaneousGesture(monthSwipeGesture(pageWidth: geometry.size.width))
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .background(AttendanceScrollInsetNeutralizer())
             .ignoresSafeArea(.container, edges: .bottom)
         }
         .background(AppTheme.ink.ignoresSafeArea())
@@ -2400,6 +2387,16 @@ private struct ModernAttendanceHistoryView: View {
         .navigationTitle("Bảng chấm công")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .tabBar)
+        .onChange(of: monthIndex) { _, newIndex in
+            guard options.indices.contains(newIndex) else { return }
+            selectedMonth = options[newIndex]
+            if let cached = cache[selectedMonth] {
+                history = cached
+                selectedDate = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
+                    ?? cached.days.last?.date
+            }
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
         .task(id: selectedMonth) { await loadHistory() }
         .task { await preloadAdjacentMonths() }
     }
@@ -2423,151 +2420,12 @@ private struct ModernAttendanceHistoryView: View {
         .hidesPortalBottomScrollEdgeEffect()
     }
 
-    private func adjacentMonthPage(_ index: Int) -> some View {
-        let month = options[index]
-        let data = cache[month]
-        return ScrollView {
-            VStack(spacing: 14) {
-                if let data {
-                    adjacentSummaryCards(data)
-                    adjacentCalendarCard(data)
-                } else {
-                    ProgressView("Đang tải bảng chấm công...")
-                        .tint(AppTheme.red)
-                        .frame(maxWidth: .infinity, minHeight: 220)
-                        .background(AppTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 112)
-        }
-        .hidesPortalBottomScrollEdgeEffect()
-    }
-
-    private func adjacentSummaryCards(_ data: AttendanceMonth) -> some View {
-        let values: [(String, Int, Color)] = [
-            ("Ngày công", adjacentCount("present", in: data), .green),
-            ("Đi trễ", adjacentCount("late", in: data), EmployeeRequestKind.late.color),
-            ("Về sớm", adjacentCount("early", in: data), EmployeeRequestKind.early.color),
-            ("Nghỉ phép", adjacentCount("leave", in: data), EmployeeRequestKind.leave.color),
-            ("Vắng", adjacentCount("absent", in: data), Self.absentColor),
-            ("Làm thêm", adjacentCount("overtime", in: data), EmployeeRequestKind.overtime.color),
-        ].filter { $0.1 > 0 }
-        return LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(4, max(1, values.count))),
-            spacing: 8
-        ) {
-            ForEach(Array(values.enumerated()), id: \.offset) { _, item in
-                summary(item.1, item.0, item.2)
-            }
-        }
-    }
-
-    private func adjacentCalendarCard(_ data: AttendanceMonth) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
-            HStack(spacing: 4) {
-                ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
-                    Text($0).font(.caption.bold()).foregroundStyle(AppTheme.muted)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 7) {
-                ForEach(0..<adjacentLeadingEmptyDays(data), id: \.self) { _ in
-                    Color.clear.frame(height: 50)
-                }
-                ForEach(data.days) { day in
-                    Text(String(Int(day.date.suffix(2)) ?? 0))
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                        .background(dayBackground(day))
-                        .clipShape(RoundedRectangle(cornerRadius: 11))
-                }
-            }
-        }
-        .padding(18)
-        .background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private func adjacentCount(_ status: String, in data: AttendanceMonth) -> Int {
-        data.days.filter { dayStatuses($0).contains(status) }.count
-    }
-
-    private func adjacentLeadingEmptyDays(_ data: AttendanceMonth) -> Int {
-        guard let value = data.days.first?.date, let date = Self.dayParser.date(from: value) else { return 0 }
-        return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
-    }
-
     private func moveMonth(by offset: Int) {
         let target = monthIndex + offset
         guard options.indices.contains(target) else { return }
-        monthMoveDirection = offset
         withAnimation(.easeInOut(duration: 0.28)) {
             monthIndex = target
-            selectedMonth = options[target]
         }
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    private func monthSwipeGesture(pageWidth: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 24)
-            .onChanged { value in
-                guard !isCompletingMonthSwipe else { return }
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical) * 1.08 else { return }
-                let offset = horizontal < 0 ? 1 : -1
-                let canMove = options.indices.contains(monthIndex + offset)
-                monthDragTargetIndex = canMove ? monthIndex + offset : nil
-                monthDragOffset = canMove ? horizontal : horizontal * 0.22
-            }
-            .onEnded { value in
-                guard !isCompletingMonthSwipe else { return }
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical) * 1.08 else {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { monthDragOffset = 0 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) { monthDragTargetIndex = nil }
-                    return
-                }
-
-                let offset = horizontal < 0 ? 1 : -1
-                let target = monthIndex + offset
-                let projected = value.predictedEndTranslation.width
-                let shouldChange = options.indices.contains(target)
-                    && (abs(horizontal) > pageWidth * 0.22 || abs(projected) > pageWidth * 0.42)
-
-                guard shouldChange else {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { monthDragOffset = 0 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { monthDragTargetIndex = nil }
-                    return
-                }
-
-                isCompletingMonthSwipe = true
-                monthMoveDirection = offset
-                let exitOffset = offset > 0 ? -pageWidth : pageWidth
-                withAnimation(.easeOut(duration: 0.16)) { monthDragOffset = exitOffset }
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-                    let targetHistory = cache[options[target]]
-                    var transaction = Transaction()
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) {
-                        monthIndex = target
-                        selectedMonth = options[target]
-                        history = targetHistory
-                        selectedDate = targetHistory?.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
-                            ?? targetHistory?.days.last?.date
-                        monthDragOffset = 0
-                        monthDragTargetIndex = nil
-                    }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    isCompletingMonthSwipe = false
-                }
-            }
     }
 
     private var monthNavigation: some View {
