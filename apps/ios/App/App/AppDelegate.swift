@@ -1796,6 +1796,7 @@ private struct EmployeePortalView: View {
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
         .accentColor(AppTheme.red)
+        .toolbarBackground(.hidden, for: .tabBar)
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task {
