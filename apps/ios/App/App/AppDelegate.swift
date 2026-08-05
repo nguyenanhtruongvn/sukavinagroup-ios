@@ -2368,29 +2368,29 @@ private struct ModernAttendanceHistoryView: View {
     @State private var message: String?
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var monthIndex = 1
+    @State private var monthMoveDirection = 1
 
     var body: some View {
         VStack(spacing: 0) {
             monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
-            TabView(selection: $monthIndex) {
-                ForEach(options.indices, id: \.self) { index in
-                    attendanceMonthPage.tag(index)
-                }
+            ZStack {
+                attendanceMonthPage
+                    .id(monthIndex)
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: monthMoveDirection > 0 ? .trailing : .leading),
+                            removal: .move(edge: monthMoveDirection > 0 ? .leading : .trailing)
+                        )
+                    )
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .animation(.easeInOut(duration: 0.22), value: monthIndex)
             .ignoresSafeArea(.container, edges: .bottom)
+            .simultaneousGesture(monthSwipeGesture)
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .bottom)
         .navigationTitle("Bảng chấm công")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .tabBar)
-        .onChange(of: monthIndex) { _, newIndex in
-            guard options.indices.contains(newIndex) else { return }
-            selectedMonth = options[newIndex]
-            UISelectionFeedbackGenerator().selectionChanged()
-        }
         .task(id: selectedMonth) { await loadHistory() }
         .task { await preloadAdjacentMonths() }
     }
@@ -2417,9 +2417,22 @@ private struct ModernAttendanceHistoryView: View {
     private func moveMonth(by offset: Int) {
         let target = monthIndex + offset
         guard options.indices.contains(target) else { return }
-        withAnimation(.easeInOut(duration: 0.22)) {
+        monthMoveDirection = offset
+        withAnimation(.easeInOut(duration: 0.28)) {
             monthIndex = target
+            selectedMonth = options[target]
         }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private var monthSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) > abs(vertical) * 1.15, abs(horizontal) > 48 else { return }
+                moveMonth(by: horizontal < 0 ? 1 : -1)
+            }
     }
 
     private var monthNavigation: some View {
