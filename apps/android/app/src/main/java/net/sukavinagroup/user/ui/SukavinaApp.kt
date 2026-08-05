@@ -9,6 +9,7 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
@@ -161,48 +162,77 @@ private fun String.isConnectionError() =
     if (attendanceOpen) return AttendanceScreen(session) { attendanceOpen = false }
 
     Scaffold(bottomBar = {
-        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-            MainTab.entries.forEach { item ->
-                val selected = tab == item
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = { tab = item },
-                    colors = if (item == MainTab.MENU) {
-                        NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent)
-                    } else {
-                        NavigationBarItemDefaults.colors()
-                    },
-                    icon = {
-                        val notificationCount = state.unreadCount + state.requestNotifications.count { !it.read }
-                        if (item == MainTab.MENU) {
-                            Surface(
-                                modifier = Modifier
-                                    .offset(y = (-11).dp)
-                                    .size(if (selected) 64.dp else 58.dp),
-                                shape = CircleShape,
-                                color = if (selected) SukavinaRed else MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = if (selected) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
-                                tonalElevation = 8.dp,
-                                shadowElevation = 9.dp,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    2.dp,
-                                    if (selected) Color.White.copy(alpha = .72f) else SukavinaRed.copy(alpha = .22f),
-                                ),
+        val dark = isSystemInDarkTheme()
+        val glassColor = if (dark) {
+            MaterialTheme.colorScheme.surface.copy(alpha = .82f)
+        } else {
+            Color.White.copy(alpha = .78f)
+        }
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .height(78.dp),
+            shape = appShape(30.dp, AppShapeRole.EXTRA_LARGE),
+            color = glassColor,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            tonalElevation = 8.dp,
+            shadowElevation = 14.dp,
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (dark) Color.White.copy(alpha = .14f) else Color.White.copy(alpha = .86f),
+            ),
+        ) {
+            NavigationBar(
+                containerColor = Color.Transparent,
+                tonalElevation = 0.dp,
+                windowInsets = WindowInsets(0, 0, 0, 0),
+            ) {
+                MainTab.entries.forEach { item ->
+                    val selected = tab == item
+                    val notificationCount = state.unreadCount +
+                        state.requestNotifications.count { !it.read }
+                    NavigationBarItem(
+                        selected = selected,
+                        onClick = { tab = item },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            indicatorColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        icon = {
+                            BadgedBox(
+                                badge = {
+                                    if (item == MainTab.NOTIFICATIONS && notificationCount > 0) {
+                                        Badge { Text(notificationCount.toString()) }
+                                    }
+                                },
                             ) {
                                 Icon(
-                                    Icons.Default.Restaurant,
+                                    when (item) {
+                                        MainTab.HOME -> Icons.Default.Home
+                                        MainTab.REQUESTS -> Icons.Default.Description
+                                        MainTab.MENU -> Icons.Default.Restaurant
+                                        MainTab.NOTIFICATIONS -> Icons.Default.Notifications
+                                        MainTab.PROFILE -> Icons.Default.Person
+                                    },
                                     item.label,
-                                    modifier = Modifier.padding(if (selected) 17.dp else 16.dp),
                                 )
                             }
-                        } else {
-                            BadgedBox(badge = { if (item == MainTab.NOTIFICATIONS && notificationCount > 0) Badge { Text(notificationCount.toString()) } }) {
-                                Icon(when(item) { MainTab.HOME -> Icons.Default.Home; MainTab.MENU -> Icons.Default.Restaurant; MainTab.REQUESTS -> Icons.Default.Description; MainTab.NOTIFICATIONS -> Icons.Default.Notifications; MainTab.PROFILE -> Icons.Default.Person }, null)
-                            }
-                        }
-                    },
-                    label = { Text(item.label, fontWeight = if (item == MainTab.MENU) FontWeight.Bold else FontWeight.Medium) },
-                )
+                        },
+                        label = {
+                            Text(
+                                item.label,
+                                fontSize = 11.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                maxLines = 1,
+                            )
+                        },
+                    )
+                }
             }
         }
     }) { padding ->
