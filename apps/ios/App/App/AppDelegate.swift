@@ -1777,46 +1777,25 @@ private struct VerificationView: View {
     }
 }
 
-private enum EmployeePortalTab: Int, CaseIterable {
-    case home, menu, requests, notifications, profile
-
-    var title: String {
-        switch self {
-        case .home: return "Trang chủ"
-        case .menu: return "Thực đơn"
-        case .requests: return "Đơn từ"
-        case .notifications: return "Thông báo"
-        case .profile: return "Tài khoản"
-        }
-    }
-    var icon: String {
-        switch self {
-        case .home: return "house.fill"
-        case .menu: return "fork.knife"
-        case .requests: return "doc.text.fill"
-        case .notifications: return "bell.fill"
-        case .profile: return "person.crop.circle.fill"
-        }
-    }
-}
-
 private struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
-    @State private var selectedTab: EmployeePortalTab = .home
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            DashboardView().tag(EmployeePortalTab.home)
-            TodayMenuView().tag(EmployeePortalTab.menu)
-            RequestsView().tag(EmployeePortalTab.requests)
-            NotificationsView().tag(EmployeePortalTab.notifications)
-            ProfileView().tag(EmployeePortalTab.profile)
+        TabView {
+            DashboardView()
+                .tabItem { Label("Trang chủ", systemImage: "house.fill") }
+            TodayMenuView()
+                .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
+            RequestsView()
+                .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
+            NotificationsView()
+                .tabItem { Label("Thông báo", systemImage: "bell.fill") }
+                .badge(session.unreadCount + session.requestUnreadCount)
+            ProfileView()
+                .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
-        .toolbar(.hidden, for: .tabBar)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            floatingTabBar
-        }
+        .accentColor(AppTheme.red)
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task {
@@ -1824,59 +1803,6 @@ private struct EmployeePortalView: View {
                 }
             }
         }
-    }
-
-    private var floatingTabBar: some View {
-        HStack(spacing: 4) {
-            ForEach(EmployeePortalTab.allCases, id: \.self) { tab in
-                Button {
-                    guard selectedTab != tab else { return }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(.snappy(duration: 0.28)) { selectedTab = tab }
-                } label: {
-                    VStack(spacing: 4) {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 17, weight: .bold))
-                                .frame(width: 48, height: 30)
-                                .background(selectedTab == tab ? AppTheme.red.opacity(0.14) : Color.clear)
-                                .clipShape(Capsule())
-                            if tab == .notifications {
-                                let count = session.unreadCount + session.requestUnreadCount
-                                if count > 0 {
-                                    Text("\(min(count, 99))")
-                                        .font(.system(size: 8, weight: .black))
-                                        .foregroundStyle(.white)
-                                        .padding(4)
-                                        .background(AppTheme.red)
-                                        .clipShape(Circle())
-                                        .offset(x: 2, y: -3)
-                                }
-                            }
-                        }
-                        Text(tab.title)
-                            .font(.system(size: 9, weight: selectedTab == tab ? .bold : .medium))
-                            .lineLimit(1)
-                    }
-                    .foregroundStyle(selectedTab == tab ? AppTheme.red : Color.primary.opacity(0.72))
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 7)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color.white.opacity(0.42), lineWidth: 0.8)
-        }
-        .shadow(color: Color.black.opacity(0.16), radius: 18, y: 8)
-        .padding(.horizontal, 16)
-        .padding(.top, 7)
-        .padding(.bottom, 5)
     }
 }
 
