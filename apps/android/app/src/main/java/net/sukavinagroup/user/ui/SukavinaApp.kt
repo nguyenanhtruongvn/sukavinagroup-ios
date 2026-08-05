@@ -25,6 +25,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.autofill.ContentType
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
@@ -51,6 +53,17 @@ import java.util.Locale
 
 private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
 private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
+private enum class AppShapeRole { MEDIUM, LARGE, EXTRA_LARGE }
+
+@Composable
+private fun appShape(standard: Dp, role: AppShapeRole = AppShapeRole.MEDIUM): Shape {
+    if (!LocalSukavinaExpressive.current) return RoundedCornerShape(standard)
+    return when (role) {
+        AppShapeRole.MEDIUM -> MaterialTheme.shapes.medium
+        AppShapeRole.LARGE -> MaterialTheme.shapes.large
+        AppShapeRole.EXTRA_LARGE -> MaterialTheme.shapes.extraLarge
+    }
+}
 
 @Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -89,11 +102,11 @@ private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
             leadingIcon = { Icon(Icons.Default.Lock, null) }, visualTransformation = PasswordVisualTransformation(),
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
         Button(onClick = { signIn(login, password) }, enabled = login.isNotBlank() && password.isNotBlank() && !state.working,
-            modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = RoundedCornerShape(16.dp)) {
+            modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = appShape(16.dp, AppShapeRole.LARGE)) {
             if (state.working) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
             else Text("Đăng nhập", fontWeight = FontWeight.Bold)
         }
-        if (state.biometricEnabled) OutlinedButton(onClick = { activity?.authenticateBiometric(biometricSignIn) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = RoundedCornerShape(16.dp)) { Icon(Icons.Default.Fingerprint, null); Spacer(Modifier.width(8.dp)); Text("Đăng nhập bằng sinh trắc học") }
+        if (state.biometricEnabled) OutlinedButton(onClick = { activity?.authenticateBiometric(biometricSignIn) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = appShape(16.dp, AppShapeRole.LARGE)) { Icon(Icons.Default.Fingerprint, null); Spacer(Modifier.width(8.dp)); Text("Đăng nhập bằng sinh trắc học") }
     }
     state.error?.takeIf(String::isConnectionError)?.let {
         InternetConnectionAlert(dismissError)
@@ -113,7 +126,7 @@ private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
     AlertDialog(
         onDismissRequest = dismiss,
         icon = {
-            Surface(Modifier.size(54.dp), RoundedCornerShape(17.dp), color = SukavinaRed.copy(alpha = .14f)) {
+            Surface(Modifier.size(54.dp), appShape(17.dp, AppShapeRole.LARGE), color = SukavinaRed.copy(alpha = .14f)) {
                 Icon(Icons.Default.WifiOff, null, tint = SukavinaRed, modifier = Modifier.padding(14.dp))
             }
         },
@@ -193,7 +206,7 @@ private fun String.isConnectionError() =
         AlertDialog(
             onDismissRequest = { pendingChoice = null },
             icon = {
-                Surface(shape = RoundedCornerShape(18.dp), color = (if (cancelling) Color(0xFFFF6F67) else if (pendingChoice == "water") Color(0xFF62C5F4) else Color(0xFF62D58B)).copy(alpha = .14f), modifier = Modifier.size(58.dp)) {
+                Surface(shape = appShape(18.dp, AppShapeRole.LARGE), color = (if (cancelling) Color(0xFFFF6F67) else if (pendingChoice == "water") Color(0xFF62C5F4) else Color(0xFF62D58B)).copy(alpha = .14f), modifier = Modifier.size(58.dp)) {
                     Icon(if (cancelling) Icons.Default.Cancel else if (receiving) Icons.Default.CheckCircle else if (pendingChoice == "water") Icons.Default.LocalDrink else Icons.Default.Eco, null, tint = if (cancelling) Color(0xFFFF6F67) else if (receiving) Color(0xFF42B878) else if (pendingChoice == "water") Color(0xFF62C5F4) else Color(0xFF62D58B), modifier = Modifier.padding(15.dp))
                 }
             },
@@ -201,7 +214,7 @@ private fun String.isConnectionError() =
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
                     Text(if (cancelling) "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." else if (receiving) "Xác nhận sau khi bạn đã nhận đúng phần ăn đã đặt." else "Kiểm tra món trước khi xác nhận đặt.", color = SukavinaMuted)
-                    if (!cancelling && !receiving) Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                    if (!cancelling && !receiving) Surface(shape = appShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
                         Column(Modifier.fillMaxWidth().padding(14.dp)) {
                             Text(title.uppercase(), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
                             Text(detail?.ifBlank { "..." } ?: "...", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
@@ -228,14 +241,14 @@ private fun String.isConnectionError() =
             }
         }
         item {
-            Card(shape = RoundedCornerShape(22.dp)) {
+            Card(shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     if (menu?.selection != null) {
                         val water = menu.selection == "water"
                         val selectedDetail = if (water) menu.day.featured else listOf(menu.day.vegetarianMain, menu.day.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · ")
                         Text("MÓN ĂN ĐÃ ĐẶT", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
-                            Surface(shape = RoundedCornerShape(15.dp), color = (if (water) Color(0xFF62C5F4) else Color(0xFF62D58B)).copy(alpha = .14f), modifier = Modifier.size(50.dp)) {
+                            Surface(shape = appShape(15.dp), color = (if (water) Color(0xFF62C5F4) else Color(0xFF62D58B)).copy(alpha = .14f), modifier = Modifier.size(50.dp)) {
                                 Icon(if (water) Icons.Default.LocalDrink else Icons.Default.Eco, null, tint = if (water) Color(0xFF62C5F4) else Color(0xFF62D58B), modifier = Modifier.padding(13.dp))
                             }
                             Column {
@@ -247,7 +260,7 @@ private fun String.isConnectionError() =
                             Icon(Icons.Default.CheckCircle, null)
                             Spacer(Modifier.width(7.dp))
                             Text("Xác nhận đã nhận món", fontWeight = FontWeight.Bold)
-                        } else Surface(shape = RoundedCornerShape(15.dp), color = Color(0xFF42B878).copy(alpha = .12f), modifier = Modifier.fillMaxWidth()) {
+                        } else Surface(shape = appShape(15.dp), color = Color(0xFF42B878).copy(alpha = .12f), modifier = Modifier.fillMaxWidth()) {
                             Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Verified, null, tint = Color(0xFF42B878))
                                 Spacer(Modifier.width(7.dp))
@@ -265,7 +278,7 @@ private fun String.isConnectionError() =
                         Text("LỰA CHỌN HÔM NAY", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("Bạn muốn dùng món nào?", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         if (menu?.orderingOpen == false) {
-                            Surface(shape = RoundedCornerShape(16.dp), color = Color(0xFFF5A63D).copy(alpha = .11f), modifier = Modifier.fillMaxWidth()) {
+                            Surface(shape = appShape(16.dp, AppShapeRole.LARGE), color = Color(0xFFF5A63D).copy(alpha = .11f), modifier = Modifier.fillMaxWidth()) {
                                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Schedule, null, tint = Color(0xFFF5A63D))
                                     Spacer(Modifier.width(10.dp))
@@ -287,9 +300,9 @@ private fun String.isConnectionError() =
 }
 
 @Composable private fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
-    Card(modifier.fillMaxWidth(), shape = RoundedCornerShape(19.dp), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
+    Card(modifier.fillMaxWidth(), shape = appShape(19.dp, AppShapeRole.LARGE), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
-            Surface(shape = RoundedCornerShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
+            Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
                 Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp))
             }
             Column(Modifier.padding(start = 13.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -313,12 +326,12 @@ private fun String.isConnectionError() =
     Surface(
         onClick = onClick,
         enabled = !disabled,
-        shape = RoundedCornerShape(17.dp),
+        shape = appShape(17.dp, AppShapeRole.LARGE),
         color = if (selected) color.copy(alpha = .12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
         border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) color.copy(alpha = .45f) else MaterialTheme.colorScheme.outline.copy(alpha = .15f)),
     ) {
         Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = RoundedCornerShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(44.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp)) }
+            Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(44.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp)) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text(detail?.ifBlank { "..." } ?: "...", color = SukavinaMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
             Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null, tint = if (selected) color else SukavinaMuted)
@@ -366,7 +379,7 @@ private fun String.isConnectionError() =
     }
 }
 
-@Composable private fun TimeBox(label: String, value: String, modifier: Modifier) = Surface(modifier, shape = RoundedCornerShape(14.dp), color = Color.White.copy(alpha = .06f)) {
+@Composable private fun TimeBox(label: String, value: String, modifier: Modifier) = Surface(modifier, shape = appShape(14.dp), color = Color.White.copy(alpha = .06f)) {
     Column(Modifier.padding(14.dp)) { Text(label, color = SukavinaMuted, fontSize = 12.sp); Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
 }
 
@@ -432,7 +445,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .32f))) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(Modifier.size(44.dp), RoundedCornerShape(14.dp), color = kind.color.copy(alpha = .16f)) { Icon(kind.icon, null, tint = kind.color, modifier = Modifier.padding(11.dp)) }
+                Surface(Modifier.size(44.dp), appShape(14.dp), color = kind.color.copy(alpha = .16f)) { Icon(kind.icon, null, tint = kind.color, modifier = Modifier.padding(11.dp)) }
                 Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(request.employee?.fullName ?: "Đơn của tôi", fontWeight = FontWeight.Bold); Surface(shape = CircleShape, color = kind.color.copy(alpha = .14f)) { Text(kind.title, color = kind.color, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)) } }
                 Text(status.first, color = status.second, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
@@ -518,7 +531,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(17.dp),
+        shape = appShape(17.dp, AppShapeRole.LARGE),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f)),
     ) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -593,14 +606,14 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
                 val tone = kind?.color ?: when { item.type.contains("rejected") -> Color(0xFFFF6F67); item.type.contains("cancelled") -> Color(0xFFAAB1BD); else -> Color(0xFF55D881) }
                 Card(onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } }, colors = CardDefaults.cardColors(containerColor = if (item.read) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant), border = androidx.compose.foundation.BorderStroke(1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .35f))) {
                     Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
-                        Surface(Modifier.size(44.dp), RoundedCornerShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
+                        Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
                         Column(Modifier.padding(horizontal = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(item.title, fontWeight = FontWeight.Bold); kind?.let { Text(it.title, color = it.color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }; Text(item.message, color = SukavinaMuted, fontSize = 13.sp); Text(item.createdAt.toDateTimeLabel(), color = tone, fontSize = 11.sp) }
                         if (!item.read) Surface(Modifier.size(8.dp), CircleShape, color = SukavinaRed) {}
                     }
                 }
             }
             items(visibleArticles, key = { "article-${it.id}" }) { item ->
-                Card(onClick = { session.markArticlesRead(); openArticle(item) }) { Row(Modifier.padding(15.dp)) { Surface(Modifier.size(44.dp), RoundedCornerShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) } } }
+                Card(onClick = { session.markArticlesRead(); openArticle(item) }) { Row(Modifier.padding(15.dp)) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) } } }
             }
             if (state.requestNotifications.isEmpty() && visibleArticles.isEmpty()) item { Text("Chưa có thông báo.", color = SukavinaMuted, modifier = Modifier.padding(top = 50.dp)) }
         }
@@ -674,7 +687,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 
 @Composable private fun AttendanceMonthSelector(months: List<YearMonth>, selected: YearMonth, select: (YearMonth) -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(18.dp))
+        Modifier.fillMaxWidth().padding(16.dp).clip(appShape(18.dp, AppShapeRole.LARGE))
             .background(MaterialTheme.colorScheme.surface).padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -706,7 +719,7 @@ private data class AttendanceMetric(val key: String, val title: String, val colo
         metrics.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { metric ->
-                    Surface(Modifier.weight(1f), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface) {
+                    Surface(Modifier.weight(1f), shape = appShape(16.dp, AppShapeRole.LARGE), color = MaterialTheme.colorScheme.surface) {
                         Column(Modifier.padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(metric.count.toString(), color = metric.color, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
                             Text(metric.title, color = SukavinaMuted, fontSize = 11.sp, maxLines = 1)
@@ -723,7 +736,7 @@ private data class AttendanceMetric(val key: String, val title: String, val colo
     val days = month.days
     val leading = days.firstOrNull()?.date?.let { LocalDate.parse(it).dayOfWeek.value - 1 } ?: 0
     val cells: List<AttendanceDay?> = List(leading) { null } + days
-    Card(shape = RoundedCornerShape(22.dp)) {
+    Card(shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("Lịch chấm công", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
             Row(Modifier.fillMaxWidth()) {
@@ -749,7 +762,7 @@ private data class AttendanceMetric(val key: String, val title: String, val colo
         return
     }
     val statuses = day.allStatuses()
-    val shape = RoundedCornerShape(11.dp)
+    val shape = appShape(11.dp)
     Box(
         Modifier.weight(1f).aspectRatio(0.92f).clip(shape)
             .then(if (day.date == selectedDate) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
@@ -787,7 +800,7 @@ private data class AttendanceMetric(val key: String, val title: String, val colo
     }
 }
 
-@Composable private fun AttendanceDayDetail(month: AttendanceMonth, day: AttendanceDay) = Card(shape = RoundedCornerShape(22.dp)) {
+@Composable private fun AttendanceDayDetail(month: AttendanceMonth, day: AttendanceDay) = Card(shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
     Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Chi tiết ngày ${LocalDate.parse(day.date).format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
         HorizontalDivider()
@@ -911,7 +924,7 @@ private fun attendanceTitle(status: String) = when (status) {
             Modifier.fillMaxWidth().fillMaxHeight(.92f).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Surface(Modifier.size(62.dp), RoundedCornerShape(20.dp), color = SukavinaRed.copy(alpha = .15f)) {
+            Surface(Modifier.size(62.dp), appShape(20.dp, AppShapeRole.EXTRA_LARGE), color = SukavinaRed.copy(alpha = .15f)) {
                 Icon(
                     if (page == LegalPage.PRIVACY) Icons.Default.PrivacyTip else if (page == LegalPage.SUPPORT) Icons.Default.SupportAgent else Icons.Default.ManageAccounts,
                     null,

@@ -6,10 +6,13 @@ import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
@@ -17,6 +20,7 @@ val SukavinaRed = Color(0xFFE92A31)
 val SukavinaInk = Color(0xFF111115)
 val SukavinaCard = Color(0xFF202027)
 val SukavinaMuted = Color(0xFFAAA7AD)
+val LocalSukavinaExpressive = staticCompositionLocalOf { false }
 
 private val darkColors = darkColorScheme(
     primary = SukavinaRed, onPrimary = Color.White, background = SukavinaInk,
@@ -45,8 +49,15 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColors else lightColors
 
     if (useExpressive) {
-        MaterialExpressiveTheme(colorScheme = colors, content = content)
+        MaterialExpressiveTheme(
+            colorScheme = colors,
+            motionScheme = MotionScheme.expressive(),
+        ) {
+            CompositionLocalProvider(LocalSukavinaExpressive provides true, content = content)
+        }
     } else {
-        MaterialTheme(colorScheme = colors, content = content)
+        MaterialTheme(colorScheme = colors) {
+            CompositionLocalProvider(LocalSukavinaExpressive provides false, content = content)
+        }
     }
 }
