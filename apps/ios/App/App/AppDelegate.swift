@@ -122,9 +122,14 @@ private extension View {
     @ViewBuilder
     func hidesPortalBottomScrollEdgeEffect() -> some View {
         if #available(iOS 26.0, *) {
-            self.scrollEdgeEffectHidden(true, for: .bottom)
+            self
+                .scrollIndicators(.hidden)
+                .ignoresSafeArea(.container, edges: .bottom)
+                .scrollEdgeEffectHidden(true, for: .bottom)
         } else {
             self
+                .scrollIndicators(.hidden)
+                .ignoresSafeArea(.container, edges: .bottom)
         }
     }
 
@@ -1819,7 +1824,6 @@ private struct EmployeePortalView: View {
         }
         .accentColor(AppTheme.red)
         .toolbarBackground(.hidden, for: .tabBar)
-        .hidesPortalBottomScrollEdgeEffect()
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task {
