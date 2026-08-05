@@ -2369,22 +2369,20 @@ private struct ModernAttendanceHistoryView: View {
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var monthIndex = 1
     @State private var monthMoveDirection = 1
+    @State private var monthDragOffset: CGFloat = 0
+    @State private var isCompletingMonthSwipe = false
 
     var body: some View {
         VStack(spacing: 0) {
             monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
-            ZStack {
+            GeometryReader { geometry in
                 attendanceMonthPage
                     .id(monthIndex)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: monthMoveDirection > 0 ? .trailing : .leading),
-                            removal: .move(edge: monthMoveDirection > 0 ? .leading : .trailing)
-                        )
-                    )
+                    .offset(x: monthDragOffset)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(monthSwipeGesture(pageWidth: geometry.size.width))
             }
             .ignoresSafeArea(.container, edges: .bottom)
-            .simultaneousGesture(monthSwipeGesture)
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .bottom)
@@ -2425,13 +2423,56 @@ private struct ModernAttendanceHistoryView: View {
         UISelectionFeedbackGenerator().selectionChanged()
     }
 
-    private var monthSwipeGesture: some Gesture {
+    private func monthSwipeGesture(pageWidth: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 24)
-            .onEnded { value in
+            .onChanged { value in
+                guard !isCompletingMonthSwipe else { return }
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
-                guard abs(horizontal) > abs(vertical) * 1.15, abs(horizontal) > 48 else { return }
-                moveMonth(by: horizontal < 0 ? 1 : -1)
+                guard abs(horizontal) > abs(vertical) * 1.08 else { return }
+                let offset = horizontal < 0 ? 1 : -1
+                let canMove = options.indices.contains(monthIndex + offset)
+                monthDragOffset = canMove ? horizontal : horizontal * 0.22
+            }
+            .onEnded { value in
+                guard !isCompletingMonthSwipe else { return }
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) > abs(vertical) * 1.08 else {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { monthDragOffset = 0 }
+                    return
+                }
+
+                let offset = horizontal < 0 ? 1 : -1
+                let target = monthIndex + offset
+                let projected = value.predictedEndTranslation.width
+                let shouldChange = options.indices.contains(target)
+                    && (abs(horizontal) > pageWidth * 0.22 || abs(projected) > pageWidth * 0.42)
+
+                guard shouldChange else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { monthDragOffset = 0 }
+                    return
+                }
+
+                isCompletingMonthSwipe = true
+                monthMoveDirection = offset
+                let exitOffset = offset > 0 ? -pageWidth : pageWidth
+                withAnimation(.easeOut(duration: 0.16)) { monthDragOffset = exitOffset }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        monthIndex = target
+                        selectedMonth = options[target]
+                        monthDragOffset = offset > 0 ? pageWidth : -pageWidth
+                    }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.easeOut(duration: 0.2)) { monthDragOffset = 0 }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        isCompletingMonthSwipe = false
+                    }
+                }
             }
     }
 
