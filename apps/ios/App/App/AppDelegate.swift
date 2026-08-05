@@ -2403,7 +2403,7 @@ private struct ModernAttendanceHistoryView: View {
                     Text(message).foregroundStyle(AppTheme.muted)
                 }
             }
-            .padding(.horizontal, 16).padding(.bottom, 16)
+            .padding(.horizontal, 16).padding(.bottom, 112)
             .background(AttendanceScrollInsetNeutralizer())
         }
         .hidesPortalBottomScrollEdgeEffect()
@@ -3244,8 +3244,32 @@ private struct NotificationsView: View {
                                 Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
                             }
                             Spacer()
-                            if !item.read { Circle().fill(AppTheme.red).frame(width: 8, height: 8) }
-                          }.padding(16).background(item.read ? AppTheme.card : Color.white.opacity(0.115)).overlay { RoundedRectangle(cornerRadius: 20).stroke(item.read ? Color.clear : notificationColor(item).opacity(0.32)) }.clipShape(RoundedRectangle(cornerRadius: 20))
+                            if !item.read {
+                                Text("Mới")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(notificationColor(item))
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 5)
+                                    .background(notificationColor(item).opacity(0.18))
+                                    .clipShape(Capsule())
+                            }
+                          }
+                          .padding(16)
+                          .background(
+                              LinearGradient(
+                                  colors: item.read
+                                      ? [AppTheme.card, AppTheme.card]
+                                      : [notificationColor(item).opacity(0.24), AppTheme.card],
+                                  startPoint: .topLeading,
+                                  endPoint: .bottomTrailing
+                              )
+                          )
+                          .overlay {
+                              RoundedRectangle(cornerRadius: 20)
+                                  .stroke(item.read ? Color.clear : notificationColor(item).opacity(0.52), lineWidth: item.read ? 1 : 1.4)
+                          }
+                          .shadow(color: item.read ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
+                          .clipShape(RoundedRectangle(cornerRadius: 20))
                         }.buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -3259,6 +3283,7 @@ private struct NotificationsView: View {
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let isUnread = index < session.unreadCount
                         NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -3268,7 +3293,30 @@ private struct NotificationsView: View {
                                     Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
                                 }
                                 Spacer(minLength: 0)
-                            }.padding(16).background(index < session.unreadCount ? Color.white.opacity(0.115) : AppTheme.card).overlay { RoundedRectangle(cornerRadius: 20).stroke(index < session.unreadCount ? AppTheme.red.opacity(0.3) : Color.clear) }.clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                                if isUnread {
+                                    Text("Mới")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(AppTheme.red)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(AppTheme.red.opacity(0.18))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            .padding(16)
+                            .background(
+                                LinearGradient(
+                                    colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(isUnread ? AppTheme.red.opacity(0.52) : Color.clear, lineWidth: isUnread ? 1.4 : 1)
+                            }
+                            .shadow(color: isUnread ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
