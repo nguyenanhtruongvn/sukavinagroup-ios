@@ -2326,8 +2326,10 @@ private struct ModernAttendanceHistoryView: View {
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut(duration: 0.22), value: monthIndex)
+            .ignoresSafeArea(.container, edges: .bottom)
         }
         .background(AppTheme.ink.ignoresSafeArea())
+        .ignoresSafeArea(.container, edges: .bottom)
         .navigationTitle("Bảng chấm công")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .tabBar)
@@ -2809,6 +2811,7 @@ private struct RequestsView: View {
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .animation(.easeInOut(duration: 0.22), value: filterIndex)
+                    .ignoresSafeArea(.container, edges: .bottom)
                 }
                 .padding(.top, 8)
                 .onChange(of: filterIndex) { _, newIndex in
@@ -2816,6 +2819,7 @@ private struct RequestsView: View {
                     filter = filterOptions[newIndex]
                     UISelectionFeedbackGenerator().selectionChanged()
                 }
+                .ignoresSafeArea(.container, edges: .bottom)
 
                 Button { composing = true } label: {
                     Image(systemName: "plus")
@@ -3245,6 +3249,7 @@ private struct NotificationsView: View {
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
         }
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 
     private func loadRequestNotifications() async {
