@@ -2367,6 +2367,7 @@ private struct ModernAttendanceHistoryView: View {
     @State private var isLoading = false
     @State private var message: String?
     @State private var cache: [String: AttendanceMonth] = [:]
+    @State private var selectedDates: [String: String] = [:]
     @State private var monthIndex = 1
 
     var body: some View {
@@ -2374,13 +2375,7 @@ private struct ModernAttendanceHistoryView: View {
             monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
             TabView(selection: $monthIndex) {
                 ForEach(options.indices, id: \.self) { index in
-                    Group {
-                        if index == monthIndex {
-                            attendanceMonthPage
-                        } else {
-                            preloadedMonthPage(index)
-                        }
-                    }
+                    preloadedMonthPage(index)
                         .tag(index)
                 }
             }
@@ -2433,7 +2428,10 @@ private struct ModernAttendanceHistoryView: View {
             VStack(spacing: 14) {
                 if let data {
                     preloadedSummaryCards(data)
-                    preloadedCalendarCard(data)
+                    preloadedCalendarCard(data, month: month)
+                    if let day = selectedDay(in: data, month: month) {
+                        preloadedDayDetail(day, data: data)
+                    }
                 } else {
                     ProgressView("Đang tải tháng kế bên...")
                         .tint(AppTheme.red)
@@ -2469,7 +2467,7 @@ private struct ModernAttendanceHistoryView: View {
         }
     }
 
-    private func preloadedCalendarCard(_ data: AttendanceMonth) -> some View {
+    private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
             HStack(spacing: 4) {
@@ -2483,12 +2481,22 @@ private struct ModernAttendanceHistoryView: View {
                     Color.clear.frame(height: 50)
                 }
                 ForEach(data.days) { day in
-                    Text(String(Int(day.date.suffix(2)) ?? 0))
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                        .background(dayBackground(day))
-                        .clipShape(RoundedRectangle(cornerRadius: 11))
+                    let selected = selectedDay(in: data, month: month)?.date == day.date
+                    Button {
+                        selectedDates[month] = day.date
+                    } label: {
+                        Text(String(Int(day.date.suffix(2)) ?? 0))
+                            .font(.subheadline.weight(selected ? .bold : .medium))
+                            .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .background(dayBackground(day))
+                            .clipShape(RoundedRectangle(cornerRadius: 11))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 11)
+                                    .stroke(selected ? Color(red: 0.05, green: 0.25, blue: 0.5) : .clear, lineWidth: 2)
+                            }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -2506,12 +2514,41 @@ private struct ModernAttendanceHistoryView: View {
         return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
     }
 
+    private func selectedDay(in data: AttendanceMonth, month: String) -> AttendanceDay? {
+        if let selected = selectedDates[month], let day = data.days.first(where: { $0.date == selected }) {
+            return day
+        }
+        return data.days.first(where: { $0.date == Self.dayValue(Date()) }) ?? data.days.last
+    }
+
+    private func preloadedDayDetail(_ day: AttendanceDay, data: AttendanceMonth) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Chi tiết ngày \(displayDate(day.date))", systemImage: "calendar")
+                .font(.headline).foregroundStyle(Color.primary)
+            Divider()
+            detailRow("Giờ vào", time(day.checkIn))
+            detailRow("Giờ ra", time(day.checkOut))
+            detailRow("Trạng thái", dayStatuses(day).map(statusTitle).joined(separator: " · "))
+            detailRow(
+                "Khung giờ \(data.department ?? "phòng ban")",
+                "\(day.startTime ?? data.startTime ?? "--:--") - \(day.endTime ?? data.endTime ?? "--:--")"
+            )
+        }
+        .padding(18)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
     private func preloadMonth(_ month: String) async {
         guard cache[month] == nil, let token = session.token else { return }
         if let loaded: AttendanceMonth = try? await APIClient.shared.request(
             "me/attendance?month=\(month)", token: token
         ) {
             cache[month] = loaded
+            if selectedDates[month] == nil {
+                selectedDates[month] = loaded.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
+                    ?? loaded.days.last?.date
+            }
         }
     }
 
