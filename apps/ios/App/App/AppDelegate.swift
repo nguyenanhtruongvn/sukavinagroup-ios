@@ -1921,9 +1921,6 @@ private struct TodayMenuView: View {
                 }
                 .padding(18)
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                AppTheme.ink.frame(height: 96).allowsHitTesting(false)
-            }
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Thực đơn")
             .task {
@@ -2086,9 +2083,6 @@ private struct DashboardView: View {
 
                 }
                 .padding(20)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                AppTheme.ink.frame(height: 96).allowsHitTesting(false)
             }
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Sukavina")
@@ -2327,9 +2321,6 @@ private struct ModernAttendanceHistoryView: View {
                 }
             }
             .padding(.horizontal, 16).padding(.bottom, 16)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            AppTheme.ink.frame(height: 104).allowsHitTesting(false)
         }
     }
 
@@ -2885,9 +2876,6 @@ private struct RequestsView: View {
                 .padding(.bottom, 92)
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            AppTheme.ink.frame(height: 96).allowsHitTesting(false)
-        }
         .refreshable { await store.load(session.token) }
     }
 }
@@ -3212,9 +3200,6 @@ private struct NotificationsView: View {
                     }
             }
             .listStyle(.plain)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                AppTheme.ink.frame(height: 96).allowsHitTesting(false)
-            }
             .scrollContentBackground(.hidden)
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
@@ -3706,9 +3691,6 @@ private struct ProfileView: View {
                     }
                 }
                 .padding(22)
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                AppTheme.ink.frame(height: 104).allowsHitTesting(false)
             }
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Tài khoản")
