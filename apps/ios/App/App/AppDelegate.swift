@@ -111,6 +111,15 @@ private extension View {
         )
     }
 
+    @ViewBuilder
+    func hidesPortalBottomScrollEdgeEffect() -> some View {
+        if #available(iOS 26.0, *) {
+            self.scrollEdgeEffectHidden(true, for: .bottom)
+        } else {
+            self
+        }
+    }
+
 }
 
 private struct APIErrorPayload: Decodable {
@@ -1784,29 +1793,25 @@ private struct EmployeePortalView: View {
     var body: some View {
         TabView {
             DashboardView()
-                .ignoresSafeArea(.container, edges: .bottom)
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
             TodayMenuView()
-                .ignoresSafeArea(.container, edges: .bottom)
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
             RequestsView()
-                .ignoresSafeArea(.container, edges: .bottom)
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             NotificationsView()
-                .ignoresSafeArea(.container, edges: .bottom)
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount + session.requestUnreadCount)
             ProfileView()
-                .ignoresSafeArea(.container, edges: .bottom)
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
         .accentColor(AppTheme.red)
         .toolbarBackground(.hidden, for: .tabBar)
+        .hidesPortalBottomScrollEdgeEffect()
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task {
@@ -2181,7 +2186,6 @@ private struct AttendanceHistoryView: View {
             .padding(20)
         }
         .background(AppTheme.ink.ignoresSafeArea())
-        .ignoresSafeArea(.container, edges: .bottom)
         .toolbarBackground(.hidden, for: .tabBar)
         .navigationTitle("Bảng chấm công")
         .task(id: selectedMonth) { await loadHistory() }
@@ -2311,7 +2315,6 @@ private struct ModernAttendanceHistoryView: View {
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationTitle("Bảng chấm công")
         .navigationBarTitleDisplayMode(.inline)
-        .ignoresSafeArea(.container, edges: .bottom)
         .toolbarBackground(.hidden, for: .tabBar)
         .onChange(of: monthIndex) { _, newIndex in
             guard options.indices.contains(newIndex) else { return }
