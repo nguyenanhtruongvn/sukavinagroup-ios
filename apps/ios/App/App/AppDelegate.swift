@@ -16,6 +16,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     ) -> Bool {
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
+        let tabBarAppearance = UITabBarAppearance()
+        tabBarAppearance.configureWithTransparentBackground()
+        tabBarAppearance.backgroundColor = .clear
+        tabBarAppearance.backgroundEffect = nil
+        tabBarAppearance.shadowColor = .clear
+        UITabBar.appearance().standardAppearance = tabBarAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+        UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
         window.rootViewController = UIHostingController(rootView: SukavinaAppView())
@@ -1937,6 +1945,7 @@ private struct TodayMenuView: View {
                 }
                 .padding(18)
             }
+            .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Thực đơn")
             .task {
@@ -2100,6 +2109,7 @@ private struct DashboardView: View {
                 }
                 .padding(20)
             }
+            .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Sukavina")
             .refreshable { await session.refreshDashboard() }
@@ -2185,6 +2195,7 @@ private struct AttendanceHistoryView: View {
             }
             .padding(20)
         }
+        .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
         .toolbarBackground(.hidden, for: .tabBar)
         .navigationTitle("Bảng chấm công")
@@ -2340,6 +2351,7 @@ private struct ModernAttendanceHistoryView: View {
             }
             .padding(.horizontal, 16).padding(.bottom, 16)
         }
+        .hidesPortalBottomScrollEdgeEffect()
     }
 
     private func moveMonth(by offset: Int) {
@@ -2891,9 +2903,10 @@ private struct RequestsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
-                .padding(.bottom, 92)
+                .padding(.bottom, 16)
             }
         }
+        .hidesPortalBottomScrollEdgeEffect()
         .refreshable { await store.load(session.token) }
     }
 }
@@ -3218,6 +3231,7 @@ private struct NotificationsView: View {
                     }
             }
             .listStyle(.plain)
+            .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
@@ -3409,6 +3423,7 @@ private struct NewsView: View {
                 }
                 .padding(18)
             }
+            .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Bài viết nội bộ")
             .searchable(text: $query, prompt: "Tìm bài viết")
@@ -3461,6 +3476,7 @@ private struct ArticleDetailView: View {
             }
             .padding(22)
         }
+        .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -3710,6 +3726,7 @@ private struct ProfileView: View {
                 }
                 .padding(22)
             }
+            .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Tài khoản")
             .alert("Xóa tài khoản vĩnh viễn?", isPresented: $showDelete) {
