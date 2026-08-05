@@ -1784,20 +1784,15 @@ private struct EmployeePortalView: View {
     var body: some View {
         TabView {
             DashboardView()
-                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
             TodayMenuView()
-                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
             RequestsView()
-                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             NotificationsView()
-                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount + session.requestUnreadCount)
             ProfileView()
-                .safeAreaInset(edge: .bottom, spacing: 0) { tabBarClearance }
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
         .accentColor(AppTheme.red)
@@ -1810,12 +1805,6 @@ private struct EmployeePortalView: View {
         }
     }
 
-    private var tabBarClearance: some View {
-        Color.clear
-            .frame(height: 76)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
 }
 
 private struct TodayMenuView: View {
@@ -1932,6 +1921,7 @@ private struct TodayMenuView: View {
                 }
                 .padding(18)
             }
+            .contentMargins(.bottom, 96, for: .scrollContent)
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Thực đơn")
             .task {
@@ -2095,6 +2085,7 @@ private struct DashboardView: View {
                 }
                 .padding(20)
             }
+            .contentMargins(.bottom, 96, for: .scrollContent)
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Sukavina")
             .refreshable { await session.refreshDashboard() }
@@ -2333,6 +2324,7 @@ private struct ModernAttendanceHistoryView: View {
             }
             .padding(.horizontal, 16).padding(.bottom, 16)
         }
+        .contentMargins(.bottom, 104, for: .scrollContent)
     }
 
     private func moveMonth(by offset: Int) {
@@ -2887,6 +2879,7 @@ private struct RequestsView: View {
                 .padding(.bottom, 92)
             }
         }
+        .contentMargins(.bottom, 96, for: .scrollContent)
         .refreshable { await store.load(session.token) }
     }
 }
@@ -3211,6 +3204,7 @@ private struct NotificationsView: View {
                     }
             }
             .listStyle(.plain)
+            .contentMargins(.bottom, 96, for: .scrollContent)
             .scrollContentBackground(.hidden)
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
@@ -3703,6 +3697,7 @@ private struct ProfileView: View {
                 }
                 .padding(22)
             }
+            .contentMargins(.bottom, 104, for: .scrollContent)
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Tài khoản")
             .alert("Xóa tài khoản vĩnh viễn?", isPresented: $showDelete) {
