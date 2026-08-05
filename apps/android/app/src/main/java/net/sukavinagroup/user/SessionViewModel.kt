@@ -212,6 +212,24 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         refreshRequests()
     }
 
+    fun deleteNotification(id: String) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch
+        _state.value = _state.value.copy(
+            requestNotifications = _state.value.requestNotifications.filterNot { it.id == id },
+        )
+        runCatching { api.delete<UpdateCount>("me/requests/notifications/$id", token) }
+            .onFailure {
+                update(error = "Không thể xóa thông báo. Vui lòng thử lại.")
+                refreshRequests()
+            }
+    }
+
+    fun hideArticleNotification(id: String) {
+        hiddenArticles = hiddenArticles + id
+        preferences.edit().putStringSet("hidden_notification_articles", hiddenArticles).apply()
+        _state.value = _state.value.copy(hiddenArticleIds = hiddenArticles)
+    }
+
     fun clearNotifications() = viewModelScope.launch {
         val token = _state.value.token ?: return@launch
         runCatching { api.delete<UpdateCount>("me/requests/notifications", token) }

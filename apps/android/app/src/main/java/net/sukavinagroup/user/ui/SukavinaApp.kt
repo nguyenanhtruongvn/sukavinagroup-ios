@@ -6,6 +6,18 @@ import android.text.Html
 import android.widget.TextView
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,6 +33,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -29,7 +42,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -41,6 +60,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import net.sukavinagroup.user.SessionUiState
@@ -51,6 +71,7 @@ import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private enum class MainTab(val label: String) { HOME("Trang chủ"), REQUESTS("Đơn từ"), MENU("Thực đơn"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
 private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
@@ -113,40 +134,92 @@ private fun appShape(standard: Dp, role: AppShapeRole = AppShapeRole.MEDIUM): Sh
         InternetConnectionAlert(dismissError)
     }
     state.error?.takeUnless(String::isConnectionError)?.let { message ->
-        AlertDialog(
-            onDismissRequest = dismissError,
-            icon = { Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error) },
-            title = { Text("Sai thông tin đăng nhập") },
-            text = { Text(message) },
-            confirmButton = { TextButton(onClick = dismissError) { Text("Đã hiểu") } },
-        )
+        SukavinaAlert(
+            title = "Sai thông tin đăng nhập",
+            eyebrow = "KHÔNG THỂ ĐĂNG NHẬP",
+            icon = Icons.Default.Lock,
+            confirmText = "Đã hiểu",
+            onConfirm = dismissError,
+            onDismiss = dismissError,
+            danger = true,
+        ) {
+            Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
+        }
     }
 }
 
 @Composable private fun InternetConnectionAlert(dismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = dismiss,
-        icon = {
-            Surface(Modifier.size(54.dp), appShape(17.dp, AppShapeRole.LARGE), color = SukavinaRed.copy(alpha = .14f)) {
-                Icon(Icons.Default.WifiOff, null, tint = SukavinaRed, modifier = Modifier.padding(14.dp))
+    SukavinaAlert(
+        title = "Kiểm tra kết nối Internet",
+        eyebrow = "MẤT KẾT NỐI",
+        icon = Icons.Default.WifiOff,
+        confirmText = "Đóng",
+        onConfirm = dismiss,
+        onDismiss = dismiss,
+    ) {
+        Text(
+            "Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 21.sp,
+        )
+    }
+}
+
+@Composable
+private fun SukavinaAlert(
+    title: String,
+    eyebrow: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    confirmText: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    dismissText: String? = null,
+    danger: Boolean = false,
+    confirmEnabled: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val tone = if (danger) MaterialTheme.colorScheme.error else SukavinaRed
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = appShape(30.dp, AppShapeRole.EXTRA_LARGE),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = .97f),
+            tonalElevation = 10.dp,
+            shadowElevation = 24.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, tone.copy(alpha = .2f)),
+        ) {
+            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        Modifier.size(54.dp),
+                        appShape(18.dp, AppShapeRole.LARGE),
+                        color = tone.copy(alpha = .14f),
+                    ) {
+                        Icon(icon, null, tint = tone, modifier = Modifier.padding(14.dp))
+                    }
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                        Text(eyebrow, color = tone, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                        Text(title, fontSize = 21.sp, lineHeight = 25.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    dismissText?.let {
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                        ) { Text(it, fontWeight = FontWeight.Bold) }
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        enabled = confirmEnabled,
+                        modifier = Modifier.weight(if (dismissText == null) 1f else 1.25f).height(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = tone, contentColor = Color.White),
+                    ) { Text(confirmText, fontWeight = FontWeight.Bold) }
+                }
             }
-        },
-        title = { Text("Kiểm tra kết nối Internet", fontWeight = FontWeight.ExtraBold) },
-        text = {
-            Text(
-                "Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.",
-                color = SukavinaMuted,
-                lineHeight = 21.sp,
-            )
-        },
-        confirmButton = {
-            Button(
-                onClick = dismiss,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SukavinaRed, contentColor = Color.White),
-            ) { Text("Đóng", fontWeight = FontWeight.Bold) }
-        },
-    )
+        }
+    }
 }
 
 private fun String.isConnectionError() =
@@ -161,6 +234,7 @@ private fun String.isConnectionError() =
     if (article != null) return ArticleDetail(article!!) { article = null }
     if (attendanceOpen) return AttendanceScreen(session) { attendanceOpen = false }
 
+    val haptics = LocalHapticFeedback.current
     Scaffold(bottomBar = {
         val dark = isSystemInDarkTheme()
         val glassColor = if (dark) {
@@ -195,7 +269,10 @@ private fun String.isConnectionError() =
                         state.requestNotifications.count { !it.read }
                     NavigationBarItem(
                         selected = selected,
-                        onClick = { tab = item },
+                        onClick = {
+                            if (tab != item) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            tab = item
+                        },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.onPrimary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -236,8 +313,21 @@ private fun String.isConnectionError() =
             }
         }
     }) { padding ->
-        Box(Modifier.padding(padding)) {
-            when (tab) {
+        AnimatedContent(
+            targetState = tab,
+            modifier = Modifier.padding(padding),
+            transitionSpec = {
+                val forward = targetState.ordinal > initialState.ordinal
+                (slideInHorizontally(spring(stiffness = 520f, dampingRatio = .86f)) {
+                    if (forward) it / 5 else -it / 5
+                } + fadeIn()) togetherWith
+                    (slideOutHorizontally(spring(stiffness = 620f, dampingRatio = .9f)) {
+                        if (forward) -it / 7 else it / 7
+                    } + fadeOut())
+            },
+            label = "main-tab-transition",
+        ) { activeTab ->
+            when (activeTab) {
                 MainTab.HOME -> HomeScreen(state, { attendanceOpen = true }, { article = it })
                 MainTab.MENU -> TodayMenuScreen(state, session)
                 MainTab.REQUESTS -> RequestsScreen(state, session)
@@ -460,6 +550,8 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     var composing by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf<EmployeeRequest?>(null) }
     var cancelling by remember { mutableStateOf<EmployeeRequest?>(null) }
+    var refreshing by remember { mutableStateOf(false) }
+    val refreshScope = rememberCoroutineScope()
     val approvalIds = state.approvals.map { it.id }.toSet()
     val merged = (state.approvals + state.requests).distinctBy { it.id }.sortedByDescending { it.createdAt }
     val visible = merged.filter { filter == "all" || it.status == filter }
@@ -471,33 +563,45 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
                     FilterChip(selected = filter == item.first, onClick = { filter = item.first }, label = { Text(item.second) })
                 }
             }
-            LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(visible, key = { it.id }) { request ->
-                    RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
-                        onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
+            PullToRefreshBox(
+                isRefreshing = refreshing,
+                onRefresh = {
+                    refreshing = true
+                    session.refreshRequests()
+                    refreshScope.launch { delay(850); refreshing = false }
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(visible, key = { it.id }) { request ->
+                        RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
+                            onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
+                    }
+                    if (visible.isEmpty()) item { Text("Chưa có đơn trong mục này.", color = SukavinaMuted, modifier = Modifier.padding(top = 45.dp)) }
                 }
-                if (visible.isEmpty()) item { Text("Chưa có đơn trong mục này.", color = SukavinaMuted, modifier = Modifier.padding(top = 45.dp)) }
             }
         }
     }
     if (composing) RequestComposer(state.working, { composing = false }) { kind, from, to, reason -> session.createRequest(kind, from, to, reason) { if (it) composing = false } }
     reviewing?.let { request -> RequestDecisionDialog(request, state.working, { reviewing = null }) { approved, note -> session.decideRequest(request.id, approved, note) { if (it) reviewing = null } } }
     cancelling?.let { request ->
-        AlertDialog(
-            onDismissRequest = { if (!state.working) cancelling = null },
-            title = { Text("Hủy đơn này?") },
-            text = { Text("Đơn ${requestKind(request.kind).title} sẽ chuyển sang trạng thái đã hủy và người quản lý sẽ nhận được thông báo. Thao tác không thể hoàn tác.") },
-            confirmButton = {
-                TextButton(
-                    enabled = !state.working,
-                    onClick = {
-                        session.cancelRequest(request.id)
-                        cancelling = null
-                    },
-                ) { Text("Xác nhận hủy", color = MaterialTheme.colorScheme.error) }
+        SukavinaAlert(
+            title = "Hủy đơn này?",
+            eyebrow = "THAO TÁC KHÔNG THỂ HOÀN TÁC",
+            icon = Icons.Default.Warning,
+            confirmText = if (state.working) "Đang xử lý..." else "Xác nhận hủy",
+            dismissText = "Giữ lại",
+            danger = true,
+            confirmEnabled = !state.working,
+            onDismiss = { if (!state.working) cancelling = null },
+            onConfirm = {
+                session.cancelRequest(request.id)
+                cancelling = null
             },
-            dismissButton = { TextButton(enabled = !state.working, onClick = { cancelling = null }) { Text("Giữ lại") } },
-        )
+        ) {
+            Text("Đơn ${requestKind(request.kind).title} sẽ chuyển sang trạng thái đã hủy.", fontWeight = FontWeight.SemiBold)
+            Text("Người quản lý sẽ nhận được thông báo ngay sau thao tác này.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -649,10 +753,81 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     }
 }
 
+@Composable
+private fun SwipeDeleteItem(
+    onDelete: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val actionWidth = with(density) { 88.dp.toPx() }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var rowWidth by remember { mutableFloatStateOf(1f) }
+    val visualOffset by animateFloatAsState(
+        targetValue = dragOffset,
+        animationSpec = spring(stiffness = 560f, dampingRatio = .86f),
+        label = "swipe-delete-offset",
+    )
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(appShape(22.dp, AppShapeRole.EXTRA_LARGE))
+            .background(MaterialTheme.colorScheme.error),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        Column(
+            modifier = Modifier
+                .width(88.dp)
+                .fillMaxHeight()
+                .clickable {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onDelete()
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(Icons.Default.Delete, "Xóa", tint = Color.White)
+            Text("Xóa", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { rowWidth = it.width.toFloat() }
+                .offset { IntOffset(visualOffset.roundToInt(), 0) }
+                .pointerInput(rowWidth, actionWidth) {
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { _, amount ->
+                            dragOffset = (dragOffset + amount).coerceIn(-rowWidth, 0f)
+                        },
+                        onDragEnd = {
+                            when {
+                                dragOffset <= -rowWidth * .55f -> {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    dragOffset = -rowWidth
+                                    onDelete()
+                                }
+                                dragOffset <= -actionWidth * .45f -> {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    dragOffset = -actionWidth
+                                }
+                                else -> dragOffset = 0f
+                            }
+                        },
+                        onDragCancel = { dragOffset = 0f },
+                    )
+                },
+        ) {
+            content()
+        }
+    }
+}
+
 @Composable private fun NotificationsScreen(state: SessionUiState, session: SessionViewModel, openArticle: (ContentItem) -> Unit) {
     var selected by remember { mutableStateOf<EmployeeRequest?>(null) }
     var reviewing by remember { mutableStateOf<EmployeeRequest?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
+    var refreshing by remember { mutableStateOf(false) }
+    val refreshScope = rememberCoroutineScope()
     val requests = (state.requests + state.approvals).associateBy { it.id }
     val visibleArticles = state.dashboard?.contentItems.orEmpty().filterNot { it.id in state.hiddenArticleIds }
     val unread = state.unreadCount + state.requestNotifications.count { !it.read }
@@ -661,25 +836,52 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
             Column(Modifier.weight(1f)) { Text("Thông báo", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold); Text(if (unread > 0) "$unread thông báo chưa đọc" else "Bạn đã đọc tất cả", color = SukavinaMuted) }
             if (state.requestNotifications.isNotEmpty() || visibleArticles.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text("Xóa tất cả", color = MaterialTheme.colorScheme.error) }
         }
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                refreshing = true
+                session.refresh()
+                session.refreshRequests()
+                refreshScope.launch { delay(850); refreshing = false }
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         LazyColumn(contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             items(state.requestNotifications, key = { it.id }) { item ->
                 val request = item.requestId?.let(requests::get); val kind = request?.let { requestKind(it.kind) }
                 val tone = kind?.color ?: when { item.type.contains("rejected") -> Color(0xFFFF6F67); item.type.contains("cancelled") -> Color(0xFFAAB1BD); else -> Color(0xFF55D881) }
-                Card(onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } }, colors = CardDefaults.cardColors(containerColor = if (item.read) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant), border = androidx.compose.foundation.BorderStroke(1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .35f))) {
-                    Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
-                        Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
-                        Column(Modifier.padding(horizontal = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(item.title, fontWeight = FontWeight.Bold); kind?.let { Text(it.title, color = it.color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }; Text(item.message, color = SukavinaMuted, fontSize = 13.sp); Text(item.createdAt.toDateTimeLabel(), color = tone, fontSize = 11.sp) }
-                        if (!item.read) Surface(Modifier.size(8.dp), CircleShape, color = SukavinaRed) {}
+                SwipeDeleteItem(onDelete = { session.deleteNotification(item.id) }) {
+                    Card(onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } }, colors = CardDefaults.cardColors(containerColor = if (item.read) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant), border = androidx.compose.foundation.BorderStroke(1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .35f))) {
+                        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
+                            Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
+                            Column(Modifier.padding(horizontal = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(item.title, fontWeight = FontWeight.Bold); kind?.let { Text(it.title, color = it.color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }; Text(item.message, color = SukavinaMuted, fontSize = 13.sp); Text(item.createdAt.toDateTimeLabel(), color = tone, fontSize = 11.sp) }
+                            if (!item.read) Surface(Modifier.size(8.dp), CircleShape, color = SukavinaRed) {}
+                        }
                     }
                 }
             }
             items(visibleArticles, key = { "article-${it.id}" }) { item ->
-                Card(onClick = { session.markArticlesRead(); openArticle(item) }) { Row(Modifier.padding(15.dp)) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) } } }
+                SwipeDeleteItem(onDelete = { session.hideArticleNotification(item.id) }) {
+                    Card(onClick = { session.markArticlesRead(); openArticle(item) }) { Row(Modifier.padding(15.dp)) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) } } }
+                }
             }
             if (state.requestNotifications.isEmpty() && visibleArticles.isEmpty()) item { Text("Chưa có thông báo.", color = SukavinaMuted, modifier = Modifier.padding(top = 50.dp)) }
         }
+        }
     }
-    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("Xóa tất cả thông báo?") }, text = { Text("Danh sách thông báo sẽ được dọn khỏi tài khoản này.") }, confirmButton = { TextButton(onClick = { session.clearNotifications(); confirmClear = false }) { Text("Xóa tất cả", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Hủy") } })
+    if (confirmClear) SukavinaAlert(
+        title = "Xóa tất cả thông báo?",
+        eyebrow = "DỌN HỘP THÔNG BÁO",
+        icon = Icons.Default.DeleteSweep,
+        confirmText = "Xóa tất cả",
+        dismissText = "Hủy",
+        danger = true,
+        onDismiss = { confirmClear = false },
+        onConfirm = { session.clearNotifications(); confirmClear = false },
+    ) {
+        Text("Danh sách thông báo sẽ được dọn khỏi tài khoản này.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Bạn cũng có thể vuốt từng thông báo sang trái để xóa riêng.", color = SukavinaRed, fontWeight = FontWeight.SemiBold)
+    }
     selected?.let { request -> AlertDialog(onDismissRequest = { selected = null }, title = { Text("Chi tiết đơn") }, text = { RequestCard(request, false, {}, {}) }, confirmButton = { TextButton(onClick = { selected = null }) { Text("Đóng") } }) }
     reviewing?.let { request -> RequestDecisionDialog(request, state.working, { reviewing = null }) { approved, note -> session.decideRequest(request.id, approved, note) { if (it) reviewing = null } } }
 }
@@ -959,24 +1161,19 @@ private fun attendanceTitle(status: String) = when (status) {
     if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
     if (passwordChangeOpen) PasswordChangeDialog(state, session) { passwordChangeOpen = false }
     legalPage?.let { page -> NativeLegalSheet(page) { legalPage = null } }
-    if (signOutConfirmation) AlertDialog(
-        onDismissRequest = { signOutConfirmation = false },
-        icon = { Icon(Icons.Default.Logout, null, tint = MaterialTheme.colorScheme.error) },
-        title = { Text("Xác nhận đăng xuất?") },
-        text = { Text("Bạn sẽ cần đăng nhập lại để tiếp tục sử dụng Sukavina trên thiết bị này.") },
-        confirmButton = {
-            Button(
-                onClick = { signOutConfirmation = false; session.signOut() },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            ) { Text("Đăng xuất") }
-        },
-        dismissButton = {
-            OutlinedButton(
-                onClick = { signOutConfirmation = false },
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = SukavinaMuted),
-            ) { Text("Hủy") }
-        },
-    )
+    if (signOutConfirmation) SukavinaAlert(
+        title = "Xác nhận đăng xuất?",
+        eyebrow = "BẢO MẬT TÀI KHOẢN",
+        icon = Icons.Default.Logout,
+        confirmText = "Đăng xuất",
+        dismissText = "Giữ lại",
+        danger = true,
+        onDismiss = { signOutConfirmation = false },
+        onConfirm = { signOutConfirmation = false; session.signOut() },
+    ) {
+        Text("Phiên đăng nhập trên thiết bị này sẽ kết thúc.", fontWeight = FontWeight.SemiBold)
+        Text("Dữ liệu tài khoản vẫn được giữ nguyên và bạn có thể đăng nhập lại bất cứ lúc nào.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable private fun NativeLegalSheet(page: LegalPage, dismiss: () -> Unit) {

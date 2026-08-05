@@ -7,6 +7,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -15,12 +16,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.dp
 
 val SukavinaRed = Color(0xFFE92A31)
 val SukavinaInk = Color(0xFF111115)
 val SukavinaCard = Color(0xFF202027)
 val SukavinaMuted = Color(0xFFAAA7AD)
 val LocalSukavinaExpressive = staticCompositionLocalOf { false }
+
+private val sukavinaShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(24.dp),
+    extraLarge = RoundedCornerShape(30.dp),
+)
 
 private val darkColors = darkColorScheme(
     primary = SukavinaRed, onPrimary = Color.White, background = SukavinaInk,
@@ -52,11 +63,12 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
         MaterialExpressiveTheme(
             colorScheme = colors,
             motionScheme = MotionScheme.expressive(),
+            shapes = sukavinaShapes,
         ) {
             CompositionLocalProvider(LocalSukavinaExpressive provides true, content = content)
         }
     } else {
-        MaterialTheme(colorScheme = colors) {
+        MaterialTheme(colorScheme = colors, shapes = sukavinaShapes) {
             CompositionLocalProvider(LocalSukavinaExpressive provides false, content = content)
         }
     }
