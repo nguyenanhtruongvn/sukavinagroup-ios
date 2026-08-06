@@ -128,12 +128,41 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             val dashboard = api.get<Dashboard>("me/dashboard", token)
             profile to dashboard
         }.onSuccess { (profile, dashboard) ->
+            notifyNewAttendance(dashboard)
             val ids = dashboard.contentItems.map { it.id }.toSet()
             val unread = if (knownArticles.isEmpty()) 0 else (ids - knownArticles).size
             _state.value = _state.value.copy(profile = profile, dashboard = dashboard, working = false, unreadCount = unread, error = null)
             AttendanceWidgetStore.update(getApplication(), dashboard)
             if (unread > 0) NotificationHelper.showArticleNotification(getApplication(), dashboard.contentItems.first().title, unread)
         }.onFailure { update(working = false, error = it.message) }
+    }
+
+    private fun notifyNewAttendance(dashboard: Dashboard) {
+        val employeeCode = dashboard.employeeCode.ifBlank { _state.value.profile?.employeeCode.orEmpty() }
+        val preferenceKey = "known_attendance_record_ids_$employeeCode"
+        val currentIds = dashboard.attendanceRecords.map { it.id }.toSet()
+        val hasBaseline = preferences.contains(preferenceKey)
+        val knownIds = preferences.getStringSet(preferenceKey, emptySet()).orEmpty()
+
+        if (hasBaseline) {
+            val newRecord = dashboard.attendanceRecords
+                .filterNot { it.id in knownIds }
+                .maxByOrNull { it.punchedAt }
+            if (newRecord != null) {
+                val ordered = dashboard.attendanceRecords.sortedBy { it.punchedAt }
+                val isCheckIn = (ordered.indexOfFirst { it.id == newRecord.id } + 1) % 2 == 1
+                val time = runCatching {
+                    java.time.OffsetDateTime.parse(newRecord.punchedAt)
+                        .atZoneSameInstant(java.time.ZoneId.systemDefault())
+                        .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                }.getOrElse {
+                    newRecord.punchedAt.substringAfter('T').take(5).ifBlank { "vừa xong" }
+                }
+                NotificationHelper.showAttendanceNotification(getApplication(), isCheckIn, time)
+            }
+        }
+
+        preferences.edit().putStringSet(preferenceKey, currentIds).apply()
     }
 
     fun refreshTodayMenu() = viewModelScope.launch {
