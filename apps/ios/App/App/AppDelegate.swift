@@ -621,9 +621,14 @@ private struct TodayMenu: Decodable {
     let day: MenuDay
     let selection: String?
     let receivedAt: String?
-    let qrToken: String?
     let orderingOpen: Bool
     let orderingCutoff: String
+}
+
+private struct MealQrIssueResponse: Decodable {
+    let token: String
+    let expiresAt: String
+    let expiresInSeconds: Int
 }
 
 private struct MealScanResponse: Decodable {
@@ -1067,6 +1072,20 @@ private final class SessionStore: ObservableObject {
                 method: "POST",
                 token: token,
                 body: MealQrScanBody(token: qrToken)
+            )
+        } catch {
+            present(error)
+            return nil
+        }
+    }
+
+    func issueMealQRCode() async -> MealQrIssueResponse? {
+        guard let token else { return nil }
+        do {
+            return try await APIClient.shared.request(
+                "me/menu/selection/qr",
+                method: "POST",
+                token: token
             )
         } catch {
             present(error)
@@ -1976,6 +1995,65 @@ private struct MealQRCodeCard: View {
     }
 }
 
+private struct MealQRCodeAccessCard: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var issued: MealQrIssueResponse?
+    @State private var secondsRemaining = 0
+    @State private var isLoading = false
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if let issued, secondsRemaining > 0 {
+                MealQRCodeCard(token: issued.token)
+                Text("Mã tự ẩn sau \(secondsRemaining) giây")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(secondsRemaining <= 5 ? .red : AppTheme.muted)
+                    .monospacedDigit()
+            } else {
+                Button {
+                    Task { await issueCode() }
+                } label: {
+                    HStack(spacing: 9) {
+                        if isLoading { ProgressView().tint(.white) }
+                        Image(systemName: "qrcode")
+                        Text(isLoading ? "Đang tạo mã..." : "Lấy mã nhận món")
+                    }
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(AppTheme.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isLoading)
+                Text("Mỗi mã chỉ có hiệu lực trong 30 giây và sẽ thay đổi ở lần lấy tiếp theo.")
+                    .font(.caption)
+                    .foregroundColor(AppTheme.muted)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .task(id: issued?.token) {
+            guard issued != nil else { return }
+            while secondsRemaining > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+                secondsRemaining -= 1
+            }
+            issued = nil
+        }
+    }
+
+    @MainActor
+    private func issueCode() async {
+        isLoading = true
+        defer { isLoading = false }
+        guard let response = await session.issueMealQRCode() else { return }
+        issued = response
+        secondsRemaining = max(1, response.expiresInSeconds)
+    }
+}
+
 private struct CanteenScannerView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var scanning = true
@@ -2243,9 +2321,8 @@ private struct TodayMenuView: View {
                                         .font(.subheadline).foregroundColor(AppTheme.muted).lineLimit(2)
                                 }
                             }
-                            if session.todayMenu?.receivedAt == nil,
-                               let qrToken = session.todayMenu?.qrToken {
-                                MealQRCodeCard(token: qrToken)
+                            if session.todayMenu?.receivedAt == nil {
+                                MealQRCodeAccessCard()
                             } else {
                                 Label("Đã nhận món", systemImage: "checkmark.seal.fill")
                                     .font(.headline).foregroundColor(.green)
