@@ -562,7 +562,19 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     val approvalIds = state.approvals.map { it.id }.toSet()
     val merged = (state.approvals + state.requests).distinctBy { it.id }.sortedByDescending { it.createdAt }
     val visible = merged.filter { filter == "all" || it.status == filter }
-    Scaffold(floatingActionButton = { FloatingActionButton(onClick = { composing = true }, containerColor = SukavinaRed) { Icon(Icons.Default.Add, "Tạo đơn", tint = Color.White) } }) { padding ->
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { composing = true },
+                modifier = Modifier.padding(bottom = 104.dp),
+                containerColor = SukavinaRed,
+                contentColor = Color.White,
+                icon = { Icon(Icons.Default.Add, null) },
+                text = { Text("Tạo đơn mới", fontWeight = FontWeight.Bold) },
+            )
+        },
+    ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text("Đơn từ", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(18.dp, 20.dp, 18.dp, 10.dp))
             androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -949,7 +961,27 @@ private fun SwipeDeleteItem(
         }
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Bảng chấm công") }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Quay lại") } }) }) { padding ->
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            Surface(color = MaterialTheme.colorScheme.background) {
+                Row(
+                    Modifier.fillMaxWidth().statusBarsPadding().height(48.dp).padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(onClick = back, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Default.ArrowBack, "Quay lại")
+                    }
+                    Text(
+                        "Bảng chấm công",
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 4.dp),
+                    )
+                }
+            }
+        },
+    ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
