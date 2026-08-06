@@ -5,6 +5,8 @@ import UserNotifications
 import Network
 import LocalAuthentication
 import WidgetKit
+import AVFoundation
+import CoreImage.CIFilterBuiltins
 
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -619,12 +621,28 @@ private struct TodayMenu: Decodable {
     let day: MenuDay
     let selection: String?
     let receivedAt: String?
+    let qrToken: String?
     let orderingOpen: Bool
     let orderingCutoff: String
 }
 
+private struct MealScanResponse: Decodable {
+    let valid: Bool
+    let alreadyReceived: Bool
+    let employeeCode: String
+    let fullName: String
+    let department: String
+    let choice: String
+    let mealDate: String
+    let receivedAt: String
+}
+
 private struct MealSelectionBody: Encodable {
     let choice: String
+}
+
+private struct MealQrScanBody: Encodable {
+    let token: String
 }
 
 private struct ArticleBlock: Identifiable {
@@ -737,6 +755,20 @@ private final class NotificationManager {
             )
             UNUserNotificationCenter.current().add(request)
         }
+    }
+
+    func notifyAttendance(isCheckIn: Bool, time: String) {
+        let action = isCheckIn ? "vào" : "ra"
+        let content = UNMutableNotificationContent()
+        content.title = "Chấm công \(action) thành công"
+        content.body = "Giờ \(action) đã được ghi nhận lúc \(time)."
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: "attendance-\(UUID().uuidString)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     func clearBadge() {
@@ -902,6 +934,7 @@ private final class SessionStore: ObservableObject {
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
+    private let knownAttendancePrefix = "known-native-attendance-ids-"
     private var eventStreamTask: Task<Void, Never>?
     private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
@@ -1021,6 +1054,23 @@ private final class SessionStore: ObservableObject {
             todayMenu = try await APIClient.shared.request("me/menu", token: token)
         } catch {
             present(error)
+        }
+    }
+
+    func scanMealQRCode(_ qrToken: String) async -> MealScanResponse? {
+        guard let token else { return nil }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            return try await APIClient.shared.request(
+                "me/menu/scan",
+                method: "POST",
+                token: token,
+                body: MealQrScanBody(token: qrToken)
+            )
+        } catch {
+            present(error)
+            return nil
         }
     }
 
@@ -1178,6 +1228,7 @@ private final class SessionStore: ObservableObject {
         guard let token else { return }
         do {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
+            processNewAttendance(fresh)
             processNewArticles(fresh.contentItems)
             dashboard = fresh
             AttendanceWidgetBridge.update(from: fresh)
@@ -1185,6 +1236,40 @@ private final class SessionStore: ObservableObject {
         } catch {
             present(error)
         }
+    }
+
+    private func processNewAttendance(_ fresh: Dashboard) {
+        let employeeCode = fresh.employeeCode.isEmpty ? (profile?.employeeCode ?? "") : fresh.employeeCode
+        let key = knownAttendancePrefix + employeeCode
+        let defaults = UserDefaults.standard
+        let hasBaseline = defaults.object(forKey: key) != nil
+        let known = Set(defaults.stringArray(forKey: key) ?? [])
+        let records = fresh.attendanceRecords ?? []
+        if hasBaseline,
+           let newest = records.filter({ !known.contains($0.id) }).max(by: { $0.punchedAt < $1.punchedAt }) {
+            let ordered = records.sorted { $0.punchedAt < $1.punchedAt }
+            let position = (ordered.firstIndex(where: { $0.id == newest.id }) ?? 0) + 1
+            NotificationManager.shared.notifyAttendance(
+                isCheckIn: position % 2 == 1,
+                time: attendanceNotificationTime(newest.punchedAt)
+            )
+        }
+        defaults.set(records.map(\.id), forKey: key)
+    }
+
+    private func attendanceNotificationTime(_ value: String) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        guard let date else {
+            let parts = value.split(separator: "T")
+            return parts.count > 1 ? String(parts[1].prefix(5)) : "vừa xong"
+        }
+        let output = DateFormatter()
+        output.locale = Locale(identifier: "vi_VN")
+        output.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        output.dateFormat = "HH:mm"
+        return output.string(from: date)
     }
 
     func signOut() {
@@ -1308,6 +1393,7 @@ private final class SessionStore: ObservableObject {
                         if line.hasPrefix("data:") && line.contains("_changed") {
                             await refreshProfile()
                             await refreshDashboard()
+                            if line.contains("meal_changed") { await refreshTodayMenu() }
                         }
                     }
                 } catch {
@@ -1470,8 +1556,13 @@ private struct SukavinaAppView: View {
                     AuthenticationView()
                         .environmentObject(session)
                 case .signedIn:
-                    EmployeePortalView()
-                        .environmentObject(session)
+                    if session.profile?.accountType == "CANTEEN" {
+                        CanteenScannerView()
+                            .environmentObject(session)
+                    } else {
+                        EmployeePortalView()
+                            .environmentObject(session)
+                    }
                 }
             }
 
@@ -1849,6 +1940,222 @@ private struct VerificationView: View {
     }
 }
 
+private struct MealQRCodeCard: View {
+    let token: String
+
+    private var image: UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(token.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 9, y: 9)),
+              let cgImage = CIContext().createCGImage(output, from: output.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("MÃ QR NHẬN MÓN")
+                .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+            if let image {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 210, height: 210)
+                    .padding(12)
+                    .background(Color.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+            Text("Đưa mã này cho nhân viên nhà ăn quét. Mã chỉ dùng cho suất ăn hôm nay.")
+                .font(.caption).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(16)
+        .background(Color.white.opacity(0.04))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct CanteenScannerView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var scanning = true
+    @State private var result: MealScanResponse?
+
+    var body: some View {
+        ZStack {
+            AppTheme.ink.ignoresSafeArea()
+            VStack(spacing: 18) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("NHÀ ĂN SUKAVINA").font(.caption.bold()).tracking(1.4).foregroundColor(AppTheme.red)
+                        Text("Quét mã nhận món").font(.title2.bold())
+                    }
+                    Spacer()
+                    Button("Đăng xuất") { session.signOut() }
+                        .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.red)
+                }
+
+                if let result {
+                    VStack(spacing: 16) {
+                        Image(systemName: result.alreadyReceived ? "exclamationmark.circle.fill" : "checkmark.seal.fill")
+                            .font(.system(size: 54, weight: .bold))
+                            .foregroundColor(result.alreadyReceived ? .orange : .green)
+                        Text(result.alreadyReceived ? "Suất ăn đã được xác nhận" : "Xác nhận suất ăn thành công")
+                            .font(.title3.bold()).multilineTextAlignment(.center)
+                        VStack(spacing: 10) {
+                            scannerResultLine("Nhân viên", result.fullName)
+                            scannerResultLine("MSNV", result.employeeCode)
+                            scannerResultLine("Phòng ban", result.department)
+                            scannerResultLine("Món đã đặt", result.choice == "water" ? "Món nước" : "Món chay")
+                        }
+                        .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
+                        Button {
+                            self.result = nil
+                            scanning = true
+                        } label: {
+                            Label("Quét mã tiếp theo", systemImage: "qrcode.viewfinder")
+                                .font(.headline).foregroundColor(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 15)
+                                .background(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                    }
+                    .padding(20)
+                    .background(AppTheme.card.opacity(0.94))
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                } else {
+                    QRScannerView(isActive: scanning) { code in
+                        scanning = false
+                        Task {
+                            if let response = await session.scanMealQRCode(code) {
+                                UINotificationFeedbackGenerator().notificationOccurred(
+                                    response.alreadyReceived ? .warning : .success
+                                )
+                                result = response
+                            } else {
+                                try? await Task.sleep(for: .seconds(1))
+                                scanning = true
+                            }
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(AppTheme.red.opacity(0.75), lineWidth: 2)
+                            .padding(36)
+                    }
+                    Text("Đưa camera vào mã QR trên điện thoại của người nhận món.")
+                        .font(.subheadline).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+        }
+    }
+
+    private func scannerResultLine(_ label: String, _ value: String) -> some View {
+        HStack { Text(label).foregroundColor(AppTheme.muted); Spacer(); Text(value).fontWeight(.semibold) }
+    }
+}
+
+private struct QRScannerView: UIViewControllerRepresentable {
+    let isActive: Bool
+    let onCode: (String) -> Void
+
+    func makeUIViewController(context: Context) -> MealScannerViewController {
+        let controller = MealScannerViewController()
+        controller.onCode = onCode
+        return controller
+    }
+
+    func updateUIViewController(_ controller: MealScannerViewController, context: Context) {
+        controller.onCode = onCode
+        controller.setScanning(isActive)
+    }
+}
+
+private final class MealScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+    var onCode: ((String) -> Void)?
+    private let captureSession = AVCaptureSession()
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var configured = false
+    private var handlingCode = false
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        prepareCamera()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    private func prepareCamera() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: configureCamera()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async { if granted { self?.configureCamera() } else { self?.showCameraUnavailable() } }
+            }
+        default: showCameraUnavailable()
+        }
+    }
+
+    private func configureCamera() {
+        guard !configured,
+              let camera = AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: camera),
+              captureSession.canAddInput(input) else { showCameraUnavailable(); return }
+        captureSession.addInput(input)
+        let output = AVCaptureMetadataOutput()
+        guard captureSession.canAddOutput(output) else { showCameraUnavailable(); return }
+        captureSession.addOutput(output)
+        output.setMetadataObjectsDelegate(self, queue: .main)
+        output.metadataObjectTypes = [.qr]
+        let preview = AVCaptureVideoPreviewLayer(session: captureSession)
+        preview.videoGravity = .resizeAspectFill
+        view.layer.insertSublayer(preview, at: 0)
+        previewLayer = preview
+        configured = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in self?.captureSession.startRunning() }
+    }
+
+    func setScanning(_ active: Bool) {
+        handlingCode = !active
+        guard configured else { return }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self else { return }
+            if active && !captureSession.isRunning { captureSession.startRunning() }
+            if !active && captureSession.isRunning { captureSession.stopRunning() }
+        }
+    }
+
+    func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+        guard !handlingCode,
+              let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+              let value = object.stringValue else { return }
+        handlingCode = true
+        captureSession.stopRunning()
+        onCode?(value)
+    }
+
+    private func showCameraUnavailable() {
+        let label = UILabel()
+        label.text = "Không thể sử dụng camera. Hãy cho phép Camera trong Cài đặt."
+        label.textColor = .white
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
+            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+        ])
+    }
+}
+
 private struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
@@ -1936,16 +2243,9 @@ private struct TodayMenuView: View {
                                         .font(.subheadline).foregroundColor(AppTheme.muted).lineLimit(2)
                                 }
                             }
-                            if session.todayMenu?.receivedAt == nil {
-                                Button {
-                                    pendingChoice = "received"
-                                } label: {
-                                    Label("Xác nhận đã nhận món", systemImage: "checkmark.circle.fill")
-                                        .font(.headline).foregroundColor(.white)
-                                        .frame(maxWidth: .infinity).padding(.vertical, 14)
-                                        .background(Color.green.opacity(0.88))
-                                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                                }
+                            if session.todayMenu?.receivedAt == nil,
+                               let qrToken = session.todayMenu?.qrToken {
+                                MealQRCodeCard(token: qrToken)
                             } else {
                                 Label("Đã nhận món", systemImage: "checkmark.seal.fill")
                                     .font(.headline).foregroundColor(.green)
