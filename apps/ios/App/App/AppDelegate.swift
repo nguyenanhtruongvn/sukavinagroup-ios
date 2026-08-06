@@ -353,7 +353,7 @@ private final class APIClient {
             }
             if token != nil,
                allowSessionRefresh,
-               (http.statusCode == 401 || http.statusCode == 403),
+               http.statusCode == 401,
                let refreshToken = KeychainStore.loadRefreshToken() {
                 let refreshed: LoginResponse = try await request(
                     "auth/refresh",
@@ -372,7 +372,7 @@ private final class APIClient {
                     allowSessionRefresh: false
                 )
             }
-            if token != nil && (http.statusCode == 401 || http.statusCode == 403) {
+            if token != nil && http.statusCode == 401 {
                 throw NetworkError.unauthorized
             }
             let payload = try? decoder.decode(APIErrorPayload.self, from: data)
@@ -983,6 +983,11 @@ private final class SessionStore: ObservableObject {
             }
             state = .signedIn
             startNetworkMonitoring()
+            if profile?.accountType == "CANTEEN" {
+                await refreshProfile()
+                startSessionRefresh()
+                return
+            }
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             await refreshProfile()
@@ -1013,6 +1018,10 @@ private final class SessionStore: ObservableObject {
             }
             guard !Task.isCancelled else { return }
             await self.refreshProfile()
+            if self.profile?.accountType == "CANTEEN" {
+                self.startSessionRefresh()
+                return
+            }
             await self.refreshDashboard()
             self.startRealTimeUpdates()
             self.startSessionRefresh()
@@ -1039,6 +1048,12 @@ private final class SessionStore: ObservableObject {
             loadKnownArticles()
             state = .signedIn
             startNetworkMonitoring()
+            if response.user.accountType == "CANTEEN" {
+                await refreshProfile()
+                startSessionRefresh()
+                ConnectionDiagnostics.record("Canteen sign-in completed successfully")
+                return true
+            }
             await NotificationManager.shared.requestAuthorizationIfNeeded()
             await refreshDashboard()
             await refreshProfile()
@@ -1170,6 +1185,10 @@ private final class SessionStore: ObservableObject {
             profile = freshProfile
             state = .signedIn
             startNetworkMonitoring()
+            if freshProfile.accountType == "CANTEEN" {
+                startSessionRefresh()
+                return true
+            }
             await refreshDashboard()
             startRealTimeUpdates()
             startSessionRefresh()
@@ -1244,7 +1263,7 @@ private final class SessionStore: ObservableObject {
     }
 
     func refreshDashboard() async {
-        guard let token else { return }
+        guard let token, profile?.accountType != "CANTEEN" else { return }
         do {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
             processNewAttendance(fresh)
@@ -1395,6 +1414,10 @@ private final class SessionStore: ObservableObject {
 
     private func startRealTimeUpdates() {
         eventStreamTask?.cancel()
+        guard profile?.accountType != "CANTEEN" else {
+            eventStreamTask = nil
+            return
+        }
         eventStreamTask = Task { [weak self] in
             guard let self else { return }
             while !Task.isCancelled {
@@ -1443,6 +1466,7 @@ private final class SessionStore: ObservableObject {
                       wasStatus != .satisfied || wasCellular != isCellular,
                       self.token != nil else { return }
                 await self.refreshProfile()
+                if self.profile?.accountType == "CANTEEN" { return }
                 await self.refreshDashboard()
                 self.startRealTimeUpdates()
             }
