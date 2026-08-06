@@ -67,13 +67,13 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
             .onSuccess { profile ->
                 _state.value = _state.value.copy(profile = profile, error = null)
-                refresh(); refreshRequests(); startEvents(); startSessionRefresh()
+                startAccountServices()
             }.onFailure { error ->
                 if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
                     viewModelScope.launch {
                         when (refreshSession()) {
                             RefreshResult.SUCCESS -> {
-                                refresh(); refreshRequests(); startEvents(); startSessionRefresh()
+                                startAccountServices()
                             }
                             RefreshResult.UNAUTHORIZED -> signOut()
                             RefreshResult.DEFERRED -> {
@@ -102,7 +102,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                         role = response.user.role, accountType = response.user.accountType,
                         permissions = response.user.permissions, protected = response.user.protected),
                 )
-                refresh(); refreshRequests(); startEvents(); startSessionRefresh()
+                startAccountServices()
             }.onFailure { error ->
                 val message = if (
                     error is ApiException &&
@@ -178,6 +178,20 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         runCatching { api.patch<TodayMenu, MealSelectionBody>("me/menu/selection", MealSelectionBody(choice), token) }
             .onSuccess { _state.value = _state.value.copy(todayMenu = it, working = false) }
             .onFailure { update(working = false, error = it.message) }
+    }
+
+    fun scanMealQr(qrToken: String, done: (MealScanResponse?) -> Unit) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch done(null)
+        update(working = true, error = null)
+        runCatching {
+            api.post<MealScanResponse, MealQrScanBody>("me/menu/scan", MealQrScanBody(qrToken), token)
+        }.onSuccess {
+            update(working = false, error = null)
+            done(it)
+        }.onFailure {
+            update(working = false, error = it.message ?: "Không xác nhận được mã QR.")
+            done(null)
+        }
     }
 
     fun cancelMealSelection() = viewModelScope.launch {
@@ -385,11 +399,25 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             while (isActive) {
                 delay(12 * 60 * 60 * 1000L)
                 if (refreshSession() != RefreshResult.SUCCESS) continue
-                refresh()
-                refreshRequests()
-                startEvents()
+                if (_state.value.profile?.accountType != "CANTEEN") {
+                    refresh()
+                    refreshRequests()
+                    startEvents()
+                }
             }
         }
+    }
+
+    private fun startAccountServices() {
+        startSessionRefresh()
+        if (_state.value.profile?.accountType == "CANTEEN") {
+            events?.cancel()
+            events = null
+            return
+        }
+        refresh()
+        refreshRequests()
+        startEvents()
     }
 
     private fun update(

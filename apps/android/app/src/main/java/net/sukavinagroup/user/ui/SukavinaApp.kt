@@ -4,8 +4,17 @@ package net.sukavinagroup.user.ui
 
 import android.text.Html
 import android.widget.TextView
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview as CameraPreview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -64,6 +73,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.mlkit.vision.barcode.BarcodeScannerOptions
+import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import net.sukavinagroup.user.SessionUiState
@@ -74,6 +89,8 @@ import java.time.*
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
 
 private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
@@ -95,6 +112,7 @@ private fun appShape(standard: Dp, role: AppShapeRole = AppShapeRole.MEDIUM): Sh
         when {
             state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError)
+            state.profile?.accountType == "CANTEEN" -> CanteenScannerScreen(state, session)
             else -> MainScreen(state, session)
         }
     }
@@ -228,6 +246,162 @@ private fun SukavinaAlert(
 private fun String.isConnectionError() =
     contains("kết nối", ignoreCase = true) &&
         (contains("Internet", ignoreCase = true) || contains("máy chủ", ignoreCase = true))
+
+@Composable
+private fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
+    val context = LocalContext.current
+    var cameraAllowed by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    }
+    var scanning by remember { mutableStateOf(true) }
+    var result by remember { mutableStateOf<MealScanResponse?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        cameraAllowed = it
+    }
+    LaunchedEffect(Unit) {
+        if (!cameraAllowed) permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    Column(
+        Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("NHÀ ĂN SUKAVINA", color = SukavinaRed, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
+                Text("Quét mã nhận món", fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            TextButton(onClick = session::signOut) { Text("Đăng xuất", color = SukavinaRed, fontWeight = FontWeight.Bold) }
+        }
+
+        result?.let { scan ->
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = appShape(26.dp, AppShapeRole.EXTRA_LARGE),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 4.dp,
+            ) {
+                Column(Modifier.padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Icon(
+                        if (scan.alreadyReceived) Icons.Default.Warning else Icons.Default.Verified,
+                        null,
+                        tint = if (scan.alreadyReceived) Color(0xFFFFA83D) else Color(0xFF38B978),
+                        modifier = Modifier.size(58.dp),
+                    )
+                    Text(
+                        if (scan.alreadyReceived) "Suất ăn đã được xác nhận" else "Xác nhận suất ăn thành công",
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    )
+                    Surface(shape = appShape(18.dp, AppShapeRole.LARGE), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            CanteenResultLine("Nhân viên", scan.fullName)
+                            CanteenResultLine("MSNV", scan.employeeCode)
+                            CanteenResultLine("Phòng ban", scan.department.ifBlank { "Chưa cập nhật" })
+                            CanteenResultLine("Món đã đặt", if (scan.choice == "water") "Món nước" else "Món chay")
+                        }
+                    }
+                    Button(
+                        onClick = { result = null; scanning = true },
+                        modifier = Modifier.fillMaxWidth().height(54.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = SukavinaRed),
+                    ) { Icon(Icons.Default.QrCodeScanner, null); Spacer(Modifier.width(9.dp)); Text("Quét mã tiếp theo", fontWeight = FontWeight.Bold) }
+                }
+            }
+        } ?: run {
+            if (cameraAllowed) {
+                Box(
+                    Modifier.fillMaxWidth().weight(1f).clip(appShape(26.dp, AppShapeRole.EXTRA_LARGE)).background(Color.Black),
+                ) {
+                    CanteenCameraPreview(scanning, Modifier.fillMaxSize()) { code ->
+                        scanning = false
+                        session.scanMealQr(code) { response ->
+                            if (response != null) result = response else scanning = true
+                        }
+                    }
+                    Box(
+                        Modifier.fillMaxSize().padding(36.dp).border(2.dp, SukavinaRed.copy(alpha = .8f), appShape(24.dp, AppShapeRole.LARGE)),
+                    )
+                    if (state.working) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .25f)), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color.White)
+                    }
+                }
+                Text("Đưa camera vào mã QR trên điện thoại của người nhận món.", color = SukavinaMuted, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            } else {
+                Surface(Modifier.fillMaxWidth(), shape = appShape(24.dp, AppShapeRole.EXTRA_LARGE), color = MaterialTheme.colorScheme.surface) {
+                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Icon(Icons.Default.NoPhotography, null, tint = SukavinaRed, modifier = Modifier.size(52.dp))
+                        Text("Cần quyền Camera để quét mã nhận món.", fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) { Text("Cho phép Camera") }
+                    }
+                }
+            }
+        }
+    }
+
+    state.error?.let { message ->
+        SukavinaAlert(
+            title = "Chưa thể xác nhận",
+            eyebrow = "MÃ QR KHÔNG HỢP LỆ",
+            icon = Icons.Default.Warning,
+            confirmText = "Quét lại",
+            onConfirm = { session.dismissError(); scanning = true },
+            onDismiss = { session.dismissError(); scanning = true },
+            danger = true,
+        ) { Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+}
+
+@Composable
+private fun CanteenResultLine(label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.weight(1f))
+        Text(value, fontWeight = FontWeight.Bold, textAlign = androidx.compose.ui.text.style.TextAlign.End)
+    }
+}
+
+@Composable
+private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier, onCode: (String) -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val previewView = remember { PreviewView(context).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } }
+    val executor = remember { Executors.newSingleThreadExecutor() }
+    val handled = remember { AtomicBoolean(false) }
+    LaunchedEffect(active) { if (active) handled.set(false) }
+
+    AndroidView(factory = { previewView }, modifier = modifier)
+    DisposableEffect(lifecycleOwner, active) {
+        val providerFuture = ProcessCameraProvider.getInstance(context)
+        val listener = Runnable {
+            val provider = providerFuture.get()
+            provider.unbindAll()
+            if (!active) return@Runnable
+            val preview = CameraPreview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
+            val options = BarcodeScannerOptions.Builder().setBarcodeFormats(Barcode.FORMAT_QR_CODE).build()
+            val scanner = BarcodeScanning.getClient(options)
+            val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+            analysis.setAnalyzer(executor) { imageProxy ->
+                val mediaImage = imageProxy.image
+                if (mediaImage == null || handled.get()) {
+                    imageProxy.close()
+                    return@setAnalyzer
+                }
+                scanner.process(InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees))
+                    .addOnSuccessListener { barcodes ->
+                        val value = barcodes.firstOrNull()?.rawValue
+                        if (!value.isNullOrBlank() && handled.compareAndSet(false, true)) onCode(value)
+                    }
+                    .addOnCompleteListener { imageProxy.close() }
+            }
+            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
+        }
+        providerFuture.addListener(listener, ContextCompat.getMainExecutor(context))
+        onDispose { runCatching { providerFuture.get().unbindAll() } }
+    }
+    DisposableEffect(Unit) { onDispose { executor.shutdown() } }
+}
 
 @Composable private fun MainScreen(state: SessionUiState, session: SessionViewModel) {
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
@@ -1283,7 +1457,7 @@ private fun attendanceTitle(status: String) = when (status) {
             if (page == LegalPage.PRIVACY) {
                 LegalSection("Ứng dụng nội bộ", "Sukavina chỉ dành cho nhân viên và người được Công ty ủy quyền. Tài khoản do Công ty tạo, cấp và quản lý; ứng dụng không có đăng ký công khai.")
                 LegalSection("Dữ liệu được xử lý", "Hệ thống xử lý hồ sơ công việc, thông tin liên hệ, chấm công, đơn từ, lựa chọn suất ăn, thông báo và dữ liệu bảo mật cần thiết để vận hành.")
-                LegalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ, camera hoặc micro.")
+                LegalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi giữa các ứng dụng hoặc website. Camera chỉ được tài khoản Nhà ăn sử dụng khi quét mã QR nhận món; hình ảnh camera được xử lý trực tiếp trên thiết bị, không lưu hoặc tải lên máy chủ.")
                 LegalSection("Sinh trắc học", "Sinh trắc học được hệ điều hành xử lý trên thiết bị. Sukavina chỉ nhận kết quả xác thực, không nhận hoặc lưu khuôn mặt, vân tay hay mẫu sinh trắc học.")
                 LegalSection("Lưu trữ và quyền của nhân viên", "Dữ liệu được truyền qua HTTPS và giới hạn truy cập theo tài khoản. Nhân viên có thể yêu cầu xem, sửa hoặc xóa dữ liệu trong phạm vi cho phép; hồ sơ bắt buộc có thể được lưu theo quy định.")
             } else if (page == LegalPage.SUPPORT) {
