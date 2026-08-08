@@ -2883,14 +2883,12 @@ private struct ModernAttendanceHistoryView: View {
             ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
             ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
         ].filter { $0.1 > 0 }
-        return LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(4, max(1, values.count))),
-            spacing: 8
-        ) {
+        return HStack(spacing: 8) {
             ForEach(Array(values.enumerated()), id: \.offset) { _, item in
                 summary(item.1, item.0, item.2)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
@@ -3025,14 +3023,12 @@ private struct ModernAttendanceHistoryView: View {
     }
 
     private var enhancedSummaryCards: some View {
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: min(4, max(1, visibleSummaries.count))),
-            spacing: 8
-        ) {
+        HStack(spacing: 8) {
             ForEach(visibleSummaries, id: \.title) { item in
                 summary(item.value, item.title, item.color)
             }
         }
+        .frame(maxWidth: .infinity)
     }
 
     private var visibleSummaries: [(title: String, value: Int, color: Color)] {
