@@ -41,19 +41,17 @@ export class AuthService {
     await this.loginRateLimit.assertAllowed(normalized, clientIp);
     const user = await this.prisma.employee.findFirst({
       where: {
-        OR: [
-          { employeeCode: normalized },
-          { phoneNumber: normalized },
-          { gmailEmail: normalized },
-          { employeeCode: normalized.toLowerCase() },
-        ],
+        employeeCode: {
+          equals: normalized,
+          mode: 'insensitive',
+        },
       },
     });
 
     if (!user) {
       await this.loginRateLimit.recordFailure(normalized, clientIp);
       throw new UnauthorizedException(
-        'Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác.',
+        'MSNV hoặc mật khẩu không chính xác.',
       );
     }
 
@@ -278,6 +276,7 @@ export class AuthService {
         transports: credential.transports as AuthenticatorTransport[],
       })),
       authenticatorSelection: {
+        authenticatorAttachment: 'platform',
         residentKey: 'required',
         userVerification: 'required',
       },
@@ -628,7 +627,7 @@ export class AuthService {
     return secret;
   }
 
-  async deleteMyAccount(id: string, password: string, confirmation: string) {
+  async deleteMyAccount(id: string, _password: string, confirmation: string) {
     const user = await this.prisma.employee.findUnique({ where: { id } });
     if (!user) throw new UnauthorizedException('Tài khoản không tồn tại');
     if (user.protected || user.accountType === 'SUPER_ADMIN') {
@@ -637,10 +636,6 @@ export class AuthService {
     if (confirmation.trim().toUpperCase() !== 'XOA TAI KHOAN') {
       throw new BadRequestException('Cụm từ xác nhận chưa chính xác');
     }
-    if (!user.passwordHash || !(await compare(password, user.passwordHash))) {
-      throw new UnauthorizedException('Mật khẩu không chính xác');
-    }
-
     await this.prisma.employee.delete({ where: { id } });
     return { message: 'Tài khoản và dữ liệu cá nhân đã được xóa vĩnh viễn.' };
   }

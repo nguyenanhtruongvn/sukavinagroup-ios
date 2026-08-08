@@ -16,6 +16,8 @@ type ImportedEmployee = {
   employeeCode: string;
   fullName: string;
   department: string;
+  birthDate: Date | null;
+  managerFullName: string | null;
   managerEmployeeCode: string | null;
   jobTitle: string;
   hireDate: Date | null;
@@ -28,10 +30,12 @@ const REQUIRED_IMPORT_HEADERS = [
   'msnv',
   'họ và tên',
   'phòng ban',
-  'msnv quản lý',
-  'chức danh',
-  'ngày vào làm',
+  'ngày tháng năm sinh',
+  'ngày vào công ty (chính thức)',
   'loại hợp đồng',
+  'chức danh',
+  'quản lý trực tiếp',
+  'msnv quản lý trực tiếp',
   'email',
   'số điện thoại',
 ];
@@ -93,13 +97,12 @@ export async function parseEmployeeWorkbook(buffer: Buffer): Promise<ImportedEmp
 
   const employees: ImportedEmployee[] = [];
   for (let row = 2; row <= sheet.rowCount; row += 1) {
-    const values = Array.from({ length: 9 }, (_, index) =>
+    const values = Array.from({ length: 11 }, (_, index) =>
       sheet.getCell(row, index + 1).text.trim(),
     );
     if (values.every((value) => !value)) continue;
 
-    const [employeeCode, fullName, department, managerCode, jobTitle, , contractType, email, phone] =
-      values;
+    const [employeeCode, fullName, department, , , contractType, jobTitle, managerFullName, managerCode, email, phone] = values;
     if (!employeeCode || !fullName || !department || !jobTitle) {
       throw new BadRequestException(
         `Dòng ${row}: MSNV, họ và tên, phòng ban và chức danh là bắt buộc.`,
@@ -110,9 +113,11 @@ export async function parseEmployeeWorkbook(buffer: Buffer): Promise<ImportedEmp
       employeeCode,
       fullName,
       department,
+      birthDate: parseImportDate(sheet.getCell(row, 4), row),
+      managerFullName: managerFullName || null,
       managerEmployeeCode: managerCode || null,
       jobTitle,
-      hireDate: parseImportDate(sheet.getCell(row, 6), row),
+      hireDate: parseImportDate(sheet.getCell(row, 5), row),
       contractType: contractType || null,
       gmailEmail: email ? email.toLocaleLowerCase('vi') : null,
       phoneNumber: phone || null,
@@ -146,8 +151,8 @@ export class EmployeesService {
       .map((item) => configured.get(item.department) ?? {
         id: '',
         department: item.department,
-        startTime: '08:00',
-        endTime: '17:00',
+        startTime: '07:30',
+        endTime: '16:30',
       });
   }
 
@@ -187,54 +192,24 @@ export class EmployeesService {
 
     const rows = await parseEmployeeWorkbook(file.buffer);
     const seenCodes = new Set<string>();
-    const seenEmails = new Set<string>();
-    const seenPhones = new Set<string>();
     for (const employee of rows) {
       const codeKey = employee.employeeCode.toLocaleLowerCase('vi');
       if (seenCodes.has(codeKey)) {
         throw new BadRequestException(`Dòng ${employee.row}: MSNV bị trùng trong file.`);
       }
       seenCodes.add(codeKey);
-      if (employee.gmailEmail) {
-        if (seenEmails.has(employee.gmailEmail)) {
-          throw new BadRequestException(`Dòng ${employee.row}: Email bị trùng trong file.`);
-        }
-        seenEmails.add(employee.gmailEmail);
-      }
-      if (employee.phoneNumber) {
-        if (seenPhones.has(employee.phoneNumber)) {
-          throw new BadRequestException(`Dòng ${employee.row}: Số điện thoại bị trùng trong file.`);
-        }
-        seenPhones.add(employee.phoneNumber);
-      }
     }
 
     const existing = await this.prisma.employee.findMany({
       where: {
-        OR: [
-          { employeeCode: { in: rows.map((item) => item.employeeCode) } },
-          { gmailEmail: { in: rows.flatMap((item) => (item.gmailEmail ? [item.gmailEmail] : [])) } },
-          { phoneNumber: { in: rows.flatMap((item) => (item.phoneNumber ? [item.phoneNumber] : [])) } },
-        ],
+        employeeCode: { in: rows.map((item) => item.employeeCode) },
       },
-      select: { employeeCode: true, gmailEmail: true, phoneNumber: true },
+      select: { employeeCode: true },
     });
     const existingCodes = new Set(existing.map((item) => item.employeeCode.toLocaleLowerCase('vi')));
     const newRows = rows.filter(
       (item) => !existingCodes.has(item.employeeCode.toLocaleLowerCase('vi')),
     );
-    const existingEmails = new Set(existing.flatMap((item) => (item.gmailEmail ? [item.gmailEmail] : [])));
-    const existingPhones = new Set(existing.flatMap((item) => (item.phoneNumber ? [item.phoneNumber] : [])));
-    const emailConflict = newRows.find((item) => item.gmailEmail && existingEmails.has(item.gmailEmail));
-    if (emailConflict) {
-      throw new ConflictException(`Dòng ${emailConflict.row}: Email đã được sử dụng.`);
-    }
-    const phoneConflict = newRows.find(
-      (item) => item.phoneNumber && existingPhones.has(item.phoneNumber),
-    );
-    if (phoneConflict) {
-      throw new ConflictException(`Dòng ${phoneConflict.row}: Số điện thoại đã được sử dụng.`);
-    }
 
     if (newRows.length) {
       const passwordHash = await hash('123456', 10);
@@ -267,6 +242,8 @@ export class EmployeesService {
       fullName: string;
       jobTitle: string;
       department: string;
+      birthDate?: string | null;
+      managerFullName?: string | null;
       managerEmployeeCode?: string | null;
       hireDate?: string | null;
       contractType?: string | null;
@@ -281,7 +258,7 @@ export class EmployeesService {
     },
   ) {
     assertPermission(user, 'employees.manage');
-    const passwordHash = data.password ? await hash(data.password, 10) : null;
+    const passwordHash = await hash(data.password?.trim() || '123456', 10);
     const { hireDate } = data;
     const employeeData = { ...data };
     delete employeeData.password;
@@ -290,6 +267,8 @@ export class EmployeesService {
       .create({
         data: {
           ...employeeData,
+          birthDate: data.birthDate ? new Date(`${data.birthDate}T00:00:00.000Z`) : null,
+          managerFullName: data.managerFullName?.trim() || null,
           managerEmployeeCode: data.managerEmployeeCode?.trim() || null,
           hireDate: hireDate ? new Date(`${hireDate}T00:00:00.000Z`) : null,
           contractType: data.contractType?.trim() || null,
@@ -314,6 +293,8 @@ export class EmployeesService {
       fullName: string;
       jobTitle: string;
       department: string;
+      birthDate: string | null;
+      managerFullName: string | null;
       managerEmployeeCode: string | null;
       hireDate: string | null;
       contractType: string | null;
@@ -340,6 +321,16 @@ export class EmployeesService {
         where: { id },
         data: {
           ...rest,
+          birthDate:
+            rest.birthDate === undefined
+              ? undefined
+              : rest.birthDate
+                ? new Date(`${rest.birthDate}T00:00:00.000Z`)
+                : null,
+          managerFullName:
+            rest.managerFullName === undefined
+              ? undefined
+              : rest.managerFullName?.trim() || null,
           managerEmployeeCode:
             rest.managerEmployeeCode === undefined
               ? undefined
@@ -387,12 +378,6 @@ export class EmployeesService {
       const target = prismaError.meta?.target ?? [];
       if (target.includes('employeeCode')) {
         throw new ConflictException('Mã nhân viên đã tồn tại');
-      }
-      if (target.includes('phoneNumber')) {
-        throw new ConflictException('Số điện thoại đã được sử dụng');
-      }
-      if (target.includes('gmailEmail')) {
-        throw new ConflictException('Gmail đã được sử dụng');
       }
       throw new ConflictException('Thông tin nhân viên đã tồn tại');
     }

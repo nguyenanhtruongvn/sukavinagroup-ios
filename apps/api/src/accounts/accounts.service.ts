@@ -47,7 +47,7 @@ export class AccountsService {
     user: AuthUser,
     id: string,
     data: {
-      accountType: 'ADMIN' | 'EMPLOYEE';
+      accountType: 'ADMIN' | 'EMPLOYEE' | 'CANTEEN';
       permissions?: string[];
       active?: boolean;
     },
@@ -65,14 +65,18 @@ export class AccountsService {
       throw new BadRequestException('Tài khoản chưa xác minh Gmail');
     }
 
-    const accountType = data.accountType === 'ADMIN' ? 'ADMIN' : 'EMPLOYEE';
+    const accountType = data.accountType === 'ADMIN'
+      ? 'ADMIN'
+      : data.accountType === 'CANTEEN' ? 'CANTEEN' : 'EMPLOYEE';
     const updated = await this.prisma.employee.update({
       where: { id },
       data: {
         accountType,
         permissions:
           accountType === 'ADMIN' ? normalizePermissions(data.permissions) : [],
-        role: accountType === 'ADMIN' ? 'Quản trị viên' : existing.jobTitle,
+        role: accountType === 'ADMIN'
+          ? 'Quản trị viên'
+          : accountType === 'CANTEEN' ? 'Nhà ăn' : existing.jobTitle,
         active: typeof data.active === 'boolean' ? data.active : existing.active,
       },
       select: {

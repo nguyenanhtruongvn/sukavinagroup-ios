@@ -146,8 +146,8 @@ export class DashboardService {
     const [year, monthNumber] = month.split('-').map(Number);
     const dayCount = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
     const today = this.getVietnamDate();
-    const startTime = schedule?.startTime ?? '08:00';
-    const endTime = schedule?.endTime ?? '17:00';
+    const startTime = schedule?.startTime ?? '07:30';
+    const endTime = schedule?.endTime ?? '16:30';
     const leaveDates = new Set<string>();
     for (const leave of approvedLeaves) {
       const cursor = new Date(leave.startsAt);
@@ -184,7 +184,13 @@ export class DashboardService {
       } else if (isLeave) {
         statuses = ['leave'];
       } else if (!punches.length) {
-        statuses = !isFuture && !isBeforeHireDate ? ['absent'] : ['upcoming'];
+        if (isFuture) {
+          statuses = ['upcoming'];
+        } else if (isBeforeHireDate) {
+          statuses = ['not-started'];
+        } else {
+          statuses = ['absent'];
+        }
       } else {
         statuses = [];
         if (checkInTime! > startTime) statuses.push('late');

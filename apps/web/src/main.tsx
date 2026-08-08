@@ -2,7 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ReactDOM from 'react-dom/client';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser';
+import QRCode from 'qrcode';
 import './styles.css';
+import './mobile-fixes.css';
+
+const COOKIE_SESSION_TOKEN = '__cookie_session__';
 
 type Dashboard = {
   employeeCode: string;
@@ -36,6 +41,8 @@ type EmployeeRecord = {
   fullName?: string;
   jobTitle?: string;
   department?: string;
+  birthDate?: string;
+  managerFullName?: string;
   managerEmployeeCode?: string;
   hireDate?: string;
   contractType?: string;
@@ -47,10 +54,10 @@ type EmployeeRecord = {
   payrollStatus?: string;
   active?: boolean;
   gmailVerified?: boolean;
-  accountType?: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE';
+  accountType?: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE' | 'CANTEEN';
   permissions?: string[];
   protected?: boolean;
-  savedAccountType?: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE';
+  savedAccountType?: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE' | 'CANTEEN';
   createdAt?: string;
 };
 
@@ -101,11 +108,13 @@ const attendanceStatusMeta: Record<string, { label: string; color: string }> = {
   absent: { label: 'Vắng', color: '#FF6F67' },
   overtime: { label: 'Làm thêm', color: '#8C82FF' },
   weekend: { label: 'Cuối tuần', color: '#9FA6B2' },
+  'not-started': { label: 'Chưa vào làm', color: '#7C8798' },
   upcoming: { label: 'Chưa tới', color: '#9FA6B2' },
 };
 
 type PermissionKey =
   | 'content.manage'
+  | 'menu.manage'
   | 'employees.manage'
   | 'requests.view'
   | 'accounts.manage';
@@ -115,7 +124,7 @@ type AccessProfile = {
   employeeCode: string;
   name: string;
   role: string;
-  accountType: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE';
+  accountType: 'SUPER_ADMIN' | 'ADMIN' | 'EMPLOYEE' | 'CANTEEN';
   permissions: string[];
   protected?: boolean;
   email?: string | null;
@@ -125,9 +134,9 @@ type AccessProfile = {
 
 const permissionOptions: Array<{ key: PermissionKey; label: string; description: string }> = [
   { key: 'content.manage', label: 'Quản lý bài viết', description: 'Thêm, sửa, xóa và xuất bản nội dung.' },
+  { key: 'menu.manage', label: 'Thực đơn', description: 'Xem, cập nhật và nhập thực đơn; theo dõi lựa chọn món.' },
   { key: 'employees.manage', label: 'Quản lý nhân viên', description: 'Thêm, sửa, xóa hồ sơ nhân viên.' },
   { key: 'requests.view', label: 'Xem đơn từ', description: 'Xem danh sách và chi tiết đơn của toàn bộ nhân viên.' },
-  { key: 'accounts.manage', label: 'Phân quyền tài khoản', description: 'Nâng cấp tài khoản và gán quyền admin.' },
 ];
 
 type ContentItem = Dashboard['contentItems'][number];
@@ -174,6 +183,23 @@ type TodayMenu = {
   receivedAt: string | null;
   orderingOpen: boolean;
   orderingCutoff: string;
+};
+
+type MealQrIssue = {
+  token: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+};
+
+type CanteenScanResult = {
+  valid: boolean;
+  alreadyReceived: boolean;
+  employeeCode: string;
+  fullName: string;
+  department: string;
+  choice: string;
+  mealDate: string;
+  receivedAt: string;
 };
 
 type MealSelectionRecord = {
@@ -434,6 +460,135 @@ function LegalPage({ page }: { page: 'privacy' | 'support' | 'deletion' }) {
   );
 }
 
+function CanteenPortal({ token, onSignOut }: { token: string; onSignOut: () => void }) {
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+  const controlsRef = React.useRef<IScannerControls | null>(null);
+  const streamRef = React.useRef<MediaStream | null>(null);
+  const cameraStartingRef = React.useRef(false);
+  const handlingRef = React.useRef(false);
+  const lastScanRef = React.useRef({ value: '', at: 0 });
+  const [cameraActive, setCameraActive] = useState(false);
+  const [result, setResult] = useState<CanteenScanResult | null>(null);
+  const [message, setMessage] = useState('');
+
+  const stopCamera = () => {
+    controlsRef.current?.stop();
+    controlsRef.current = null;
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraActive(false);
+  };
+
+  const scanCode = async (value: string) => {
+    try {
+      const response = await fetch('/api/me/menu/scan', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: value }),
+      });
+      const body = await response.json().catch(() => null) as CanteenScanResult | { message?: string } | null;
+      if (!response.ok || !body || !('valid' in body)) {
+        if (response.status === 401) onSignOut();
+        throw new Error(body && 'message' in body ? body.message : 'Không xác nhận được mã QR.');
+      }
+      stopCamera();
+      setResult(body);
+      setMessage('');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Không xác nhận được mã QR.');
+    } finally {
+      handlingRef.current = false;
+    }
+  };
+
+  useEffect(() => () => {
+    controlsRef.current?.stop();
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
+
+  const startCamera = async () => {
+    if (!videoRef.current || cameraActive || cameraStartingRef.current) return;
+    cameraStartingRef.current = true;
+    setMessage('');
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('UNSUPPORTED');
+      }
+      // Safari requires getUserMedia to run directly from this user click.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' } },
+      });
+      streamRef.current = stream;
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      setCameraActive(true);
+      const reader = new BrowserQRCodeReader();
+      controlsRef.current = await reader.decodeFromStream(stream, videoRef.current, (decoded) => {
+        if (!decoded || handlingRef.current) return;
+        const value = decoded.getText();
+        const now = Date.now();
+        if (lastScanRef.current.value === value && now - lastScanRef.current.at < 3000) return;
+        lastScanRef.current = { value, at: now };
+        handlingRef.current = true;
+        setMessage('Đang xác nhận mã QR...');
+        void scanCode(value);
+      });
+    } catch (error) {
+      stopCamera();
+      const name = error instanceof DOMException ? error.name : '';
+      if (name === 'NotAllowedError') {
+        setMessage('Safari chưa được cấp quyền Camera. Mở Cài đặt > Safari > Camera và chọn Cho phép, sau đó tải lại trang.');
+      } else if (name === 'NotFoundError') {
+        setMessage('Không tìm thấy camera trên thiết bị.');
+      } else if (name === 'NotReadableError') {
+        setMessage('Camera đang được ứng dụng khác sử dụng. Hãy đóng ứng dụng đó rồi thử lại.');
+      } else {
+        setMessage('Không mở được camera. Hãy kiểm tra quyền Camera của Safari rồi thử lại.');
+      }
+    } finally {
+      cameraStartingRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    if (result) return;
+    const timer = window.setTimeout(() => void startCamera(), 0);
+    return () => window.clearTimeout(timer);
+  }, [result]);
+
+  const scanAgain = () => {
+    setResult(null);
+    setMessage('');
+    handlingRef.current = false;
+    lastScanRef.current = { value: '', at: 0 };
+  };
+
+  return (
+    <main className="canteen-portal">
+      <header><div><p>NHÀ ĂN SUKAVINA</p><h1>Quét mã nhận món</h1></div><button type="button" onClick={onSignOut}>Đăng xuất</button></header>
+      <section className="canteen-scanner-card">
+        {result ? (
+          <div className="canteen-result">
+            <span className={result.alreadyReceived ? 'warning' : 'success'}>{result.alreadyReceived ? '!' : '✓'}</span>
+            <h2>{result.alreadyReceived ? 'Suất ăn đã được xác nhận' : 'Xác nhận suất ăn thành công'}</h2>
+            <dl><div><dt>Nhân viên</dt><dd>{result.fullName}</dd></div><div><dt>MSNV</dt><dd>{result.employeeCode}</dd></div><div><dt>Phòng ban</dt><dd>{result.department || 'Chưa cập nhật'}</dd></div><div><dt>Món đã đặt</dt><dd>{result.choice === 'water' ? 'Món nước' : 'Món chay'}</dd></div></dl>
+            <button type="button" onClick={scanAgain}>Quét mã tiếp theo</button>
+          </div>
+        ) : (
+          <>
+              <div className="canteen-camera">
+                <video ref={videoRef} autoPlay muted playsInline />
+              </div>
+              {message ? <div className="canteen-scan-error"><strong>{message === 'Đang xác nhận mã QR...' ? 'Đang xử lý' : 'Chưa thể quét mã'}</strong><p>{message}</p></div> : <p>{cameraActive ? 'Đưa camera vào mã QR trên điện thoại của người nhận món.' : 'Đang mở camera...'}</p>}
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const isAdminRoute = window.location.pathname.startsWith('/admin');
   const isPrivacyRoute = window.location.pathname === '/privacy-policy';
@@ -451,9 +606,7 @@ function App() {
     gmailEmail: '',
     password: '',
   };
-  const [token, setToken] = useState<string | null>(
-    localStorage.getItem('sukavina_token'),
-  );
+  const [token, setToken] = useState<string | null>(COOKIE_SESSION_TOKEN);
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [contents, setContents] = useState<Dashboard['contentItems']>([]);
   const [sharedContent, setSharedContent] = useState<Dashboard['contentItems']>(
@@ -479,6 +632,9 @@ function App() {
   const [employeeTab, setEmployeeTab] = useState<'home' | 'menu'>('home');
   const [todayMenu, setTodayMenu] = useState<TodayMenu | null>(null);
   const [mealSelectionSaving, setMealSelectionSaving] = useState(false);
+  const [mealQrImage, setMealQrImage] = useState<string | null>(null);
+  const [mealQrSeconds, setMealQrSeconds] = useState(0);
+  const [mealQrLoading, setMealQrLoading] = useState(false);
   const [pendingMealChoice, setPendingMealChoice] = useState<'water' | 'vegetarian' | 'received' | 'cancel' | null>(null);
   const [menuImporting, setMenuImporting] = useState(false);
   const menuFileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -495,7 +651,7 @@ function App() {
   const [adminRequestDeleteConfirm, setAdminRequestDeleteConfirm] = useState<EmployeeRequest | null>(null);
   const [adminRequestDeleting, setAdminRequestDeleting] = useState(false);
   const [destructiveConfirm, setDestructiveConfirm] = useState<{
-    kind: 'content' | 'employee' | 'notifications' | 'passkey' | 'request';
+    kind: 'content' | 'employee' | 'notifications' | 'passkey' | 'request' | 'logout';
     id?: string;
     title: string;
     message: string;
@@ -507,6 +663,8 @@ function App() {
     fullName: '',
     jobTitle: '',
     department: '',
+    birthDate: '',
+    managerFullName: '',
     managerEmployeeCode: '',
     hireDate: '',
     contractType: '',
@@ -599,15 +757,13 @@ function App() {
         });
         if (!response.ok) throw new Error('Phiên đăng nhập không còn hợp lệ');
         const profile = (await response.json()) as AccessProfile;
-        if (isAdminRoute && profile.accountType === 'EMPLOYEE') {
-          localStorage.removeItem('sukavina_token');
+        if (isAdminRoute && !['SUPER_ADMIN', 'ADMIN'].includes(profile.accountType)) {
           setToken(null);
           setError('Tài khoản nhân viên không có quyền truy cập trang quản trị.');
           return;
         }
         setCurrentUser(profile);
       } catch (profileError) {
-        localStorage.removeItem('sukavina_token');
         setToken(null);
         setCurrentUser(null);
         setError(profileError instanceof Error ? profileError.message : 'Không kiểm tra được quyền tài khoản');
@@ -825,6 +981,42 @@ function App() {
     }
   };
 
+  const issueMealQr = async () => {
+    if (!token) return;
+    setMealQrLoading(true);
+    try {
+      const response = await fetch('/api/me/menu/selection/qr', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const result = await response.json() as MealQrIssue | { message?: string };
+      if (!response.ok || !('token' in result)) {
+        throw new Error('message' in result ? result.message : 'Không tạo được mã nhận món.');
+      }
+      setMealQrImage(await QRCode.toDataURL(result.token, { width: 260, margin: 1, errorCorrectionLevel: 'M' }));
+      setMealQrSeconds(Math.max(1, result.expiresInSeconds));
+    } catch (error) {
+      setToast({ type: 'error', message: error instanceof Error ? error.message : 'Không tạo được mã nhận món.' });
+    } finally {
+      setMealQrLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!mealQrImage || mealQrSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setMealQrSeconds((seconds) => {
+        if (seconds <= 1) {
+          window.clearInterval(timer);
+          setMealQrImage(null);
+          return 0;
+        }
+        return seconds - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [mealQrImage]);
+
   const cancelMealSelection = async () => {
     if (!token) return;
     setMealSelectionSaving(true);
@@ -983,7 +1175,7 @@ function App() {
     void loadSharedContent();
 
     const loadDashboard = async () => {
-      if (!token) {
+      if (!token || !currentUser || currentUser.accountType === 'CANTEEN') {
         setDashboard(null);
         return;
       }
@@ -1017,10 +1209,10 @@ function App() {
     };
 
     void loadDashboard();
-  }, [token]);
+  }, [token, currentUser]);
 
   useEffect(() => {
-    if (!token || isAdminRoute) return;
+    if (!token || isAdminRoute || currentUser?.accountType === 'CANTEEN') return;
     let active = true;
     let reconnectTimer = 0;
     const controller = new AbortController();
@@ -1072,7 +1264,7 @@ function App() {
       controller.abort();
       window.clearTimeout(reconnectTimer);
     };
-  }, [token, isAdminRoute]);
+  }, [token, isAdminRoute, currentUser]);
 
   const signIn = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1091,9 +1283,9 @@ function App() {
       if (!response.ok) {
         const result = (await response.json().catch(() => null)) as { message?: string } | null;
         const message = result?.message === 'Invalid credentials'
-          ? 'Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác.'
+          ? 'MSNV hoặc mật khẩu không chính xác.'
           : result?.message;
-        throw new Error(message || 'Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác.');
+        throw new Error(message || 'MSNV hoặc mật khẩu không chính xác.');
       }
 
       const data = (await response.json()) as {
@@ -1101,13 +1293,12 @@ function App() {
         user: AccessProfile;
       };
 
-      if (isAdminRoute && data.user.accountType === 'EMPLOYEE') {
+      if (isAdminRoute && !['SUPER_ADMIN', 'ADMIN'].includes(data.user.accountType)) {
         throw new Error('Tài khoản nhân viên không có quyền truy cập trang quản trị');
       }
 
-      localStorage.setItem('sukavina_token', data.accessToken);
       setCurrentUser(data.user);
-      setToken(data.accessToken);
+      setToken(COOKIE_SESSION_TOKEN);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Đăng nhập thất bại');
     } finally {
@@ -1116,7 +1307,7 @@ function App() {
   };
 
   const signOut = () => {
-    localStorage.removeItem('sukavina_token');
+    void fetch('/api/auth/logout', { method: 'POST' });
     setToken(null);
     setDashboard(null);
     setCurrentUser(null);
@@ -1130,6 +1321,9 @@ function App() {
     setPasskeyWorking(true);
     setError('');
     try {
+      if (!window.isSecureContext || !('PublicKeyCredential' in window)) {
+        throw new Error('Trình duyệt này không hỗ trợ đăng nhập bằng Face ID hoặc Touch ID.');
+      }
       const optionsResponse = await fetch('/api/auth/passkeys/login/options', { method: 'POST' });
       const optionsResult = (await optionsResponse.json()) as { options: Parameters<typeof startAuthentication>[0]['optionsJSON']; challengeToken: string; message?: string };
       if (!optionsResponse.ok) throw new Error(optionsResult.message || 'Không thể bắt đầu xác thực sinh trắc học.');
@@ -1141,13 +1335,14 @@ function App() {
       });
       const result = (await verifyResponse.json().catch(() => null)) as ({ accessToken?: string; user?: AccessProfile; message?: string } | null);
       if (!verifyResponse.ok || !result?.accessToken || !result.user) throw new Error(result?.message || 'Không thể xác minh sinh trắc học.');
-      if (isAdminRoute && result.user.accountType === 'EMPLOYEE') throw new Error('Tài khoản nhân viên không có quyền truy cập trang quản trị');
-      localStorage.setItem('sukavina_token', result.accessToken);
+      if (isAdminRoute && !['SUPER_ADMIN', 'ADMIN'].includes(result.user.accountType)) throw new Error('Tài khoản này không có quyền truy cập trang quản trị');
       setCurrentUser(result.user);
-      setToken(result.accessToken);
+      setToken(COOKIE_SESSION_TOKEN);
     } catch (passkeyError) {
       const name = passkeyError instanceof DOMException ? passkeyError.name : '';
-      if (name !== 'NotAllowedError') setError(passkeyError instanceof Error ? passkeyError.message : 'Không thể đăng nhập bằng sinh trắc học.');
+      setError(name === 'NotAllowedError'
+        ? 'Face ID hoặc Touch ID đã bị hủy, hoặc thiết bị này chưa có Passkey Sukavina. Hãy đăng nhập bằng MSNV và bật sinh trắc học trên chính thiết bị này trước.'
+        : passkeyError instanceof Error ? passkeyError.message : 'Không thể đăng nhập bằng sinh trắc học.');
     } finally {
       setPasskeyWorking(false);
     }
@@ -1182,7 +1377,9 @@ function App() {
       }
     } catch (passkeyError) {
       const name = passkeyError instanceof DOMException ? passkeyError.name : '';
-      if (name !== 'NotAllowedError') setToast({ type: 'error', message: passkeyError instanceof Error ? passkeyError.message : 'Không thể cập nhật sinh trắc học.' });
+      setToast({ type: 'error', message: name === 'NotAllowedError'
+        ? 'Thiết lập Face ID hoặc Touch ID đã bị hủy. Vui lòng thử lại trên chính thiết bị này.'
+        : passkeyError instanceof Error ? passkeyError.message : 'Không thể cập nhật sinh trắc học.' });
     } finally {
       setPasskeyWorking(false);
     }
@@ -1377,7 +1574,9 @@ function App() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          accountType: account.accountType === 'ADMIN' ? 'ADMIN' : 'EMPLOYEE',
+          accountType: account.accountType === 'ADMIN'
+            ? 'ADMIN'
+            : account.accountType === 'CANTEEN' ? 'CANTEEN' : 'EMPLOYEE',
           permissions: account.accountType === 'ADMIN' ? account.permissions ?? [] : [],
           active: approve ? true : account.active,
         }),
@@ -1403,6 +1602,12 @@ function App() {
 
   const promoteAccountToAdmin = async (account: EmployeeRecord) => {
     await saveAccountAccess({ ...account, accountType: 'ADMIN', permissions: [] });
+    setAdminAccountPickerOpen(false);
+    setAdminAccountQuery('');
+  };
+
+  const promoteAccountToCanteen = async (account: EmployeeRecord) => {
+    await saveAccountAccess({ ...account, accountType: 'CANTEEN', permissions: [] });
     setAdminAccountPickerOpen(false);
     setAdminAccountQuery('');
   };
@@ -1581,6 +1786,7 @@ function App() {
           },
           body: JSON.stringify({
             ...employeeForm,
+            birthDate: employeeForm.birthDate || null,
             phoneNumber: employeeForm.phoneNumber || null,
             gmailEmail: employeeForm.gmailEmail || null,
             password: employeeForm.password || null,
@@ -1603,6 +1809,8 @@ function App() {
         fullName: '',
         jobTitle: '',
         department: '',
+        birthDate: '',
+        managerFullName: '',
         managerEmployeeCode: '',
         hireDate: '',
         contractType: '',
@@ -1631,6 +1839,8 @@ function App() {
       fullName: employee.fullName ?? '',
       jobTitle: employee.jobTitle ?? '',
       department: employee.department ?? '',
+      birthDate: employee.birthDate?.slice(0, 10) ?? '',
+      managerFullName: employee.managerFullName ?? '',
       managerEmployeeCode: employee.managerEmployeeCode ?? '',
       hireDate: employee.hireDate?.slice(0, 10) ?? '',
       contractType: employee.contractType ?? '',
@@ -1673,10 +1883,10 @@ function App() {
     if (!isAdminRoute || !currentUser) return;
     const availableTabs: Array<'content' | 'menu' | 'employees' | 'requests' | 'accounts'> = [];
     if (canAccess('content.manage')) availableTabs.push('content');
-    if (canAccess('content.manage')) availableTabs.push('menu');
+    if (canAccess('menu.manage')) availableTabs.push('menu');
     if (canAccess('employees.manage')) availableTabs.push('employees');
     if (canAccess('requests.view')) availableTabs.push('requests');
-    if (canAccess('accounts.manage')) availableTabs.push('accounts');
+    if (isSuperAdmin) availableTabs.push('accounts');
     if (availableTabs.length && !availableTabs.includes(adminTab)) {
       setAdminTab(availableTabs[0]);
     }
@@ -1687,9 +1897,9 @@ function App() {
     const loadTab = async () => {
       try {
         if (adminTab === 'employees' && canAccess('employees.manage')) await refreshEmployees();
-        if (adminTab === 'accounts' && canAccess('accounts.manage')) await refreshAccounts();
+        if (adminTab === 'accounts' && isSuperAdmin) await refreshAccounts();
         if (adminTab === 'content' && canAccess('content.manage')) await refreshContent();
-        if (adminTab === 'menu' && canAccess('content.manage')) await refreshWeeklyMenu();
+        if (adminTab === 'menu' && canAccess('menu.manage')) await refreshWeeklyMenu();
         if (adminTab === 'requests' && canAccess('requests.view')) await refreshAdminRequests();
       } catch (tabError) {
         setError(tabError instanceof Error ? tabError.message : 'Không tải được dữ liệu quản trị');
@@ -1705,7 +1915,7 @@ function App() {
     let dailyResetTimer = 0;
     const controller = new AbortController();
     const refreshMenus = () => {
-      if (isAdminRoute && adminTab === 'menu' && canAccess('content.manage')) {
+      if (isAdminRoute && adminTab === 'menu' && canAccess('menu.manage')) {
         void refreshWeeklyMenu().catch(() => undefined);
       } else if (!isAdminRoute && employeeTab === 'menu') {
         void refreshTodayMenu().catch(() => undefined);
@@ -1840,7 +2050,7 @@ function App() {
   }, [token, currentUser, isAdminRoute]);
 
   useEffect(() => {
-    if (!token || !currentUser || !isAdminRoute || !canAccess('accounts.manage')) return;
+    if (!token || !currentUser || !isAdminRoute || !isSuperAdmin) return;
 
     let active = true;
     let reconnectTimer = 0;
@@ -1965,6 +2175,8 @@ function App() {
         employee.fullName,
         employee.jobTitle,
         employee.department,
+        employee.birthDate,
+        employee.managerFullName,
         employee.managerEmployeeCode,
         employee.contractType,
         employee.phoneNumber,
@@ -2007,16 +2219,18 @@ function App() {
   const exportEmployees = () => {
     const escapeCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const rows = [
-      ['STT', 'Mã nhân viên', 'Họ và tên', 'Phòng ban', 'Mã nhân viên quản lý', 'Chức danh', 'Ngày vào làm', 'Loại hợp đồng', 'Email', 'Số điện thoại', 'Số ngày phép còn lại', 'Trạng thái'],
+      ['STT', 'MSNV', 'Họ Tên', 'Phòng ban', 'Ngày tháng năm sinh', 'Ngày vào công ty (chính thức)', 'Loại hợp đồng', 'Chức danh', 'Quản lý trực tiếp', 'MSNV quản lý trực tiếp', 'Email', 'Số điện thoại', 'Số ngày phép còn lại', 'Trạng thái'],
       ...filteredEmployees.map((employee, index) => [
         index + 1,
         employee.employeeCode,
         employee.fullName,
         employee.department,
-        employee.managerEmployeeCode,
-        employee.jobTitle,
+        employee.birthDate ? new Date(employee.birthDate).toLocaleDateString('vi-VN') : '',
         employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('vi-VN') : '',
         employee.contractType,
+        employee.jobTitle,
+        employee.managerFullName,
+        employee.managerEmployeeCode,
         employee.gmailEmail,
         employee.phoneNumber,
         employee.remainingLeaveDays ?? 0,
@@ -2213,6 +2427,7 @@ function App() {
       if (action.kind === 'notifications') await clearAllNotifications();
       if (action.kind === 'passkey') await setWebsitePasskey(false);
       if (action.kind === 'request' && action.id) await cancelRequest(action.id);
+      if (action.kind === 'logout') signOut();
       setDestructiveConfirm(null);
     } finally {
       setDestructiveWorking(false);
@@ -2363,6 +2578,10 @@ function App() {
   if (isSupportRoute) return <LegalPage page="support" />;
   if (isAccountDeletionRoute) return <LegalPage page="deletion" />;
 
+  if (isLoggedIn && currentUser?.accountType === 'CANTEEN' && token) {
+    return <CanteenPortal token={token} onSignOut={signOut} />;
+  }
+
   if (!isLoggedIn) {
     return (
       <main className="auth-shell">
@@ -2409,11 +2628,14 @@ function App() {
             <label>
               <span>Mã xác minh Gmail</span>
               <input
+                type="text"
+                name="verification-code"
                 value={verificationCode}
                 readOnly
                 placeholder="Nhập 6 chữ số"
                 inputMode="numeric"
                 autoComplete="one-time-code"
+                enterKeyHint="done"
                 pattern="[0-9]{6}"
                 required
               />
@@ -2505,11 +2727,11 @@ function App() {
           ) : (
           <form className="auth-form" onSubmit={signIn}>
             <label>
-              <span>{isAdminRoute ? 'Tài khoản' : 'Mã nhân viên'}</span>
+              <span>MSNV</span>
               <input
                 value={loginId}
                 onChange={(event) => setLoginId(event.target.value)}
-                placeholder={isAdminRoute ? 'Nhập tài khoản quản trị' : 'Nhập mã nhân viên'}
+                placeholder={isAdminRoute ? 'Nhập MSNV quản trị' : 'Nhập MSNV'}
                 autoComplete="username"
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -2589,7 +2811,6 @@ function App() {
       ...attendanceStatusMeta[status],
     }))
     .filter((item) => item.count > 0);
-  const formatMinutes = (minutes: number) => `${Math.floor(minutes / 60)} giờ ${String(minutes % 60).padStart(2, '0')} phút`;
   const selectedAttendanceMonthIndex = attendanceMonthOptions.findIndex((option) => option.value === attendanceMonth);
   const showPreviousAttendanceMonth = () => {
     const previous = attendanceMonthOptions[selectedAttendanceMonthIndex + 1];
@@ -2818,13 +3039,26 @@ function App() {
                       setAccountOpen(false);
                       setDeleteAccountOpen(true);
                     }}><span>×</span><div><strong>Xóa tài khoản</strong><small>Xóa vĩnh viễn tài khoản và dữ liệu cá nhân</small></div><b>›</b></button>
-                    <button type="button" onClick={signOut}><span>↪</span><div><strong>Đăng xuất</strong><small>Kết thúc phiên trên thiết bị này</small></div><b>›</b></button>
+                    <button type="button" onClick={() => {
+                      setAccountOpen(false);
+                      setDestructiveConfirm({
+                        kind: 'logout',
+                        title: 'Xác nhận đăng xuất?',
+                        message: 'Bạn sẽ kết thúc phiên đăng nhập trên thiết bị này. Dữ liệu tài khoản vẫn được giữ nguyên.',
+                        confirmLabel: 'Đăng xuất',
+                      });
+                    }}><span>↪</span><div><strong>Đăng xuất</strong><small>Kết thúc phiên trên thiết bị này</small></div><b>›</b></button>
                   </div>
                 </aside>
               ) : null}
             </div>
           ) : (
-            <button className="ghost-button" onClick={signOut}>Đăng xuất</button>
+            <button className="ghost-button" onClick={() => setDestructiveConfirm({
+              kind: 'logout',
+              title: 'Xác nhận đăng xuất?',
+              message: 'Bạn sẽ kết thúc phiên đăng nhập quản trị trên thiết bị này.',
+              confirmLabel: 'Đăng xuất',
+            })}>Đăng xuất</button>
           )}
         </div>
       </header>
@@ -2919,9 +3153,22 @@ function App() {
                 <i>{todayMenu?.selection === 'vegetarian' ? '✓' : 'Chọn'}</i>
               </button>
               {todayMenu?.selection && !todayMenu.receivedAt ? (
-                <button type="button" className="meal-received-selection" disabled={mealSelectionSaving} onClick={() => setPendingMealChoice('received')}>
-                  <span>✓</span><div><strong>Xác nhận đã nhận món</strong><small>Hoàn tất nhận phần ăn hôm nay</small></div><i>Xác nhận</i>
-                </button>
+                <div className="meal-qr-access">
+                  {mealQrImage && mealQrSeconds > 0 ? (
+                    <>
+                      <img src={mealQrImage} alt="Mã QR nhận món" />
+                      <strong>Mã còn hiệu lực {mealQrSeconds} giây</strong>
+                      <small>Đưa mã này cho nhân viên nhà ăn quét.</small>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" disabled={mealQrLoading} onClick={() => void issueMealQr()}>
+                        {mealQrLoading ? 'Đang tạo mã...' : 'Lấy mã nhận món'}
+                      </button>
+                      <small>Mỗi mã có hiệu lực 30 giây và thay đổi ở lần lấy tiếp theo.</small>
+                    </>
+                  )}
+                </div>
               ) : null}
               {todayMenu?.receivedAt ? (
                 <div className="meal-received-status"><span>✓</span><div><strong>Đã nhận món ăn</strong><small>Lựa chọn đã hoàn tất và không thể thay đổi</small></div></div>
@@ -3254,16 +3501,10 @@ function App() {
                         <>
                           <div className="attendance-time attendance-time-in"><span>Vào</span><strong>{formatAttendanceTime(attendanceDay.checkIn)}</strong></div>
                           <div className="attendance-time attendance-time-out"><span>Ra</span><strong>{formatAttendanceTime(attendanceDay.checkOut)}</strong></div>
-                          <small>{formatMinutes(
-                            attendanceDay.checkIn && attendanceDay.checkOut
-                              ? Math.max(0, Math.round((new Date(attendanceDay.checkOut).getTime() - new Date(attendanceDay.checkIn).getTime()) / 60000))
-                              : 0,
-                          )}</small>
                         </>
                       ) : (
                         <p>{statusLabel || 'Chưa ghi nhận'}</p>
                       )}
-                      {attendanceDay?.punchCount ? <em className="attendance-status-label">{statusLabel}</em> : null}
                     </div>
                   );
                 })}
@@ -3312,7 +3553,7 @@ function App() {
               Bài viết
             </button>
             ) : null}
-            {canAccess('content.manage') ? (
+            {canAccess('menu.manage') ? (
               <button
                 type="button"
                 className={adminTab === 'menu' ? 'active' : ''}
@@ -3337,7 +3578,7 @@ function App() {
             >
               Đơn từ
             </button> : null}
-            {canAccess('accounts.manage') ? (
+            {isSuperAdmin ? (
               <button
                 type="button"
                 className={adminTab === 'accounts' ? 'active' : ''}
@@ -3352,7 +3593,7 @@ function App() {
           </aside>
 
           <section className="admin-main">
-            {adminTab === 'menu' && canAccess('content.manage') ? (
+            {adminTab === 'menu' && canAccess('menu.manage') ? (
               <section className="weekly-menu-panel panel">
                 <header className="weekly-menu-header">
                   <div>
@@ -3780,7 +4021,34 @@ function App() {
                         />
                       </label>
                       <label>
-                        <span>Mã nhân viên quản lý</span>
+                        <span>Ngày tháng năm sinh</span>
+                        <input
+                          type="date"
+                          max={new Date().toISOString().slice(0, 10)}
+                          value={employeeForm.birthDate}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              birthDate: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <label>
+                        <span>Quản lý trực tiếp</span>
+                        <input
+                          value={employeeForm.managerFullName}
+                          onChange={(event) =>
+                            setEmployeeForm((current) => ({
+                              ...current,
+                              managerFullName: event.target.value,
+                            }))
+                          }
+                          placeholder="Nguyễn Văn A"
+                        />
+                      </label>
+                      <label>
+                        <span>MSNV quản lý trực tiếp</span>
                         <input
                           value={employeeForm.managerEmployeeCode}
                           onChange={(event) =>
@@ -3806,7 +4074,7 @@ function App() {
                         />
                       </label>
                       <label>
-                        <span>Ngày vào làm</span>
+                        <span>Ngày vào công ty (chính thức)</span>
                         <input
                           type="date"
                           value={employeeForm.hireDate}
@@ -3830,10 +4098,13 @@ function App() {
                           }
                         >
                           <option value="">Chọn loại hợp đồng</option>
-                          <option value="Thử việc">Thử việc</option>
-                          <option value="Xác định thời hạn">Xác định thời hạn</option>
+                          <option value="Đã nghỉ">Đã nghỉ</option>
                           <option value="Không xác định thời hạn">Không xác định thời hạn</option>
-                          <option value="Thời vụ">Thời vụ</option>
+                          <option value="Thời vụ cung ứng">Thời vụ cung ứng</option>
+                          <option value="Thời vụ Suka">Thời vụ Suka</option>
+                          <option value="Thử việc">Thử việc</option>
+                          <option value="Thực tập sinh">Thực tập sinh</option>
+                          <option value="Xác định thời hạn">Xác định thời hạn</option>
                         </select>
                       </label>
                       <label>
@@ -3891,7 +4162,7 @@ function App() {
                               password: event.target.value,
                             }))
                           }
-                          placeholder={editingEmployeeId ? 'Để trống nếu không đổi' : 'Nhập mật khẩu'}
+                          placeholder={editingEmployeeId ? 'Để trống nếu không đổi' : 'Mặc định: 123456'}
                         />
                       </label>
                     </div>
@@ -3924,6 +4195,8 @@ function App() {
                             fullName: '',
                             jobTitle: '',
                             department: '',
+                            birthDate: '',
+                            managerFullName: '',
                             managerEmployeeCode: '',
                             hireDate: '',
                             contractType: '',
@@ -4016,7 +4289,7 @@ function App() {
                                 </div>
                                 <div>
                                   <h3>{employee.fullName}</h3>
-                                  <p>{employee.gmailEmail || employee.phoneNumber || 'Chưa có thông tin liên hệ'}</p>
+                                  <p>{[employee.gmailEmail, employee.phoneNumber].filter(Boolean).join(' · ') || 'Chưa có thông tin liên hệ'}</p>
                                 </div>
                               </div>
                               <div className="employee-cell employee-code" data-label="Mã nhân viên">
@@ -4024,6 +4297,7 @@ function App() {
                               </div>
                               <div className="employee-cell employee-muted" data-label="Phòng ban">
                                 <span className="employee-department-badge">{employee.department || 'Chưa cập nhật'}</span>
+                                <small>{employee.birthDate ? `Ngày sinh ${new Date(employee.birthDate).toLocaleDateString('vi-VN')}` : 'Chưa có ngày sinh'}</small>
                               </div>
                               <div className="employee-cell employee-muted" data-label="Chức vụ">
                                 <span>{employee.jobTitle || 'Chưa cập nhật'}</span>
@@ -4032,6 +4306,7 @@ function App() {
                                   {' · '}
                                   {employee.hireDate ? new Date(employee.hireDate).toLocaleDateString('vi-VN') : 'Chưa có ngày vào làm'}
                                 </small>
+                                <small>{employee.managerFullName || 'Chưa có quản lý'}{employee.managerEmployeeCode ? ` · ${employee.managerEmployeeCode}` : ''}</small>
                               </div>
                               <div className="employee-cell employee-status-cell" data-label="Trạng thái">
                                 <span
@@ -4093,23 +4368,23 @@ function App() {
               </section>
             ) : null}
 
-            {adminTab === 'accounts' && canAccess('accounts.manage') ? (
+            {adminTab === 'accounts' && isSuperAdmin ? (
               <section className="panel access-panel" id="account-approvals">
                 <div className="panel-head">
                   <div>
                     <p className="panel-label">Phân quyền tài khoản</p>
-                    <h2>Tài khoản quản trị</h2>
+                    <h2>Tài khoản đặc quyền</h2>
                     <p className="panel-note">
                       Admin tổng luôn có toàn quyền và không thể xóa hoặc hạ cấp.
-                      Admin thường chỉ thấy các menu đã được cấp.
+                      Admin thường chỉ thấy các menu đã được cấp. Tài khoản Nhà ăn chỉ được quét mã QR nhận món.
                     </p>
                   </div>
-                  <div className="access-head-actions"><button type="button" className="primary-button" onClick={() => setAdminAccountPickerOpen(true)}>＋ Thêm tài khoản admin</button><button type="button" className="ghost-button" onClick={() => refreshAccounts()}>Tải lại</button></div>
+                  <div className="access-head-actions"><button type="button" className="primary-button" onClick={() => setAdminAccountPickerOpen(true)}>＋ Thêm tài khoản</button><button type="button" className="ghost-button" onClick={() => refreshAccounts()}>Tải lại</button></div>
                 </div>
 
                 {[
                   {
-                    title: 'Tài khoản Admin',
+                    title: 'Admin và Nhà ăn',
                     className: '',
                     emptyMessage: 'Chưa có tài khoản admin nào.',
                     items: accounts.filter(
@@ -4160,13 +4435,19 @@ function App() {
                                 disabled={account.protected}
                                 onChange={(event) =>
                                   updateAccountDraft(account.id, {
-                                    accountType: event.target.value as 'ADMIN' | 'EMPLOYEE',
+                                    accountType: event.target.value as 'ADMIN' | 'EMPLOYEE' | 'CANTEEN',
                                     permissions:
                                       event.target.value === 'ADMIN' ? account.permissions ?? [] : [],
                                   })
                                 }
                               >
-                                {account.protected ? <option value="SUPER_ADMIN">Admin tổng</option> : <option value="ADMIN">Admin thường</option>}
+                                {account.protected ? <option value="SUPER_ADMIN">Admin tổng</option> : (
+                                  <>
+                                    <option value="ADMIN">Admin thường</option>
+                                    <option value="CANTEEN">Nhà ăn</option>
+                                    <option value="EMPLOYEE">Nhân viên</option>
+                                  </>
+                                )}
                               </select>
                             </label>
                           </div>
@@ -4481,12 +4762,12 @@ function App() {
             {adminAccountPickerOpen ? createPortal(
               <div className="article-modal-backdrop admin-picker-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !loading) setAdminAccountPickerOpen(false); }}>
                 <section className="article-modal admin-account-picker" role="dialog" aria-modal="true" aria-labelledby="admin-picker-title">
-                  <header className="admin-picker-head"><div><p className="panel-label">Phân quyền</p><h2 id="admin-picker-title">Thêm tài khoản admin</h2><p>Chọn một nhân viên hiện có để cấp quyền quản trị.</p></div><button type="button" className="request-modal-close" onClick={() => setAdminAccountPickerOpen(false)}>×</button></header>
+                  <header className="admin-picker-head"><div><p className="panel-label">Phân quyền</p><h2 id="admin-picker-title">Thêm tài khoản đặc quyền</h2><p>Chọn nhân viên rồi cấp loại tài khoản Admin hoặc Nhà ăn.</p></div><button type="button" className="request-modal-close" onClick={() => setAdminAccountPickerOpen(false)}>×</button></header>
                   <div className="admin-picker-body">
                     <div className="search-box"><input autoFocus value={adminAccountQuery} onChange={(event) => setAdminAccountQuery(event.target.value)} placeholder="Tìm theo tên, mã nhân viên hoặc phòng ban..." /></div>
                     <div className="admin-picker-list">
                       {accounts.filter((account) => account.savedAccountType === 'EMPLOYEE' && account.active && `${account.fullName} ${account.employeeCode} ${account.department}`.toLocaleLowerCase('vi').includes(adminAccountQuery.trim().toLocaleLowerCase('vi'))).map((account) => (
-                        <article key={account.id} className="admin-picker-item"><div className="employee-avatar">{(account.fullName || '?').split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase()}</div><div><strong>{account.fullName}</strong><p>{account.employeeCode} · {account.department || 'Chưa cập nhật phòng ban'}</p></div><button type="button" disabled={loading} onClick={() => void promoteAccountToAdmin(account)}>{loading ? 'Đang thêm...' : 'Chọn làm Admin'}</button></article>
+                        <article key={account.id} className="admin-picker-item"><div className="employee-avatar">{(account.fullName || '?').split(' ').slice(-2).map((part) => part[0]).join('').toUpperCase()}</div><div><strong>{account.fullName}</strong><p>{account.employeeCode} · {account.department || 'Chưa cập nhật phòng ban'}</p></div><div className="admin-picker-role-actions"><button type="button" disabled={loading} onClick={() => void promoteAccountToAdmin(account)}>{loading ? 'Đang thêm...' : 'Làm Admin'}</button><button type="button" disabled={loading} onClick={() => void promoteAccountToCanteen(account)}>{loading ? 'Đang thêm...' : 'Làm Nhà ăn'}</button></div></article>
                       ))}
                       {!accounts.some((account) => account.savedAccountType === 'EMPLOYEE' && account.active && `${account.fullName} ${account.employeeCode} ${account.department}`.toLocaleLowerCase('vi').includes(adminAccountQuery.trim().toLocaleLowerCase('vi'))) ? <div className="access-empty-state"><p>Không tìm thấy nhân viên phù hợp.</p></div> : null}
                     </div>
@@ -4515,7 +4796,7 @@ function App() {
             </div>
             {passwordOtpSent ? (
               <div className="password-fields">
-                <label><span>Mã OTP gồm 6 số</span><input inputMode="numeric" maxLength={6} autoComplete="one-time-code" value={passwordForm.code} onChange={(event) => setPasswordForm((current) => ({ ...current, code: event.target.value.replace(/\D/g, '') }))} /></label>
+                <label><span>Mã OTP gồm 6 số</span><input type="text" name="one-time-code" inputMode="numeric" maxLength={6} autoComplete="one-time-code" enterKeyHint="next" pattern="[0-9]{6}" autoFocus value={passwordForm.code} onChange={(event) => setPasswordForm((current) => ({ ...current, code: event.target.value.replace(/\D/g, '').slice(0, 6) }))} /></label>
                 <label><span>Mật khẩu mới</span><input type="password" autoComplete="new-password" placeholder="Ít nhất 6 ký tự" value={passwordForm.password} onChange={(event) => setPasswordForm((current) => ({ ...current, password: event.target.value }))} /></label>
                 <label><span>Nhập lại mật khẩu</span><input type="password" autoComplete="new-password" value={passwordForm.confirmation} onChange={(event) => setPasswordForm((current) => ({ ...current, confirmation: event.target.value }))} /></label>
                 {passwordForm.confirmation && passwordForm.password !== passwordForm.confirmation ? <p className="password-field-error">Mật khẩu nhập lại chưa khớp.</p> : null}
@@ -4575,5 +4856,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </AppErrorBoundary>
   </React.StrictMode>,
 );
-
-

@@ -47,6 +47,8 @@ export class EmployeesController {
       fullName: string;
       jobTitle: string;
       department: string;
+      birthDate?: string | null;
+      managerFullName?: string | null;
       managerEmployeeCode?: string | null;
       hireDate?: string | null;
       contractType?: string | null;
@@ -82,6 +84,8 @@ export class EmployeesController {
       fullName: string;
       jobTitle: string;
       department: string;
+      birthDate: string | null;
+      managerFullName: string | null;
       managerEmployeeCode: string | null;
       hireDate: string | null;
       contractType: string | null;

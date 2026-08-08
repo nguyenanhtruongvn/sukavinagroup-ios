@@ -54,11 +54,13 @@ model Employee {
   fullName          String
   jobTitle          String
   department        String
+  birthDate         DateTime?
+  managerFullName   String?
   managerEmployeeCode String?
   hireDate          DateTime?
   contractType      String?
-  phoneNumber       String?  @unique
-  gmailEmail        String?  @unique
+  phoneNumber       String?
+  gmailEmail        String?
   gmailVerified     Boolean  @default(false)
   emailVerificationCode String?
   emailVerificationExpiresAt DateTime?
@@ -86,8 +88,8 @@ model Employee {
 model DepartmentWorkSchedule {
   id         String   @id @default(cuid())
   department String   @unique
-  startTime  String   @default("08:00")
-  endTime    String   @default("17:00")
+  startTime  String   @default("07:30")
+  endTime    String   @default("16:30")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }

@@ -1,6 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { AuthUser, assertPermission } from '../auth/permissions';
+import { getJwtSecret } from '../auth/jwt-secret';
 import { PrismaService } from '../prisma/prisma.service';
 import { ContentEventsService } from '../dashboard/content-events.service';
 
@@ -100,6 +102,11 @@ function todayInVietnam() {
 }
 
 export function isMealOrderingOpen(now = new Date()) {
+  // Khóa giờ đặt món đang tạm tắt. Có thể bật lại mà không sửa code bằng biến môi trường.
+  const orderingLockEnabled =
+    process.env.MEAL_ORDERING_LOCK_ENABLED?.trim().toLowerCase() === 'true';
+  if (!orderingLockEnabled) return true;
+
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Ho_Chi_Minh',
     hour: '2-digit',
@@ -119,7 +126,7 @@ export class WeeklyMenuService {
   ) {}
 
   async current(user: AuthUser, week?: string) {
-    assertPermission(user, 'content.manage');
+    assertPermission(user, 'menu.manage');
     return this.prisma.weeklyMenu.findUnique({ where: { weekStart: selectedWeekStart(week) } });
   }
 
@@ -129,8 +136,49 @@ export class WeeklyMenuService {
     });
   }
 
+  private createMealQrToken(selection: { id: string; employeeId: string; mealDate: Date }, expiresAt: Date) {
+    const payload = Buffer.from(JSON.stringify({
+      selectionId: selection.id,
+      employeeId: selection.employeeId,
+      mealDate: selection.mealDate.toISOString().slice(0, 10),
+      expiresAt: expiresAt.getTime(),
+      nonce: randomBytes(16).toString('base64url'),
+    })).toString('base64url');
+    const signature = createHmac('sha256', getJwtSecret()).update(payload).digest('base64url');
+    return `sukavina-meal:${payload}.${signature}`;
+  }
+
+  private verifyMealQrToken(value?: string) {
+    if (!value?.startsWith('sukavina-meal:')) {
+      throw new BadRequestException('Mã QR suất ăn không hợp lệ.');
+    }
+    const [payload, signature] = value.slice('sukavina-meal:'.length).split('.');
+    if (!payload || !signature) throw new BadRequestException('Mã QR suất ăn không hợp lệ.');
+    const expected = createHmac('sha256', getJwtSecret()).update(payload).digest();
+    const actual = Buffer.from(signature, 'base64url');
+    if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+      throw new BadRequestException('Mã QR suất ăn không hợp lệ hoặc đã bị thay đổi.');
+    }
+    try {
+      const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
+        selectionId: string;
+        employeeId: string;
+        mealDate: string;
+        expiresAt: number;
+        nonce: string;
+      };
+      if (!Number.isFinite(decoded.expiresAt) || decoded.expiresAt <= Date.now()) {
+        throw new BadRequestException('Mã QR đã hết hạn. Vui lòng lấy mã mới.');
+      }
+      return decoded;
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException('Mã QR suất ăn không hợp lệ.');
+    }
+  }
+
   async selections(user: AuthUser, _week?: string) {
-    assertPermission(user, 'content.manage');
+    assertPermission(user, 'menu.manage');
     await this.removeExpiredSelections();
     const start = todayInVietnam();
     const end = new Date(start);
@@ -190,6 +238,25 @@ export class WeeklyMenuService {
     };
   }
 
+  async issueMealQr(user: AuthUser) {
+    if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
+    if (user.accountType === 'CANTEEN') {
+      throw new ForbiddenException('Tài khoản nhà ăn không thể tạo mã nhận món.');
+    }
+    const mealDate = todayInVietnam();
+    const selection = await this.prisma.mealSelection.findUnique({
+      where: { employeeId_mealDate: { employeeId: user.sub, mealDate } },
+    });
+    if (!selection) throw new BadRequestException('Bạn chưa lựa chọn món ăn hôm nay.');
+    if (selection.receivedAt) throw new BadRequestException('Suất ăn này đã được xác nhận.');
+    const expiresAt = new Date(Date.now() + 30_000);
+    return {
+      token: this.createMealQrToken(selection, expiresAt),
+      expiresAt: expiresAt.toISOString(),
+      expiresInSeconds: 30,
+    };
+  }
+
   async selectMeal(user: AuthUser, choice?: string) {
     if (!isMealOrderingOpen()) {
       throw new BadRequestException('Đã hết thời gian đặt món. Vui lòng đặt món trước 09:00.');
@@ -215,6 +282,9 @@ export class WeeklyMenuService {
   }
 
   async receiveMealSelection(user: AuthUser) {
+    if (user.accountType !== 'CANTEEN' && user.accountType !== 'DEMO') {
+      throw new ForbiddenException('Suất ăn chỉ được xác nhận bằng mã QR tại nhà ăn.');
+    }
     if (!user.sub) throw new BadRequestException('Không xác định được tài khoản.');
     const mealDate = todayInVietnam();
     const selection = await this.prisma.mealSelection.findUnique({
@@ -229,6 +299,51 @@ export class WeeklyMenuService {
     });
     this.events.notify('meal_changed');
     return this.today(user);
+  }
+
+  async scanMealQr(user: AuthUser, token?: string) {
+    if (user.accountType !== 'CANTEEN' && user.accountType !== 'DEMO') {
+      throw new ForbiddenException('Chỉ tài khoản nhà ăn được phép quét mã suất ăn.');
+    }
+    const payload = this.verifyMealQrToken(token);
+    if (payload.mealDate !== todayInVietnam().toISOString().slice(0, 10)) {
+      throw new BadRequestException('Mã QR này không thuộc ngày hôm nay.');
+    }
+    const selection = await this.prisma.mealSelection.findUnique({
+      where: { id: payload.selectionId },
+      include: { employee: { select: { employeeCode: true, fullName: true, department: true } } },
+    });
+    if (!selection || selection.employeeId !== payload.employeeId ||
+        selection.mealDate.toISOString().slice(0, 10) !== payload.mealDate) {
+      throw new BadRequestException('Không tìm thấy thông tin đặt món tương ứng.');
+    }
+    if (selection.receivedAt) {
+      return {
+        valid: true,
+        alreadyReceived: true,
+        employeeCode: selection.employee.employeeCode,
+        fullName: selection.employee.fullName,
+        department: selection.employee.department,
+        choice: selection.choice,
+        mealDate: payload.mealDate,
+        receivedAt: selection.receivedAt.toISOString(),
+      };
+    }
+    const updated = await this.prisma.mealSelection.update({
+      where: { id: selection.id },
+      data: { receivedAt: new Date() },
+    });
+    this.events.notify('meal_changed');
+    return {
+      valid: true,
+      alreadyReceived: false,
+      employeeCode: selection.employee.employeeCode,
+      fullName: selection.employee.fullName,
+      department: selection.employee.department,
+      choice: selection.choice,
+      mealDate: payload.mealDate,
+      receivedAt: updated.receivedAt?.toISOString() ?? new Date().toISOString(),
+    };
   }
 
   async cancelMealSelection(user: AuthUser) {
@@ -251,7 +366,7 @@ export class WeeklyMenuService {
   }
 
   async import(user: AuthUser, file?: Express.Multer.File, week?: string) {
-    assertPermission(user, 'content.manage');
+    assertPermission(user, 'menu.manage');
     if (!file) throw new BadRequestException('Vui lòng chọn file Excel.');
     if (!file.originalname.toLocaleLowerCase('vi').endsWith('.xlsx')) {
       throw new BadRequestException('Chỉ hỗ trợ file Excel định dạng .xlsx.');
@@ -276,7 +391,7 @@ export class WeeklyMenuService {
   }
 
   async update(user: AuthUser, data: WeeklyMenuData, week?: string) {
-    assertPermission(user, 'content.manage');
+    assertPermission(user, 'menu.manage');
     if (!Array.isArray(data?.days) || data.days.length !== dayNames.length) {
       throw new BadRequestException('Thực đơn phải có đủ 7 ngày từ Thứ 2 đến Chủ nhật.');
     }

@@ -5,6 +5,7 @@ export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
 export const PERMISSIONS = [
   'content.manage',
+  'menu.manage',
   'employees.manage',
   'requests.view',
   'accounts.manage',

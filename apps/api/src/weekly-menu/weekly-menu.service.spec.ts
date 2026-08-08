@@ -31,11 +31,21 @@ describe('parseWeeklyMenuWorkbook', () => {
 });
 
 describe('isMealOrderingOpen', () => {
+  afterEach(() => {
+    delete process.env.MEAL_ORDERING_LOCK_ENABLED;
+  });
+
+  it('keeps ordering open when the temporary lock is disabled', () => {
+    expect(isMealOrderingOpen(new Date('2026-07-28T02:00:00.000Z'))).toBe(true);
+  });
+
   it('allows ordering before 09:00 in Vietnam', () => {
+    process.env.MEAL_ORDERING_LOCK_ENABLED = 'true';
     expect(isMealOrderingOpen(new Date('2026-07-28T01:59:59.000Z'))).toBe(true);
   });
 
   it('closes ordering from 09:00 in Vietnam', () => {
+    process.env.MEAL_ORDERING_LOCK_ENABLED = 'true';
     expect(isMealOrderingOpen(new Date('2026-07-28T02:00:00.000Z'))).toBe(false);
   });
 });

@@ -28,7 +28,7 @@ export class AccountsController {
     @Param('id') id: string,
     @Body()
     body: {
-      accountType: 'ADMIN' | 'EMPLOYEE';
+      accountType: 'ADMIN' | 'EMPLOYEE' | 'CANTEEN';
       permissions?: string[];
       active?: boolean;
     },

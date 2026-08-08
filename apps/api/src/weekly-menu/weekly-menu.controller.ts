@@ -74,6 +74,16 @@ export class EmployeeWeeklyMenuController {
     return this.weeklyMenu.receiveMealSelection(req.user);
   }
 
+  @Post('scan')
+  scan(@Req() req: { user: AuthUser }, @Body() body: { token?: string }) {
+    return this.weeklyMenu.scanMealQr(req.user, body.token);
+  }
+
+  @Post('selection/qr')
+  issueQr(@Req() req: { user: AuthUser }) {
+    return this.weeklyMenu.issueMealQr(req.user);
+  }
+
   @Delete('selection')
   cancelSelection(@Req() req: { user: AuthUser }) {
     return this.weeklyMenu.cancelMealSelection(req.user);

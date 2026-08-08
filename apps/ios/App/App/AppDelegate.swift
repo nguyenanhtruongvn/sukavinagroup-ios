@@ -1784,6 +1784,7 @@ private struct AuthenticationView: View {
 private struct LoginForm: View {
     @EnvironmentObject private var session: SessionStore
     @State private var loginId = ""
+    @State private var password = ""
 
     var body: some View {
         VStack(spacing: 16) {
@@ -4263,7 +4264,6 @@ private struct ProfileView: View {
 
     @EnvironmentObject private var session: SessionStore
     @State private var showDelete = false
-    @State private var password = ""
     @State private var showPasswordChange = false
     @State private var showPasswordChangeLimit = false
     @State private var legalPage: LegalPage?
