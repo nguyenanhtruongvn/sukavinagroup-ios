@@ -1243,13 +1243,13 @@ private fun SwipeDeleteItem(
                 if (maxWidth >= 700.dp) {
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         months.forEach { month ->
-                            AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.weight(1f))
+                            AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.weight(1f), showTitle = true)
                         }
                     }
                 } else {
                     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1, pageSpacing = 0.dp) { page ->
                         val month = months[page]
-                        AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.fillMaxWidth())
+                        AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.fillMaxWidth(), showTitle = false)
                     }
                 }
             }
@@ -1257,9 +1257,9 @@ private fun SwipeDeleteItem(
     }
 }
 
-@Composable private fun AttendanceMonthPage(month: YearMonth, data: AttendanceMonth?, error: String?, selectedDate: String?, select: (String) -> Unit, modifier: Modifier) {
+@Composable private fun AttendanceMonthPage(month: YearMonth, data: AttendanceMonth?, error: String?, selectedDate: String?, select: (String) -> Unit, modifier: Modifier, showTitle: Boolean) {
     Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Tháng ${month.monthValue} / ${month.year}", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 8.dp))
+        if (showTitle) Text("Tháng ${month.monthValue} / ${month.year}", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 8.dp))
         when {
             data != null -> { AttendanceSummary(data); AttendanceCalendar(data, selectedDate, select); data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) } }
             error != null -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
