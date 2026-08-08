@@ -2422,7 +2422,7 @@ private struct TodayMenuView: View {
                             .shadow(color: Color.green.opacity(0.3), radius: 12, y: 6)
                     }
                     .padding(.trailing, 18)
-                    .padding(.bottom, 76)
+                    .padding(.bottom, 60)
                 }
             }
             .navigationTitle("")
