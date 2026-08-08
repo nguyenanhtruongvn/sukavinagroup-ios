@@ -817,11 +817,18 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text("Đơn từ", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(18.dp, 20.dp, 18.dp, 10.dp))
-            androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filterOptions) { item ->
-                    FilterChip(selected = filter == item.first, onClick = {
-                        refreshScope.launch { pagerState.animateScrollToPage(filterOptions.indexOf(item)) }
-                    }, label = { Text(item.second) })
+            ScrollableTabRow(
+                selectedTabIndex = filterIndex,
+                edgePadding = 18.dp,
+                divider = {},
+                containerColor = Color.Transparent,
+            ) {
+                filterOptions.forEachIndexed { index, item ->
+                    Tab(
+                        selected = filterIndex == index,
+                        onClick = { refreshScope.launch { pagerState.animateScrollToPage(index) } },
+                        text = { Text(item.second, maxLines = 1) },
+                    )
                 }
             }
             PullToRefreshBox(
@@ -836,7 +843,11 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
                 HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1) { page ->
                     val pageFilter = filterOptions[page].first
                     val visible = merged.filter { pageFilter == "all" || it.status == pageFilter }
-                    LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp),
+                        verticalArrangement = Arrangement.Top,
+                    ) {
                         items(visible, key = { it.id }) { request ->
                             RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
                                 onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
