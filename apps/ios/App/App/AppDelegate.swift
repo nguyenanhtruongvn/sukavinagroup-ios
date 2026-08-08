@@ -2413,13 +2413,12 @@ private struct TodayMenuView: View {
                     Button {
                         showDemoScanner = true
                     } label: {
-                        Label("Quét QR", systemImage: "qrcode.viewfinder")
-                            .font(.subheadline.weight(.bold))
+                        Image(systemName: "qrcode.viewfinder")
+                            .font(.system(size: 23, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 13)
+                            .frame(width: 56, height: 56)
                             .background(Color.green)
-                            .clipShape(Capsule())
+                            .clipShape(Circle())
                             .shadow(color: Color.green.opacity(0.3), radius: 12, y: 6)
                     }
                     .padding(.trailing, 18)
