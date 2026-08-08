@@ -1416,6 +1416,7 @@ function App() {
   };
 
   const refreshContent = async () => {
+    if (!isAdminRoute || currentUser?.accountType === 'DEMO') return;
     const response = await fetch('/api/admin/content', {
       headers: {
         Authorization: `Bearer ${token}`,
