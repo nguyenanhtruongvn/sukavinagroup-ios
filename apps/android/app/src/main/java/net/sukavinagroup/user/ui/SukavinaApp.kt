@@ -599,13 +599,15 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
             Text(menu?.day?.dayName ?: "Đang cập nhật", color = SukavinaMuted)
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MenuGroupCard("Món nước", Icons.Default.LocalDrink, Color(0xFF62C5F4), listOf(menu?.day?.featured), Modifier.weight(1f))
-                MenuGroupCard("Món thường", Icons.Default.Restaurant, Color(0xFFFFA568), listOf(menu?.day?.savoryMain, menu?.day?.savorySide, menu?.day?.vegetable, menu?.day?.soup), Modifier.weight(1f))
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MenuGroupCard("Món chay", Icons.Default.Eco, Color(0xFF62D58B), listOf(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide), Modifier.weight(1f))
-                MenuGroupCard("Tăng ca", Icons.Default.DarkMode, Color(0xFFB396F5), listOf(menu?.day?.overtime), Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MenuGroupCard("Món nước", Icons.Default.LocalDrink, Color(0xFF62C5F4), listOf(menu?.day?.featured), Modifier.weight(1f))
+                    MenuGroupCard("Món thường", Icons.Default.Restaurant, Color(0xFFFFA568), listOf(menu?.day?.savoryMain, menu?.day?.savorySide, menu?.day?.vegetable, menu?.day?.soup), Modifier.weight(1f))
+                }
+                Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MenuGroupCard("Món chay", Icons.Default.Eco, Color(0xFF62D58B), listOf(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide), Modifier.weight(1f))
+                    MenuGroupCard("Tăng ca", Icons.Default.DarkMode, Color(0xFFB396F5), listOf(menu?.day?.overtime), Modifier.weight(1f))
+                }
             }
         }
         item {
@@ -689,7 +691,7 @@ private fun createQrBitmap(value: String): Bitmap {
 }
 
 @Composable private fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
-    Card(modifier.fillMaxWidth().heightIn(min = 124.dp), shape = appShape(19.dp, AppShapeRole.LARGE), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
+    Card(modifier.fillMaxHeight().fillMaxWidth().heightIn(min = 124.dp), shape = appShape(19.dp, AppShapeRole.LARGE), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
                 Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp))
