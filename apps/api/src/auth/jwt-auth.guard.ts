@@ -10,8 +10,11 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       user?: { accountType?: string };
       originalUrl?: string;
     }>();
+    const path = request.originalUrl?.split('?')[0] ?? '';
+    if (request.user?.accountType === 'DEMO' && path.includes('/admin/')) {
+      throw new ForbiddenException('Tài khoản demo không được truy cập khu vực quản trị.');
+    }
     if (request.user?.accountType === 'CANTEEN') {
-      const path = request.originalUrl?.split('?')[0] ?? '';
       const allowed = path.endsWith('/auth/me') || path.endsWith('/me/menu/scan');
       if (!allowed && request.user?.accountType !== 'DEMO') throw new ForbiddenException('Tài khoản nhà ăn chỉ được sử dụng chức năng quét mã suất ăn.');
     }
