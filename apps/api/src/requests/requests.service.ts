@@ -143,7 +143,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
     let manager = employee.managerEmployeeCode
       ? await this.prisma.employee.findUnique({ where: { employeeCode: employee.managerEmployeeCode } })
       : null;
-    if (!manager || !manager.active || manager.id === employeeId) {
+    if (!manager || !manager.active) {
       manager = await this.prisma.employee.findFirst({
         where: { accountType: 'SUPER_ADMIN', active: true, id: { not: employeeId } },
       });
