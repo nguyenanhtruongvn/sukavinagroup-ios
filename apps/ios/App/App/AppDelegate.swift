@@ -2416,13 +2416,13 @@ private struct TodayMenuView: View {
                         Image(systemName: "qrcode.viewfinder")
                             .font(.system(size: 23, weight: .bold))
                             .foregroundColor(.white)
-                            .frame(width: 56, height: 56)
+                            .frame(width: 58, height: 58)
                             .background(Color.green)
                             .clipShape(Circle())
                             .shadow(color: Color.green.opacity(0.3), radius: 12, y: 6)
                     }
-                    .padding(.trailing, 18)
-                    .padding(.bottom, 60)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 18)
                 }
             }
             .navigationTitle("")
@@ -3916,6 +3916,7 @@ private struct NotificationsView: View {
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
+                .onAppear { Task { await loadRequestNotifications() } }
                 .onChange(of: session.requestUnreadCount) { _, _ in Task { await loadRequestNotifications() } }
                 .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
