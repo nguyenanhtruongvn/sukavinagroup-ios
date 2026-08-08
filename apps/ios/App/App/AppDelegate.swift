@@ -2295,6 +2295,7 @@ private struct EmployeePortalView: View {
 }
 
 private struct TodayMenuView: View {
+    // Keep the demo QR action clear of the floating tab bar on iPhone and iPad.
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var pendingChoice: String?
