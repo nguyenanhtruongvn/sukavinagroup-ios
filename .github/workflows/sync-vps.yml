@@ -2,14 +2,6 @@ name: Sync source to VPS
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths-ignore:
-      - 'apps/android/**'
-      - 'apps/ios/**'
-      - '.github/workflows/build-android.yml'
-      - '.github/workflows/build-ios-unsigned.yml'
-      - '.github/workflows/sync-vps.yml'
 
 permissions:
   contents: read
