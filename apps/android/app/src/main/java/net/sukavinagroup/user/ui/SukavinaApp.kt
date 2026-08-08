@@ -599,11 +599,13 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
             Text(menu?.day?.dayName ?: "Đang cập nhật", color = SukavinaMuted)
         }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(11.dp)) {
-                MenuGroupCard("Món nước", Icons.Default.LocalDrink, Color(0xFF62C5F4), listOf(menu?.day?.featured))
-                MenuGroupCard("Món thường", Icons.Default.Restaurant, Color(0xFFFFA568), listOf(menu?.day?.savoryMain, menu?.day?.savorySide, menu?.day?.vegetable, menu?.day?.soup))
-                MenuGroupCard("Món chay", Icons.Default.Eco, Color(0xFF62D58B), listOf(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide))
-                MenuGroupCard("Tăng ca", Icons.Default.DarkMode, Color(0xFFB396F5), listOf(menu?.day?.overtime))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MenuGroupCard("Món nước", Icons.Default.LocalDrink, Color(0xFF62C5F4), listOf(menu?.day?.featured), Modifier.weight(1f))
+                MenuGroupCard("Món thường", Icons.Default.Restaurant, Color(0xFFFFA568), listOf(menu?.day?.savoryMain, menu?.day?.savorySide, menu?.day?.vegetable, menu?.day?.soup), Modifier.weight(1f))
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                MenuGroupCard("Món chay", Icons.Default.Eco, Color(0xFF62D58B), listOf(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide), Modifier.weight(1f))
+                MenuGroupCard("Tăng ca", Icons.Default.DarkMode, Color(0xFFB396F5), listOf(menu?.day?.overtime), Modifier.weight(1f))
             }
         }
         item {
@@ -620,17 +622,6 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
                             Column {
                                 Text(if (water) "Món nước" else "Món chay", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                                 Text(selectedDetail.ifBlank { "..." }, color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                        if (menu.receivedAt == null) Button(onClick = { pendingChoice = "received" }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF42B878))) {
-                            Icon(Icons.Default.CheckCircle, null)
-                            Spacer(Modifier.width(7.dp))
-                            Text("Xác nhận đã nhận món", fontWeight = FontWeight.Bold)
-                        } else Surface(shape = appShape(15.dp), color = Color(0xFF42B878).copy(alpha = .12f), modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Verified, null, tint = Color(0xFF42B878))
-                                Spacer(Modifier.width(7.dp))
-                                Text("Đã nhận món", color = Color(0xFF42B878), fontWeight = FontWeight.Bold)
                             }
                         }
                         if (menu.receivedAt == null) {
@@ -1264,6 +1255,7 @@ private fun SwipeDeleteItem(
 
 @Composable private fun AttendanceMonthPage(month: YearMonth, data: AttendanceMonth?, error: String?, selectedDate: String?, select: (String) -> Unit, modifier: Modifier) {
     Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("Tháng ${month.monthValue} / ${month.year}", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 8.dp))
         when {
             data != null -> { AttendanceSummary(data); AttendanceCalendar(data, selectedDate, select); data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) } }
             error != null -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
