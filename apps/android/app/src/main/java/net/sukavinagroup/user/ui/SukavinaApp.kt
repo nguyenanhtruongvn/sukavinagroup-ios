@@ -1188,7 +1188,10 @@ private fun SwipeDeleteItem(
         WindowInfoTracker.getOrCreate(host).windowLayoutInfo(host).collect { layout ->
             innerFoldOpen = layout.displayFeatures
                 .filterIsInstance<FoldingFeature>()
-                .any { it.state == FoldingFeature.State.FLAT && it.orientation == FoldingFeature.Orientation.VERTICAL }
+                .any {
+                    it.orientation == FoldingFeature.Orientation.VERTICAL &&
+                        (it.isSeparating || it.state == FoldingFeature.State.FLAT)
+                }
         }
     }
 
