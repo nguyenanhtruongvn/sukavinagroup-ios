@@ -794,9 +794,14 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     var cancelling by remember { mutableStateOf<EmployeeRequest?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     val refreshScope = rememberCoroutineScope()
+    val filterOptions = remember { listOf("all" to "Tất cả", "pending" to "Chờ duyệt", "approved" to "Đã duyệt", "rejected" to "Từ chối", "cancelled" to "Đã hủy") }
+    val filterIndex = filterOptions.indexOfFirst { it.first == filter }.coerceAtLeast(0)
+    val pagerState = rememberPagerState(initialPage = filterIndex, pageCount = { filterOptions.size })
     val approvalIds = state.approvals.map { it.id }.toSet()
     val merged = (state.approvals + state.requests).distinctBy { it.id }.sortedByDescending { it.createdAt }
-    val visible = merged.filter { filter == "all" || it.status == filter }
+    LaunchedEffect(pagerState.currentPage) {
+        filter = filterOptions[pagerState.currentPage].first
+    }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
@@ -813,8 +818,10 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text("Đơn từ", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(18.dp, 20.dp, 18.dp, 10.dp))
             androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(listOf("all" to "Tất cả", "pending" to "Chờ duyệt", "approved" to "Đã duyệt", "rejected" to "Từ chối", "cancelled" to "Đã hủy")) { item ->
-                    FilterChip(selected = filter == item.first, onClick = { filter = item.first }, label = { Text(item.second) })
+                items(filterOptions) { item ->
+                    FilterChip(selected = filter == item.first, onClick = {
+                        refreshScope.launch { pagerState.animateScrollToPage(filterOptions.indexOf(item)) }
+                    }, label = { Text(item.second) })
                 }
             }
             PullToRefreshBox(
@@ -826,12 +833,16 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
                 },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(visible, key = { it.id }) { request ->
-                        RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
-                            onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
+                HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1) { page ->
+                    val pageFilter = filterOptions[page].first
+                    val visible = merged.filter { pageFilter == "all" || it.status == pageFilter }
+                    LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(visible, key = { it.id }) { request ->
+                            RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
+                                onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
+                        }
+                        if (visible.isEmpty()) item { Text("Chưa có đơn trong mục này.", color = SukavinaMuted, modifier = Modifier.padding(top = 45.dp)) }
                     }
-                    if (visible.isEmpty()) item { Text("Chưa có đơn trong mục này.", color = SukavinaMuted, modifier = Modifier.padding(top = 45.dp)) }
                 }
             }
         }
