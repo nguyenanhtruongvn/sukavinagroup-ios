@@ -689,7 +689,7 @@ private fun createQrBitmap(value: String): Bitmap {
 }
 
 @Composable private fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
-    Card(modifier.fillMaxWidth(), shape = appShape(19.dp, AppShapeRole.LARGE), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
+    Card(modifier.fillMaxWidth().heightIn(min = 124.dp), shape = appShape(19.dp, AppShapeRole.LARGE), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
                 Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp))
@@ -1213,7 +1213,8 @@ private fun SwipeDeleteItem(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            Row(
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+            if (maxWidth < 700.dp) Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                     .clip(appShape(18.dp, AppShapeRole.LARGE))
                     .background(MaterialTheme.colorScheme.surface).padding(6.dp),
@@ -1233,6 +1234,7 @@ private fun SwipeDeleteItem(
                     onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } },
                     enabled = pagerState.currentPage < months.lastIndex,
                 ) { Icon(Icons.Default.ChevronRight, "Tháng sau") }
+            }
             }
 
             BoxWithConstraints(Modifier.fillMaxSize()) {
