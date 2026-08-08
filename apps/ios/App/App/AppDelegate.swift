@@ -2270,11 +2270,6 @@ private struct EmployeePortalView: View {
             TodayMenuView()
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
-            if session.profile?.employeeCode == "DEMO" {
-                CanteenScannerView()
-                    .toolbarBackground(.hidden, for: .tabBar)
-                    .tabItem { Label("Quét QR", systemImage: "qrcode.viewfinder") }
-            }
             RequestsView()
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
@@ -2302,6 +2297,7 @@ private struct EmployeePortalView: View {
 private struct TodayMenuView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var pendingChoice: String?
+    @State private var showDemoScanner = false
 
     var body: some View {
         NavigationView {
@@ -2408,6 +2404,24 @@ private struct TodayMenuView: View {
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
+            .overlay(alignment: .bottomTrailing) {
+                if session.profile?.employeeCode == "DEMO" {
+                    Button {
+                        showDemoScanner = true
+                    } label: {
+                        Label("Quét QR", systemImage: "qrcode.viewfinder")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 13)
+                            .background(AppTheme.red)
+                            .clipShape(Capsule())
+                            .shadow(color: AppTheme.red.opacity(0.3), radius: 12, y: 6)
+                    }
+                    .padding(.trailing, 18)
+                    .padding(.bottom, 92)
+                }
+            }
             .navigationTitle("")
             .task {
                 await session.refreshTodayMenu()
@@ -2423,6 +2437,10 @@ private struct TodayMenuView: View {
                 }
             }
             .refreshable { await session.refreshTodayMenu() }
+            .sheet(isPresented: $showDemoScanner) {
+                CanteenScannerView()
+                    .environmentObject(session)
+            }
             .sheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
@@ -4379,7 +4397,7 @@ private struct ProfileView: View {
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    if session.profile?.protected != true && session.profile?.accountType != "SUPER_ADMIN" {
+                    if (session.profile?.protected != true || session.profile?.employeeCode == "DEMO") && session.profile?.accountType != "SUPER_ADMIN" {
                         accountSectionTitle("VÙNG NGUY HIỂM")
                         Button("Yêu cầu xóa tài khoản", role: .destructive) { showDelete = true }
                             .font(.footnote.weight(.semibold))

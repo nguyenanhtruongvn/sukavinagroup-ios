@@ -630,7 +630,7 @@ export class AuthService {
   async deleteMyAccount(id: string, _password: string, confirmation: string) {
     const user = await this.prisma.employee.findUnique({ where: { id } });
     if (!user) throw new UnauthorizedException('Tài khoản không tồn tại');
-    if (user.protected || user.accountType === 'SUPER_ADMIN') {
+    if ((user.protected && user.employeeCode !== 'DEMO') || user.accountType === 'SUPER_ADMIN') {
       throw new BadRequestException('Tài khoản quản trị tổng không thể tự xóa');
     }
     if (confirmation.trim().toUpperCase() !== 'XOA TAI KHOAN') {
