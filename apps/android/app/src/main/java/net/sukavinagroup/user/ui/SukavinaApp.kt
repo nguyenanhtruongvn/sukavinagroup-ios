@@ -1298,18 +1298,13 @@ private data class AttendanceMetric(val key: String, val title: String, val colo
     ).map { item -> AttendanceMetric(item.first, item.second, item.third, month.days.count { item.first in it.allStatuses() }) }
         .filter { it.count > 0 }
     if (metrics.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        metrics.chunked(3).forEach { row ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                row.forEach { metric ->
-                    Surface(Modifier.weight(1f), shape = appShape(16.dp, AppShapeRole.LARGE), color = MaterialTheme.colorScheme.surface) {
-                        Column(Modifier.padding(vertical = 13.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(metric.count.toString(), color = metric.color, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
-                            Text(metric.title, color = SukavinaMuted, fontSize = 11.sp, maxLines = 1)
-                        }
-                    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        metrics.forEach { metric ->
+            Surface(Modifier.weight(1f).heightIn(min = 68.dp), shape = appShape(14.dp, AppShapeRole.LARGE), color = MaterialTheme.colorScheme.surface) {
+                Column(Modifier.fillMaxSize().padding(vertical = 10.dp, horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Text(metric.count.toString(), color = metric.color, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(metric.title, color = SukavinaMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
