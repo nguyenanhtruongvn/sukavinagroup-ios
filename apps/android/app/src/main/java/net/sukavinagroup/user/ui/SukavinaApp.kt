@@ -4,6 +4,7 @@ package net.sukavinagroup.user.ui
 
 import android.text.Html
 import android.widget.TextView
+import android.graphics.Bitmap
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
@@ -32,6 +33,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -51,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -92,6 +95,10 @@ import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.MultiFormatWriter
+import com.google.zxing.common.BitMatrix
 
 private enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
 private enum class LegalPage { PRIVACY, SUPPORT, DELETION }
@@ -633,6 +640,7 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
                                 Text("Hủy lựa chọn món ăn", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                             }
                         }
+                        MealQrAccessCard(session, state.working)
                     } else {
                         Text("LỰA CHỌN HÔM NAY", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
                         Text("Bạn muốn dùng món nào?", fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -655,6 +663,37 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
                 }
             }
         }
+    }
+}
+
+@Composable private fun MealQrAccessCard(session: SessionViewModel, working: Boolean) {
+    var issued by remember { mutableStateOf<MealQrIssueResponse?>(null) }
+    var seconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(issued) {
+        while (issued != null && seconds > 0) { delay(1_000); seconds-- }
+    }
+    Card(shape = appShape(18.dp, AppShapeRole.LARGE)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (issued != null && seconds > 0) {
+                val bitmap = remember(issued!!.token) { createQrBitmap(issued!!.token) }
+                Image(bitmap = bitmap.asImageBitmap(), contentDescription = "Mã QR nhận món", modifier = Modifier.size(190.dp).background(Color.White).padding(10.dp))
+                Text("Mã tự ẩn sau ${seconds}s", color = if (seconds <= 5) MaterialTheme.colorScheme.error else SukavinaMuted, fontWeight = FontWeight.Bold)
+            } else {
+                Text("MÃ QR NHẬN MÓN", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                Button(onClick = { session.issueMealQr { result -> issued = result; seconds = if (result == null) 0 else 30 } }, enabled = !working, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = SukavinaRed)) {
+                    Icon(Icons.Default.QrCode, null); Spacer(Modifier.width(8.dp)); Text("Lấy mã nhận món", fontWeight = FontWeight.Bold)
+                }
+                Text("Mỗi mã chỉ có hiệu lực trong 30 giây.", color = SukavinaMuted, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+private fun createQrBitmap(value: String): Bitmap {
+    val hints = mapOf(EncodeHintType.MARGIN to 1)
+    val matrix: BitMatrix = MultiFormatWriter().encode(value, BarcodeFormat.QR_CODE, 512, 512, hints)
+    return Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).also { bitmap ->
+        for (x in 0 until 512) for (y in 0 until 512) bitmap.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
     }
 }
 
@@ -1205,30 +1244,30 @@ private fun SwipeDeleteItem(
                 ) { Icon(Icons.Default.ChevronRight, "Tháng sau") }
             }
 
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                beyondViewportPageCount = 1,
-                pageSpacing = 0.dp,
-            ) { page ->
-                val month = months[page]
-                val data = cache[month]
-                Column(
-                    Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp).padding(bottom = 112.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    when {
-                        data != null -> {
-                            AttendanceSummary(data)
-                            AttendanceCalendar(data, selectedDates[month]) { selectedDates[month] = it }
-                            data.days.firstOrNull { it.date == selectedDates[month] }?.let { AttendanceDayDetail(data, it) }
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                if (maxWidth >= 700.dp) {
+                    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        months.forEach { month ->
+                            AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.weight(1f))
                         }
-                        errors[month] != null -> Text(errors[month].orEmpty(), color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
-                        else -> Box(Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                    }
+                } else {
+                    HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1, pageSpacing = 0.dp) { page ->
+                        val month = months[page]
+                        AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.fillMaxWidth())
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable private fun AttendanceMonthPage(month: YearMonth, data: AttendanceMonth?, error: String?, selectedDate: String?, select: (String) -> Unit, modifier: Modifier) {
+    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        when {
+            data != null -> { AttendanceSummary(data); AttendanceCalendar(data, selectedDate, select); data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) } }
+            error != null -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
+            else -> Box(Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
     }
 }

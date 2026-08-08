@@ -88,6 +88,7 @@ import kotlinx.serialization.Serializable
 )
 @Serializable data class MealSelectionBody(val choice: String)
 @Serializable data class MealQrScanBody(val token: String)
+@Serializable data class MealQrIssueResponse(val token: String = "", val expiresAt: String = "")
 @Serializable data class MealScanResponse(
     val valid: Boolean = false,
     val alreadyReceived: Boolean = false,

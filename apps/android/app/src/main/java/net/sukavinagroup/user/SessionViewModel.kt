@@ -180,6 +180,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             .onFailure { update(working = false, error = it.message) }
     }
 
+    fun issueMealQr(done: (MealQrIssueResponse?) -> Unit) = viewModelScope.launch {
+        val token = _state.value.token ?: return@launch done(null)
+        update(working = true, error = null)
+        runCatching { api.post<MealQrIssueResponse, EmptyBody>("me/menu/selection/qr", EmptyBody(), token) }
+            .onSuccess { update(working = false); done(it) }
+            .onFailure { update(working = false, error = it.message); done(null) }
+    }
+
     fun scanMealQr(qrToken: String, done: (MealScanResponse?) -> Unit) = viewModelScope.launch {
         val token = _state.value.token ?: return@launch done(null)
         update(working = true, error = null)
