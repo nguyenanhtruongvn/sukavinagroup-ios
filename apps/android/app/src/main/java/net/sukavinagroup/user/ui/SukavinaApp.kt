@@ -883,15 +883,21 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
 
 @Composable private fun RequestCard(request: EmployeeRequest, canCancel: Boolean, onCancel: () -> Unit, onClick: () -> Unit = {}) {
     val kind = requestKind(request.kind); val status = requestStatus(request.status)
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .32f))) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .26f)), shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(Modifier.size(44.dp), appShape(14.dp), color = kind.color.copy(alpha = .16f)) { Icon(kind.icon, null, tint = kind.color, modifier = Modifier.padding(11.dp)) }
-                Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(request.employee?.fullName ?: "Đơn của tôi", fontWeight = FontWeight.Bold); Surface(shape = CircleShape, color = kind.color.copy(alpha = .14f)) { Text(kind.title, color = kind.color, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)) } }
-                Text(status.first, color = status.second, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Surface(Modifier.size(46.dp), appShape(15.dp, AppShapeRole.LARGE), color = kind.color.copy(alpha = .16f)) { Icon(kind.icon, null, tint = kind.color, modifier = Modifier.padding(12.dp)) }
+                Column(Modifier.padding(start = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text(request.employee?.fullName ?: "Đơn của tôi", fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Surface(shape = CircleShape, color = kind.color.copy(alpha = .14f)) { Text(kind.title, color = kind.color, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)) }
+                }
+                Surface(shape = CircleShape, color = status.second.copy(alpha = .14f)) { Text(status.first, color = status.second, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) }
             }
-            Text("${request.startsAt.toDateTimeLabel()} – ${request.endsAt.toDateTimeLabel()}", color = SukavinaMuted, fontSize = 13.sp)
-            Text(request.reason)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Schedule, null, tint = SukavinaMuted, modifier = Modifier.size(17.dp))
+                Text("${request.startsAt.toDateTimeLabel()} – ${request.endsAt.toDateTimeLabel()}", color = SukavinaMuted, fontSize = 13.sp, modifier = Modifier.padding(start = 7.dp))
+            }
+            Text(request.reason, lineHeight = 20.sp)
             request.decisionNote?.takeIf { it.isNotBlank() }?.let { Text(it, color = SukavinaMuted, fontSize = 12.sp) }
             if (canCancel) TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.End)) { Text("Hủy đơn", color = MaterialTheme.colorScheme.error) }
         }
@@ -1452,7 +1458,7 @@ private fun attendanceTitle(status: String) = when (status) {
 }
 
 @Composable private fun ProfileScreen(state: SessionUiState, session: SessionViewModel) {
-    var deleteOpen by remember { mutableStateOf(false) }; var password by remember { mutableStateOf("") }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }; var passwordChangeOpen by remember { mutableStateOf(false) }
+    var deleteOpen by remember { mutableStateOf(false) }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }; var passwordChangeOpen by remember { mutableStateOf(false) }
     var legalPage by remember { mutableStateOf<LegalPage?>(null) }
     var signOutConfirmation by remember { mutableStateOf(false) }
     val activity = LocalActivity.current as? MainActivity
@@ -1511,7 +1517,20 @@ private fun attendanceTitle(status: String) = when (status) {
         OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp)) { Icon(Icons.Default.Key, null); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
         if (profile?.protected != true && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
     }
-    if (deleteOpen) AlertDialog(onDismissRequest = { deleteOpen = false }, title = { Text("Xóa tài khoản vĩnh viễn?") }, text = { OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { TextButton(onClick = { session.deleteAccount(password); deleteOpen = false }) { Text("Xóa vĩnh viễn", color = MaterialTheme.colorScheme.error) } }, dismissButton = { TextButton(onClick = { deleteOpen = false }) { Text("Hủy") } })
+    if (deleteOpen) SukavinaAlert(
+        title = "Xóa tài khoản vĩnh viễn?",
+        eyebrow = "HÀNH ĐỘNG KHÔNG THỂ HOÀN TÁC",
+        icon = Icons.Default.Warning,
+        confirmText = if (state.working) "Đang xử lý..." else "Xóa vĩnh viễn",
+        dismissText = "Hủy",
+        danger = true,
+        confirmEnabled = !state.working,
+        onDismiss = { if (!state.working) deleteOpen = false },
+        onConfirm = { session.deleteAccount(""); deleteOpen = false },
+    ) {
+        Text("Tài khoản, dữ liệu cá nhân, đơn từ và lựa chọn món liên quan sẽ bị xóa.", fontWeight = FontWeight.SemiBold)
+        Text("Thao tác này không thể hoàn tác. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
     if (passwordChangeOpen) PasswordChangeDialog(state, session) { passwordChangeOpen = false }
     legalPage?.let { page -> NativeLegalSheet(page) { legalPage = null } }

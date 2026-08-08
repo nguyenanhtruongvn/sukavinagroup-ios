@@ -322,7 +322,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun deleteAccount(password: String) = viewModelScope.launch {
         val token = _state.value.token ?: return@launch
         update(working = true, error = null)
-        runCatching { api.delete<MessageResponse>("auth/me", DeleteAccountBody(password), token) }
+        runCatching { api.delete<MessageResponse>("auth/me", DeleteAccountBody(confirmation = "XOA TAI KHOAN"), token) }
             .onSuccess { signOut() }.onFailure { update(working = false, error = it.message) }
     }
 
