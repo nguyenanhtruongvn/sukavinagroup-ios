@@ -6,6 +6,7 @@ import android.text.Html
 import android.widget.TextView
 import android.graphics.Bitmap
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -78,6 +79,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -1171,12 +1174,23 @@ private fun SwipeDeleteItem(
 }
 
 @Composable private fun AttendanceScreen(session: SessionViewModel, back: () -> Unit) {
+    val activity = LocalContext.current as? Activity
+    var innerFoldOpen by remember { mutableStateOf(false) }
     val months = remember { listOf(YearMonth.now().minusMonths(1), YearMonth.now()) }
     val pagerState = rememberPagerState(initialPage = months.lastIndex, pageCount = { months.size })
     val scope = rememberCoroutineScope()
     val cache = remember { mutableStateMapOf<YearMonth, AttendanceMonth>() }
     val errors = remember { mutableStateMapOf<YearMonth, String>() }
     val selectedDates = remember { mutableStateMapOf<YearMonth, String>() }
+
+    LaunchedEffect(activity) {
+        val host = activity ?: return@LaunchedEffect
+        WindowInfoTracker.getOrCreate(host).windowLayoutInfo(host).collect { layout ->
+            innerFoldOpen = layout.displayFeatures
+                .filterIsInstance<FoldingFeature>()
+                .any { it.state == FoldingFeature.State.FLAT && it.orientation == FoldingFeature.Orientation.VERTICAL }
+        }
+    }
 
     LaunchedEffect(Unit) {
         months.forEach { month ->
@@ -1216,7 +1230,7 @@ private fun SwipeDeleteItem(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-            if (maxWidth < 840.dp) Row(
+            if (!innerFoldOpen) Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                     .clip(appShape(18.dp, AppShapeRole.LARGE))
                     .background(MaterialTheme.colorScheme.surface).padding(6.dp),
@@ -1240,7 +1254,7 @@ private fun SwipeDeleteItem(
             }
 
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                if (maxWidth >= 840.dp) {
+                if (innerFoldOpen) {
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         months.forEach { month ->
                             AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.weight(1f), showTitle = true)
