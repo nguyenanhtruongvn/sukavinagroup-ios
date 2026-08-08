@@ -900,7 +900,7 @@ private struct RegisterBody: Encodable {
 }
 private struct VerifyBody: Encodable { let employeeCode: String; let gmailEmail: String; let code: String }
 private struct ResendBody: Encodable { let employeeCode: String; let gmailEmail: String }
-private struct DeleteAccountBody: Encodable { let password: String; let confirmation: String }
+private struct DeleteAccountBody: Encodable { let confirmation: String }
 private struct PasswordChangeConfirmBody: Encodable { let code: String; let newPassword: String }
 private struct MessageResponse: Decodable { let message: String }
 private struct PasswordChangeRequestResponse: Decodable {
@@ -983,7 +983,7 @@ private final class SessionStore: ObservableObject {
             }
             state = .signedIn
             startNetworkMonitoring()
-            if profile?.accountType == "CANTEEN" {
+            if profile?.accountType == "CANTEEN" && profile?.employeeCode != "DEMO" {
                 await refreshProfile()
                 startSessionRefresh()
                 return
@@ -1048,7 +1048,7 @@ private final class SessionStore: ObservableObject {
             loadKnownArticles()
             state = .signedIn
             startNetworkMonitoring()
-            if response.user.accountType == "CANTEEN" {
+            if response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO" {
                 await refreshProfile()
                 startSessionRefresh()
                 ConnectionDiagnostics.record("Canteen sign-in completed successfully")
@@ -1185,7 +1185,7 @@ private final class SessionStore: ObservableObject {
             profile = freshProfile
             state = .signedIn
             startNetworkMonitoring()
-            if freshProfile.accountType == "CANTEEN" {
+            if freshProfile.accountType == "CANTEEN" && freshProfile.employeeCode != "DEMO" {
                 startSessionRefresh()
                 return true
             }
@@ -1516,7 +1516,7 @@ private final class SessionStore: ObservableObject {
         UserDefaults.standard.set(Array(knownArticleIDs.prefix(300)), forKey: knownArticlesKey)
     }
 
-    func deleteAccount(password: String) async -> Bool {
+    func deleteAccount() async -> Bool {
         guard let token else { return false }
         isWorking = true
         defer { isWorking = false }
@@ -1525,7 +1525,7 @@ private final class SessionStore: ObservableObject {
                 "auth/me",
                 method: "DELETE",
                 token: token,
-                body: DeleteAccountBody(password: password, confirmation: "XOA TAI KHOAN")
+                body: DeleteAccountBody(confirmation: "XOA TAI KHOAN")
             )
             disableBiometricLogin()
             signOut()
@@ -1599,7 +1599,7 @@ private struct SukavinaAppView: View {
                     AuthenticationView()
                         .environmentObject(session)
                 case .signedIn:
-                    if session.profile?.accountType == "CANTEEN" {
+                    if session.profile?.accountType == "CANTEEN" && session.profile?.employeeCode != "DEMO" {
                         CanteenScannerView()
                             .environmentObject(session)
                     } else {
@@ -1784,7 +1784,6 @@ private struct AuthenticationView: View {
 private struct LoginForm: View {
     @EnvironmentObject private var session: SessionStore
     @State private var loginId = ""
-    @State private var password = ""
 
     var body: some View {
         VStack(spacing: 16) {
@@ -2270,6 +2269,11 @@ private struct EmployeePortalView: View {
             TodayMenuView()
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
+            if session.profile?.employeeCode == "DEMO" {
+                CanteenScannerView()
+                    .toolbarBackground(.hidden, for: .tabBar)
+                    .tabItem { Label("Quét QR", systemImage: "qrcode.viewfinder") }
+            }
             RequestsView()
                 .toolbarBackground(.hidden, for: .tabBar)
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
@@ -2403,7 +2407,7 @@ private struct TodayMenuView: View {
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle("Thực đơn")
+            .navigationTitle("")
             .task {
                 await session.refreshTodayMenu()
                 while !Task.isCancelled {
@@ -2540,7 +2544,6 @@ private struct DashboardView: View {
                     }
 
                     MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
-                    MetricWideCard(status: session.dashboard?.payrollStatus ?? "Chưa cập nhật")
 
                     NavigationLink(destination: ModernAttendanceHistoryView()) {
                         VStack(alignment: .leading, spacing: 12) {
@@ -2568,7 +2571,7 @@ private struct DashboardView: View {
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle("Sukavina")
+            .navigationTitle("")
             .refreshable { await session.refreshDashboard() }
         }
         .navigationViewStyle(.stack)
@@ -4389,13 +4392,12 @@ private struct ProfileView: View {
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Tài khoản")
             .alert("Xóa tài khoản vĩnh viễn?", isPresented: $showDelete) {
-                SecureField("Mật khẩu", text: $password)
-                Button("Hủy", role: .cancel) { password = "" }
+                Button("Hủy", role: .cancel) {}
                 Button("Xóa vĩnh viễn", role: .destructive) {
-                    Task { if await session.deleteAccount(password: password) { password = "" } }
+                    Task { _ = await session.deleteAccount() }
                 }
             } message: {
-                Text("Tài khoản ứng dụng và dữ liệu không còn cần thiết sẽ bị xóa. Hồ sơ bắt buộc lưu giữ vẫn được quản lý theo chính sách của Công ty.")
+                Text("Thao tác này không thể hoàn tác. Tài khoản, dữ liệu cá nhân, đơn từ, lựa chọn món và dữ liệu ứng dụng liên quan sẽ bị xóa. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.")
             }
         }
         .navigationViewStyle(.stack)
@@ -4518,7 +4520,7 @@ private struct NativeLegalView: View {
                         legalSection("Bảo vệ tài khoản", "Không gửi mật khẩu hoặc mã OTP cho bất kỳ ai, kể cả khi yêu cầu hỗ trợ.")
                         legalSection("Xóa tài khoản", "Bạn có thể gửi yêu cầu trong tab Tài khoản. Nếu không thể đăng nhập, hãy gửi yêu cầu từ email đã liên kết tới group@sukavina.com.")
                     } else {
-                        legalSection("Xóa trong ứng dụng", "Quay lại tab Tài khoản, chọn “Yêu cầu xóa tài khoản” ở cuối trang, nhập mật khẩu và xác nhận.")
+                        legalSection("Xóa trong ứng dụng", "Quay lại tab Tài khoản, chọn “Yêu cầu xóa tài khoản” ở cuối trang, đọc kỹ cảnh báo rủi ro và xác nhận thao tác.")
                         legalSection("Không thể đăng nhập", "Gửi yêu cầu từ email đã liên kết tới group@sukavina.com. Hãy cung cấp họ tên và mã nhân viên, không gửi mật khẩu hoặc mã OTP.")
                         legalSection("Dữ liệu được xử lý", "Tài khoản ứng dụng và dữ liệu không còn cần thiết sẽ bị xóa. Hồ sơ lao động, chấm công hoặc dữ liệu bắt buộc có thể được giữ theo chính sách Công ty và quy định áp dụng.")
                         legalSection("Lưu ý", "Xóa tài khoản là thao tác không thể hoàn tác. Hãy liên hệ Nhân sự nếu bạn chỉ cần sửa thông tin hồ sơ.")
