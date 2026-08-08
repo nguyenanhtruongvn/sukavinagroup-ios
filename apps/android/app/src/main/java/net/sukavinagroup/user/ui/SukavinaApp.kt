@@ -407,6 +407,7 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var article by remember { mutableStateOf<ContentItem?>(null) }
     var attendanceOpen by remember { mutableStateOf(false) }
+    var demoScannerOpen by rememberSaveable { mutableStateOf(false) }
     BackHandler(article != null || attendanceOpen) { article = null; attendanceOpen = false }
 
     val haptics = LocalHapticFeedback.current
@@ -489,10 +490,34 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
                 }
             }
         }
+    }, floatingActionButton = {
+        if (state.profile?.employeeCode == "DEMO" && tab == MainTab.MENU) {
+            FloatingActionButton(
+                onClick = { demoScannerOpen = true },
+                shape = CircleShape,
+                containerColor = Color(0xFF42B878),
+                contentColor = Color.White,
+                modifier = Modifier.size(58.dp),
+            ) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = "Quét mã QR")
+            }
+        }
     }) { padding ->
+        if (demoScannerOpen) {
+            Dialog(onDismissRequest = { demoScannerOpen = false }) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(.92f),
+                    shape = appShape(28.dp, AppShapeRole.EXTRA_LARGE),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    CanteenScannerScreen(state, session)
+                }
+            }
+        }
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         AnimatedContent(
             targetState = tab,
-            modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
+            modifier = Modifier.fillMaxWidth().widthIn(max = 840.dp).fillMaxHeight().padding(top = padding.calculateTopPadding()),
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal
                 (slideInHorizontally(spring(stiffness = 520f, dampingRatio = .86f)) {
@@ -515,6 +540,7 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
                     MainTab.PROFILE -> ProfileScreen(state, session)
                 }
             }
+        }
         }
     }
 }
