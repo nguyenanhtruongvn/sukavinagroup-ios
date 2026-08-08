@@ -140,9 +140,7 @@ export class RequestsService implements OnModuleInit, OnModuleDestroy {
 
     const employee = await this.prisma.employee.findUnique({ where: { id: employeeId } });
     if (!employee) throw new NotFoundException('Không tìm thấy nhân viên');
-    let manager = employee.employeeCode === 'DEMO'
-      ? employee
-      : employee.managerEmployeeCode
+    let manager = employee.managerEmployeeCode
       ? await this.prisma.employee.findUnique({ where: { employeeCode: employee.managerEmployeeCode } })
       : null;
     if (!manager || !manager.active) {
