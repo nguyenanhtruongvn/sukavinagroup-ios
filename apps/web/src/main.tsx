@@ -758,7 +758,11 @@ function App() {
         if (!response.ok) throw new Error('Phiên đăng nhập không còn hợp lệ');
         const profile = (await response.json()) as AccessProfile;
         if (isAdminRoute && !['SUPER_ADMIN', 'ADMIN'].includes(profile.accountType)) {
+          void fetch('/api/auth/logout', { method: 'POST' });
           setToken(null);
+          setDashboard(null);
+          setCurrentUser(null);
+          window.history.replaceState({}, '', '/');
           setError('Tài khoản nhân viên không có quyền truy cập trang quản trị.');
           return;
         }
