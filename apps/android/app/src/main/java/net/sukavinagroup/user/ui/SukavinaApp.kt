@@ -1216,7 +1216,7 @@ private fun SwipeDeleteItem(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
-            if (maxWidth < 700.dp) Row(
+            if (maxWidth < 840.dp) Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                     .clip(appShape(18.dp, AppShapeRole.LARGE))
                     .background(MaterialTheme.colorScheme.surface).padding(6.dp),
@@ -1240,7 +1240,7 @@ private fun SwipeDeleteItem(
             }
 
             BoxWithConstraints(Modifier.fillMaxSize()) {
-                if (maxWidth >= 700.dp) {
+                if (maxWidth >= 840.dp) {
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         months.forEach { month ->
                             AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.weight(1f), showTitle = true)
