@@ -2296,6 +2296,7 @@ private struct EmployeePortalView: View {
 
 private struct TodayMenuView: View {
     @EnvironmentObject private var session: SessionStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var pendingChoice: String?
     @State private var showDemoScanner = false
 
@@ -2399,6 +2400,8 @@ private struct TodayMenuView: View {
                     .background(AppTheme.card.opacity(0.86))
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
+                .frame(maxWidth: horizontalSizeClass == .regular ? 760 : .infinity)
+                .frame(maxWidth: .infinity)
                 .padding(18)
                 .padding(.bottom, 94)
             }
@@ -2414,12 +2417,12 @@ private struct TodayMenuView: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 16)
                             .padding(.vertical, 13)
-                            .background(AppTheme.red)
+                            .background(Color.green)
                             .clipShape(Capsule())
-                            .shadow(color: AppTheme.red.opacity(0.3), radius: 12, y: 6)
+                            .shadow(color: Color.green.opacity(0.3), radius: 12, y: 6)
                     }
                     .padding(.trailing, 18)
-                    .padding(.bottom, 92)
+                    .padding(.bottom, 76)
                 }
             }
             .navigationTitle("")
