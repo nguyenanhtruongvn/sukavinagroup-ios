@@ -6,7 +6,7 @@ private enum WidgetStorage {
     private static let originalAppGroup = "group.net.sukavinagroup.portal"
     static let stateKey = "attendance-widget-state"
     private static let tokenKey = "attendance-widget-token"
-    private static let endpoint = URL(string: "https://sukavinagroup.net/api/public/widget/attendance")!
+    private static let endpoint = "https://sukavinagroup.net/api/public/widget/attendance"
 
     private static var appGroup: String {
         let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
@@ -25,7 +25,8 @@ private enum WidgetStorage {
 
     static func fetchLatest() async -> State? {
         let defaults = UserDefaults(suiteName: appGroup)
-        guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty else { return load() }
+        guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty,
+              let endpoint = URL(string: Self.endpoint) else { return load() }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 15
@@ -46,14 +47,13 @@ private enum WidgetStorage {
                   let payload = try? JSONDecoder().decode(AttendancePayload.self, from: data) else {
                 return load()
             }
-            let records = payload.attendanceRecords
+            let records = payload.attendanceRecords.sorted { $0.punchedAt < $1.punchedAt }
             let state = State(
-                checkIn: records.last?.punchedAt,
-                checkOut: records.count > 1 ? records.first?.punchedAt : nil
+                checkIn: records.first?.punchedAt,
+                checkOut: records.count > 1 ? records.last?.punchedAt : nil
             )
             if let encoded = try? JSONEncoder().encode(state) {
                 defaults?.set(encoded, forKey: stateKey)
-                defaults?.synchronize()
             }
             return state
         } catch {

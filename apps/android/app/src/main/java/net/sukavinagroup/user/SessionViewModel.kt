@@ -4,8 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.core.content.edit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.delay
@@ -34,33 +33,37 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private enum class RefreshResult { SUCCESS, UNAUTHORIZED, DEFERRED }
 
     private val api = ApiClient()
-    private val preferences = EncryptedSharedPreferences.create(
-        application, "sukavina-secure-session",
-        MasterKey.Builder(application).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+    private val preferences = application.getSharedPreferences(
+        "sukavina-session-metadata",
+        Context.MODE_PRIVATE,
     )
+    private val secureStore = SecureSessionStore(application)
     private val _state = MutableStateFlow(SessionUiState())
     val state = _state.asStateFlow()
     private var events: EventSource? = null
     private var sessionRefreshJob: Job? = null
     private val refreshMutex = Mutex()
-    private var knownArticles = preferences.getStringSet("known_articles", emptySet()).orEmpty()
-    private var hiddenArticles = preferences.getStringSet("hidden_notification_articles", emptySet()).orEmpty()
+    private var knownArticles = emptySet<String>()
+    private var hiddenArticles = emptySet<String>()
 
     init {
-        _state.value = _state.value.copy(biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
+        LegacySecureSessionMigration.migrate(application, preferences, secureStore)
+        knownArticles = preferences.getStringSet("known_articles", emptySet()).orEmpty()
+        hiddenArticles = preferences.getStringSet("hidden_notification_articles", emptySet()).orEmpty()
+        val biometricEnabled = preferences.getBoolean("biometric_enabled", false) &&
+            !secureStore.getString("biometric_refresh_token").isNullOrBlank()
+        _state.value = _state.value.copy(biometricEnabled = biometricEnabled, hiddenArticleIds = hiddenArticles)
         restore()
     }
 
     private fun restore() = viewModelScope.launch {
-        val token = preferences.getString("token", null)
+        val token = secureStore.getString("token")
         if (token == null) return@launch update(restoring = false)
         _state.value = _state.value.copy(restoring = false, token = token)
         runCatching {
             val profile = api.get<Profile>("auth/me", token)
-            if (preferences.getString("refresh_token", null).isNullOrBlank() ||
-                preferences.getString("widget_token", null).isNullOrBlank()
+            if (secureStore.getString("refresh_token").isNullOrBlank() ||
+                secureStore.getString("widget_token").isNullOrBlank()
             ) {
                 val upgraded = api.post<LoginResponse, EmptyBody>("auth/session/upgrade", EmptyBody(), token)
                 saveSession(upgraded)
@@ -98,12 +101,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         runCatching { api.post<LoginResponse, LoginBody>("auth/login", LoginBody(loginId.trim(), password)) }
             .onSuccess { response ->
                 saveSession(response)
-                preferences.edit().putString("last_login", loginId.trim()).apply()
+                preferences.edit { putString("last_login", loginId.trim()) }
                 _state.value = SessionUiState(
                     restoring = false, token = response.accessToken,
-                    profile = Profile(employeeCode = response.user.employeeCode, name = response.user.name,
-                        role = response.user.role, accountType = response.user.accountType,
-                        permissions = response.user.permissions, protected = response.user.protected),
+                    profile = response.toProfile(),
                 )
                 startAccountServices()
             }.onFailure { error ->
@@ -112,7 +113,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     error.statusCode in listOf(401, 403) &&
                     error.message == "Invalid credentials"
                 ) {
-                    "Mã nhân viên, số điện thoại hoặc mật khẩu không chính xác."
+                    "MSNV hoặc mật khẩu không chính xác."
                 } else {
                     error.message ?: "Đăng nhập không thành công. Vui lòng thử lại."
                 }
@@ -165,7 +166,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        preferences.edit().putStringSet(preferenceKey, currentIds).apply()
+        preferences.edit { putStringSet(preferenceKey, currentIds) }
     }
 
     fun refreshTodayMenu() = viewModelScope.launch {
@@ -280,7 +281,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     fun hideArticleNotification(id: String) {
         hiddenArticles = hiddenArticles + id
-        preferences.edit().putStringSet("hidden_notification_articles", hiddenArticles).apply()
+        preferences.edit { putStringSet("hidden_notification_articles", hiddenArticles) }
         _state.value = _state.value.copy(hiddenArticleIds = hiddenArticles)
     }
 
@@ -288,26 +289,76 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         val token = _state.value.token ?: return@launch
         runCatching { api.delete<UpdateCount>("me/requests/notifications", token) }
         hiddenArticles = hiddenArticles + _state.value.dashboard?.contentItems.orEmpty().map { it.id }
-        preferences.edit().putStringSet("hidden_notification_articles", hiddenArticles).apply()
+        preferences.edit { putStringSet("hidden_notification_articles", hiddenArticles) }
         _state.value = _state.value.copy(hiddenArticleIds = hiddenArticles, requestNotifications = emptyList())
         markArticlesRead(); refreshRequests()
     }
 
     fun enableBiometric(password: String, enabled: Boolean, done: (Boolean) -> Unit = {}) = viewModelScope.launch {
         if (!enabled) {
-            preferences.edit().putBoolean("biometric_enabled", false).remove("biometric_password").apply()
+            clearBiometricCredentials()
             _state.value = _state.value.copy(biometricEnabled = false); done(true); return@launch
         }
         val login = preferences.getString("last_login", null).orEmpty()
+        if (login.isBlank()) {
+            update(error = "Không tìm thấy MSNV đã đăng nhập. Vui lòng đăng nhập lại.")
+            done(false)
+            return@launch
+        }
         runCatching { api.post<LoginResponse, LoginBody>("auth/login", LoginBody(login, password)) }
-            .onSuccess { preferences.edit().putBoolean("biometric_enabled", true).putString("biometric_password", password).apply(); _state.value = _state.value.copy(biometricEnabled = true); done(true) }
+            .onSuccess { response ->
+                if (response.refreshToken.isBlank()) {
+                    update(error = "Máy chủ chưa cấp phiên đăng nhập sinh trắc học. Vui lòng thử lại.")
+                    done(false)
+                    return@onSuccess
+                }
+                if (!secureStore.putString("biometric_refresh_token", response.refreshToken)) {
+                    update(error = "Không thể bảo vệ phiên sinh trắc học trên thiết bị này.")
+                    done(false)
+                    return@onSuccess
+                }
+                preferences.edit { putBoolean("biometric_enabled", true) }
+                saveSession(response)
+                _state.value = _state.value.copy(
+                    token = response.accessToken,
+                    profile = response.toProfile(),
+                    biometricEnabled = true,
+                    error = null,
+                )
+                startAccountServices()
+                done(true)
+            }
             .onFailure { update(error = "Mật khẩu không chính xác."); done(false) }
     }
 
-    fun biometricSignIn() {
-        val login = preferences.getString("last_login", null).orEmpty()
-        val password = preferences.getString("biometric_password", null).orEmpty()
-        if (login.isNotBlank() && password.isNotBlank()) signIn(login, password)
+    fun biometricSignIn() = viewModelScope.launch {
+        val refreshToken = secureStore.getString("biometric_refresh_token")
+        if (refreshToken.isNullOrBlank()) {
+            clearBiometricCredentials()
+            update(biometricEnabled = false, error = "Đăng nhập sinh trắc học đã hết hiệu lực. Vui lòng đăng nhập bằng MSNV.")
+            return@launch
+        }
+        update(working = true, error = null)
+        runCatching {
+            api.post<LoginResponse, RefreshSessionBody>("auth/refresh", RefreshSessionBody(refreshToken))
+        }.onSuccess { response ->
+            saveSession(response)
+            _state.value = SessionUiState(
+                restoring = false,
+                token = response.accessToken,
+                profile = response.toProfile(),
+                biometricEnabled = true,
+                hiddenArticleIds = hiddenArticles,
+            )
+            startAccountServices()
+        }.onFailure { error ->
+            if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
+                clearBiometricCredentials()
+                update(working = false, biometricEnabled = false, error = "Phiên sinh trắc học đã hết hạn. Vui lòng đăng nhập lại bằng MSNV.")
+            } else {
+                update(working = false, error = error.message ?: "Không thể đăng nhập bằng sinh trắc học.")
+            }
+        }
     }
 
     suspend fun attendance(month: String): Result<AttendanceMonth> {
@@ -317,16 +368,16 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     fun markArticlesRead() {
         knownArticles = _state.value.dashboard?.contentItems?.map { it.id }?.toSet().orEmpty()
-        preferences.edit().putStringSet("known_articles", knownArticles).apply()
+        preferences.edit { putStringSet("known_articles", knownArticles) }
         update(unreadCount = 0)
         NotificationHelper.clear(getApplication())
     }
 
-    fun deleteAccount(password: String) = viewModelScope.launch {
+    fun deleteAccount() = viewModelScope.launch {
         val token = _state.value.token ?: return@launch
         update(working = true, error = null)
         runCatching { api.delete<MessageResponse>("auth/me", DeleteAccountBody(confirmation = "XOA TAI KHOAN"), token) }
-            .onSuccess { signOut() }.onFailure { update(working = false, error = it.message) }
+            .onSuccess { clearBiometricCredentials(); signOut() }.onFailure { update(working = false, error = it.message) }
     }
 
     fun requestPasswordChange(done: (PasswordChangeRequestResponse?) -> Unit) = viewModelScope.launch {
@@ -342,7 +393,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         update(working = true, error = null)
         runCatching { api.post<MessageResponse, PasswordChangeConfirmBody>("auth/password-change/confirm", PasswordChangeConfirmBody(code, newPassword), token) }
             .onSuccess {
-                preferences.edit().putBoolean("biometric_enabled", false).remove("biometric_password").apply()
+                clearBiometricCredentials()
                 _state.value = _state.value.copy(working = false, biometricEnabled = false)
                 done(true)
             }
@@ -353,7 +404,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun signOut() {
         events?.cancel(); events = null
         sessionRefreshJob?.cancel(); sessionRefreshJob = null
-        preferences.edit().remove("token").remove("refresh_token").remove("widget_token").apply()
+        secureStore.remove("token", "refresh_token", "widget_token")
         AttendanceWidgetStore.clear(getApplication())
         _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
     }
@@ -375,18 +426,33 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun saveSession(response: LoginResponse) {
-        preferences.edit()
-            .putString("token", response.accessToken)
-            .apply {
-                if (response.refreshToken.isNotBlank()) putString("refresh_token", response.refreshToken)
-                if (response.widgetToken.isNotBlank()) putString("widget_token", response.widgetToken)
-            }
-            .apply()
+        secureStore.putString("token", response.accessToken)
+        if (response.refreshToken.isNotBlank()) secureStore.putString("refresh_token", response.refreshToken)
+        if (response.widgetToken.isNotBlank()) secureStore.putString("widget_token", response.widgetToken)
+        if (preferences.getBoolean("biometric_enabled", false) && response.refreshToken.isNotBlank()) {
+            secureStore.putString("biometric_refresh_token", response.refreshToken)
+        }
     }
+
+    private fun clearBiometricCredentials() {
+        preferences.edit {
+            putBoolean("biometric_enabled", false)
+        }
+        secureStore.remove("biometric_refresh_token")
+    }
+
+    private fun LoginResponse.toProfile() = Profile(
+        employeeCode = user.employeeCode,
+        name = user.name,
+        role = user.role,
+        accountType = user.accountType,
+        permissions = user.permissions,
+        protected = user.protected,
+    )
 
     private suspend fun refreshSession(): RefreshResult {
         return refreshMutex.withLock {
-            val refreshToken = preferences.getString("refresh_token", null) ?: return@withLock RefreshResult.UNAUTHORIZED
+            val refreshToken = secureStore.getString("refresh_token") ?: return@withLock RefreshResult.UNAUTHORIZED
             runCatching {
                 api.post<LoginResponse, RefreshSessionBody>("auth/refresh", RefreshSessionBody(refreshToken))
             }.onSuccess { response ->
@@ -436,5 +502,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private fun update(
         restoring: Boolean = _state.value.restoring, working: Boolean = _state.value.working,
         error: String? = _state.value.error, unreadCount: Int = _state.value.unreadCount,
-    ) { _state.value = _state.value.copy(restoring = restoring, working = working, error = error, unreadCount = unreadCount) }
+        biometricEnabled: Boolean = _state.value.biometricEnabled,
+    ) {
+        _state.value = _state.value.copy(
+            restoring = restoring,
+            working = working,
+            error = error,
+            unreadCount = unreadCount,
+            biometricEnabled = biometricEnabled,
+        )
+    }
 }

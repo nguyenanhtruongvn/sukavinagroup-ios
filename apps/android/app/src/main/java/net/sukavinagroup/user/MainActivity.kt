@@ -2,13 +2,14 @@ package net.sukavinagroup.user
 
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,7 +32,7 @@ class MainActivity : FragmentActivity() {
                 if (state.token != null && Build.VERSION.SDK_INT >= 33 &&
                     !preferences.getBoolean("notification_permission_requested", false)
                 ) {
-                    preferences.edit().putBoolean("notification_permission_requested", true).apply()
+                    preferences.edit { putBoolean("notification_permission_requested", true) }
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }
@@ -58,6 +59,6 @@ class MainActivity : FragmentActivity() {
     }
 
     fun openUrl(url: String) {
-        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
     }
 }

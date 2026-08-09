@@ -7,6 +7,7 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
+import WebKit
 
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -24,11 +25,17 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         tabBarAppearance.backgroundEffect = nil
         tabBarAppearance.shadowColor = .clear
         UITabBar.appearance().standardAppearance = tabBarAppearance
-        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+        if #available(iOS 15.0, *) {
+            UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+        }
         UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = UIHostingController(rootView: SukavinaAppView())
+        if #available(iOS 17.0, *) {
+            window.rootViewController = UIHostingController(rootView: SukavinaAppView())
+        } else {
+            window.rootViewController = LegacyPortalViewController()
+        }
         window.makeKeyAndVisible()
         self.window = window
         return true
@@ -40,6 +47,137 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound, .badge])
+    }
+}
+
+/// iOS 14–16 compatibility mode. The modern native experience remains the
+/// primary app on current systems; older systems use the same responsive,
+/// secured employee portal so core workflows stay available instead of
+/// crashing on newer SwiftUI APIs.
+private final class LegacyPortalViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
+    private let portalURL = URL(string: "https://sukavinagroup.net")
+    private lazy var webView: WKWebView = {
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        configuration.allowsInlineMediaPlayback = true
+        configuration.mediaTypesRequiringUserActionForPlayback = []
+        configuration.applicationNameForUserAgent = "Sukavina iOS Compatibility"
+        let view = WKWebView(frame: .zero, configuration: configuration)
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.navigationDelegate = self
+        view.uiDelegate = self
+        view.allowsBackForwardNavigationGestures = true
+        view.scrollView.showsVerticalScrollIndicator = false
+        view.scrollView.showsHorizontalScrollIndicator = false
+        return view
+    }()
+    private let statusLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        label.font = .preferredFont(forTextStyle: .body)
+        label.textColor = .secondaryLabel
+        label.isHidden = true
+        return label
+    }()
+    private let retryButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle("Thử lại", for: .normal)
+        button.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        button.isHidden = true
+        return button
+    }()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor(red: 0.906, green: 0.914, blue: 0.929, alpha: 1)
+        view.addSubview(webView)
+        view.addSubview(statusLabel)
+        view.addSubview(retryButton)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: view.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            statusLabel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 28),
+            statusLabel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -28),
+            statusLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor, constant: -22),
+            retryButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 18),
+            retryButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+        ])
+        retryButton.addTarget(self, action: #selector(reloadPortal), for: .touchUpInside)
+        let refreshControl = UIRefreshControl()
+        refreshControl.addTarget(self, action: #selector(refreshPortal(_:)), for: .valueChanged)
+        webView.scrollView.refreshControl = refreshControl
+        reloadPortal()
+    }
+
+    @objc private func reloadPortal() {
+        showError(nil)
+        guard let portalURL else {
+            showError("Địa chỉ máy chủ không hợp lệ.")
+            return
+        }
+        webView.load(URLRequest(url: portalURL, cachePolicy: .reloadRevalidatingCacheData))
+    }
+
+    @objc private func refreshPortal(_ sender: UIRefreshControl) {
+        webView.reload()
+        sender.endRefreshing()
+    }
+
+    private func showError(_ message: String?) {
+        let hasError = message != nil
+        statusLabel.text = message
+        statusLabel.isHidden = !hasError
+        retryButton.isHidden = !hasError
+        webView.isHidden = hasError
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        showError(nil)
+        webView.scrollView.refreshControl?.endRefreshing()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        didFailProvisionalNavigation navigation: WKNavigation!,
+        withError error: Error
+    ) {
+        showError("Không thể kết nối đến máy chủ. Hãy kiểm tra mạng rồi thử lại.")
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.cancel)
+            return
+        }
+        if url.host == portalURL?.host {
+            if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
+            decisionHandler(.allow)
+        } else if url.scheme == "https" {
+            UIApplication.shared.open(url)
+            decisionHandler(.cancel)
+        } else {
+            decisionHandler(.cancel)
+        }
+    }
+
+    @available(iOS 15.0, *)
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        decisionHandler(origin.host == portalURL?.host && type == .camera ? .grant : .deny)
     }
 }
 
@@ -75,6 +213,7 @@ private enum AppTheme {
     })
 }
 
+@available(iOS 17.0, *)
 private struct AdaptiveGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
     var tint: Color? = nil
@@ -102,6 +241,7 @@ private struct AdaptiveGlassSurface: ViewModifier {
     }
 }
 
+@available(iOS 17.0, *)
 private extension View {
     func adaptiveGlassSurface(
         cornerRadius: CGFloat,
@@ -289,10 +429,11 @@ private actor SessionRefreshCoordinator {
     }
 }
 
+@available(iOS 17.0, *)
 private final class APIClient {
     static let shared = APIClient()
-    private let baseURL = URL(string: "https://sukavinagroup.net/api/")!
-    private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")!
+    private let baseURL = URL(string: "https://sukavinagroup.net/api/")
+    private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { value in
@@ -329,7 +470,7 @@ private final class APIClient {
         body: Body? = nil,
         allowSessionRefresh: Bool = true
     ) async throws -> Response {
-        guard let url = URL(string: path, relativeTo: baseURL) else {
+        guard let baseURL, let url = URL(string: path, relativeTo: baseURL) else {
             throw NetworkError.invalidResponse
         }
         var urlRequest = URLRequest(url: url)
@@ -360,7 +501,8 @@ private final class APIClient {
             let code = (error as? URLError)?.code.rawValue
             let codeText = code.map(String.init) ?? "n/a"
             ConnectionDiagnostics.record("API primary failed: code=\(codeText) \(error.localizedDescription)")
-            guard let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
+            guard let fallbackBaseURL,
+                  let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
                 throw NetworkError.offline
             }
             urlRequest.url = fallbackURL
@@ -506,9 +648,10 @@ private enum KeychainStore {
 
 private enum BiometricKeychain {
     private static let service = "net.sukavinagroup.biometric"
-    private static let account = "biometric-access-token"
+    private static let account = "biometric-refresh-token-v2"
+    private static let legacyAccount = "biometric-access-token"
 
-    static func save(token: String) -> Bool {
+    static func save(refreshToken: String) -> Bool {
         clear()
         var error: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(
@@ -521,7 +664,7 @@ private enum BiometricKeychain {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecValueData as String: Data(token.utf8),
+            kSecValueData as String: Data(refreshToken.utf8),
             kSecAttrAccessControl as String: access
         ]
         return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
@@ -546,12 +689,17 @@ private enum BiometricKeychain {
     }
 
     static func clear() {
-        let query: [String: Any] = [
+        let serviceQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service
+        ]
+        SecItemDelete(serviceQuery as CFDictionary)
+        let legacyQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: account
+            kSecAttrAccount as String: legacyAccount
         ]
-        SecItemDelete(query as CFDictionary)
+        SecItemDelete(legacyQuery as CFDictionary)
     }
 }
 
@@ -742,15 +890,20 @@ private struct ArticleBlock: Identifiable {
 }
 
 private enum HTMLArticleParser {
-    private static let blockRegex = try! NSRegularExpression(
+    private static let blockRegex = try? NSRegularExpression(
         pattern: #"(?is)<(h[1-6]|p|li|blockquote|summary|tr)\b[^>]*>(.*?)</\1\s*>|<img\b[^>]*>"#
     )
-    private static let sourceRegex = try! NSRegularExpression(pattern: #"(?i)\bsrc\s*=\s*["']([^"']+)["']"#)
-    private static let altRegex = try! NSRegularExpression(pattern: #"(?i)\b(?:alt|title)\s*=\s*["']([^"']+)["']"#)
+    private static let sourceRegex = try? NSRegularExpression(pattern: #"(?i)\bsrc\s*=\s*["']([^"']+)["']"#)
+    private static let altRegex = try? NSRegularExpression(pattern: #"(?i)\b(?:alt|title)\s*=\s*["']([^"']+)["']"#)
 
     static func parse(_ html: String) -> [ArticleBlock] {
         let source = html.count > 750_000 ? String(html.prefix(750_000)) : html
         let range = NSRange(source.startIndex..<source.endIndex, in: source)
+        guard let blockRegex else {
+            return source.safeHTMLText.readingChunks.enumerated().map {
+                ArticleBlock(id: $0.offset, kind: .paragraph, text: $0.element)
+            }
+        }
         let matches = blockRegex.matches(in: source, range: range)
         var blocks: [ArticleBlock] = []
         blocks.reserveCapacity(matches.count)
@@ -796,7 +949,8 @@ private enum HTMLArticleParser {
         return blocks
     }
 
-    private static func attribute(in source: String, regex: NSRegularExpression) -> String? {
+    private static func attribute(in source: String, regex: NSRegularExpression?) -> String? {
+        guard let regex else { return nil }
         let range = NSRange(source.startIndex..<source.endIndex, in: source)
         guard let match = regex.firstMatch(in: source, range: range),
               let valueRange = Range(match.range(at: 1), in: source) else { return nil }
@@ -812,6 +966,7 @@ private enum HTMLArticleParser {
     }
 }
 
+@available(iOS 17.0, *)
 private final class NotificationManager {
     static let shared = NotificationManager()
 
@@ -899,25 +1054,23 @@ private enum AttendanceWidgetBridge {
     }
 
     static func update(from dashboard: Dashboard) {
-        let records = dashboard.attendanceRecords ?? []
+        let records = (dashboard.attendanceRecords ?? []).sorted { $0.punchedAt < $1.punchedAt }
         let state = State(
             employeeName: dashboard.name,
             status: dashboard.attendanceStatus,
-            checkIn: records.last?.punchedAt,
-            checkOut: records.count > 1 ? records.first?.punchedAt : nil,
+            checkIn: records.first?.punchedAt,
+            checkOut: records.count > 1 ? records.last?.punchedAt : nil,
             updatedAt: Date()
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.set(data, forKey: stateKey)
-        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
     static func configure(token: String) {
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.set(token, forKey: tokenKey)
-        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
@@ -925,7 +1078,6 @@ private enum AttendanceWidgetBridge {
         let defaults = UserDefaults(suiteName: appGroup)
         defaults?.removeObject(forKey: stateKey)
         defaults?.removeObject(forKey: tokenKey)
-        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 }
@@ -959,13 +1111,6 @@ private struct AttendancePunch: Decodable, Identifiable {
     let machineNo: Int
 }
 
-private struct AttendanceMonthOption: Identifiable {
-    let value: String
-    let title: String
-    let label: String
-    var id: String { value }
-}
-
 private struct LoginBody: Encodable { let loginId: String; let password: String }
 private struct RegisterBody: Encodable {
     let employeeCode: String
@@ -992,6 +1137,7 @@ private struct RegistrationResponse: Decodable {
 }
 
 @MainActor
+@available(iOS 17.0, *)
 private final class SessionStore: ObservableObject {
     enum State {
         case restoring
@@ -1244,24 +1390,27 @@ private final class SessionStore: ObservableObject {
         guard biometricsEnabled else { return false }
         isWorking = true
         defer { isWorking = false }
-        guard let savedToken = BiometricKeychain.load(prompt: "Đăng nhập Sukavina") else {
+        guard let savedRefreshToken = BiometricKeychain.load(prompt: "Đăng nhập Sukavina") else {
             errorTitle = "Không thể xác thực"
             errorMessage = "Không thể xác thực sinh trắc học. Vui lòng thử lại hoặc đăng nhập bằng mật khẩu."
             return false
         }
         do {
-            let freshProfile: Profile = try await APIClient.shared.request("auth/me", token: savedToken)
-            guard BiometricPreferences.employeeCode == freshProfile.employeeCode else {
+            let response: LoginResponse = try await APIClient.shared.request(
+                "auth/refresh",
+                method: "POST",
+                body: RefreshSessionBody(refreshToken: savedRefreshToken)
+            )
+            guard BiometricPreferences.employeeCode == response.user.employeeCode else {
                 disableBiometricLogin()
                 errorTitle = "Cần thiết lập lại sinh trắc học"
                 errorMessage = "Sinh trắc học chưa được liên kết với tài khoản này. Hãy đăng nhập bằng mật khẩu và bật lại trong tab Tài khoản."
                 return false
             }
-            token = savedToken
-            profile = freshProfile
+            applySession(response)
             state = .signedIn
             startNetworkMonitoring()
-            if freshProfile.accountType == "CANTEEN" && freshProfile.employeeCode != "DEMO" {
+            if response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO" {
                 startSessionRefresh()
                 return true
             }
@@ -1287,7 +1436,7 @@ private final class SessionStore: ObservableObject {
             var evaluationError: NSError?
             guard let employeeCode = profile?.employeeCode,
                   context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &evaluationError),
-                  let token else {
+                  let refreshToken = KeychainStore.loadRefreshToken() else {
                 biometricsEnabled = false
                 errorTitle = "Không thể bật sinh trắc học"
                 errorMessage = "Thiết bị chưa thiết lập Face ID/Touch ID hoặc chưa bật mật mã màn hình."
@@ -1298,7 +1447,7 @@ private final class SessionStore: ObservableObject {
                     .deviceOwnerAuthenticationWithBiometrics,
                     localizedReason: "Xác nhận bật \(biometricName) để đăng nhập Sukavina"
                 )
-                guard confirmed, BiometricKeychain.save(token: token) else {
+                guard confirmed, BiometricKeychain.save(refreshToken: refreshToken) else {
                     biometricsEnabled = false
                     errorTitle = "Không thể bật sinh trắc học"
                     errorMessage = "Không thể lưu thông tin đăng nhập sinh trắc học. Vui lòng thử lại."
@@ -1437,8 +1586,8 @@ private final class SessionStore: ObservableObject {
             body: RefreshSessionBody(refreshToken: refreshToken)
         )
         applySession(response)
-        if biometricsEnabled {
-            _ = BiometricKeychain.save(token: response.accessToken)
+        if biometricsEnabled, !response.refreshToken.isEmpty {
+            _ = BiometricKeychain.save(refreshToken: response.refreshToken)
         }
     }
 
@@ -1500,9 +1649,10 @@ private final class SessionStore: ObservableObject {
         }
         eventStreamTask = Task { [weak self] in
             guard let self else { return }
+            guard let eventsURL = URL(string: "https://sukavinagroup.net/api/public/news/events") else { return }
             while !Task.isCancelled {
                 do {
-                    var request = URLRequest(url: URL(string: "https://sukavinagroup.net/api/public/news/events")!)
+                    var request = URLRequest(url: eventsURL)
                     request.timeoutInterval = 60 * 60
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
                     let (bytes, response) = try await NetworkSessions.events.bytes(for: request)
@@ -1665,6 +1815,7 @@ private final class SessionStore: ObservableObject {
     }
 }
 
+@available(iOS 17.0, *)
 private struct SukavinaAppView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var session = SessionStore()
@@ -1715,6 +1866,7 @@ private struct SukavinaAppView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct ElegantAppAlert: View {
     let title: String
     let message: String
@@ -1797,6 +1949,7 @@ private struct ElegantAppAlert: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct NativeLaunchView: View {
     var body: some View {
         ZStack {
@@ -1817,6 +1970,7 @@ private struct NativeLaunchView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct AuthenticationView: View {
     @EnvironmentObject private var session: SessionStore
 
@@ -1861,6 +2015,7 @@ private struct AuthenticationView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct LoginForm: View {
     @EnvironmentObject private var session: SessionStore
     @State private var loginId = ""
@@ -1918,6 +2073,7 @@ private struct LoginForm: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct RegistrationForm: View {
     @State private var employeeCode = ""
     @State private var fullName = ""
@@ -1991,6 +2147,7 @@ private struct VerificationContext: Identifiable {
     var id: String { employeeCode + email }
 }
 
+@available(iOS 17.0, *)
 private struct VerificationView: View {
     let context: VerificationContext
     @Environment(\.dismiss) private var dismiss
@@ -2063,6 +2220,7 @@ private struct VerificationView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct MealQRCodeCard: View {
     let token: String
 
@@ -2099,6 +2257,7 @@ private struct MealQRCodeCard: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct MealQRCodeAccessCard: View {
     @EnvironmentObject private var session: SessionStore
     @State private var issued: MealQrIssueResponse?
@@ -2158,6 +2317,7 @@ private struct MealQRCodeAccessCard: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct CanteenScannerView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var scanning = true
@@ -2239,6 +2399,7 @@ private struct CanteenScannerView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct QRScannerView: UIViewControllerRepresentable {
     let isActive: Bool
     let onCode: (String) -> Void
@@ -2255,6 +2416,7 @@ private struct QRScannerView: UIViewControllerRepresentable {
     }
 }
 
+@available(iOS 17.0, *)
 private final class MealScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     var onCode: ((String) -> Void)?
     private let captureSession = AVCaptureSession()
@@ -2338,6 +2500,7 @@ private final class MealScannerViewController: UIViewController, AVCaptureMetada
     }
 }
 
+@available(iOS 17.0, *)
 private struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
@@ -2374,6 +2537,7 @@ private struct EmployeePortalView: View {
 
 }
 
+@available(iOS 17.0, *)
 private struct TodayMenuView: View {
     // Keep the demo QR action clear of the floating tab bar on iPhone and iPad.
     @EnvironmentObject private var session: SessionStore
@@ -2628,6 +2792,7 @@ private struct TodayMenuView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
 
@@ -2710,184 +2875,48 @@ private struct DashboardView: View {
     }
 }
 
-private struct AttendanceHistoryView: View {
-    @EnvironmentObject private var session: SessionStore
-    @State private var selectedMonth = Self.monthValue(Date())
-    @State private var history: AttendanceMonth?
-    @State private var isLoading = false
-    @State private var message: String?
-    @State private var monthCache: [String: AttendanceMonth] = [:]
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 6) {
-                    ForEach(monthOptions) { option in
-                        monthTab(option)
-                    }
-                }
-                .padding(5)
-                .background(AppTheme.card)
-                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 17, style: .continuous)
-                        .stroke(AppTheme.muted.opacity(0.18), lineWidth: 1)
-                }
-
-                if isLoading {
-                    ProgressView("Đang tải bảng công...").tint(AppTheme.red)
-                } else if let days = history?.days, !days.isEmpty {
-                    LazyVStack(spacing: 12) {
-                    ForEach(days) { day in
-                        HStack(spacing: 14) {
-                            Text(dayLabel(day.date)).font(.headline)
-                            Spacer()
-                            timeColumn("Vào", day.checkIn)
-                            timeColumn("Ra", day.checkOut)
-                        }
-                        .padding(16)
-                        .background(AppTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    }
-                    }
-                } else {
-                    Text(message ?? "Không có dữ liệu trong tháng này.")
-                        .foregroundColor(AppTheme.muted)
-                }
-            }
-            .padding(20)
-            .padding(.bottom, 92)
-        }
-        .hidesPortalBottomScrollEdgeEffect()
-        .background(AppTheme.ink.ignoresSafeArea())
-        .adaptivePortalTabBarBackground()
-        .navigationTitle("Bảng chấm công")
-        .task(id: selectedMonth) { await loadHistory() }
-    }
-
-    private var monthOptions: [AttendanceMonthOption] {
-        (0..<2).compactMap { offset in
-            guard let date = Calendar.current.date(byAdding: .month, value: -offset, to: Date()) else { return nil }
-            return AttendanceMonthOption(
-                value: Self.monthValue(date),
-                title: offset == 0 ? "Tháng này" : "Tháng trước",
-                label: Self.monthLabel(date)
-            )
-        }
-    }
-
-    private func monthTab(_ option: AttendanceMonthOption) -> some View {
-        let isSelected = selectedMonth == option.value
-        return Button {
-            withAnimation(.easeOut(duration: 0.2)) {
-                selectedMonth = option.value
-            }
-        } label: {
-            VStack(spacing: 3) {
-                Text(option.title)
-                    .font(.subheadline.weight(.semibold))
-                Text(option.label)
-                    .font(.caption2.weight(.medium))
-                    .opacity(isSelected ? 0.82 : 0.7)
-            }
-            .foregroundStyle(isSelected ? Color.white : AppTheme.muted)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 9)
-            .background(isSelected ? AppTheme.red : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(option.title), \(option.label)")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    @ViewBuilder
-    private func timeColumn(_ title: String, _ value: String?) -> some View {
-        VStack(alignment: .trailing, spacing: 3) {
-            Text(title).font(.caption2).foregroundColor(AppTheme.muted)
-            Text(timeLabel(value)).font(.subheadline.bold())
-        }
-        .frame(minWidth: 54)
-    }
-
-    private func loadHistory() async {
-        guard let token = session.token else { return }
-        if let cached = monthCache[selectedMonth] {
-            history = cached
-            message = nil
-            return
-        }
-        isLoading = true
-        message = nil
-        defer { isLoading = false }
-        do {
-            let loaded: AttendanceMonth = try await APIClient.shared.request(
-                "me/attendance?month=\(selectedMonth)",
-                token: token
-            )
-            history = loaded
-            monthCache[selectedMonth] = loaded
-        } catch {
-            history = nil
-            message = error.localizedDescription
-        }
-    }
-
-    private func timeLabel(_ value: String?) -> String {
-        guard let value else { return "--:--" }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) else { return "--:--" }
-        return date.formatted(date: .omitted, time: .shortened)
-    }
-
-    private func dayLabel(_ value: String) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        guard let date = formatter.date(from: value) else { return value }
-        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
-    }
-
-    private static func monthValue(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM"
-        return formatter.string(from: date)
-    }
-
-    private static func monthLabel(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.dateFormat = "'Tháng' M, yyyy"
-        return formatter.string(from: date)
-    }
-}
-
+@available(iOS 17.0, *)
 private struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
 
     @EnvironmentObject private var session: SessionStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedMonth = Self.monthValue(Date())
-    @State private var history: AttendanceMonth?
-    @State private var selectedDate: String?
-    @State private var isLoading = false
-    @State private var message: String?
     @State private var cache: [String: AttendanceMonth] = [:]
+    @State private var errors: [String: String] = [:]
     @State private var selectedDates: [String: String] = [:]
     @State private var monthIndex = 1
 
     var body: some View {
-        VStack(spacing: 0) {
-            monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
-            TabView(selection: $monthIndex) {
-                ForEach(options.indices, id: \.self) { index in
-                    preloadedMonthPage(index)
-                        .tag(index)
+        GeometryReader { proxy in
+            let useTwoPane = horizontalSizeClass == .regular && proxy.size.width >= 900
+            VStack(spacing: 0) {
+                if useTwoPane {
+                    HStack(spacing: 12) {
+                        ForEach(options.indices, id: \.self) { index in
+                            VStack(spacing: 8) {
+                                Text(monthTitle(for: options[index]))
+                                    .font(.headline.bold())
+                                    .foregroundStyle(Color.primary)
+                                preloadedMonthPage(index)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                } else {
+                    monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
+                    TabView(selection: $monthIndex) {
+                        ForEach(options.indices, id: \.self) { index in
+                            preloadedMonthPage(index)
+                                .tag(index)
+                        }
+                    }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .background(AttendanceScrollInsetNeutralizer())
+                    .ignoresSafeArea(.container, edges: .bottom)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .background(AttendanceScrollInsetNeutralizer())
-            .ignoresSafeArea(.container, edges: .bottom)
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .bottom)
@@ -2897,34 +2926,9 @@ private struct ModernAttendanceHistoryView: View {
         .onChange(of: monthIndex) { _, newIndex in
             guard options.indices.contains(newIndex) else { return }
             selectedMonth = options[newIndex]
-            if let cached = cache[selectedMonth] {
-                history = cached
-                selectedDate = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
-                    ?? cached.days.last?.date
-            }
             UISelectionFeedbackGenerator().selectionChanged()
         }
-        .task(id: selectedMonth) { await loadHistory() }
         .task { await preloadAdjacentMonths() }
-    }
-
-    private var attendanceMonthPage: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                enhancedSummaryCards
-                calendarCard
-                if isLoading {
-                    ProgressView("Đang tải bảng công...").tint(AppTheme.red)
-                } else if let day = selectedDay {
-                    dayDetail(day)
-                } else if let message {
-                    Text(message).foregroundStyle(AppTheme.muted)
-                }
-            }
-            .padding(.horizontal, 16).padding(.bottom, 112)
-            .background(AttendanceScrollInsetNeutralizer())
-        }
-        .hidesPortalBottomScrollEdgeEffect()
     }
 
     private func preloadedMonthPage(_ index: Int) -> some View {
@@ -2938,6 +2942,20 @@ private struct ModernAttendanceHistoryView: View {
                     if let day = selectedDay(in: data, month: month) {
                         preloadedDayDetail(day, data: data)
                     }
+                } else if let message = errors[month] {
+                    ContentUnavailableView {
+                        Label("Không tải được bảng công", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(message)
+                    } actions: {
+                        Button("Thử lại") {
+                            errors.removeValue(forKey: month)
+                            Task { await preloadMonth(month) }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.red)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 220)
                 } else {
                     ProgressView("Đang tải tháng kế bên...")
                         .tint(AppTheme.red)
@@ -3045,14 +3063,18 @@ private struct ModernAttendanceHistoryView: View {
 
     private func preloadMonth(_ month: String) async {
         guard cache[month] == nil, let token = session.token else { return }
-        if let loaded: AttendanceMonth = try? await APIClient.shared.request(
-            "me/attendance?month=\(month)", token: token
-        ) {
+        do {
+            let loaded: AttendanceMonth = try await APIClient.shared.request(
+                "me/attendance?month=\(month)", token: token
+            )
             cache[month] = loaded
+            errors.removeValue(forKey: month)
             if selectedDates[month] == nil {
                 selectedDates[month] = loaded.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
                     ?? loaded.days.last?.date
             }
+        } catch {
+            errors[month] = error.localizedDescription
         }
     }
 
@@ -3093,35 +3115,6 @@ private struct ModernAttendanceHistoryView: View {
         .opacity(options.indices.contains(target) ? 1 : 0.35)
     }
 
-    private var summaryCards: some View {
-        HStack(spacing: 8) {
-            summary(count("present"), "Ngày công", .green)
-            summary(count("late"), "Đi trễ", .orange)
-            summary(count("leave"), "Nghỉ phép", EmployeeRequestKind.leave.color)
-            summary(count("absent"), "Vắng", Self.absentColor)
-        }
-    }
-
-    private var enhancedSummaryCards: some View {
-        HStack(spacing: 8) {
-            ForEach(visibleSummaries, id: \.title) { item in
-                summary(item.value, item.title, item.color)
-            }
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private var visibleSummaries: [(title: String, value: Int, color: Color)] {
-        [
-            ("Ngày công", countStatus("present"), .green),
-            ("Đi trễ", countStatus("late"), EmployeeRequestKind.late.color),
-            ("Về sớm", countStatus("early"), EmployeeRequestKind.early.color),
-            ("Nghỉ phép", countStatus("leave"), EmployeeRequestKind.leave.color),
-            ("Vắng", countStatus("absent"), Self.absentColor),
-            ("Làm thêm", countStatus("overtime"), EmployeeRequestKind.overtime.color),
-        ].filter { $0.value > 0 }
-    }
-
     private func summary(_ value: Int, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
             Text("\(value)").font(.title3.bold()).foregroundStyle(color)
@@ -3129,76 +3122,6 @@ private struct ModernAttendanceHistoryView: View {
         }
         .frame(maxWidth: .infinity).padding(.vertical, 13)
         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
-    }
-
-    private var calendarCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
-            HStack(spacing: 4) {
-                ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
-                    Text($0).font(.caption.bold()).foregroundStyle(AppTheme.muted)
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 7) {
-                ForEach(0..<leadingEmptyDays, id: \.self) { _ in
-                    Color.clear.frame(height: 50)
-                }
-                ForEach(history?.days ?? []) { day in dayCell(day) }
-            }
-            ScrollView(.horizontal, showsIndicators: false) {
-              HStack(spacing: 9) {
-                if countStatus("present") > 0 { legend("Đủ công", .green.opacity(0.34)) }
-                if countStatus("late") > 0 { legend("Đi trễ", EmployeeRequestKind.late.color.opacity(0.34)) }
-                if countStatus("early") > 0 { legend("Về sớm", EmployeeRequestKind.early.color.opacity(0.36)) }
-                if countStatus("leave") > 0 { legend("Nghỉ phép", EmployeeRequestKind.leave.color.opacity(0.32)) }
-                if countStatus("absent") > 0 { legend("Vắng", Self.absentColor.opacity(0.46)) }
-                if countStatus("overtime") > 0 { legend("Làm thêm", EmployeeRequestKind.overtime.color.opacity(0.36)) }
-              }
-            }
-        }
-        .padding(18).background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-
-    private func dayCell(_ day: AttendanceDay) -> some View {
-        let selected = selectedDate == day.date
-        return Button {
-            withAnimation(.easeOut(duration: 0.18)) { selectedDate = day.date }
-        } label: {
-            Text(String(Int(day.date.suffix(2)) ?? 0))
-                .font(.subheadline.weight(selected ? .bold : .medium))
-                .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .background(dayBackground(day))
-                .clipShape(RoundedRectangle(cornerRadius: 11))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 11)
-                        .stroke(selected ? Color(red: 0.05, green: 0.25, blue: 0.5) : .clear, lineWidth: 2)
-                }
-        }.buttonStyle(.plain)
-    }
-
-    private func legend(_ title: String, _ color: Color) -> some View {
-        HStack(spacing: 3) {
-            RoundedRectangle(cornerRadius: 3).fill(color).frame(width: 9, height: 9)
-            Text(title).font(.system(size: 9)).foregroundStyle(AppTheme.muted)
-        }
-    }
-
-    private func dayDetail(_ day: AttendanceDay) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label("Chi tiết ngày \(displayDate(day.date))", systemImage: "calendar")
-                .font(.headline).foregroundStyle(Color.primary)
-            Divider()
-            detailRow("Giờ vào", time(day.checkIn))
-            detailRow("Giờ ra", time(day.checkOut))
-            detailRow("Trạng thái", dayStatuses(day).map(statusTitle).joined(separator: " · "))
-            detailRow("Khung giờ \(history?.department ?? "phòng ban")",
-                      "\(day.startTime ?? history?.startTime ?? "--:--") - \(day.endTime ?? history?.endTime ?? "--:--")")
-        }
-        .padding(18).background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
     private func detailRow(_ title: String, _ value: String) -> some View {
@@ -3212,22 +3135,12 @@ private struct ModernAttendanceHistoryView: View {
                 .reversed()
         )
     }
-    private var monthTitle: String {
-        guard let date = Self.monthParser.date(from: selectedMonth) else { return selectedMonth }
+    private var monthTitle: String { monthTitle(for: selectedMonth) }
+
+    private func monthTitle(for month: String) -> String {
+        guard let date = Self.monthParser.date(from: month) else { return month }
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "vi_VN")
         formatter.dateFormat = "'Tháng' M / yyyy"; return formatter.string(from: date)
-    }
-    private var selectedDay: AttendanceDay? {
-        let days = history?.days ?? []
-        return days.first { $0.date == selectedDate } ?? days.first { $0.date == Self.dayValue(Date()) }
-    }
-    private var leadingEmptyDays: Int {
-        guard let value = history?.days.first?.date, let date = Self.dayParser.date(from: value) else { return 0 }
-        return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
-    }
-    private func count(_ status: String) -> Int { history?.days.filter { $0.status == status }.count ?? 0 }
-    private func countStatus(_ status: String) -> Int {
-        history?.days.filter { dayStatuses($0).contains(status) }.count ?? 0
     }
     private func dayStatuses(_ day: AttendanceDay) -> [String] {
         day.statuses ?? day.status.map { [$0] } ?? []
@@ -3282,33 +3195,9 @@ private struct ModernAttendanceHistoryView: View {
         guard let date = Self.dayParser.date(from: value) else { return value }
         let formatter = DateFormatter(); formatter.dateFormat = "dd/MM/yyyy"; return formatter.string(from: date)
     }
-    private func loadHistory() async {
-        guard let token = session.token else { return }
-        if let cached = cache[selectedMonth] {
-            history = cached
-            selectedDate = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date ?? cached.days.last?.date
-            return
-        }
-        isLoading = true; message = nil
-        defer { isLoading = false }
-        do {
-            let loaded: AttendanceMonth = try await APIClient.shared.request(
-                "me/attendance?month=\(selectedMonth)", token: token
-            )
-            history = loaded; cache[selectedMonth] = loaded
-            selectedDate = loaded.days.first(where: { $0.date == Self.dayValue(Date()) })?.date ?? loaded.days.last?.date
-        } catch {
-            history = nil; message = error.localizedDescription
-        }
-    }
     private func preloadAdjacentMonths() async {
-        guard let token = session.token else { return }
-        for month in options where month != selectedMonth && cache[month] == nil {
-            if let loaded: AttendanceMonth = try? await APIClient.shared.request(
-                "me/attendance?month=\(month)", token: token
-            ) {
-                cache[month] = loaded
-            }
+        for month in options where cache[month] == nil {
+            await preloadMonth(month)
         }
     }
     private static func monthValue(_ date: Date) -> String {
@@ -3326,6 +3215,7 @@ private struct ModernAttendanceHistoryView: View {
     }()
 }
 
+@available(iOS 17.0, *)
 private struct MetricCard: View {
     let value: String
     let label: String
@@ -3339,25 +3229,6 @@ private struct MetricCard: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
-}
-
-private struct MetricWideCard: View {
-    let status: String
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: "banknote.fill")
-                .font(.title2)
-                .foregroundColor(AppTheme.red)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Bảng lương").font(.caption).foregroundColor(AppTheme.muted)
-                Text(status.isEmpty ? "Chưa cập nhật" : status).font(.headline)
-            }
-            Spacer()
-        }
-        .padding(18)
         .background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
@@ -3423,7 +3294,9 @@ private struct EmployeeRequest: Codable, Identifiable {
 private struct RequestBody: Encodable { let kind: String; let startsAt: Date; let endsAt: Date; let reason: String }
 private struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 
-@MainActor private final class EmployeeRequestStore: ObservableObject {
+@MainActor
+@available(iOS 17.0, *)
+private final class EmployeeRequestStore: ObservableObject {
     @Published private(set) var requests: [EmployeeRequest] = []
     @Published private(set) var approvals: [EmployeeRequest] = []
     @Published var message: String?
@@ -3461,6 +3334,7 @@ private struct RequestDecisionBody: Encodable { let status: String; let note: St
     }
 }
 
+@available(iOS 17.0, *)
 private struct RequestsView: View {
     @EnvironmentObject private var session: SessionStore
     @StateObject private var store = EmployeeRequestStore()
@@ -3613,6 +3487,7 @@ private struct RequestsView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct RequestCard: View {
     let request: EmployeeRequest
     var canCancel = true
@@ -3639,6 +3514,7 @@ private struct RequestCard: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct RequestDecisionView: View {
     let request: EmployeeRequest
     let decide: (Bool, String) async -> Bool
@@ -3670,6 +3546,7 @@ private struct RequestDecisionView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct RequestComposer: View {
     @Environment(\.dismiss) private var dismiss
     @State private var kind = EmployeeRequestKind.leave
@@ -3856,6 +3733,7 @@ private struct RequestNotification: Decodable, Identifiable {
 }
 private struct UpdateCount: Decodable { let count: Int }
 
+@available(iOS 17.0, *)
 private struct NotificationsView: View {
     @EnvironmentObject private var session: SessionStore
     @StateObject private var requestStore = EmployeeRequestStore()
@@ -4068,6 +3946,7 @@ private struct NotificationsView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct SwipeDeleteRow<Content: View>: View {
     let onDelete: () -> Void
     let content: Content
@@ -4146,12 +4025,14 @@ private struct SwipeDeleteRow<Content: View>: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
     var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
 }
 
+@available(iOS 17.0, *)
 private struct NewsView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var query = ""
@@ -4193,6 +4074,7 @@ private struct NewsView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct ArticleRow: View {
     let item: ContentItem
     var body: some View {
@@ -4218,6 +4100,7 @@ private struct ArticleRow: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct ArticleDetailView: View {
     let item: ContentItem
     var body: some View {
@@ -4242,6 +4125,7 @@ private struct ArticleDetailView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct ArticleBlockView: View {
     let block: ArticleBlock
 
@@ -4351,6 +4235,7 @@ private struct ArticleBlockView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct ProfileView: View {
     private enum LegalPage: String, Identifiable {
         case privacy
@@ -4457,9 +4342,13 @@ private struct ProfileView: View {
                         }
                         .buttonStyle(.plain)
                         Divider().padding(.leading, 58)
-                        Link(destination: URL(string: UIApplication.openNotificationSettingsURLString)!) {
+                        Button {
+                            guard let settingsURL = URL(string: UIApplication.openNotificationSettingsURLString) else { return }
+                            UIApplication.shared.open(settingsURL)
+                        } label: {
                             accountLink(icon: "bell.badge.fill", title: "Cài đặt thông báo")
                         }
+                        .buttonStyle(.plain)
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -4578,6 +4467,7 @@ private struct ProfileView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct NativeLegalView: View {
     enum Page {
         case privacy
@@ -4654,6 +4544,7 @@ private struct NativeLegalView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct PasswordChangeView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
@@ -4767,6 +4658,7 @@ private struct PasswordChangeView: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct ProfileLine: View {
     let label: String
     let value: String
@@ -4779,6 +4671,7 @@ private struct ProfileLine: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct NativeField: View {
     let title: String
     @Binding var text: String
@@ -4803,6 +4696,7 @@ private struct NativeField: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct NativeSecureField: View {
     let title: String
     @Binding var text: String
@@ -4909,6 +4803,7 @@ private extension String {
 }
 
 #if DEBUG
+@available(iOS 17.0, *)
 private struct SukavinaPreviewContainer: View {
     @StateObject private var session: SessionStore
     private let mode: SessionStore.State
@@ -4942,6 +4837,7 @@ private struct SukavinaPreviewContainer: View {
     }
 }
 
+@available(iOS 17.0, *)
 private struct SukavinaAppPreviews: PreviewProvider {
     static var previews: some View {
         Group {

@@ -22,6 +22,13 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Verify App Store toolchain
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          XCODE_MAJOR="$(xcodebuild -version | awk '/Xcode/ { split($2, version, "."); print version[1]; exit }')"
+          test "${XCODE_MAJOR:-0}" -ge 26
+
       - name: Select next store-compliant version
         env:
           SIDESTORE_SOURCE_URL: https://raw.githubusercontent.com/nguyenanhtruongvn/sukavina-sidestore/main/apps.json
@@ -36,6 +43,8 @@ jobs:
               source = json.load(response)
           current = source["apps"][0]["versions"][0]["version"]
           major, minor, patch = (int(part) for part in current.split("."))
+          if (major, minor, patch) < (2, 0, 0):
+              major, minor, patch = (2, 0, 0)
           if patch >= 99:
               patch = 1
               if minor >= 99:
@@ -144,7 +153,7 @@ jobs:
             --title "Sukavina ${APP_VERSION}" \
             --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
 
-          git clone "https://x-access-token:${GH_TOKEN}@github.com/${SIDESTORE_REPO}.git" sidestore-source
+          gh repo clone "$SIDESTORE_REPO" sidestore-source
           cp "$GITHUB_WORKSPACE/apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" \
             sidestore-source/icon.png
           export DOWNLOAD_URL IPA_PATH
@@ -163,7 +172,7 @@ jobs:
               "localizedDescription": f"Bản cập nhật nội bộ tự động, build {os.environ['APP_BUILD']}.",
               "downloadURL": os.environ["DOWNLOAD_URL"],
               "size": Path(os.environ["IPA_PATH"]).stat().st_size,
-              "minOSVersion": "17.0",
+              "minOSVersion": "14.0",
           }
           source["apps"][0]["versions"] = [latest] + [
               item for item in versions if item.get("version") != latest["version"]

@@ -1,4 +1,4 @@
-name: Build native Android APK and AAB
+name: Validate Android and build release AAB
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  build-apk:
+  build-aab:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -22,15 +22,33 @@ jobs:
       - name: Install Android SDK used to compile the app
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"
-      - name: Prepare optional Google Play upload key
+      - name: Select monotonic store version
+        shell: bash
+        run: |
+          set -euo pipefail
+          index="$GITHUB_RUN_NUMBER"
+          per_major=$((99 * 99))
+          major=$((2 + (index - 1) / per_major))
+          remainder=$(((index - 1) % per_major))
+          minor=$((remainder / 99))
+          patch=$((remainder % 99 + 1))
+          echo "APP_VERSION=${major}.${minor}.${patch}" >> "$GITHUB_ENV"
+
+      - name: Prepare Google Play upload key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ]; then
-            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sukavina-upload.jks"
-          fi
+          set -euo pipefail
+          test -n "${ANDROID_KEYSTORE_BASE64:-}"
+          test -n "${ANDROID_KEYSTORE_PASSWORD:-}"
+          test -n "${ANDROID_KEY_ALIAS:-}"
+          test -n "${ANDROID_KEY_PASSWORD:-}"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sukavina-upload.jks"
 
-      - name: Build native Kotlin APK and release AAB
+      - name: Validate native Kotlin app and build signed release AAB
         working-directory: apps/android
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/sukavina-upload.jks
@@ -38,17 +56,11 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          gradle --no-daemon \
+          chmod +x ./gradlew
+          ./gradlew --no-daemon \
             -PversionCode="${GITHUB_RUN_NUMBER}" \
-            -PversionName="2.0.${GITHUB_RUN_NUMBER}" \
-            lintDebug assembleDebug lintRelease bundleRelease
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Sukavina-Android-debug-APK
-          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+            -PversionName="${APP_VERSION}" \
+            lintDebug testDebugUnitTest lintRelease bundleRelease
 
       - uses: actions/upload-artifact@v4
         with:

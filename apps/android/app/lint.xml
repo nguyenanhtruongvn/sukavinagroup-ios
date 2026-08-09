@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Play requires API 36 for updates from August 2026; compileSdk 37 is
+         installed only to validate forward compatibility. -->
+    <issue id="OldTargetApi">
+        <ignore path="build.gradle.kts" />
+    </issue>
+
+    <!-- Gradle 9.3.1 is the project-wide wrapper version verified by Android
+         Studio. Updating the wrapper is handled as an explicit toolchain task. -->
+    <issue id="AndroidGradlePluginVersion">
+        <ignore regexp=".*gradle-wrapper\.properties" />
+    </issue>
+
+    <!-- OkHttp 5 is a major-version migration. Keep the supported 4.12 line
+         until its network/SSE behavior is covered by dedicated tests. -->
+    <issue id="NewerVersionAvailable">
+        <ignore path="build.gradle.kts" />
+    </issue>
+</lint>

@@ -15,8 +15,7 @@ import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.widget.RemoteViews
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import androidx.core.content.edit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -37,14 +36,10 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
-                val preferences = EncryptedSharedPreferences.create(
-                    context,
-                    "sukavina-secure-session",
-                    MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
-                )
-                val widgetToken = preferences.getString("widget_token", null) ?: return@runCatching
+                val metadata = context.getSharedPreferences("sukavina-session-metadata", Context.MODE_PRIVATE)
+                val secureStore = SecureSessionStore(context)
+                LegacySecureSessionMigration.migrate(context, metadata, secureStore)
+                val widgetToken = secureStore.getString("widget_token") ?: return@runCatching
                 val dashboard = ApiClient().post<Dashboard, WidgetTokenBody>(
                     "public/widget/attendance",
                     WidgetTokenBody(widgetToken),
@@ -147,7 +142,7 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
             }
             views.setTextViewText(
                 R.id.widget_month_title,
-                today.format(DateTimeFormatter.ofPattern("'Tháng' M • yyyy", Locale("vi", "VN"))),
+                today.format(DateTimeFormatter.ofPattern("'Tháng' M • yyyy", Locale.forLanguageTag("vi-VN"))),
             )
             views.setTextViewText(R.id.widget_month_grid, calendarText)
         }
@@ -192,15 +187,15 @@ object AttendanceWidgetStore {
         val ordered = dashboard.attendanceRecords.sortedBy { it.punchedAt }
         val checkIn = ordered.firstOrNull()?.punchedAt.toTime()
         val checkOut = ordered.takeIf { it.size > 1 }?.lastOrNull()?.punchedAt.toTime()
-        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit()
-            .putString("check_in", checkIn)
-            .putString("check_out", checkOut)
-            .apply()
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit {
+            putString("check_in", checkIn)
+            putString("check_out", checkOut)
+        }
         AttendanceWidgetProvider.renderAll(context)
     }
 
     fun clear(context: Context) {
-        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE).edit { clear() }
         AttendanceWidgetProvider.renderAll(context)
     }
 

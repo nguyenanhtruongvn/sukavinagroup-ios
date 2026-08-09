@@ -6,7 +6,6 @@ import android.text.Html
 import android.widget.TextView
 import android.graphics.Bitmap
 import android.Manifest
-import android.app.Activity
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
@@ -46,6 +45,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -57,9 +59,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -78,6 +81,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
@@ -373,6 +378,7 @@ private fun CanteenResultLine(label: String, value: String) {
 }
 
 @Composable
+@androidx.annotation.OptIn(markerClass = [androidx.camera.core.ExperimentalGetImage::class])
 private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier, onCode: (String) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -539,9 +545,10 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
             },
             label = "main-tab-transition",
         ) { activeTab ->
+            val selectedArticle = article
             when {
                 attendanceOpen -> AttendanceScreen(session) { attendanceOpen = false }
-                article != null -> ArticleDetail(article!!) { article = null }
+                selectedArticle != null -> ArticleDetail(selectedArticle) { article = null }
                 else -> when (activeTab) {
                     MainTab.HOME -> HomeScreen(state, { attendanceOpen = true }, { article = it })
                     MainTab.MENU -> TodayMenuScreen(state, session)
@@ -591,7 +598,16 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
                     }
                 }
             },
-            confirmButton = { Button(onClick = { val choice = pendingChoice!!; pendingChoice = null; if (choice == "cancel") session.cancelMealSelection() else if (choice == "received") session.receiveMealSelection() else session.selectMeal(choice) }, colors = ButtonDefaults.buttonColors(containerColor = if (cancelling) MaterialTheme.colorScheme.error else if (receiving) Color(0xFF42B878) else SukavinaRed)) { Text(if (cancelling) "Xác nhận hủy" else if (receiving) "Xác nhận đã nhận" else "Đặt món") } },
+            confirmButton = { Button(onClick = {
+                pendingChoice?.let { choice ->
+                    pendingChoice = null
+                    when (choice) {
+                        "cancel" -> session.cancelMealSelection()
+                        "received" -> session.receiveMealSelection()
+                        else -> session.selectMeal(choice)
+                    }
+                }
+            }, colors = ButtonDefaults.buttonColors(containerColor = if (cancelling) MaterialTheme.colorScheme.error else if (receiving) Color(0xFF42B878) else SukavinaRed)) { Text(if (cancelling) "Xác nhận hủy" else if (receiving) "Xác nhận đã nhận" else "Đặt món") } },
             dismissButton = { TextButton(onClick = { pendingChoice = null }) { Text("Quay lại") } },
         )
     }
@@ -670,8 +686,9 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
     }
     Card(shape = appShape(18.dp, AppShapeRole.LARGE)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (issued != null && seconds > 0) {
-                val bitmap = remember(issued!!.token) { createQrBitmap(issued!!.token) }
+            val activeIssue = issued?.takeIf { seconds > 0 }
+            if (activeIssue != null) {
+                val bitmap = remember(activeIssue.token) { createQrBitmap(activeIssue.token) }
                 Image(bitmap = bitmap.asImageBitmap(), contentDescription = "Mã QR nhận món", modifier = Modifier.size(190.dp).background(Color.White).padding(10.dp))
                 Text("Mã tự ẩn sau ${seconds}s", color = if (seconds <= 5) MaterialTheme.colorScheme.error else SukavinaMuted, fontWeight = FontWeight.Bold)
             } else {
@@ -688,8 +705,8 @@ private fun CanteenCameraPreview(active: Boolean, modifier: Modifier = Modifier,
 private fun createQrBitmap(value: String): Bitmap {
     val hints = mapOf(EncodeHintType.MARGIN to 1)
     val matrix: BitMatrix = MultiFormatWriter().encode(value, BarcodeFormat.QR_CODE, 512, 512, hints)
-    return Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888).also { bitmap ->
-        for (x in 0 until 512) for (y in 0 until 512) bitmap.setPixel(x, y, if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
+    return createBitmap(512, 512, Bitmap.Config.ARGB_8888).also { bitmap ->
+        for (x in 0 until 512) for (y in 0 until 512) bitmap[x, y] = if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
     }
 }
 
@@ -780,7 +797,7 @@ private data class RequestKindUi(val key: String, val title: String, val icon: a
 private val requestKinds = listOf(
     RequestKindUi("leave", "Nghỉ phép", Icons.Default.EventAvailable, Color(0xFF5EA7FF)),
     RequestKindUi("late", "Đi trễ", Icons.Default.Schedule, Color(0xFFFFB34F)),
-    RequestKindUi("early", "Về sớm", Icons.Default.ExitToApp, Color(0xFFC49AFF)),
+    RequestKindUi("early", "Về sớm", Icons.AutoMirrored.Filled.ExitToApp, Color(0xFFC49AFF)),
     RequestKindUi("overtime", "Làm thêm giờ", Icons.Default.DarkMode, Color(0xFF8C82FF)),
     RequestKindUi("business", "Công tác", Icons.Default.Flight, Color(0xFF55D4C1)),
 )
@@ -817,7 +834,7 @@ private fun requestStatus(status: String) = when (status) { "pending" -> "Chờ 
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text("Đơn từ", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(18.dp, 20.dp, 18.dp, 10.dp))
-            ScrollableTabRow(
+            PrimaryScrollableTabRow(
                 selectedTabIndex = filterIndex,
                 edgePadding = 18.dp,
                 divider = {},
@@ -1190,7 +1207,7 @@ private fun SwipeDeleteItem(
 }
 
 @Composable private fun ArticleDetail(item: ContentItem, back: () -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text("Bài viết") }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.Default.ArrowBack, "Quay lại") } }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Bài viết") }, navigationIcon = { IconButton(onClick = back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại") } }) }) { padding ->
         LazyColumn(Modifier.padding(padding), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item { Text(item.createdAt.toDateLabel(), color = SukavinaRed, fontWeight = FontWeight.Bold); Text(item.title, fontSize = 29.sp, lineHeight = 35.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 7.dp)) }
             item {
@@ -1202,8 +1219,12 @@ private fun SwipeDeleteItem(
 }
 
 @Composable private fun AttendanceScreen(session: SessionViewModel, back: () -> Unit) {
-    val activity = LocalContext.current as? Activity
+    val activity = LocalActivity.current
+    val containerWidth = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.width.toDp()
+    }
     var innerFoldOpen by remember { mutableStateOf(false) }
+    val useTwoPane = innerFoldOpen || containerWidth >= 840.dp
     val months = remember { listOf(YearMonth.now().minusMonths(1), YearMonth.now()) }
     val pagerState = rememberPagerState(initialPage = months.lastIndex, pageCount = { months.size })
     val scope = rememberCoroutineScope()
@@ -1247,7 +1268,7 @@ private fun SwipeDeleteItem(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = back, modifier = Modifier.size(44.dp)) {
-                        Icon(Icons.Default.ArrowBack, "Quay lại")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Quay lại")
                     }
                     Text(
                         "Bảng chấm công",
@@ -1260,8 +1281,8 @@ private fun SwipeDeleteItem(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-            if (!innerFoldOpen) Row(
+            Box(Modifier.fillMaxWidth()) {
+            if (!useTwoPane) Row(
                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
                     .clip(appShape(18.dp, AppShapeRole.LARGE))
                     .background(MaterialTheme.colorScheme.surface).padding(6.dp),
@@ -1284,8 +1305,8 @@ private fun SwipeDeleteItem(
             }
             }
 
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                if (innerFoldOpen) {
+            Box(Modifier.fillMaxSize()) {
+                if (useTwoPane) {
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         months.forEach { month ->
                             AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.weight(1f), showTitle = true)
@@ -1309,23 +1330,6 @@ private fun SwipeDeleteItem(
             data != null -> { AttendanceSummary(data); AttendanceCalendar(data, selectedDate, select); data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) } }
             error != null -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
             else -> Box(Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        }
-    }
-}
-
-@Composable private fun AttendanceMonthSelector(months: List<YearMonth>, selected: YearMonth, select: (YearMonth) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(16.dp).clip(appShape(18.dp, AppShapeRole.LARGE))
-            .background(MaterialTheme.colorScheme.surface).padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        months.forEachIndexed { index, month ->
-            FilterChip(
-                selected = selected == month,
-                onClick = { select(month) },
-                label = { Text(if (index == 0) "Tháng này" else "Tháng trước", fontWeight = FontWeight.Bold) },
-                modifier = Modifier.weight(1f),
-            )
         }
     }
 }
@@ -1513,7 +1517,7 @@ private fun attendanceTitle(status: String) = when (status) {
             onClick = { signOutConfirmation = true },
             modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(52.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-        ) { Icon(Icons.Default.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
+        ) { Icon(Icons.AutoMirrored.Filled.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
         OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp)) { Icon(Icons.Default.Key, null); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
         if (profile?.protected != true && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
     }
@@ -1526,7 +1530,7 @@ private fun attendanceTitle(status: String) = when (status) {
         danger = true,
         confirmEnabled = !state.working,
         onDismiss = { if (!state.working) deleteOpen = false },
-        onConfirm = { session.deleteAccount(""); deleteOpen = false },
+        onConfirm = { session.deleteAccount(); deleteOpen = false },
     ) {
         Text("Tài khoản, dữ liệu cá nhân, đơn từ và lựa chọn món liên quan sẽ bị xóa.", fontWeight = FontWeight.SemiBold)
         Text("Thao tác này không thể hoàn tác. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -1537,7 +1541,7 @@ private fun attendanceTitle(status: String) = when (status) {
     if (signOutConfirmation) SukavinaAlert(
         title = "Xác nhận đăng xuất?",
         eyebrow = "BẢO MẬT TÀI KHOẢN",
-        icon = Icons.Default.Logout,
+        icon = Icons.AutoMirrored.Filled.Logout,
         confirmText = "Đăng xuất",
         dismissText = "Giữ lại",
         danger = true,
@@ -1633,9 +1637,9 @@ private fun attendanceTitle(status: String) = when (status) {
 @Composable private fun ProfileLine(label: String, value: String) = Row(Modifier.fillMaxWidth().padding(18.dp)) { Text(label, color = SukavinaMuted); Spacer(Modifier.weight(1f)); Text(value, fontWeight = FontWeight.Medium) }
 
 private fun String?.toTime(): String { if (this.isNullOrBlank()) return "--:--"; return runCatching { OffsetDateTime.parse(this).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")) }.getOrDefault("--:--") }
-private fun String.toDateLabel() = runCatching { OffsetDateTime.parse(this).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale("vi", "VN"))) }.getOrDefault("")
+private fun String.toDateLabel() = runCatching { OffsetDateTime.parse(this).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.forLanguageTag("vi-VN"))) }.getOrDefault("")
 private fun String.toDateTimeLabel() = runCatching { OffsetDateTime.parse(this).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")) }.getOrDefault(this)
-private fun String.toDayLabel() = runCatching { LocalDate.parse(this).format(DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale("vi", "VN"))) }.getOrDefault(this)
+private fun String.toDayLabel() = runCatching { LocalDate.parse(this).format(DateTimeFormatter.ofPattern("EEEE, dd/MM", Locale.forLanguageTag("vi-VN"))) }.getOrDefault(this)
 private fun String.plainText() = Html.fromHtml(take(750_000), Html.FROM_HTML_MODE_LEGACY).toString().replace(Regex("\\s+"), " ").trim()
 private fun String?.initials() = this.orEmpty().split(" ").filter { it.isNotBlank() }.takeLast(2).joinToString("") { it.take(1).uppercase() }.ifBlank { "NV" }
 private fun String?.accountLabel() = when (this) { "SUPER_ADMIN" -> "Quản trị viên tổng"; "ADMIN" -> "Quản trị viên"; else -> "Nhân viên" }
