@@ -12,6 +12,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import net.sukavinagroup.user.data.*
 import okhttp3.Response
 import okhttp3.sse.EventSource
@@ -42,6 +44,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     val state = _state.asStateFlow()
     private var events: EventSource? = null
     private var sessionRefreshJob: Job? = null
+    private val refreshMutex = Mutex()
     private var knownArticles = preferences.getStringSet("known_articles", emptySet()).orEmpty()
     private var hiddenArticles = preferences.getStringSet("hidden_notification_articles", emptySet()).orEmpty()
 
@@ -382,23 +385,25 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private suspend fun refreshSession(): RefreshResult {
-        val refreshToken = preferences.getString("refresh_token", null) ?: return RefreshResult.UNAUTHORIZED
-        return runCatching {
-            api.post<LoginResponse, RefreshSessionBody>("auth/refresh", RefreshSessionBody(refreshToken))
-        }.onSuccess { response ->
-            saveSession(response)
-            _state.value = _state.value.copy(token = response.accessToken, error = null)
-            AttendanceWidgetProvider.renderAll(getApplication())
-        }.fold(
-            onSuccess = { RefreshResult.SUCCESS },
-            onFailure = { error ->
-                if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
-                    RefreshResult.UNAUTHORIZED
-                } else {
-                    RefreshResult.DEFERRED
-                }
-            },
-        )
+        return refreshMutex.withLock {
+            val refreshToken = preferences.getString("refresh_token", null) ?: return@withLock RefreshResult.UNAUTHORIZED
+            runCatching {
+                api.post<LoginResponse, RefreshSessionBody>("auth/refresh", RefreshSessionBody(refreshToken))
+            }.onSuccess { response ->
+                saveSession(response)
+                _state.value = _state.value.copy(token = response.accessToken, error = null)
+                AttendanceWidgetProvider.renderAll(getApplication())
+            }.fold(
+                onSuccess = { RefreshResult.SUCCESS },
+                onFailure = { error ->
+                    if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
+                        RefreshResult.UNAUTHORIZED
+                    } else {
+                        RefreshResult.DEFERRED
+                    }
+                },
+            )
+        }
     }
 
     private fun startSessionRefresh() {
