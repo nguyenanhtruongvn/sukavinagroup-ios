@@ -295,7 +295,24 @@ private final class APIClient {
     private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")!
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { value in
+            let container = try value.singleValueContainer()
+            let raw = try container.decode(String.self)
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = fractional.date(from: raw) {
+                return date
+            }
+            let standard = ISO8601DateFormatter()
+            standard.formatOptions = [.withInternetDateTime]
+            if let date = standard.date(from: raw) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid ISO8601 date: \(raw)"
+            )
+        }
         return decoder
     }()
     private let encoder: JSONEncoder = {
@@ -411,6 +428,9 @@ private final class APIClient {
         do {
             return try decoder.decode(Response.self, from: data)
         } catch {
+            ConnectionDiagnostics.record(
+                "API decode failed: path=\(path) type=\(String(describing: Response.self)) bytes=\(data.count) error=\(error.localizedDescription)"
+            )
             throw NetworkError.invalidResponse
         }
     }
