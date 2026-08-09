@@ -137,6 +137,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Checkout internal SideStore source
+        uses: actions/checkout@v4
+        with:
+          repository: nguyenanhtruongvn/sukavina-sidestore
+          token: ${{ secrets.SIDESTORE_REPO_TOKEN }}
+          path: sidestore-source
+
       - name: Publish to internal SideStore source
         env:
           GH_TOKEN: ${{ secrets.SIDESTORE_REPO_TOKEN }}
@@ -148,12 +155,19 @@ jobs:
           cp "$GITHUB_WORKSPACE/build/Sukavina-Portal-unsigned.ipa" "$IPA_PATH"
           DOWNLOAD_URL="https://github.com/${SIDESTORE_REPO}/releases/download/${TAG}/Sukavina.ipa"
 
-          gh release create "$TAG" "$IPA_PATH" \
-            --repo "$SIDESTORE_REPO" \
-            --title "Sukavina ${APP_VERSION}" \
-            --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
+          if gh release view "$TAG" --repo "$SIDESTORE_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA_PATH" --repo "$SIDESTORE_REPO" --clobber
+            gh release edit "$TAG" \
+              --repo "$SIDESTORE_REPO" \
+              --title "Sukavina ${APP_VERSION}" \
+              --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
+          else
+            gh release create "$TAG" "$IPA_PATH" \
+              --repo "$SIDESTORE_REPO" \
+              --title "Sukavina ${APP_VERSION}" \
+              --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
+          fi
 
-          gh repo clone "$SIDESTORE_REPO" sidestore-source
           cp "$GITHUB_WORKSPACE/apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" \
             sidestore-source/icon.png
           export DOWNLOAD_URL IPA_PATH
