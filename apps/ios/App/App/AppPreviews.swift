@@ -9,6 +9,7 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+#if DEBUG
 @available(iOS 17.0, *)
 struct SukavinaPreviewContainer: View {
     @StateObject private var session: SessionStore
