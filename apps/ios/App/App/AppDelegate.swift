@@ -3265,7 +3265,7 @@ private enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .late: return .orange
         case .early: return Color(red: 0.9, green: 0.22, blue: 0.52)
         case .overtime: return Color(red: 0.32, green: 0.4, blue: 0.96)
-        case .business: return .teal
+        case .business: return Color(red: 0.0, green: 0.5, blue: 0.5)
         }
     }
 }
@@ -3908,7 +3908,7 @@ private struct NotificationsView: View {
 
     private func deleteNotification(_ item: RequestNotification) async {
         guard let token = session.token else { return }
-        withAnimation(.snappy(duration: 0.28)) {
+        withAnimation(.easeInOut(duration: 0.28)) {
             requestNotifications.removeAll { $0.id == item.id }
         }
         session.requestUnreadCount = requestNotifications.filter { !$0.read }.count
@@ -3919,7 +3919,9 @@ private struct NotificationsView: View {
 
     private func hideArticle(_ item: ContentItem) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.snappy(duration: 0.28)) { hiddenArticleIDs.insert(item.id) }
+        withAnimation(.easeInOut(duration: 0.28)) {
+            _ = hiddenArticleIDs.insert(item.id)
+        }
         UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
     }
 
