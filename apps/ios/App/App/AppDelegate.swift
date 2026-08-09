@@ -266,6 +266,18 @@ private enum ConnectionDiagnostics {
 
 }
 
+private actor SessionRefreshCoordinator {
+    private var running: Task<LoginResponse, Error>?
+
+    func run(_ operation: @escaping () async throws -> LoginResponse) async throws -> LoginResponse {
+        if let running { return try await running.value }
+        let task = Task { try await operation() }
+        running = task
+        defer { running = nil }
+        return try await task.value
+    }
+}
+
 private final class APIClient {
     static let shared = APIClient()
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")!
@@ -280,6 +292,7 @@ private final class APIClient {
         encoder.dateEncodingStrategy = .iso8601
         return encoder
     }()
+    private let refreshCoordinator = SessionRefreshCoordinator()
 
     func request<Response: Decodable, Body: Encodable>(
         _ path: String,
@@ -355,12 +368,14 @@ private final class APIClient {
                allowSessionRefresh,
                http.statusCode == 401,
                let refreshToken = KeychainStore.loadRefreshToken() {
-                let refreshed: LoginResponse = try await request(
-                    "auth/refresh",
-                    method: "POST",
-                    body: RefreshSessionBody(refreshToken: refreshToken),
-                    allowSessionRefresh: false
-                )
+                let refreshed = try await refreshCoordinator.run {
+                    try await self.request(
+                        "auth/refresh",
+                        method: "POST",
+                        body: RefreshSessionBody(refreshToken: refreshToken),
+                        allowSessionRefresh: false
+                    )
+                }
                 KeychainStore.save(token: refreshed.accessToken)
                 KeychainStore.save(refreshToken: refreshed.refreshToken)
                 AttendanceWidgetBridge.configure(token: refreshed.widgetToken)
