@@ -523,5 +523,3 @@ struct ArticleBlockView: View {
         }
     }
 }
-
-@available(iOS 17.0, *)

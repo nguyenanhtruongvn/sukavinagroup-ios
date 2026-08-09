@@ -9,6 +9,7 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+@available(iOS 17.0, *)
 struct MealQRCodeCard: View {
     let token: String
 
@@ -287,5 +288,3 @@ final class MealScannerViewController: UIViewController, AVCaptureMetadataOutput
         ])
     }
 }
-
-@available(iOS 17.0, *)

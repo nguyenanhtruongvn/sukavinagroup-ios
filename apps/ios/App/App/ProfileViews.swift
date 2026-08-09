@@ -9,6 +9,7 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+@available(iOS 17.0, *)
 struct ProfileView: View {
     private enum LegalPage: String, Identifiable {
         case privacy

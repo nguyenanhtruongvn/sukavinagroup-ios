@@ -413,5 +413,3 @@ struct VerificationView: View {
         } catch { message = error.localizedDescription }
     }
 }
-
-@available(iOS 17.0, *)
