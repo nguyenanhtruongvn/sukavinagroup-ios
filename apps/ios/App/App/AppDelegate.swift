@@ -388,8 +388,12 @@ private final class APIClient {
                     )
                 }
                 KeychainStore.save(token: refreshed.accessToken)
-                KeychainStore.save(refreshToken: refreshed.refreshToken)
-                AttendanceWidgetBridge.configure(token: refreshed.widgetToken)
+                if !refreshed.refreshToken.isEmpty {
+                    KeychainStore.save(refreshToken: refreshed.refreshToken)
+                }
+                if !refreshed.widgetToken.isEmpty {
+                    AttendanceWidgetBridge.configure(token: refreshed.widgetToken)
+                }
                 return try await request(
                     path,
                     method: method,
@@ -551,6 +555,20 @@ private struct UserSummary: Codable {
     let accountType: String
     let permissions: [String]
     let protected: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case employeeCode, name, role, accountType, permissions, protected
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        employeeCode = try values.decode(String.self, forKey: .employeeCode)
+        name = try values.decode(String.self, forKey: .name)
+        role = try values.decodeIfPresent(String.self, forKey: .role) ?? "Nhân viên"
+        accountType = try values.decodeIfPresent(String.self, forKey: .accountType) ?? "EMPLOYEE"
+        permissions = try values.decodeIfPresent([String].self, forKey: .permissions) ?? []
+        protected = try values.decodeIfPresent(Bool.self, forKey: .protected) ?? false
+    }
 }
 
 private struct LoginResponse: Decodable {
@@ -558,6 +576,18 @@ private struct LoginResponse: Decodable {
     let refreshToken: String
     let widgetToken: String
     let user: UserSummary
+
+    private enum CodingKeys: String, CodingKey {
+        case accessToken, refreshToken, widgetToken, user
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        accessToken = try values.decode(String.self, forKey: .accessToken)
+        refreshToken = try values.decodeIfPresent(String.self, forKey: .refreshToken) ?? ""
+        widgetToken = try values.decodeIfPresent(String.self, forKey: .widgetToken) ?? ""
+        user = try values.decode(UserSummary.self, forKey: .user)
+    }
 }
 
 private struct RefreshSessionBody: Encodable {
@@ -1357,8 +1387,12 @@ private final class SessionStore: ObservableObject {
     private func applySession(_ response: LoginResponse) {
         token = response.accessToken
         KeychainStore.save(token: response.accessToken)
-        KeychainStore.save(refreshToken: response.refreshToken)
-        AttendanceWidgetBridge.configure(token: response.widgetToken)
+        if !response.refreshToken.isEmpty {
+            KeychainStore.save(refreshToken: response.refreshToken)
+        }
+        if !response.widgetToken.isEmpty {
+            AttendanceWidgetBridge.configure(token: response.widgetToken)
+        }
         profile = Profile(
             id: "",
             employeeCode: response.user.employeeCode,
