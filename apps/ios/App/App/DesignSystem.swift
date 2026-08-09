@@ -1,0 +1,167 @@
+import UIKit
+import SwiftUI
+import Security
+import UserNotifications
+import Network
+import LocalAuthentication
+import WidgetKit
+import AVFoundation
+import CoreImage.CIFilterBuiltins
+import WebKit
+
+enum AppTheme {
+    static let red = Color(red: 0.91, green: 0.12, blue: 0.16)
+    static let deepRed = Color(red: 0.45, green: 0.04, blue: 0.07)
+    static let ink = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1) : UIColor(red: 0.906, green: 0.914, blue: 0.929, alpha: 1)
+    })
+    static let card = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.12, green: 0.12, blue: 0.15, alpha: 1) : UIColor.white
+    })
+    static let muted = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.66, green: 0.65, blue: 0.68, alpha: 1) : UIColor(red: 0.36, green: 0.35, blue: 0.38, alpha: 1)
+    })
+    static let loginAccent = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor(red: 0.45, green: 0.04, blue: 0.07, alpha: 0.72) : UIColor.white
+    })
+    static let field = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.055) : UIColor.white
+    })
+    static let fieldBorder = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.63, green: 0.66, blue: 0.71, alpha: 0.42)
+    })
+    static let cardBorder = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.08) : UIColor(red: 0.31, green: 0.34, blue: 0.39, alpha: 0.12)
+    })
+    static let biometricFill = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white.withAlphaComponent(0.075) : UIColor.white
+    })
+    static let biometricForeground = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? UIColor.white : UIColor(red: 0.68, green: 0.07, blue: 0.10, alpha: 1)
+    })
+}
+
+@available(iOS 17.0, *)
+struct AdaptiveGlassSurface: ViewModifier {
+    let cornerRadius: CGFloat
+    var tint: Color? = nil
+    var interactive = false
+    var legacyFill = AppTheme.card
+    var legacyOpacity = 1.0
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    .regular.tint(tint).interactive(interactive),
+                    in: .rect(cornerRadius: cornerRadius)
+                )
+        } else {
+            content
+                .background(legacyFill.opacity(legacyOpacity))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+extension View {
+    func adaptiveGlassSurface(
+        cornerRadius: CGFloat,
+        tint: Color? = nil,
+        interactive: Bool = false,
+        legacyFill: Color = AppTheme.card,
+        legacyOpacity: Double = 1
+    ) -> some View {
+        modifier(
+            AdaptiveGlassSurface(
+                cornerRadius: cornerRadius,
+                tint: tint,
+                interactive: interactive,
+                legacyFill: legacyFill,
+                legacyOpacity: legacyOpacity
+            )
+        )
+    }
+
+    @ViewBuilder
+    func hidesPortalBottomScrollEdgeEffect() -> some View {
+        if #available(iOS 26.0, *) {
+            self
+                .scrollIndicators(.hidden)
+                .ignoresSafeArea(.container, edges: .bottom)
+                .scrollBounceBehavior(.always, axes: .vertical)
+                .scrollEdgeEffectHidden(true, for: .bottom)
+        } else {
+            self
+                .scrollIndicators(.hidden)
+                .ignoresSafeArea(.container, edges: .bottom)
+                .scrollBounceBehavior(.always, axes: .vertical)
+        }
+    }
+
+    @ViewBuilder
+    func adaptivePortalTabBarBackground() -> some View {
+        if #available(iOS 26.0, *) {
+            self.toolbarBackground(.hidden, for: .tabBar)
+        } else {
+            self
+                .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+                .toolbarBackground(.visible, for: .tabBar)
+        }
+    }
+
+}
+
+final class AttendanceScrollInsetNeutralizingView: UIView {
+    private weak var managedScrollView: UIScrollView?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        resolveAndApply()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        resolveAndApply()
+    }
+
+    private func resolveAndApply() {
+        if managedScrollView == nil {
+            var candidate = superview
+            while let view = candidate {
+                if let scrollView = view as? UIScrollView {
+                    managedScrollView = scrollView
+                    break
+                }
+                candidate = view.superview
+            }
+        }
+        guard let scrollView = managedScrollView else { return }
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.automaticallyAdjustsScrollIndicatorInsets = false
+        if scrollView.contentInset.bottom != 0 {
+            var inset = scrollView.contentInset
+            inset.bottom = 0
+            scrollView.contentInset = inset
+        }
+        if scrollView.verticalScrollIndicatorInsets.bottom != 0 {
+            var inset = scrollView.verticalScrollIndicatorInsets
+            inset.bottom = 0
+            scrollView.verticalScrollIndicatorInsets = inset
+        }
+    }
+}
+
+struct AttendanceScrollInsetNeutralizer: UIViewRepresentable {
+    func makeUIView(context: Context) -> AttendanceScrollInsetNeutralizingView {
+        AttendanceScrollInsetNeutralizingView(frame: .zero)
+    }
+
+    func updateUIView(_ uiView: AttendanceScrollInsetNeutralizingView, context: Context) {}
+}

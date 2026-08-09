@@ -108,27 +108,46 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
-enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
-enum class LegalPage { PRIVACY, SUPPORT, DELETION }
-enum class AppShapeRole { MEDIUM, LARGE, EXTRA_LARGE }
 
-@Composable
-fun appShape(standard: Dp, role: AppShapeRole = AppShapeRole.MEDIUM): Shape {
-    if (!LocalSukavinaExpressive.current) return RoundedCornerShape(standard)
-    return when (role) {
-        AppShapeRole.MEDIUM -> MaterialTheme.shapes.medium
-        AppShapeRole.LARGE -> MaterialTheme.shapes.large
-        AppShapeRole.EXTRA_LARGE -> MaterialTheme.shapes.extraLarge
+@Composable fun HomeScreen(state: SessionUiState, openAttendance: () -> Unit, openArticle: (ContentItem) -> Unit) {
+    val dashboard = state.dashboard
+    LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+        item {
+            Text("Xin chào,", color = SukavinaMuted)
+            Text(dashboard?.name ?: state.profile?.name ?: "Nhân viên", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
+            Text("${dashboard?.role.orEmpty()} · ${dashboard?.employeeCode.orEmpty()}", color = SukavinaMuted)
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetricCard("${dashboard?.remainingLeaveDays ?: 0}", "Ngày phép", Icons.Default.EventAvailable, Modifier.weight(1f))
+                MetricCard(state.requests.count { it.status == "pending" }.toString(), "Đơn đang chờ", Icons.Default.Description, Modifier.weight(1f))
+            }
+        }
+        item { AttendanceTodayCard(dashboard, openAttendance) }
     }
 }
 
-@Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        when {
-            state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError)
-            state.profile?.accountType == "CANTEEN" -> CanteenScannerScreen(state, session)
-            else -> MainScreen(state, session)
+@Composable fun MetricCard(value: String, label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
+    Card(modifier) { Column(Modifier.padding(18.dp)) { Icon(icon, null, tint = SukavinaRed); Spacer(Modifier.height(16.dp)); Text(value, fontSize = 25.sp, fontWeight = FontWeight.Bold); Text(label, color = SukavinaMuted) } }
+}
+
+@Composable fun AttendanceTodayCard(dashboard: Dashboard?, onClick: () -> Unit) {
+    val records = dashboard?.attendanceRecords.orEmpty()
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+        Column(Modifier.padding(20.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Schedule, null, tint = SukavinaRed); Spacer(Modifier.width(10.dp))
+                Text("Chấm công hôm nay", fontWeight = FontWeight.Bold); Spacer(Modifier.weight(1f)); Icon(Icons.Default.ChevronRight, null)
+            }
+            Spacer(Modifier.height(17.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                TimeBox("Giờ vào", records.lastOrNull()?.punchedAt.toTime(), Modifier.weight(1f))
+                TimeBox("Giờ ra", if (records.size > 1) records.first().punchedAt.toTime() else "--:--", Modifier.weight(1f))
+            }
         }
     }
+}
+
+@Composable fun TimeBox(label: String, value: String, modifier: Modifier) = Surface(modifier, shape = appShape(14.dp), color = Color.White.copy(alpha = .06f)) {
+    Column(Modifier.padding(14.dp)) { Text(label, color = SukavinaMuted, fontSize = 12.sp); Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold) }
 }

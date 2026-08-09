@@ -108,27 +108,31 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
-enum class MainTab(val label: String) { HOME("Trang chủ"), MENU("Thực đơn"), REQUESTS("Đơn từ"), NOTIFICATIONS("Thông báo"), PROFILE("Tài khoản") }
-enum class LegalPage { PRIVACY, SUPPORT, DELETION }
-enum class AppShapeRole { MEDIUM, LARGE, EXTRA_LARGE }
 
-@Composable
-fun appShape(standard: Dp, role: AppShapeRole = AppShapeRole.MEDIUM): Shape {
-    if (!LocalSukavinaExpressive.current) return RoundedCornerShape(standard)
-    return when (role) {
-        AppShapeRole.MEDIUM -> MaterialTheme.shapes.medium
-        AppShapeRole.LARGE -> MaterialTheme.shapes.large
-        AppShapeRole.EXTRA_LARGE -> MaterialTheme.shapes.extraLarge
-    }
+@Preview(name = "Đăng nhập", showBackground = true, backgroundColor = 0xFF111115, widthDp = 390, heightDp = 844)
+@Composable fun LoginPreview() = SukavinaTheme {
+    LoginScreen(SessionUiState(restoring = false), { _, _ -> })
 }
 
-@Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        when {
-            state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError)
-            state.profile?.accountType == "CANTEEN" -> CanteenScannerScreen(state, session)
-            else -> MainScreen(state, session)
-        }
-    }
+@Preview(name = "Trang chủ nhân viên", showBackground = true, backgroundColor = 0xFF111115, widthDp = 390, heightDp = 844)
+@Composable fun DashboardPreview() = SukavinaTheme {
+    HomeScreen(
+        state = SessionUiState(
+            restoring = false,
+            profile = Profile(employeeCode = "SKV-001", name = "Nguyễn Văn A", role = "Nhân viên"),
+            dashboard = Dashboard(
+                employeeCode = "SKV-001", name = "Nguyễn Văn A", role = "Nhân sự vận hành",
+                remainingLeaveDays = 8,
+                attendanceRecords = listOf(
+                    AttendanceRecord("1", "2026-07-18T08:01:00.000Z"),
+                    AttendanceRecord("2", "2026-07-18T17:03:00.000Z"),
+                ),
+                contentItems = listOf(
+                    ContentItem("1", title = "Thông báo lịch nghỉ", body = "Cập nhật lịch nghỉ và kế hoạch làm việc trong tuần mới.", createdAt = "2026-07-18T08:00:00Z"),
+                    ContentItem("2", title = "Quy định nội bộ", body = "Những nội dung nhân viên cần lưu ý.", createdAt = "2026-07-17T08:00:00Z"),
+                ),
+            ),
+        ),
+        openAttendance = {}, openArticle = {},
+    )
 }

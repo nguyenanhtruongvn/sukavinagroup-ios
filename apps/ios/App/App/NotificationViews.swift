@@ -1,0 +1,527 @@
+import UIKit
+import SwiftUI
+import Security
+import UserNotifications
+import Network
+import LocalAuthentication
+import WidgetKit
+import AVFoundation
+import CoreImage.CIFilterBuiltins
+import WebKit
+
+struct RequestNotification: Decodable, Identifiable {
+    let id: String
+    let type: String
+    let title: String
+    let message: String
+    let requestId: String?
+    let read: Bool
+    let createdAt: Date
+}
+struct UpdateCount: Decodable { let count: Int }
+
+@available(iOS 17.0, *)
+struct NotificationsView: View {
+    @EnvironmentObject private var session: SessionStore
+    @StateObject private var requestStore = EmployeeRequestStore()
+    @State private var requestNotifications: [RequestNotification] = []
+    @State private var reviewing: EmployeeRequest?
+    @State private var viewing: EmployeeRequest?
+    @State private var confirmClear = false
+    @State private var hiddenArticleIDs = Set<String>()
+    private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
+    private var totalUnread: Int { session.unreadCount + requestNotifications.filter { !$0.read }.count }
+    var body: some View {
+        NavigationStack {
+            List {
+                    HStack {
+                        Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
+                        Spacer()
+                        if !requestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    ForEach(requestNotifications) { item in
+                        Button { Task { await open(item) } } label: {
+                          HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(item.title).font(.headline)
+                                if let request = linkedRequest(item) {
+                                    Text(request.kind.title).font(.caption.bold()).foregroundStyle(request.kind.color).padding(.horizontal, 9).padding(.vertical, 4).background(request.kind.color.opacity(0.13)).clipShape(Capsule())
+                                }
+                                Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
+                                Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
+                            }
+                            Spacer()
+                            if !item.read {
+                                Text("Mới")
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(notificationColor(item))
+                                    .padding(.horizontal, 9)
+                                    .padding(.vertical, 5)
+                                    .background(notificationColor(item).opacity(0.18))
+                                    .clipShape(Capsule())
+                            }
+                          }
+                          .padding(16)
+                          .background(
+                              LinearGradient(
+                                  colors: item.read
+                                      ? [AppTheme.card, AppTheme.card]
+                                      : [notificationColor(item).opacity(0.24), AppTheme.card],
+                                  startPoint: .topLeading,
+                                  endPoint: .bottomTrailing
+                              )
+                          )
+                          .overlay {
+                              RoundedRectangle(cornerRadius: 20)
+                                  .stroke(item.read ? Color.clear : notificationColor(item).opacity(0.52), lineWidth: item.read ? 1 : 1.4)
+                          }
+                          .shadow(color: item.read ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
+                          .clipShape(RoundedRectangle(cornerRadius: 20))
+                        }.buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                Task { await deleteNotification(item) }
+                            } label: {
+                                Label("Xóa", systemImage: "trash.fill")
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    }
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        let isUnread = index < session.unreadCount
+                        NavigationLink(destination: ArticleDetailView(item: item)) {
+                            HStack(alignment: .top, spacing: 14) {
+                                Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(item.title).font(.headline).multilineTextAlignment(.leading)
+                                    Text(item.preview).font(.subheadline).foregroundStyle(AppTheme.muted).lineLimit(2).multilineTextAlignment(.leading)
+                                    Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
+                                }
+                                Spacer(minLength: 0)
+                                if isUnread {
+                                    Text("Mới")
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(AppTheme.red)
+                                        .padding(.horizontal, 9)
+                                        .padding(.vertical, 5)
+                                        .background(AppTheme.red.opacity(0.18))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            .padding(16)
+                            .background(
+                                LinearGradient(
+                                    colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 20)
+                                    .stroke(isUnread ? AppTheme.red.opacity(0.52) : Color.clear, lineWidth: isUnread ? 1.4 : 1)
+                            }
+                            .shadow(color: isUnread ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                hideArticle(item)
+                            } label: {
+                                Label("Xóa", systemImage: "trash.fill")
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    }
+                    if items.isEmpty && requestNotifications.isEmpty {
+                        ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                    }
+                    Color.clear
+                        .frame(height: 112)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityHidden(true)
+            }
+            .listStyle(.plain)
+            .hidesPortalBottomScrollEdgeEffect()
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
+                .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
+                .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
+                .onAppear { Task { await loadRequestNotifications() } }
+                .onChange(of: session.requestUnreadCount) { _, _ in Task { await loadRequestNotifications() } }
+                .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
+                .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
+                .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
+        }
+        .ignoresSafeArea(.container, edges: .bottom)
+    }
+
+    private func loadRequestNotifications() async {
+        guard let token = session.token else { return }
+        if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
+            requestNotifications = values
+            session.requestUnreadCount = values.filter { !$0.read }.count
+            await requestStore.load(token)
+        }
+    }
+
+    private func open(_ item: RequestNotification) async {
+        guard let token = session.token else { return }
+        let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/\(item.id)/read", method: "PATCH", token: token)
+        await requestStore.load(token)
+        if let id = item.requestId {
+            if item.type == "request_pending", let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) { reviewing = request }
+            else { viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id }) }
+        }
+        await loadRequestNotifications()
+    }
+
+    private func clearAll() async {
+        guard let token = session.token else { return }
+        let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications", method: "DELETE", token: token)
+        hiddenArticleIDs.formUnion(items.map(\.id)); UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+        session.markArticlesRead(); await loadRequestNotifications()
+    }
+
+    private func deleteNotification(_ item: RequestNotification) async {
+        guard let token = session.token else { return }
+        withAnimation(.easeInOut(duration: 0.28)) {
+            requestNotifications.removeAll { $0.id == item.id }
+        }
+        session.requestUnreadCount = requestNotifications.filter { !$0.read }.count
+        let _: UpdateCount? = try? await APIClient.shared.request(
+            "me/requests/notifications/\(item.id)", method: "DELETE", token: token
+        )
+    }
+
+    private func hideArticle(_ item: ContentItem) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.28)) {
+            _ = hiddenArticleIDs.insert(item.id)
+        }
+        UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+    }
+
+    private func linkedRequest(_ item: RequestNotification) -> EmployeeRequest? {
+        guard let id = item.requestId else { return nil }
+        return (requestStore.requests + requestStore.approvals).first { $0.id == id }
+    }
+    private func notificationIcon(_ item: RequestNotification) -> String {
+        let type = item.type
+        if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
+        if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
+        if type.contains("rejected") { return "xmark.circle.fill" }
+        if type.contains("cancelled") { return "minus.circle.fill" }
+        if type.contains("auto_approved") { return "timer.circle.fill" }
+        return "checkmark.seal.fill"
+    }
+    private func notificationColor(_ item: RequestNotification) -> Color {
+        let type = item.type
+        if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
+        if type == "request_pending" { return .orange }
+        if type.contains("rejected") { return AppTheme.red }
+        if type.contains("cancelled") { return .gray }
+        return .green
+    }
+}
+
+@available(iOS 17.0, *)
+struct SwipeDeleteRow<Content: View>: View {
+    let onDelete: () -> Void
+    let content: Content
+    @State private var offset: CGFloat = 0
+    @State private var isSwiping = false
+
+    init(onDelete: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+        self.onDelete = onDelete
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                LinearGradient(
+                    colors: [Color(red: 0.96, green: 0.22, blue: 0.24), Color(red: 0.67, green: 0.04, blue: 0.08)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                .frame(width: 90)
+                .overlay {
+                Button(action: performDelete) {
+                    VStack(spacing: 5) {
+                        Image(systemName: "trash.fill").font(.title3.bold())
+                        Text("Xóa").font(.caption.bold())
+                    }
+                    .foregroundStyle(.white)
+                    .frame(width: 88, height: 64)
+                }
+                .buttonStyle(.plain)
+                .scaleEffect(offset < -35 ? 1 : 0.78)
+                .opacity(offset < -10 ? 1 : 0)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+            content
+                .offset(x: offset)
+                .allowsHitTesting(!isSwiping && offset == 0)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(Rectangle())
+        .simultaneousGesture(swipeGesture, including: .all)
+    }
+
+    private var swipeGesture: some Gesture {
+        DragGesture(minimumDistance: 12, coordinateSpace: .local)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) * 1.05 else { return }
+                isSwiping = true
+                if value.translation.width > 0, offset < 0 {
+                    offset = min(0, -88 + value.translation.width)
+                } else if value.translation.width < 0 {
+                    offset = max(-260, value.translation.width)
+                }
+            }
+            .onEnded { value in
+                if value.translation.width < -165 || value.predictedEndTranslation.width < -250 {
+                    performDelete()
+                } else if value.translation.width < -36 {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = -88 }
+                } else {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) { offset = 0 }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isSwiping = false }
+                }
+            }
+    }
+
+    private func performDelete() {
+        isSwiping = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.easeIn(duration: 0.2)) { offset = -UIScreen.main.bounds.width }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) { onDelete() }
+    }
+}
+
+@available(iOS 17.0, *)
+struct RequestNotificationDetail: View {
+    let request: EmployeeRequest
+    @Environment(\.dismiss) private var dismiss
+    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
+}
+
+@available(iOS 17.0, *)
+struct NewsView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var query = ""
+
+    private var items: [ContentItem] {
+        let all = session.dashboard?.contentItems ?? []
+        guard !query.isEmpty else { return all }
+        return all.filter { $0.title.localizedCaseInsensitiveContains(query) || $0.plainBody.localizedCaseInsensitiveContains(query) }
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                LazyVStack(spacing: 14) {
+                    ForEach(items) { item in
+                        NavigationLink(destination: ArticleDetailView(item: item)) {
+                            ArticleRow(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    if items.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "newspaper").font(.largeTitle).foregroundColor(AppTheme.muted)
+                            Text("Chưa có bài viết phù hợp").foregroundColor(AppTheme.muted)
+                        }.padding(.top, 80)
+                    }
+                }
+                .padding(18)
+                .padding(.bottom, 94)
+            }
+            .hidesPortalBottomScrollEdgeEffect()
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Bài viết nội bộ")
+            .searchable(text: $query, prompt: "Tìm bài viết")
+            .refreshable { await session.refreshDashboard() }
+            .onAppear { session.markArticlesRead() }
+        }
+        .navigationViewStyle(.stack)
+    }
+}
+
+@available(iOS 17.0, *)
+struct ArticleRow: View {
+    let item: ContentItem
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack {
+                Text(item.createdAt.formatted(date: .abbreviated, time: .omitted))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppTheme.red)
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption).foregroundColor(AppTheme.muted)
+            }
+            Text(item.title).font(.headline).multilineTextAlignment(.leading)
+            Text(item.preview)
+                .font(.subheadline)
+                .foregroundColor(AppTheme.muted)
+                .lineLimit(3)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+@available(iOS 17.0, *)
+struct ArticleDetailView: View {
+    let item: ContentItem
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 18) {
+                Text(item.createdAt.formatted(date: .long, time: .shortened))
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(AppTheme.red)
+                Text(item.title)
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                Divider().overlay(Color.white.opacity(0.12))
+                ForEach(item.articleBlocks) { block in
+                    ArticleBlockView(block: block)
+                }
+            }
+            .padding(22)
+            .padding(.bottom, 90)
+        }
+        .hidesPortalBottomScrollEdgeEffect()
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+@available(iOS 17.0, *)
+struct ArticleBlockView: View {
+    let block: ArticleBlock
+
+    @ViewBuilder
+    var body: some View {
+        switch block.kind {
+        case .heading(let level):
+            VStack(alignment: .leading, spacing: 10) {
+                Text(block.text)
+                    .font(headingFont(level))
+                    .fontWeight(.bold)
+                    .foregroundColor(level <= 1 ? .white : Color(red: 0.52, green: 0.86, blue: 0.68))
+                    .frame(maxWidth: .infinity, alignment: level == 1 ? .center : .leading)
+                if level == 2 {
+                    Rectangle()
+                        .fill(Color(red: 0.18, green: 0.54, blue: 0.35))
+                        .frame(height: 2)
+                }
+            }
+            .padding(level == 1 ? 22 : 0)
+            .background(level == 1 ? Color(red: 0.08, green: 0.27, blue: 0.19) : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+        case .paragraph:
+            Text(block.text)
+                .font(.body)
+                .lineSpacing(7)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+        case .listItem:
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(Color(red: 0.18, green: 0.54, blue: 0.35))
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 8)
+                Text(block.text)
+                    .lineSpacing(6)
+                    .textSelection(.enabled)
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 6)
+
+        case .image(let url, let alt):
+            VStack(spacing: 10) {
+                if let url {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFit()
+                        case .failure:
+                            Image(systemName: "photo")
+                                .font(.largeTitle)
+                                .foregroundColor(AppTheme.muted)
+                                .frame(maxWidth: .infinity, minHeight: 140)
+                        default:
+                            ProgressView()
+                                .tint(AppTheme.red)
+                                .frame(maxWidth: .infinity, minHeight: 180)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                if !alt.isEmpty {
+                    Text(alt)
+                        .font(.caption)
+                        .foregroundColor(AppTheme.muted)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .padding(12)
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+        case .tableRow:
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(block.text.replacingOccurrences(of: "\n", with: "  |  "))
+                    .font(.system(.subheadline, design: .rounded))
+                    .textSelection(.enabled)
+                    .padding(14)
+            }
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+        case .question:
+            HStack(alignment: .top, spacing: 12) {
+                Text("Q")
+                    .font(.caption.bold())
+                    .frame(width: 28, height: 28)
+                    .background(Color(red: 0.18, green: 0.54, blue: 0.35))
+                    .clipShape(Circle())
+                Text(block.text).font(.headline)
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private func headingFont(_ level: Int) -> Font {
+        switch level {
+        case 1: return .system(size: 27, weight: .bold, design: .rounded)
+        case 2: return .system(size: 23, weight: .bold, design: .rounded)
+        default: return .system(size: 19, weight: .bold, design: .rounded)
+        }
+    }
+}
+
+@available(iOS 17.0, *)

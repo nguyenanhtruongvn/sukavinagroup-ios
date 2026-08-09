@@ -7,6 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D40000000000000000000001 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000101 /* DesignSystem.swift */; };
+		D40000000000000000000002 /* Networking.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000102 /* Networking.swift */; };
+		D40000000000000000000003 /* PortalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000103 /* PortalModels.swift */; };
+		D40000000000000000000004 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000104 /* SessionStore.swift */; };
+		D40000000000000000000005 /* AuthenticationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000105 /* AuthenticationViews.swift */; };
+		D40000000000000000000006 /* MealViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000106 /* MealViews.swift */; };
+		D40000000000000000000007 /* EmployeeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000107 /* EmployeeViews.swift */; };
+		D40000000000000000000008 /* RequestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000108 /* RequestViews.swift */; };
+		D40000000000000000000009 /* NotificationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000109 /* NotificationViews.swift */; };
+		D4000000000000000000000A /* ProfileViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000000000000000000010A /* ProfileViews.swift */; };
+		D4000000000000000000000B /* AppPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000000000000000000010B /* AppPreviews.swift */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -42,6 +53,17 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D40000000000000000000101 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		D40000000000000000000102 /* Networking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Networking.swift; sourceTree = "<group>"; };
+		D40000000000000000000103 /* PortalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalModels.swift; sourceTree = "<group>"; };
+		D40000000000000000000104 /* SessionStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionStore.swift; sourceTree = "<group>"; };
+		D40000000000000000000105 /* AuthenticationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationViews.swift; sourceTree = "<group>"; };
+		D40000000000000000000106 /* MealViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealViews.swift; sourceTree = "<group>"; };
+		D40000000000000000000107 /* EmployeeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmployeeViews.swift; sourceTree = "<group>"; };
+		D40000000000000000000108 /* RequestViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestViews.swift; sourceTree = "<group>"; };
+		D40000000000000000000109 /* NotificationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationViews.swift; sourceTree = "<group>"; };
+		D4000000000000000000010A /* ProfileViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViews.swift; sourceTree = "<group>"; };
+		D4000000000000000000010B /* AppPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreviews.swift; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -99,6 +121,17 @@
 			isa = PBXGroup;
 			children = (
 				504EC3071FED79650016851F /* AppDelegate.swift */,
+				D40000000000000000000101 /* DesignSystem.swift */,
+				D40000000000000000000102 /* Networking.swift */,
+				D40000000000000000000103 /* PortalModels.swift */,
+				D40000000000000000000104 /* SessionStore.swift */,
+				D40000000000000000000105 /* AuthenticationViews.swift */,
+				D40000000000000000000106 /* MealViews.swift */,
+				D40000000000000000000107 /* EmployeeViews.swift */,
+				D40000000000000000000108 /* RequestViews.swift */,
+				D40000000000000000000109 /* NotificationViews.swift */,
+				D4000000000000000000010A /* ProfileViews.swift */,
+				D4000000000000000000010B /* AppPreviews.swift */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
@@ -232,6 +265,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
+				D40000000000000000000001 /* DesignSystem.swift in Sources */,
+				D40000000000000000000002 /* Networking.swift in Sources */,
+				D40000000000000000000003 /* PortalModels.swift in Sources */,
+				D40000000000000000000004 /* SessionStore.swift in Sources */,
+				D40000000000000000000005 /* AuthenticationViews.swift in Sources */,
+				D40000000000000000000006 /* MealViews.swift in Sources */,
+				D40000000000000000000007 /* EmployeeViews.swift in Sources */,
+				D40000000000000000000008 /* RequestViews.swift in Sources */,
+				D40000000000000000000009 /* NotificationViews.swift in Sources */,
+				D4000000000000000000000A /* ProfileViews.swift in Sources */,
+				D4000000000000000000000B /* AppPreviews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
