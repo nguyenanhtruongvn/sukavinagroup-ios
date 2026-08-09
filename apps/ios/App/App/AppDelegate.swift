@@ -137,6 +137,17 @@ private extension View {
         }
     }
 
+    @ViewBuilder
+    func adaptivePortalTabBarBackground() -> some View {
+        if #available(iOS 26.0, *) {
+            self.toolbarBackground(.hidden, for: .tabBar)
+        } else {
+            self
+                .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+                .toolbarBackground(.visible, for: .tabBar)
+        }
+    }
+
 }
 
 private final class AttendanceScrollInsetNeutralizingView: UIView {
@@ -2280,24 +2291,24 @@ private struct EmployeePortalView: View {
     var body: some View {
         TabView {
             DashboardView()
-                .toolbarBackground(.hidden, for: .tabBar)
+                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
             TodayMenuView()
-                .toolbarBackground(.hidden, for: .tabBar)
+                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
             RequestsView()
-                .toolbarBackground(.hidden, for: .tabBar)
+                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             NotificationsView()
-                .toolbarBackground(.hidden, for: .tabBar)
+                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount + session.requestUnreadCount)
             ProfileView()
-                .toolbarBackground(.hidden, for: .tabBar)
+                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
         }
         .accentColor(AppTheme.red)
-        .toolbarBackground(.hidden, for: .tabBar)
+        .adaptivePortalTabBarBackground()
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task {
@@ -2695,7 +2706,7 @@ private struct AttendanceHistoryView: View {
         }
         .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
-        .toolbarBackground(.hidden, for: .tabBar)
+        .adaptivePortalTabBarBackground()
         .navigationTitle("Bảng chấm công")
         .task(id: selectedMonth) { await loadHistory() }
     }
@@ -2828,7 +2839,7 @@ private struct ModernAttendanceHistoryView: View {
         .ignoresSafeArea(.container, edges: .bottom)
         .navigationTitle("Bảng chấm công")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .tabBar)
+        .adaptivePortalTabBarBackground()
         .onChange(of: monthIndex) { _, newIndex in
             guard options.indices.contains(newIndex) else { return }
             selectedMonth = options[newIndex]
