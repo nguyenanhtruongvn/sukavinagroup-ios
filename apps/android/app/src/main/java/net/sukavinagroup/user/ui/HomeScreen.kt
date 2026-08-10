@@ -153,13 +153,14 @@ import com.google.zxing.common.BitMatrix
             Text(label, color = SukavinaMuted)
         }
     }
-    if (onClick == null) Card(modifier = modifier, content = content)
-    else Card(onClick = onClick, modifier = modifier, content = content)
+    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    if (onClick == null) Card(modifier = modifier, colors = colors, content = content)
+    else Card(onClick = onClick, modifier = modifier, colors = colors, content = content)
 }
 
 @Composable fun AttendanceTodayCard(dashboard: Dashboard?, onClick: () -> Unit) {
     val records = dashboard?.attendanceRecords.orEmpty()
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(20.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Schedule, null, tint = SukavinaRed); Spacer(Modifier.width(10.dp))

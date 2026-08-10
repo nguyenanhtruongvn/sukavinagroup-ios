@@ -24,7 +24,7 @@ val SukavinaRed = Color(0xFFE92A31)
 // light #E7E9ED, dark #121215.
 val SukavinaLightBackground = Color(0xFFE7E9ED)
 val SukavinaInk = Color(0xFF121215)
-val SukavinaCard = Color(0xFF202027)
+val SukavinaCard = Color(0xFF1F1F26)
 val SukavinaMuted = Color(0xFFAAA7AD)
 val LocalSukavinaExpressive = staticCompositionLocalOf { false }
 
