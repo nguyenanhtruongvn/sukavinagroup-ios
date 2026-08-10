@@ -149,7 +149,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
             FloatingActionButton(
                 onClick = { composing = true },
                 modifier = Modifier
-                    .padding(end = 20.dp, bottom = 104.dp)
+                    .padding(bottom = 104.dp)
                     .size(58.dp),
                 shape = CircleShape,
                 containerColor = SukavinaRed,
