@@ -35,6 +35,12 @@ struct NotificationsView: View {
         if #available(iOS 26.0, *) { return 20 }
         return 12
     }
+    private var notificationRowInsets: EdgeInsets {
+        if #available(iOS 26.0, *) {
+            return EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16)
+        }
+        return EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0)
+    }
     var body: some View {
         NavigationStack {
             List {
@@ -95,7 +101,7 @@ struct NotificationsView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowInsets(notificationRowInsets)
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         let isUnread = index < session.unreadCount
@@ -143,7 +149,7 @@ struct NotificationsView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowInsets(notificationRowInsets)
                     }
                     if items.isEmpty && requestNotifications.isEmpty {
                         ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
