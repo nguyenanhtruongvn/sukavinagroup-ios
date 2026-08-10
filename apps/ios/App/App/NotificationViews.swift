@@ -33,13 +33,13 @@ struct NotificationsView: View {
     private var totalUnread: Int { session.unreadCount + requestNotifications.filter { !$0.read }.count }
     private var notificationCornerRadius: CGFloat {
         if #available(iOS 26.0, *) { return 20 }
-        return 12
+        return 0
     }
     private var notificationRowInsets: EdgeInsets {
         if #available(iOS 26.0, *) {
             return EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16)
         }
-        return EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 0)
+        return EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
     }
     var body: some View {
         NavigationStack {
