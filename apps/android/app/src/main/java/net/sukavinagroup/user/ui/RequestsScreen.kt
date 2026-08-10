@@ -146,14 +146,21 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            FloatingActionButton(
                 onClick = { composing = true },
-                modifier = Modifier.padding(bottom = 104.dp),
+                modifier = Modifier
+                    .padding(end = 20.dp, bottom = 104.dp)
+                    .size(58.dp),
+                shape = CircleShape,
                 containerColor = SukavinaRed,
                 contentColor = Color.White,
-                icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Tạo đơn mới", fontWeight = FontWeight.Bold) },
-            )
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Tạo đơn mới",
+                    modifier = Modifier.size(24.dp),
+                )
+            }
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
