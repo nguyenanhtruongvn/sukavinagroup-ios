@@ -42,8 +42,7 @@ struct NotificationsView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     ForEach(requestNotifications) { item in
-                        SwipeDeleteRow(onDelete: { Task { await deleteNotification(item) } }) {
-                          Button { Task { await open(item) } } label: {
+                        Button { Task { await open(item) } } label: {
                           HStack(alignment: .top, spacing: 14) {
                             Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 6) {
@@ -82,6 +81,13 @@ struct NotificationsView: View {
                           .shadow(color: item.read ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
                           .clipShape(RoundedRectangle(cornerRadius: 20))
                         }.buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                Task { await deleteNotification(item) }
+                            } label: {
+                                Image(systemName: "trash.fill")
+                                    .accessibilityLabel("Xóa")
+                            }
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -89,8 +95,7 @@ struct NotificationsView: View {
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         let isUnread = index < session.unreadCount
-                        SwipeDeleteRow(onDelete: { hideArticle(item) }) {
-                          NavigationLink(destination: ArticleDetailView(item: item)) {
+                        NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 6) {
@@ -124,6 +129,13 @@ struct NotificationsView: View {
                             .shadow(color: isUnread ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
                             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                hideArticle(item)
+                            } label: {
+                                Image(systemName: "trash.fill")
+                                    .accessibilityLabel("Xóa")
+                            }
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
