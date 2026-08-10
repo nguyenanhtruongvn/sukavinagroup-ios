@@ -75,21 +75,14 @@ struct NotificationsView: View {
                             }
                           }
                           .padding(16)
-                          .background(
-                              LinearGradient(
-                                  colors: item.read
-                                      ? [AppTheme.card, AppTheme.card]
-                                      : [notificationColor(item).opacity(0.24), AppTheme.card],
-                                  startPoint: .topLeading,
-                                  endPoint: .bottomTrailing
-                              )
-                          )
+                          .background { requestNotificationBackground(item) }
                           .overlay {
                               RoundedRectangle(cornerRadius: 20)
                                   .stroke(item.read ? Color.clear : notificationColor(item).opacity(0.52), lineWidth: item.read ? 1 : 1.4)
                           }
                           .shadow(color: item.read || isLegacyNotificationStyle ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
                           .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
+                          .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -125,19 +118,14 @@ struct NotificationsView: View {
                                 }
                             }
                             .padding(16)
-                            .background(
-                                LinearGradient(
-                                    colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
+                            .background { articleNotificationBackground(isUnread: isUnread) }
                             .overlay {
                                 RoundedRectangle(cornerRadius: 20)
                                     .stroke(isUnread ? AppTheme.red.opacity(0.52) : Color.clear, lineWidth: isUnread ? 1.4 : 1)
                             }
                             .shadow(color: isUnread && !isLegacyNotificationStyle ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
                             .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
+                            .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -248,6 +236,36 @@ struct NotificationsView: View {
     private var isLegacyNotificationStyle: Bool {
         if #available(iOS 26.0, *) { return false }
         return true
+    }
+    @ViewBuilder
+    private func requestNotificationBackground(_ item: RequestNotification) -> some View {
+        if isLegacyNotificationStyle {
+            Color.white
+        } else {
+            LinearGradient(
+                colors: item.read ? [AppTheme.card, AppTheme.card] : [notificationColor(item).opacity(0.24), AppTheme.card],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+    @ViewBuilder
+    private func articleNotificationBackground(isUnread: Bool) -> some View {
+        if isLegacyNotificationStyle {
+            Color.white
+        } else {
+            LinearGradient(
+                colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+    @ViewBuilder
+    private var legacyNotificationSeparator: some View {
+        if isLegacyNotificationStyle {
+            Rectangle().fill(Color.gray.opacity(0.28)).frame(height: 1)
+        }
     }
 }
 
