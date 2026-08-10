@@ -44,14 +44,12 @@ struct NotificationsView: View {
     var body: some View {
         NavigationStack {
             List {
-                    if isLegacyNotificationStyle {
-                        Text("Thông báo")
-                            .font(.largeTitle.bold())
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 2, trailing: 16))
-                    }
+                    Text("Thông báo")
+                        .font(.largeTitle.bold())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 2, trailing: 16))
                     HStack {
                         Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
@@ -163,9 +161,7 @@ struct NotificationsView: View {
             .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
-            .toolbarBackground(notificationPageBackground, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(isLegacyNotificationStyle ? .hidden : .visible, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
                 .onAppear { Task { await loadRequestNotifications() } }
