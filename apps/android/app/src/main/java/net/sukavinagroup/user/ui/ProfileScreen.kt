@@ -186,7 +186,7 @@ import com.google.zxing.common.BitMatrix
             colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
         ) { Icon(Icons.AutoMirrored.Filled.Logout, null, tint = SukavinaRed); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
         OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = appShape(18.dp, AppShapeRole.LARGE), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Icon(Icons.Default.Key, null, tint = SukavinaRed); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
-        if (profile?.protected != true && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
+        if ((profile?.employeeCode == "DEMO" || profile?.protected != true) && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
     }
     if (deleteOpen) SukavinaAlert(
         title = "Xóa tài khoản vĩnh viễn?",
@@ -263,7 +263,7 @@ private fun ProfileSectionTitle(title: String) {
                 LegalSection("Bảo vệ tài khoản", "Không gửi mật khẩu hoặc mã OTP cho bất kỳ ai, kể cả khi yêu cầu hỗ trợ.")
                 LegalSection("Xóa tài khoản", "Bạn có thể gửi yêu cầu trong tab Tài khoản. Nếu không thể đăng nhập, hãy gửi yêu cầu từ email đã liên kết tới group@sukavina.com.")
             } else {
-                LegalSection("Xóa trong ứng dụng", "Quay lại tab Tài khoản, chọn “Yêu cầu xóa tài khoản” ở cuối trang, nhập mật khẩu và xác nhận.")
+                LegalSection("Xóa trong ứng dụng", "Quay lại tab Tài khoản, chọn “Yêu cầu xóa tài khoản” ở cuối trang, đọc cảnh báo rủi ro và xác nhận.")
                 LegalSection("Không thể đăng nhập", "Gửi yêu cầu từ email đã liên kết tới group@sukavina.com. Hãy cung cấp họ tên và mã nhân viên, không gửi mật khẩu hoặc mã OTP.")
                 LegalSection("Dữ liệu được xử lý", "Tài khoản ứng dụng và dữ liệu không còn cần thiết sẽ bị xóa. Hồ sơ lao động, chấm công hoặc dữ liệu bắt buộc có thể được giữ theo chính sách Công ty và quy định áp dụng.")
                 LegalSection("Lưu ý", "Xóa tài khoản là thao tác không thể hoàn tác. Hãy liên hệ Nhân sự nếu bạn chỉ cần sửa thông tin hồ sơ.")
