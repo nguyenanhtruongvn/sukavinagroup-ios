@@ -225,7 +225,7 @@ struct NotificationsView: View {
     }
 }
 
-@available(iOS 14.0, *)
+@available(iOS 17.0, *)
 struct SwipeDeleteRow<Content: View>: View {
     let onDelete: () -> Void
     let content: Content
