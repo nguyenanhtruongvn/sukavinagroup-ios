@@ -39,15 +39,17 @@ private val sukavinaShapes = Shapes(
 private val darkColors = darkColorScheme(
     primary = SukavinaRed, onPrimary = Color.White, background = SukavinaInk,
     onBackground = Color(0xFFF7F2EC), surface = SukavinaCard,
-    onSurface = Color(0xFFF7F2EC), secondary = Color(0xFF69C58B),
+    onSurface = Color(0xFFF7F2EC), surfaceVariant = Color.White.copy(alpha = .055f),
+    primaryContainer = SukavinaCard, onPrimaryContainer = Color(0xFFF7F2EC),
+    onSurfaceVariant = Color(0xFFA8A5AD), secondary = Color(0xFF69C58B),
 )
 
 private val lightColors = lightColorScheme(
-    primary = Color(0xFFC6252A), onPrimary = Color.White,
+    primary = SukavinaRed, onPrimary = Color.White,
     background = SukavinaLightBackground, onBackground = Color(0xFF1F2733),
     surface = Color.White, onSurface = Color(0xFF1F2733),
-    surfaceVariant = SukavinaLightBackground, onSurfaceVariant = Color(0xFF5E6672),
-    primaryContainer = Color(0xFFFFDAD7), onPrimaryContainer = Color(0xFF410006),
+    surfaceVariant = Color.White, onSurfaceVariant = Color(0xFF5C595F),
+    primaryContainer = Color.White, onPrimaryContainer = Color(0xFF1F2733),
     secondary = Color(0xFF287A4B), outline = Color(0xFF8E949E),
 )
 
