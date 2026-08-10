@@ -224,8 +224,8 @@ fun SwipeDeleteItem(
                     Surface(
                         onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },
                         shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
-                        modifier = Modifier.background(Brush.linearGradient(listOf(if (item.read) Color.Transparent else tone.copy(alpha = .24f), MaterialTheme.colorScheme.surface)), appShape(20.dp, AppShapeRole.EXTRA_LARGE)),
-                        color = Color.Transparent,
+                        modifier = Modifier.background(Brush.linearGradient(listOf(if (item.read) Color.Transparent else tone.copy(alpha = .24f), if (item.read) Color(0xFFF2F2F7) else MaterialTheme.colorScheme.surface)), appShape(20.dp, AppShapeRole.EXTRA_LARGE)),
+                        color = if (item.read) Color(0xFFF2F2F7) else Color.Transparent,
                         border = androidx.compose.foundation.BorderStroke(if (item.read) 1.dp else 1.4.dp, if (item.read) Color.Transparent else tone.copy(alpha = .52f)),
                         shadowElevation = if (item.read) 0.dp else 6.dp,
                     ) {
@@ -243,8 +243,8 @@ fun SwipeDeleteItem(
                     Surface(
                         onClick = { session.markArticlesRead(); openArticle(item) },
                         shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
-                        modifier = Modifier.background(Brush.linearGradient(listOf(if (isUnread) SukavinaRed.copy(alpha = .24f) else Color.Transparent, MaterialTheme.colorScheme.surface)), appShape(20.dp, AppShapeRole.EXTRA_LARGE)),
-                        color = Color.Transparent,
+                        modifier = Modifier.background(Brush.linearGradient(listOf(if (isUnread) SukavinaRed.copy(alpha = .24f) else Color.Transparent, if (isUnread) MaterialTheme.colorScheme.surface else Color(0xFFF2F2F7))), appShape(20.dp, AppShapeRole.EXTRA_LARGE)),
+                        color = if (isUnread) Color.Transparent else Color(0xFFF2F2F7),
                         border = androidx.compose.foundation.BorderStroke(if (isUnread) 1.4.dp else 1.dp, if (isUnread) SukavinaRed.copy(alpha = .52f) else Color.Transparent),
                         shadowElevation = if (isUnread) 6.dp else 0.dp,
                     ) { Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }; if (isUnread) Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .18f)) { Text("Mới", color = SukavinaRed, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) } } }
