@@ -124,6 +124,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     state: SessionUiState,
     session: SessionViewModel,
     initialFilter: String = "all",
+    openComposerSignal: Int = 0,
 ) {
     var filter by rememberSaveable(initialFilter) { mutableStateOf(initialFilter) }
     var composing by remember { mutableStateOf(false) }
@@ -140,28 +141,14 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
         val targetPage = filterOptions.indexOfFirst { it.first == initialFilter }.coerceAtLeast(0)
         if (pagerState.currentPage != targetPage) pagerState.scrollToPage(targetPage)
     }
+    LaunchedEffect(openComposerSignal) {
+        if (openComposerSignal > 0) composing = true
+    }
     LaunchedEffect(pagerState.currentPage) {
         filter = filterOptions[pagerState.currentPage].first
     }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { composing = true },
-                modifier = Modifier
-                    .padding(bottom = 104.dp)
-                    .size(58.dp),
-                shape = CircleShape,
-                containerColor = SukavinaRed,
-                contentColor = Color.White,
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = "Tạo đơn mới",
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             Text("Đơn từ", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(18.dp, 20.dp, 18.dp, 10.dp))

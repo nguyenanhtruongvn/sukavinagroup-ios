@@ -114,6 +114,7 @@ import com.google.zxing.common.BitMatrix
     var article by remember { mutableStateOf<ContentItem?>(null) }
     var attendanceOpen by remember { mutableStateOf(false) }
     var demoScannerOpen by rememberSaveable { mutableStateOf(false) }
+    var requestComposerSignal by rememberSaveable { mutableIntStateOf(0) }
     var requestInitialFilter by rememberSaveable { mutableStateOf("all") }
     BackHandler(article != null || attendanceOpen) { article = null; attendanceOpen = false }
 
@@ -129,9 +130,9 @@ import com.google.zxing.common.BitMatrix
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .height(78.dp),
-            shape = appShape(30.dp, AppShapeRole.EXTRA_LARGE),
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .height(70.dp),
+            shape = appShape(26.dp, AppShapeRole.EXTRA_LARGE),
             color = glassColor,
             contentColor = MaterialTheme.colorScheme.onSurface,
             tonalElevation = 8.dp,
@@ -188,7 +189,7 @@ import com.google.zxing.common.BitMatrix
                         label = {
                             Text(
                                 item.label,
-                                fontSize = 11.sp,
+                                fontSize = 10.sp,
                                 fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                 maxLines = 1,
                             )
@@ -198,15 +199,18 @@ import com.google.zxing.common.BitMatrix
             }
         }
     }, floatingActionButton = {
-        if (state.profile?.employeeCode == "DEMO" && tab == MainTab.MENU) {
+        if (tab == MainTab.REQUESTS || (state.profile?.employeeCode == "DEMO" && tab == MainTab.MENU)) {
             FloatingActionButton(
-                onClick = { demoScannerOpen = true },
+                onClick = { if (tab == MainTab.REQUESTS) requestComposerSignal++ else demoScannerOpen = true },
                 shape = CircleShape,
-                containerColor = Color(0xFF42B878),
+                containerColor = if (tab == MainTab.REQUESTS) SukavinaRed else Color(0xFF42B878),
                 contentColor = Color.White,
                 modifier = Modifier.size(58.dp),
             ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = "Quét mã QR")
+                Icon(
+                    if (tab == MainTab.REQUESTS) Icons.Default.Add else Icons.Default.QrCodeScanner,
+                    contentDescription = if (tab == MainTab.REQUESTS) "Tạo đơn mới" else "Quét mã QR",
+                )
             }
         }
     }) { padding ->
