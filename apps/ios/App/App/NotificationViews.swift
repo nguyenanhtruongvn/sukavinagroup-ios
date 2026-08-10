@@ -31,6 +31,10 @@ struct NotificationsView: View {
     @State private var hiddenArticleIDs = Set<String>()
     private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
     private var totalUnread: Int { session.unreadCount + requestNotifications.filter { !$0.read }.count }
+    private var notificationCornerRadius: CGFloat {
+        if #available(iOS 26.0, *) { return 20 }
+        return 12
+    }
     var body: some View {
         NavigationStack {
             List {
@@ -78,8 +82,8 @@ struct NotificationsView: View {
                               RoundedRectangle(cornerRadius: 20)
                                   .stroke(item.read ? Color.clear : notificationColor(item).opacity(0.52), lineWidth: item.read ? 1 : 1.4)
                           }
-                          .shadow(color: item.read ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
-                          .clipShape(RoundedRectangle(cornerRadius: 20))
+                          .shadow(color: item.read || isLegacyNotificationStyle ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
+                          .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
                         }.buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -126,8 +130,8 @@ struct NotificationsView: View {
                                 RoundedRectangle(cornerRadius: 20)
                                     .stroke(isUnread ? AppTheme.red.opacity(0.52) : Color.clear, lineWidth: isUnread ? 1.4 : 1)
                             }
-                            .shadow(color: isUnread ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
-                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .shadow(color: isUnread && !isLegacyNotificationStyle ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
+                            .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -234,6 +238,10 @@ struct NotificationsView: View {
         if type.contains("rejected") { return AppTheme.red }
         if type.contains("cancelled") { return .gray }
         return .green
+    }
+    private var isLegacyNotificationStyle: Bool {
+        if #available(iOS 26.0, *) { return false }
+        return true
     }
 }
 
