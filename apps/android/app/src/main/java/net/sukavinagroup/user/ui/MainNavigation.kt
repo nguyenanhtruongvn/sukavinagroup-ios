@@ -114,7 +114,7 @@ import com.google.zxing.common.BitMatrix
     var article by remember { mutableStateOf<ContentItem?>(null) }
     var attendanceOpen by remember { mutableStateOf(false) }
     var demoScannerOpen by rememberSaveable { mutableStateOf(false) }
-    var requestComposerSignal by rememberSaveable { mutableIntStateOf(0) }
+    var requestComposerOpen by rememberSaveable { mutableStateOf(false) }
     var requestInitialFilter by rememberSaveable { mutableStateOf("all") }
     BackHandler(article != null || attendanceOpen) { article = null; attendanceOpen = false }
 
@@ -201,7 +201,7 @@ import com.google.zxing.common.BitMatrix
     }, floatingActionButton = {
         if (tab == MainTab.REQUESTS || (state.profile?.employeeCode == "DEMO" && tab == MainTab.MENU)) {
             FloatingActionButton(
-                onClick = { if (tab == MainTab.REQUESTS) requestComposerSignal++ else demoScannerOpen = true },
+                onClick = { if (tab == MainTab.REQUESTS) requestComposerOpen = true else demoScannerOpen = true },
                 shape = CircleShape,
                 containerColor = if (tab == MainTab.REQUESTS) SukavinaRed else Color(0xFF42B878),
                 contentColor = Color.White,
@@ -261,6 +261,13 @@ import com.google.zxing.common.BitMatrix
                 }
             }
         }
+        }
+        if (requestComposerOpen) {
+            RequestComposer(state.working, { requestComposerOpen = false }) { kind, from, to, reason ->
+                session.createRequest(kind, from, to, reason) { success ->
+                    if (success) requestComposerOpen = false
+                }
+            }
         }
     }
 }

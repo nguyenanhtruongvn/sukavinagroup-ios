@@ -124,10 +124,8 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     state: SessionUiState,
     session: SessionViewModel,
     initialFilter: String = "all",
-    openComposerSignal: Int = 0,
 ) {
     var filter by rememberSaveable(initialFilter) { mutableStateOf(initialFilter) }
-    var composing by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf<EmployeeRequest?>(null) }
     var cancelling by remember { mutableStateOf<EmployeeRequest?>(null) }
     var refreshing by remember { mutableStateOf(false) }
@@ -140,9 +138,6 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     LaunchedEffect(initialFilter) {
         val targetPage = filterOptions.indexOfFirst { it.first == initialFilter }.coerceAtLeast(0)
         if (pagerState.currentPage != targetPage) pagerState.scrollToPage(targetPage)
-    }
-    LaunchedEffect(openComposerSignal) {
-        if (openComposerSignal > 0) composing = true
     }
     LaunchedEffect(pagerState.currentPage) {
         filter = filterOptions[pagerState.currentPage].first
@@ -193,7 +188,6 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
             }
         }
     }
-    if (composing) RequestComposer(state.working, { composing = false }) { kind, from, to, reason -> session.createRequest(kind, from, to, reason) { if (it) composing = false } }
     reviewing?.let { request -> RequestDecisionDialog(request, state.working, { reviewing = null }) { approved, note -> session.decideRequest(request.id, approved, note) { if (it) reviewing = null } } }
     cancelling?.let { request ->
         SukavinaAlert(
