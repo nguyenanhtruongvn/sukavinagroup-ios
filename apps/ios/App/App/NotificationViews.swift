@@ -163,6 +163,7 @@ struct NotificationsView: View {
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
             .toolbarBackground(notificationPageBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(isLegacyNotificationStyle ? .hidden : .visible, for: .navigationBar)
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
                 .onAppear { Task { await loadRequestNotifications() } }
@@ -267,7 +268,7 @@ struct NotificationsView: View {
     @ViewBuilder
     private var legacyNotificationSeparator: some View {
         if isLegacyNotificationStyle {
-            Rectangle().fill(Color.gray.opacity(0.28)).frame(height: 1)
+            Rectangle().fill(Color.gray.opacity(0.24)).frame(height: 0.5)
         }
     }
 }
