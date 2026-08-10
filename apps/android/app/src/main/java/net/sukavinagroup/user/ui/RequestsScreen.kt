@@ -120,8 +120,12 @@ val requestKinds = listOf(
 fun requestKind(key: String) = requestKinds.firstOrNull { it.key == key } ?: requestKinds.first()
 fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt" to Color(0xFFFFB34F); "approved" -> "Đã duyệt" to Color(0xFF55D881); "rejected" -> "Từ chối" to Color(0xFFFF6F67); else -> "Đã hủy" to Color(0xFFAAB1BD) }
 
-@Composable fun RequestsScreen(state: SessionUiState, session: SessionViewModel) {
-    var filter by rememberSaveable { mutableStateOf("all") }
+@Composable fun RequestsScreen(
+    state: SessionUiState,
+    session: SessionViewModel,
+    initialFilter: String = "all",
+) {
+    var filter by rememberSaveable(initialFilter) { mutableStateOf(initialFilter) }
     var composing by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf<EmployeeRequest?>(null) }
     var cancelling by remember { mutableStateOf<EmployeeRequest?>(null) }
@@ -132,6 +136,10 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     val pagerState = rememberPagerState(initialPage = filterIndex, pageCount = { filterOptions.size })
     val approvalIds = state.approvals.map { it.id }.toSet()
     val merged = (state.approvals + state.requests).distinctBy { it.id }.sortedByDescending { it.createdAt }
+    LaunchedEffect(initialFilter) {
+        val targetPage = filterOptions.indexOfFirst { it.first == initialFilter }.coerceAtLeast(0)
+        if (pagerState.currentPage != targetPage) pagerState.scrollToPage(targetPage)
+    }
     LaunchedEffect(pagerState.currentPage) {
         filter = filterOptions[pagerState.currentPage].first
     }
@@ -179,7 +187,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp),
-                        verticalArrangement = Arrangement.Top,
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(visible, key = { it.id }) { request ->
                             RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,

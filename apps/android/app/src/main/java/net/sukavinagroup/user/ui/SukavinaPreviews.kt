@@ -133,6 +133,6 @@ import com.google.zxing.common.BitMatrix
                 ),
             ),
         ),
-        openAttendance = {}, openArticle = {},
+        openAttendance = {}, openPendingRequests = {}, openArticle = {},
     )
 }

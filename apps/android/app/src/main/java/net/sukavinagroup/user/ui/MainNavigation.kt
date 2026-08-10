@@ -114,6 +114,7 @@ import com.google.zxing.common.BitMatrix
     var article by remember { mutableStateOf<ContentItem?>(null) }
     var attendanceOpen by remember { mutableStateOf(false) }
     var demoScannerOpen by rememberSaveable { mutableStateOf(false) }
+    var requestInitialFilter by rememberSaveable { mutableStateOf("all") }
     BackHandler(article != null || attendanceOpen) { article = null; attendanceOpen = false }
 
     val haptics = LocalHapticFeedback.current
@@ -240,9 +241,17 @@ import com.google.zxing.common.BitMatrix
                 attendanceOpen -> AttendanceScreen(session) { attendanceOpen = false }
                 selectedArticle != null -> ArticleDetail(selectedArticle) { article = null }
                 else -> when (activeTab) {
-                    MainTab.HOME -> HomeScreen(state, { attendanceOpen = true }, { article = it })
+                    MainTab.HOME -> HomeScreen(
+                        state = state,
+                        openAttendance = { attendanceOpen = true },
+                        openPendingRequests = {
+                            requestInitialFilter = "pending"
+                            tab = MainTab.REQUESTS
+                        },
+                        openArticle = { article = it },
+                    )
                     MainTab.MENU -> TodayMenuScreen(state, session)
-                    MainTab.REQUESTS -> RequestsScreen(state, session)
+                    MainTab.REQUESTS -> RequestsScreen(state, session, requestInitialFilter)
                     MainTab.NOTIFICATIONS -> NotificationsScreen(state, session) { article = it }
                     MainTab.PROFILE -> ProfileScreen(state, session)
                 }

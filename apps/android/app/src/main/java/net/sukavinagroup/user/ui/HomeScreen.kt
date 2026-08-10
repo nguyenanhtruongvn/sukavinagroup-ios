@@ -109,7 +109,12 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
 
-@Composable fun HomeScreen(state: SessionUiState, openAttendance: () -> Unit, openArticle: (ContentItem) -> Unit) {
+@Composable fun HomeScreen(
+    state: SessionUiState,
+    openAttendance: () -> Unit,
+    openPendingRequests: () -> Unit,
+    openArticle: (ContentItem) -> Unit,
+) {
     val dashboard = state.dashboard
     LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         item {
@@ -120,15 +125,36 @@ import com.google.zxing.common.BitMatrix
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 MetricCard("${dashboard?.remainingLeaveDays ?: 0}", "Ngày phép", Icons.Default.EventAvailable, Modifier.weight(1f))
-                MetricCard(state.requests.count { it.status == "pending" }.toString(), "Đơn đang chờ", Icons.Default.Description, Modifier.weight(1f))
+                MetricCard(
+                    state.requests.count { it.status == "pending" }.toString(),
+                    "Đơn đang chờ",
+                    Icons.Default.Description,
+                    Modifier.weight(1f),
+                    onClick = openPendingRequests,
+                )
             }
         }
         item { AttendanceTodayCard(dashboard, openAttendance) }
     }
 }
 
-@Composable fun MetricCard(value: String, label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier) {
-    Card(modifier) { Column(Modifier.padding(18.dp)) { Icon(icon, null, tint = SukavinaRed); Spacer(Modifier.height(16.dp)); Text(value, fontSize = 25.sp, fontWeight = FontWeight.Bold); Text(label, color = SukavinaMuted) } }
+@Composable fun MetricCard(
+    value: String,
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier,
+    onClick: (() -> Unit)? = null,
+) {
+    val content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {
+        Column(Modifier.padding(18.dp)) {
+            Icon(icon, null, tint = SukavinaRed)
+            Spacer(Modifier.height(16.dp))
+            Text(value, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = SukavinaMuted)
+        }
+    }
+    if (onClick == null) Card(modifier = modifier, content = content)
+    else Card(onClick = onClick, modifier = modifier, content = content)
 }
 
 @Composable fun AttendanceTodayCard(dashboard: Dashboard?, onClick: () -> Unit) {
