@@ -78,7 +78,7 @@ struct NotificationsView: View {
                           .background { requestNotificationBackground(item) }
                           .overlay {
                               RoundedRectangle(cornerRadius: 20)
-                                  .stroke(Color.clear, lineWidth: 0)
+                                  .stroke(isLegacyNotificationStyle ? Color.clear : notificationColor(item).opacity(0.52), lineWidth: isLegacyNotificationStyle ? 0 : (item.read ? 1 : 1.4))
                           }
                           .shadow(color: item.read || isLegacyNotificationStyle ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
                           .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
@@ -121,7 +121,7 @@ struct NotificationsView: View {
                             .background { articleNotificationBackground(isUnread: isUnread) }
                             .overlay {
                                 RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Color.clear, lineWidth: 0)
+                                    .stroke(isLegacyNotificationStyle ? Color.clear : AppTheme.red.opacity(0.52), lineWidth: isLegacyNotificationStyle ? 0 : (isUnread ? 1.4 : 1))
                             }
                             .shadow(color: isUnread && !isLegacyNotificationStyle ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
                             .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
@@ -154,7 +154,9 @@ struct NotificationsView: View {
             .listStyle(.plain)
             .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)
-            .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Thông báo")
+            .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("Thông báo")
+            .toolbarBackground(notificationPageBackground, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
                 .onAppear { Task { await loadRequestNotifications() } }
@@ -237,29 +239,24 @@ struct NotificationsView: View {
         if #available(iOS 26.0, *) { return false }
         return true
     }
+    private var notificationPageBackground: Color {
+        isLegacyNotificationStyle ? .white : AppTheme.ink
+    }
     @ViewBuilder
     private func requestNotificationBackground(_ item: RequestNotification) -> some View {
-        if isLegacyNotificationStyle {
-            Color.white
-        } else {
-            LinearGradient(
-                colors: item.read ? [AppTheme.card, AppTheme.card] : [notificationColor(item).opacity(0.24), AppTheme.card],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        LinearGradient(
+            colors: item.read ? [AppTheme.card, AppTheme.card] : [notificationColor(item).opacity(0.24), AppTheme.card],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
     @ViewBuilder
     private func articleNotificationBackground(isUnread: Bool) -> some View {
-        if isLegacyNotificationStyle {
-            Color.white
-        } else {
-            LinearGradient(
-                colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        LinearGradient(
+            colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
     @ViewBuilder
     private var legacyNotificationSeparator: some View {
