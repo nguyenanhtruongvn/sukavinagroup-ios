@@ -225,13 +225,12 @@ fun SwipeDeleteItem(
                     Surface(
                         onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },
                         shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
-                        modifier = Modifier.background(Brush.linearGradient(listOf(if (item.read) Color.Transparent else tone.copy(alpha = .12f), if (item.read) Color(0xFFF2F2F7) else MaterialTheme.colorScheme.surface)), appShape(20.dp, AppShapeRole.EXTRA_LARGE)),
-                        color = if (item.read) Color(0xFFF2F2F7) else Color.Transparent,
+                        color = if (item.read) Color(0xFFF2F2F7) else MaterialTheme.colorScheme.surface,
                         tonalElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(if (item.read) 1.dp else 1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .36f)),
                         shadowElevation = if (item.read) 0.dp else 4.dp,
-                    ) {
-                        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) {
+                        ) {
+                        Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(if (item.read) Color.Transparent else tone.copy(alpha = .12f), Color.Transparent))).padding(15.dp), verticalAlignment = Alignment.Top) {
                             Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
                             Column(Modifier.padding(horizontal = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(item.title, fontWeight = FontWeight.Bold); kind?.let { Text(it.title, color = it.color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }; Text(item.message, color = SukavinaMuted, fontSize = 13.sp); Text(item.createdAt.toDateTimeLabel(), color = tone, fontSize = 11.sp) }
                             if (!item.read) Surface(shape = CircleShape, color = tone.copy(alpha = .18f)) { Text("Mới", color = tone, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) }
@@ -245,12 +244,11 @@ fun SwipeDeleteItem(
                     Surface(
                         onClick = { session.markArticlesRead(); openArticle(item) },
                         shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
-                        modifier = Modifier.background(Brush.linearGradient(listOf(if (isUnread) SukavinaRed.copy(alpha = .12f) else Color.Transparent, if (isUnread) MaterialTheme.colorScheme.surface else Color(0xFFF2F2F7))), appShape(20.dp, AppShapeRole.EXTRA_LARGE)),
-                        color = if (isUnread) Color.Transparent else Color(0xFFF2F2F7),
+                        color = if (isUnread) MaterialTheme.colorScheme.surface else Color(0xFFF2F2F7),
                         tonalElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(if (isUnread) 1.dp else 1.dp, if (isUnread) SukavinaRed.copy(alpha = .36f) else Color.Transparent),
                         shadowElevation = if (isUnread) 4.dp else 0.dp,
-                    ) { Row(Modifier.padding(15.dp), verticalAlignment = Alignment.Top) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }; if (isUnread) Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .18f)) { Text("Mới", color = SukavinaRed, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) } } }
+                    ) { Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(if (isUnread) SukavinaRed.copy(alpha = .12f) else Color.Transparent, Color.Transparent))).padding(15.dp), verticalAlignment = Alignment.Top) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }; if (isUnread) Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .18f)) { Text("Mới", color = SukavinaRed, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) } } }
                 }
             }
             if (state.requestNotifications.isEmpty() && visibleArticles.isEmpty()) item { Text("Chưa có thông báo.", color = SukavinaMuted, modifier = Modifier.padding(top = 50.dp)) }
