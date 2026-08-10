@@ -308,7 +308,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = appShape(17.dp, AppShapeRole.LARGE),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .48f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(Modifier.padding(13.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text(label.uppercase(), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)

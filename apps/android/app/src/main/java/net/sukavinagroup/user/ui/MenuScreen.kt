@@ -137,7 +137,7 @@ import com.google.zxing.common.BitMatrix
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(13.dp)) {
                     Text(if (cancelling) "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." else if (receiving) "Xác nhận sau khi bạn đã nhận đúng phần ăn đã đặt." else "Kiểm tra món trước khi xác nhận đặt.", color = SukavinaMuted)
-                    if (!cancelling && !receiving) Surface(shape = appShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                    if (!cancelling && !receiving) Surface(shape = appShape(14.dp), color = MaterialTheme.colorScheme.surface) {
                         Column(Modifier.fillMaxWidth().padding(14.dp)) {
                             Text(title.uppercase(), color = SukavinaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = .8.sp)
                             Text(detail?.ifBlank { "..." } ?: "...", fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
@@ -285,7 +285,7 @@ fun createQrBitmap(value: String): Bitmap {
         onClick = onClick,
         enabled = !disabled,
         shape = appShape(17.dp, AppShapeRole.LARGE),
-        color = if (selected) color.copy(alpha = .12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .45f),
+        color = if (selected) color.copy(alpha = .12f) else MaterialTheme.colorScheme.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) color.copy(alpha = .45f) else MaterialTheme.colorScheme.outline.copy(alpha = .15f)),
     ) {
         Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {

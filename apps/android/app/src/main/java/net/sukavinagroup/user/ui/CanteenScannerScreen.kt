@@ -156,7 +156,7 @@ fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
                         fontWeight = FontWeight.ExtraBold,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     )
-                    Surface(shape = appShape(18.dp, AppShapeRole.LARGE), color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)) {
+                    Surface(shape = appShape(18.dp, AppShapeRole.LARGE), color = MaterialTheme.colorScheme.surface) {
                         Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             CanteenResultLine("Nhân viên", scan.fullName)
                             CanteenResultLine("MSNV", scan.employeeCode)
