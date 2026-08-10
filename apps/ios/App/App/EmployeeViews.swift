@@ -13,25 +13,35 @@ import WebKit
 struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
+    @State private var selectedTab = 0
+    @State private var requestInitialFilter: EmployeeRequestStatus?
 
     var body: some View {
-        TabView {
-            DashboardView()
+        TabView(selection: $selectedTab) {
+            DashboardView {
+                requestInitialFilter = .pending
+                selectedTab = 2
+            }
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
+                .tag(0)
             TodayMenuView()
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
-            RequestsView()
+                .tag(1)
+            RequestsView(initialFilter: requestInitialFilter)
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
+                .tag(2)
             NotificationsView()
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount + session.requestUnreadCount)
+                .tag(3)
             ProfileView()
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
+                .tag(4)
         }
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
@@ -304,6 +314,8 @@ struct TodayMenuView: View {
 @available(iOS 17.0, *)
 struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
+    @StateObject private var requestStore = EmployeeRequestStore()
+    let openPendingRequests: () -> Void
 
     var body: some View {
         NavigationView {
@@ -319,7 +331,19 @@ struct DashboardView: View {
                             .foregroundColor(AppTheme.red)
                     }
 
-                    MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
+                    HStack(spacing: 12) {
+                        MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
+                        Button(action: openPendingRequests) {
+                            MetricCard(
+                                value: "\(requestStore.requests.filter { $0.status == .pending }.count)",
+                                label: "Đơn đang chờ",
+                                icon: "doc.text.fill"
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel("Xem đơn từ đang chờ")
+                    }
 
                     NavigationLink(destination: ModernAttendanceHistoryView()) {
                         VStack(alignment: .leading, spacing: 12) {
@@ -348,7 +372,11 @@ struct DashboardView: View {
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("")
-            .refreshable { await session.refreshDashboard() }
+            .task { await requestStore.load(session.token) }
+            .refreshable {
+                await session.refreshDashboard()
+                await requestStore.load(session.token)
+            }
         }
         .navigationViewStyle(.stack)
     }

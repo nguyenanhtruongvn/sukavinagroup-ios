@@ -113,6 +113,7 @@ final class EmployeeRequestStore: ObservableObject {
 struct RequestsView: View {
     @EnvironmentObject private var session: SessionStore
     @StateObject private var store = EmployeeRequestStore()
+    let initialFilter: EmployeeRequestStatus?
     @State private var filter: EmployeeRequestStatus?
     @State private var composing = false
     @State private var reviewing: EmployeeRequest?
@@ -162,6 +163,9 @@ struct RequestsView: View {
                     filter = filterOptions[newIndex]
                     UISelectionFeedbackGenerator().selectionChanged()
                 }
+                .onChange(of: initialFilter, initial: true) { _, value in
+                    selectFilter(value, animated: false)
+                }
                 .ignoresSafeArea(.container, edges: .bottom)
 
                 Button { composing = true } label: {
@@ -208,17 +212,23 @@ struct RequestsView: View {
 
     private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
         Button(title) {
-            guard let index = filterOptions.firstIndex(where: { $0 == value }) else { return }
-            withAnimation(.easeInOut(duration: 0.22)) {
-                filter = value
-                filterIndex = index
-            }
+            selectFilter(value)
         }.font(.subheadline.bold()).padding(.horizontal, 14).padding(.vertical, 9)
             .background(filter == value ? AppTheme.red : AppTheme.card)
             .foregroundStyle(filter == value ? Color.white : Color.primary)
             .overlay(Capsule().stroke(filter == value ? Color.clear : Color.primary.opacity(0.12), lineWidth: 1))
             .clipShape(Capsule())
             .id(filterID(value))
+    }
+
+    private func selectFilter(_ value: EmployeeRequestStatus?, animated: Bool = true) {
+        guard let index = filterOptions.firstIndex(where: { $0 == value }) else { return }
+        let update = {
+            filter = value
+            filterIndex = index
+        }
+        if animated { withAnimation(.easeInOut(duration: 0.22), update) }
+        else { update() }
     }
 
     private func filterID(_ value: EmployeeRequestStatus?) -> String {
