@@ -82,18 +82,13 @@ struct NotificationsView: View {
                           .clipShape(RoundedRectangle(cornerRadius: 20))
                         }.buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button {
+                            Button(role: .destructive) {
                                 Task { await deleteNotification(item) }
                             } label: {
                                 Image(systemName: "trash.fill")
-                                    .font(.callout.weight(.semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(AppTheme.red)
-                                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                                     .accessibilityLabel("Xóa")
                             }
-                            .tint(.clear)
+                            .tint(AppTheme.red)
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -136,18 +131,13 @@ struct NotificationsView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button {
+                            Button(role: .destructive) {
                                 hideArticle(item)
                             } label: {
                                 Image(systemName: "trash.fill")
-                                    .font(.callout.weight(.semibold))
-                                    .foregroundColor(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(AppTheme.red)
-                                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                                     .accessibilityLabel("Xóa")
                             }
-                            .tint(.clear)
+                            .tint(AppTheme.red)
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
