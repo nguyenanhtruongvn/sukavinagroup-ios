@@ -218,7 +218,7 @@ fun SwipeDeleteItem(
         LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
             items(state.requestNotifications, key = { it.id }) { item ->
                 val request = item.requestId?.let(requests::get); val kind = request?.let { requestKind(it.kind) }
-                val tone = kind?.color ?: when { item.type.contains("rejected") -> Color(0xFFFF6F67); item.type.contains("cancelled") -> Color(0xFFAAB1BD); else -> Color(0xFF55D881) }
+                val tone = kind?.color ?: when { item.type.contains("rejected") -> SukavinaRed; item.type.contains("cancelled") -> Color(0xFF8E8E93); item.type == "request_pending" -> Color(0xFFFF9500); else -> Color(0xFF34C759) }
                 SwipeDeleteItem(onDelete = { session.deleteNotification(item.id) }) {
                     Surface(
                         onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },

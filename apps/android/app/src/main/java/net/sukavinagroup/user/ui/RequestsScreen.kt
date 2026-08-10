@@ -111,14 +111,14 @@ import com.google.zxing.common.BitMatrix
 
 data class RequestKindUi(val key: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val color: Color)
 val requestKinds = listOf(
-    RequestKindUi("leave", "Nghỉ phép", Icons.Default.EventAvailable, Color(0xFF5EA7FF)),
-    RequestKindUi("late", "Đi trễ", Icons.Default.Schedule, Color(0xFFFFB34F)),
-    RequestKindUi("early", "Về sớm", Icons.AutoMirrored.Filled.ExitToApp, Color(0xFFC49AFF)),
-    RequestKindUi("overtime", "Làm thêm giờ", Icons.Default.DarkMode, Color(0xFF8C82FF)),
-    RequestKindUi("business", "Công tác", Icons.Default.Flight, Color(0xFF55D4C1)),
+    RequestKindUi("leave", "Nghỉ phép", Icons.Default.EventAvailable, Color(0xFF007AFF)),
+    RequestKindUi("late", "Đi trễ", Icons.Default.Schedule, Color(0xFFFF9500)),
+    RequestKindUi("early", "Về sớm", Icons.AutoMirrored.Filled.ExitToApp, Color(0xFFE63885)),
+    RequestKindUi("overtime", "Làm thêm giờ", Icons.Default.DarkMode, Color(0xFF5266F5)),
+    RequestKindUi("business", "Công tác", Icons.Default.Flight, Color(0xFF008080)),
 )
 fun requestKind(key: String) = requestKinds.firstOrNull { it.key == key } ?: requestKinds.first()
-fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt" to Color(0xFFFFB34F); "approved" -> "Đã duyệt" to Color(0xFF55D881); "rejected" -> "Từ chối" to Color(0xFFFF6F67); else -> "Đã hủy" to Color(0xFFAAB1BD) }
+fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt" to Color(0xFFFF9500); "approved" -> "Đã duyệt" to Color(0xFF34C759); "rejected" -> "Từ chối" to SukavinaRed; else -> "Đã hủy" to Color(0xFF8E8E93) }
 
 @Composable fun RequestsScreen(
     state: SessionUiState,
