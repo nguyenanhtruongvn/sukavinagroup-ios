@@ -44,6 +44,12 @@ struct NotificationsView: View {
     var body: some View {
         NavigationStack {
             List {
+                    Text("Thông báo")
+                        .font(.largeTitle.bold())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 2, trailing: 16))
                     HStack {
                         Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
@@ -154,7 +160,7 @@ struct NotificationsView: View {
             .listStyle(.plain)
             .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)
-            .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("Thông báo")
+            .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
             .toolbarBackground(notificationPageBackground, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
