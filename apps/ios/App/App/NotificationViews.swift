@@ -78,7 +78,7 @@ struct NotificationsView: View {
                           .background { requestNotificationBackground(item) }
                           .overlay {
                               RoundedRectangle(cornerRadius: 20)
-                                  .stroke(item.read ? Color.clear : notificationColor(item).opacity(0.52), lineWidth: item.read ? 1 : 1.4)
+                                  .stroke(Color.clear, lineWidth: 0)
                           }
                           .shadow(color: item.read || isLegacyNotificationStyle ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
                           .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
@@ -121,7 +121,7 @@ struct NotificationsView: View {
                             .background { articleNotificationBackground(isUnread: isUnread) }
                             .overlay {
                                 RoundedRectangle(cornerRadius: 20)
-                                    .stroke(isUnread ? AppTheme.red.opacity(0.52) : Color.clear, lineWidth: isUnread ? 1.4 : 1)
+                                    .stroke(Color.clear, lineWidth: 0)
                             }
                             .shadow(color: isUnread && !isLegacyNotificationStyle ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
                             .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
