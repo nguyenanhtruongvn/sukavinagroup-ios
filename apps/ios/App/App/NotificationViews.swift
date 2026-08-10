@@ -95,7 +95,7 @@ struct NotificationsView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         let isUnread = index < session.unreadCount
@@ -143,7 +143,7 @@ struct NotificationsView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
                     }
                     if items.isEmpty && requestNotifications.isEmpty {
                         ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
