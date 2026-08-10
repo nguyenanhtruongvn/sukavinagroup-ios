@@ -142,13 +142,14 @@ fun SwipeDeleteItem(
         Modifier
             .fillMaxWidth()
             .clip(appShape(22.dp, AppShapeRole.EXTRA_LARGE))
-            .background(MaterialTheme.colorScheme.error),
+            .background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.CenterEnd,
     ) {
         Column(
             modifier = Modifier
                 .width(88.dp)
                 .fillMaxHeight()
+                .background(SukavinaRed, RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp))
                 .clickable {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     onDelete()
