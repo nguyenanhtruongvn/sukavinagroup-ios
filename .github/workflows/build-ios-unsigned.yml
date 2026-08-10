@@ -25,8 +25,11 @@ jobs:
       - name: Verify App Store toolchain
         run: |
           set -euo pipefail
-          xcodebuild -version
-          XCODE_MAJOR="$(xcodebuild -version | awk '/Xcode/ { split($2, version, "."); print version[1]; exit }')"
+          XCODE_VERSION_FILE="$(mktemp)"
+          xcodebuild -version > "$XCODE_VERSION_FILE"
+          cat "$XCODE_VERSION_FILE"
+          XCODE_MAJOR="$(awk '/^Xcode / { split($2, version, "."); print version[1] }' "$XCODE_VERSION_FILE")"
+          rm -f "$XCODE_VERSION_FILE"
           test "${XCODE_MAJOR:-0}" -ge 26
 
       - name: Select next store-compliant version
