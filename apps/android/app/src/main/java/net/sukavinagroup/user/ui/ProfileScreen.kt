@@ -119,8 +119,23 @@ import com.google.zxing.common.BitMatrix
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(22.dp).padding(bottom = 90.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(30.dp)); Surface(Modifier.size(92.dp), CircleShape, color = SukavinaRed.copy(alpha = .15f)) { Box(contentAlignment = Alignment.Center) { Text(profile?.name.initials(), color = SukavinaRed, fontSize = 26.sp, fontWeight = FontWeight.Bold) } }
-        Text(profile?.name ?: "Nhân viên", fontSize = 25.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp)); Text(profile?.employeeCode.orEmpty(), color = SukavinaMuted)
+        Spacer(Modifier.height(14.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = appShape(26.dp, AppShapeRole.EXTRA_LARGE),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(Modifier.size(88.dp), CircleShape, color = SukavinaRed.copy(alpha = .14f)) {
+                    Box(contentAlignment = Alignment.Center) { Text(profile?.name.initials(), color = SukavinaRed, fontSize = 26.sp, fontWeight = FontWeight.Bold) }
+                }
+                Text(profile?.name ?: "Nhân viên", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp))
+                Text(profile?.employeeCode.orEmpty(), color = SukavinaMuted, fontSize = 14.sp)
+                Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .10f), modifier = Modifier.padding(top = 10.dp)) {
+                    Text(profile?.role ?: "Nhân viên", color = SukavinaRed, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                }
+            }
+        }
         ProfileSectionTitle("THÔNG TIN TÀI KHOẢN")
         Card(Modifier.fillMaxWidth().padding(top = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column { ProfileLine("Vai trò", profile?.role.orEmpty()); HorizontalDivider(); ProfileLine("Loại tài khoản", profile?.accountType.accountLabel()); HorizontalDivider(); Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Fingerprint, null, tint = SukavinaRed); Text("Đăng nhập sinh trắc học", Modifier.padding(start = 10.dp).weight(1f)); Switch(state.biometricEnabled, onCheckedChange = { enabled -> if (enabled) activity?.authenticateBiometric { biometricPasswordOpen = true } else session.enableBiometric("", false) }) } } }
         ProfileSectionTitle("QUYỀN RIÊNG TƯ & HỖ TRỢ")
@@ -163,12 +178,14 @@ import com.google.zxing.common.BitMatrix
                 }
             }
         }
+        Text("BẢO MẬT", modifier = Modifier.fillMaxWidth().padding(top = 24.dp, start = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
         OutlinedButton(
             onClick = { signOutConfirmation = true },
             modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(52.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-        ) { Icon(Icons.AutoMirrored.Filled.Logout, null); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
-        OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp)) { Icon(Icons.Default.Key, null); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
+            shape = appShape(18.dp, AppShapeRole.LARGE),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
+        ) { Icon(Icons.AutoMirrored.Filled.Logout, null, tint = SukavinaRed); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
+        OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = appShape(18.dp, AppShapeRole.LARGE), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Icon(Icons.Default.Key, null, tint = SukavinaRed); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
         if (profile?.protected != true && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
     }
     if (deleteOpen) SukavinaAlert(
