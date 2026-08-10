@@ -177,7 +177,7 @@ import com.google.zxing.common.BitMatrix
             }
         }
         item {
-            Card(shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
+            Card(shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
                     if (menu?.selection != null) {
                         val water = menu.selection == "water"
@@ -231,7 +231,7 @@ import com.google.zxing.common.BitMatrix
     LaunchedEffect(issued) {
         while (issued != null && seconds > 0) { delay(1_000); seconds-- }
     }
-    Card(shape = appShape(18.dp, AppShapeRole.LARGE)) {
+    Card(shape = appShape(18.dp, AppShapeRole.LARGE), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             val activeIssue = issued?.takeIf { seconds > 0 }
             if (activeIssue != null) {
@@ -258,7 +258,7 @@ fun createQrBitmap(value: String): Bitmap {
 }
 
 @Composable fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
-    Card(modifier.fillMaxWidth().height(148.dp), shape = appShape(19.dp, AppShapeRole.LARGE), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
+    Card(modifier.fillMaxWidth().height(148.dp), shape = appShape(19.dp, AppShapeRole.LARGE), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
                 Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp))
