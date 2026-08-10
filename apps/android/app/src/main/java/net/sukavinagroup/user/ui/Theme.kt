@@ -20,7 +20,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.dp
 
 val SukavinaRed = Color(0xFFE92A31)
-val SukavinaInk = Color(0xFF111115)
+// Keep the Android canvas identical to the iOS AppTheme.ink palette:
+// light #E7E9ED, dark #121215.
+val SukavinaLightBackground = Color(0xFFE7E9ED)
+val SukavinaInk = Color(0xFF121215)
 val SukavinaCard = Color(0xFF202027)
 val SukavinaMuted = Color(0xFFAAA7AD)
 val LocalSukavinaExpressive = staticCompositionLocalOf { false }
@@ -41,9 +44,9 @@ private val darkColors = darkColorScheme(
 
 private val lightColors = lightColorScheme(
     primary = Color(0xFFC6252A), onPrimary = Color.White,
-    background = Color(0xFFE7E9ED), onBackground = Color(0xFF1F2733),
+    background = SukavinaLightBackground, onBackground = Color(0xFF1F2733),
     surface = Color.White, onSurface = Color(0xFF1F2733),
-    surfaceVariant = Color(0xFFE7E9ED), onSurfaceVariant = Color(0xFF5E6672),
+    surfaceVariant = SukavinaLightBackground, onSurfaceVariant = Color(0xFF5E6672),
     primaryContainer = Color(0xFFFFDAD7), onPrimaryContainer = Color(0xFF410006),
     secondary = Color(0xFF287A4B), outline = Color(0xFF8E949E),
 )
