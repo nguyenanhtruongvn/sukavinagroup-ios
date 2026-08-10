@@ -56,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
@@ -212,7 +213,14 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
 
 @Composable fun RequestCard(request: EmployeeRequest, canCancel: Boolean, onCancel: () -> Unit, onClick: () -> Unit = {}) {
     val kind = requestKind(request.kind); val status = requestStatus(request.status)
-    Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .26f)), shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
+    val cardShape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)
+    Card(
+        onClick = onClick,
+        modifier = Modifier.background(Brush.linearGradient(listOf(kind.color.copy(alpha = .12f), MaterialTheme.colorScheme.surface)), cardShape),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .26f)),
+        shape = cardShape,
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(Modifier.size(46.dp), appShape(15.dp, AppShapeRole.LARGE), color = kind.color.copy(alpha = .16f)) { Icon(kind.icon, null, tint = kind.color, modifier = Modifier.padding(12.dp)) }
