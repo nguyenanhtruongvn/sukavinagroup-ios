@@ -42,7 +42,8 @@ struct NotificationsView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     ForEach(requestNotifications) { item in
-                        Button { Task { await open(item) } } label: {
+                        SwipeDeleteRow(onDelete: { Task { await deleteNotification(item) } }) {
+                          Button { Task { await open(item) } } label: {
                           HStack(alignment: .top, spacing: 14) {
                             Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 6) {
@@ -81,14 +82,6 @@ struct NotificationsView: View {
                           .shadow(color: item.read ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
                           .clipShape(RoundedRectangle(cornerRadius: 20))
                         }.buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                Task { await deleteNotification(item) }
-                            } label: {
-                                Image(systemName: "trash.fill")
-                                    .accessibilityLabel("Xóa")
-                            }
-                            .tint(AppTheme.red)
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -96,7 +89,8 @@ struct NotificationsView: View {
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         let isUnread = index < session.unreadCount
-                        NavigationLink(destination: ArticleDetailView(item: item)) {
+                        SwipeDeleteRow(onDelete: { hideArticle(item) }) {
+                          NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 6) {
@@ -130,14 +124,6 @@ struct NotificationsView: View {
                             .shadow(color: isUnread ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
                             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                hideArticle(item)
-                            } label: {
-                                Image(systemName: "trash.fill")
-                                    .accessibilityLabel("Xóa")
-                            }
-                            .tint(AppTheme.red)
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -239,7 +225,7 @@ struct NotificationsView: View {
     }
 }
 
-@available(iOS 17.0, *)
+@available(iOS 14.0, *)
 struct SwipeDeleteRow<Content: View>: View {
     let onDelete: () -> Void
     let content: Content
@@ -260,15 +246,15 @@ struct SwipeDeleteRow<Content: View>: View {
                     startPoint: .leading,
                     endPoint: .trailing
                 )
-                .frame(width: 90)
+                .frame(width: 58)
                 .overlay {
                 Button(action: performDelete) {
                     VStack(spacing: 5) {
                         Image(systemName: "trash.fill").font(.title3.bold())
                         Text("Xóa").font(.caption.bold())
                     }
-                    .foregroundStyle(.white)
-                    .frame(width: 88, height: 64)
+                    .foregroundColor(.white)
+                        .frame(width: 54, height: 54)
                 }
                 .buttonStyle(.plain)
                 .scaleEffect(offset < -35 ? 1 : 0.78)
@@ -292,7 +278,7 @@ struct SwipeDeleteRow<Content: View>: View {
                 guard abs(value.translation.width) > abs(value.translation.height) * 1.05 else { return }
                 isSwiping = true
                 if value.translation.width > 0, offset < 0 {
-                    offset = min(0, -88 + value.translation.width)
+                    offset = min(0, -58 + value.translation.width)
                 } else if value.translation.width < 0 {
                     offset = max(-260, value.translation.width)
                 }
@@ -300,9 +286,9 @@ struct SwipeDeleteRow<Content: View>: View {
             .onEnded { value in
                 if value.translation.width < -165 || value.predictedEndTranslation.width < -250 {
                     performDelete()
-                } else if value.translation.width < -36 {
+                } else if value.translation.width < -30 {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = -88 }
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { offset = -58 }
                 } else {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) { offset = 0 }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { isSwiping = false }
