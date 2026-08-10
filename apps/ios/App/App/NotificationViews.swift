@@ -81,7 +81,7 @@ struct NotificationsView: View {
                           .shadow(color: item.read ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
                           .clipShape(RoundedRectangle(cornerRadius: 20))
                         }.buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 Task { await deleteNotification(item) }
                             } label: {
@@ -128,7 +128,7 @@ struct NotificationsView: View {
                             .shadow(color: isUnread ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
                             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 hideArticle(item)
                             } label: {
