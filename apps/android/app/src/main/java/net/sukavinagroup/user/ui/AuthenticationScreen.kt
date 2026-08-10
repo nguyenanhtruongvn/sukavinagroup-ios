@@ -136,6 +136,7 @@ import com.google.zxing.common.BitMatrix
             leadingIcon = { Icon(Icons.Default.Lock, null) }, visualTransformation = PasswordVisualTransformation(),
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
         Button(onClick = { signIn(login, password) }, enabled = login.isNotBlank() && password.isNotBlank() && !state.working,
+            elevation = SukavinaButtonElevation,
             modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = appShape(16.dp, AppShapeRole.LARGE)) {
             if (state.working) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
             else Text("Đăng nhập", fontWeight = FontWeight.Bold)

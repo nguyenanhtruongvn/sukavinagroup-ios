@@ -241,7 +241,7 @@ import com.google.zxing.common.BitMatrix
                 Text("Mã tự ẩn sau ${seconds}s", color = if (seconds <= 5) MaterialTheme.colorScheme.error else SukavinaMuted, fontWeight = FontWeight.Bold)
             } else {
                 Text("MÃ QR NHẬN MÓN", color = SukavinaMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                Button(onClick = { session.issueMealQr { result -> issued = result; seconds = if (result == null) 0 else 30 } }, enabled = !working, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = SukavinaRed)) {
+                Button(onClick = { session.issueMealQr { result -> issued = result; seconds = if (result == null) 0 else 30 } }, enabled = !working, modifier = Modifier.fillMaxWidth(), elevation = SukavinaButtonElevation, colors = ButtonDefaults.buttonColors(containerColor = SukavinaRed)) {
                     Icon(Icons.Default.QrCode, null); Spacer(Modifier.width(8.dp)); Text("Lấy mã nhận món", fontWeight = FontWeight.Bold)
                 }
                 Text("Mỗi mã chỉ có hiệu lực trong 30 giây.", color = SukavinaMuted, fontSize = 12.sp)

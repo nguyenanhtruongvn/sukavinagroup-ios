@@ -251,7 +251,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
             OutlinedTextField(reason, { reason = it }, label = { Text("Lý do") }, minLines = 3, modifier = Modifier.fillMaxWidth())
             Text("Tối thiểu 10 ký tự", color = if (reason.trim().length >= 10) Color(0xFF55D881) else SukavinaMuted, fontSize = 11.sp)
         }
-    }, confirmButton = { Button(enabled = !working && reason.trim().length >= 10 && !to.isBefore(from), onClick = { submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), reason.trim()) }) { Text(if (working) "Đang gửi..." else "Gửi đơn") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
+    }, confirmButton = { Button(enabled = !working && reason.trim().length >= 10 && !to.isBefore(from), onClick = { submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), reason.trim()) }, elevation = SukavinaButtonElevation) { Text(if (working) "Đang gửi..." else "Gửi đơn") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
 }
 
 @Composable fun DateTimeField(label: String, value: LocalDateTime, changed: (LocalDateTime) -> Unit) {

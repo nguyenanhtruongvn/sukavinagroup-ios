@@ -8,6 +8,7 @@ import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -27,6 +28,14 @@ val SukavinaInk = Color(0xFF121215)
 val SukavinaCard = Color(0xFF1F1F26)
 val SukavinaMuted = Color(0xFFAAA7AD)
 val LocalSukavinaExpressive = staticCompositionLocalOf { false }
+
+val SukavinaButtonElevation
+    @Composable get() = ButtonDefaults.buttonElevation(
+        defaultElevation = 5.dp,
+        pressedElevation = 2.dp,
+        focusedElevation = 6.dp,
+        hoveredElevation = 7.dp,
+    )
 
 private val sukavinaShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
