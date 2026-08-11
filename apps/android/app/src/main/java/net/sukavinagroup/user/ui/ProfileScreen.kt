@@ -186,7 +186,9 @@ import com.google.zxing.common.BitMatrix
         ) {
             ProfileActionCard(
                 title = "Đổi mật khẩu",
-                subtitle = "Xác minh OTP và thiết lập mật khẩu mới",
+                subtitle = if (profile?.accountType == "DEMO" || profile?.employeeCode.equals("DEMO", ignoreCase = true))
+                    "Xác nhận bằng mật khẩu hiện tại · Không giới hạn số lần đổi"
+                else "Xác minh OTP và thiết lập mật khẩu mới",
                 icon = Icons.Default.Key,
                 onClick = { passwordChangeOpen = true },
             )
@@ -358,15 +360,46 @@ private fun ProfileActionCard(
     var currentPassword by remember { mutableStateOf("") }; var newPassword by remember { mutableStateOf("") }; var confirmPassword by remember { mutableStateOf("") }; var completed by remember { mutableStateOf(false) }
     val isDemo = state.profile?.accountType == "DEMO" || state.profile?.employeeCode.equals("DEMO", ignoreCase = true)
     val validPassword = newPassword.length >= 6 && newPassword.any(Char::isLetter) && newPassword.any(Char::isDigit)
-    AlertDialog(onDismissRequest = dismiss, icon = { Icon(Icons.Default.Key, null, tint = SukavinaRed) },
-        title = { Text(if (completed) "Đổi mật khẩu thành công" else "Đổi mật khẩu") },
+    AlertDialog(
+        onDismissRequest = dismiss,
+        modifier = Modifier.fillMaxWidth(.9f).widthIn(max = 460.dp),
+        shape = appShape(28.dp, AppShapeRole.EXTRA_LARGE),
+        icon = {
+            Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .11f), modifier = Modifier.size(48.dp)) {
+                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Key, null, tint = SukavinaRed) }
+            }
+        },
+        title = { Text(if (completed) "Đổi mật khẩu thành công" else "Đổi mật khẩu", fontWeight = FontWeight.Bold) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (completed) Text(if (isDemo) "Tài khoản Demo có thể tiếp tục đổi mật khẩu khi cần. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản." else "Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
             else if (!otpSent && !isDemo) Text("Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
             else if (isDemo) {
-                OutlinedTextField(currentPassword, { currentPassword = it }, label = { Text("Mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation())
-                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Mật khẩu mới, ít nhất 6 ký tự gồm chữ và số") }, visualTransformation = PasswordVisualTransformation())
-                OutlinedTextField(confirmPassword, { confirmPassword = it }, label = { Text("Nhập lại mật khẩu mới") }, visualTransformation = PasswordVisualTransformation())
+                Text(
+                    "Tài khoản Demo không dùng OTP. Nhập mật khẩu hiện tại để xác nhận thay đổi.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 20.sp,
+                )
+                OutlinedTextField(currentPassword, { currentPassword = it }, label = { Text("Mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    newPassword,
+                    { newPassword = it },
+                    label = { Text("Mật khẩu mới") },
+                    supportingText = { Text("Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = newPassword.isNotEmpty() && !validPassword,
+                )
+                OutlinedTextField(
+                    confirmPassword,
+                    { confirmPassword = it },
+                    label = { Text("Xác nhận mật khẩu mới") },
+                    supportingText = { if (confirmPassword.isNotEmpty() && confirmPassword != newPassword) Text("Mật khẩu xác nhận chưa khớp") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
+                )
             }
             else { Text("Mã OTP đã được gửi tới $email", color = SukavinaRed, fontWeight = FontWeight.SemiBold)
                 OutlinedTextField(
@@ -384,7 +417,8 @@ private fun ProfileActionCard(
             isDemo -> Button(onClick = { session.confirmPasswordChange(currentPassword = currentPassword, newPassword = newPassword) { if (it) completed = true } }, enabled = currentPassword.isNotEmpty() && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") }
             !otpSent -> Button(onClick = { session.requestPasswordChange { if (it != null) { email = it.email; otpSent = true } } }, enabled = !state.working) { Text("Gửi mã OTP") }
             else -> Button(onClick = { session.confirmPasswordChange(code = code, newPassword = newPassword) { if (it) completed = true } }, enabled = code.length == 6 && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") } } },
-        dismissButton = { if (!completed) TextButton(onClick = dismiss) { Text("Hủy") } })
+        dismissButton = { if (!completed) TextButton(onClick = dismiss) { Text("Hủy") } },
+    )
 }
 
 @Composable fun ProfileLine(label: String, value: String) = Row(Modifier.fillMaxWidth().padding(18.dp)) { Text(label, color = SukavinaMuted); Spacer(Modifier.weight(1f)); Text(value, fontWeight = FontWeight.Medium) }
