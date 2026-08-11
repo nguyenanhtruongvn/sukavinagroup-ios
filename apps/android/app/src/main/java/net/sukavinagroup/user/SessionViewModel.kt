@@ -393,8 +393,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         update(working = true, error = null)
         runCatching { api.post<MessageResponse, PasswordChangeConfirmBody>("auth/password-change/confirm", PasswordChangeConfirmBody(code, currentPassword, newPassword), token) }
             .onSuccess {
-                clearBiometricCredentials()
-                _state.value = _state.value.copy(working = false, biometricEnabled = false)
+                _state.value = _state.value.copy(working = false)
                 done(true)
             }
             .onFailure { update(working = false, error = it.message); done(false) }

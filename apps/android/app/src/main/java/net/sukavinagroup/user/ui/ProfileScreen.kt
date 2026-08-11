@@ -371,7 +371,7 @@ private fun ProfileActionCard(
         },
         title = { Text(if (completed) "Đổi mật khẩu thành công" else "Đổi mật khẩu", fontWeight = FontWeight.Bold) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (completed) Text(if (isDemo) "Tài khoản Demo có thể tiếp tục đổi mật khẩu khi cần. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản." else "Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
+            if (completed) Text("Mật khẩu đã được thay đổi thành công.")
             else if (!otpSent && !isDemo) Text("Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
             else if (isDemo) {
                 Text(
