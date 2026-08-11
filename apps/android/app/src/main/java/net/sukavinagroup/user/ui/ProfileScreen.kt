@@ -182,7 +182,6 @@ import com.google.zxing.common.BitMatrix
         Text("BẢO MẬT", modifier = Modifier.fillMaxWidth().padding(top = 24.dp, start = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             ProfileActionCard(
                 title = "Đổi mật khẩu",
@@ -190,6 +189,7 @@ import com.google.zxing.common.BitMatrix
                 icon = Icons.Default.Key,
                 onClick = { passwordChangeOpen = true },
             )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
             ProfileActionCard(
                 title = "Đăng xuất",
                 subtitle = "Kết thúc phiên đăng nhập trên thiết bị này",
@@ -197,6 +197,7 @@ import com.google.zxing.common.BitMatrix
                 onClick = { signOutConfirmation = true },
             )
             if ((profile?.employeeCode == "DEMO" || profile?.protected != true) && profile?.accountType != "SUPER_ADMIN") {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
                 ProfileActionCard(
                     title = "Yêu cầu xóa tài khoản",
                     subtitle = "Xóa vĩnh viễn tài khoản và dữ liệu cá nhân",
@@ -260,39 +261,23 @@ private fun ProfileActionCard(
     onClick: () -> Unit,
 ) {
     val accent = if (danger) MaterialTheme.colorScheme.error else SukavinaRed
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = appShape(20.dp, AppShapeRole.LARGE),
-        color = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            accent.copy(alpha = if (danger) .38f else .18f),
-        ),
-        shadowElevation = 4.dp,
-        tonalElevation = 0.dp,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(appShape(16.dp, AppShapeRole.LARGE))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Icon(icon, null, tint = accent, modifier = Modifier.size(24.dp))
+        Column(
+            modifier = Modifier.padding(start = 14.dp).weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            Surface(
-                modifier = Modifier.size(46.dp),
-                shape = appShape(15.dp, AppShapeRole.LARGE),
-                color = accent.copy(alpha = .13f),
-            ) {
-                Icon(icon, null, tint = accent, modifier = Modifier.padding(11.dp))
-            }
-            Column(
-                modifier = Modifier.padding(start = 14.dp).weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
-            ) {
-                Text(title, color = if (danger) accent else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
-            }
-            Icon(Icons.Default.ChevronRight, null, tint = accent.copy(alpha = .72f), modifier = Modifier.size(22.dp))
+            Text(title, color = if (danger) accent else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
         }
+        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = .62f), modifier = Modifier.size(20.dp))
     }
 }
 
