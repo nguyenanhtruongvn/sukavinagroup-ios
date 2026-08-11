@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
@@ -169,6 +170,7 @@ import com.google.zxing.common.BitMatrix
         confirmText = "Đóng",
         onConfirm = dismiss,
         onDismiss = dismiss,
+        tone = Color(0xFF3978D4),
     ) {
         Text(
             "Không thể kết nối đến máy chủ. Hãy kiểm tra Wi-Fi hoặc dữ liệu di động rồi thử lại.",
@@ -188,46 +190,66 @@ fun SukavinaAlert(
     onDismiss: () -> Unit,
     dismissText: String? = null,
     danger: Boolean = false,
+    tone: Color? = null,
     confirmEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val tone = if (danger) MaterialTheme.colorScheme.error else SukavinaRed
-    Dialog(onDismissRequest = onDismiss) {
+    val accent = tone ?: if (danger) Color(0xFFD92D3A) else SukavinaRed
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = appShape(30.dp, AppShapeRole.EXTRA_LARGE),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = .97f),
-            tonalElevation = 10.dp,
-            shadowElevation = 24.dp,
-            border = androidx.compose.foundation.BorderStroke(1.dp, tone.copy(alpha = .2f)),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).widthIn(max = 440.dp),
+            shape = appShape(28.dp, AppShapeRole.EXTRA_LARGE),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp,
+            shadowElevation = 18.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = .14f)),
         ) {
-            Column(Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Surface(
-                        Modifier.size(54.dp),
-                        appShape(18.dp, AppShapeRole.LARGE),
-                        color = tone.copy(alpha = .14f),
+                        Modifier.size(48.dp),
+                        appShape(16.dp, AppShapeRole.LARGE),
+                        color = accent.copy(alpha = .12f),
                     ) {
-                        Icon(icon, null, tint = tone, modifier = Modifier.padding(14.dp))
+                        Icon(icon, null, tint = accent, modifier = Modifier.padding(12.dp))
                     }
-                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
-                        Text(eyebrow, color = tone, fontSize = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
-                        Text(title, fontSize = 21.sp, lineHeight = 25.sp, fontWeight = FontWeight.ExtraBold)
+                    Column(Modifier.padding(start = 13.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(eyebrow, color = accent, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                        Text(title, fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold)
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Đóng", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = appShape(17.dp, AppShapeRole.LARGE),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f),
+                ) {
+                    Column(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(9.dp),
+                        content = content,
+                    )
+                }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     dismissText?.let {
-                        OutlinedButton(
+                        FilledTonalButton(
                             onClick = onDismiss,
                             modifier = Modifier.weight(1f).height(50.dp),
+                            shape = appShape(15.dp, AppShapeRole.LARGE),
                         ) { Text(it, fontWeight = FontWeight.Bold) }
                     }
                     Button(
                         onClick = onConfirm,
                         enabled = confirmEnabled,
                         modifier = Modifier.weight(if (dismissText == null) 1f else 1.25f).height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = tone, contentColor = Color.White),
+                        shape = appShape(15.dp, AppShapeRole.LARGE),
+                        elevation = SukavinaButtonElevation,
+                        colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.White),
                     ) { Text(confirmText, fontWeight = FontWeight.Bold) }
                 }
             }

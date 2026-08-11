@@ -234,13 +234,15 @@ import com.google.zxing.common.BitMatrix
     }
     if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
     biometricError?.let { message ->
-        AlertDialog(
-            onDismissRequest = { biometricError = null },
-            icon = { Icon(Icons.Default.Fingerprint, null, tint = SukavinaRed) },
-            title = { Text("Không thể bật sinh trắc học") },
-            text = { Text(message) },
-            confirmButton = { TextButton(onClick = { biometricError = null }) { Text("Đã hiểu") } },
-        )
+        SukavinaAlert(
+            title = "Không thể bật sinh trắc học",
+            eyebrow = "BẢO MẬT THIẾT BỊ",
+            icon = Icons.Default.Fingerprint,
+            confirmText = "Đã hiểu",
+            onConfirm = { biometricError = null },
+            onDismiss = { biometricError = null },
+            danger = true,
+        ) { Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp) }
     }
     if (passwordChangeOpen) PasswordChangeDialog(state, session) { passwordChangeOpen = false }
     legalPage?.let { page -> NativeLegalSheet(page) { legalPage = null } }
