@@ -25,9 +25,6 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.background
@@ -60,15 +57,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -103,7 +96,6 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.roundToInt
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
@@ -129,68 +121,42 @@ fun SwipeDeleteItem(
     content: @Composable () -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
-    val density = LocalDensity.current
-    val actionWidth = with(density) { 88.dp.toPx() }
-    var dragOffset by remember { mutableFloatStateOf(0f) }
-    var rowWidth by remember { mutableFloatStateOf(1f) }
-    val visualOffset by animateFloatAsState(
-        targetValue = dragOffset,
-        animationSpec = spring(stiffness = 560f, dampingRatio = .86f),
-        label = "swipe-delete-offset",
+    val dismissState = rememberSwipeToDismissBoxState(
+        positionalThreshold = { distance -> distance * .5f },
     )
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .clip(appShape(22.dp, AppShapeRole.EXTRA_LARGE))
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.CenterEnd,
-    ) {
-        Column(
-            modifier = Modifier
-                .width(88.dp)
-                .fillMaxHeight()
-                .background(SukavinaRed, RoundedCornerShape(topEnd = 22.dp, bottomEnd = 22.dp))
-                .clickable {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    onDelete()
-                },
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Icon(Icons.Default.Delete, "Xóa", tint = Color.White)
-            Text("Xóa", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onSizeChanged { rowWidth = it.width.toFloat() }
-                .offset { IntOffset(visualOffset.roundToInt(), 0) }
-                .pointerInput(rowWidth, actionWidth) {
-                    detectHorizontalDragGestures(
-                        onHorizontalDrag = { _, amount ->
-                            dragOffset = (dragOffset + amount).coerceIn(-rowWidth, 0f)
-                        },
-                        onDragEnd = {
-                            when {
-                                dragOffset <= -rowWidth * .55f -> {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    dragOffset = -rowWidth
-                                    onDelete()
-                                }
-                                dragOffset <= -actionWidth * .45f -> {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    dragOffset = -actionWidth
-                                }
-                                else -> dragOffset = 0f
-                            }
-                        },
-                        onDragCancel = { dragOffset = 0f },
-                    )
-                },
-        ) {
-            content()
+    LaunchedEffect(dismissState.currentValue) {
+        if (dismissState.currentValue == SwipeToDismissBoxValue.EndToStart) {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            onDelete()
         }
     }
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = true,
+        backgroundContent = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.error),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Xóa",
+                    tint = MaterialTheme.colorScheme.onError,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
+            }
+        },
+        content = {
+            Box(
+                modifier = Modifier
+                .fillMaxWidth()
+                    .clip(appShape(22.dp, AppShapeRole.EXTRA_LARGE)),
+            ) { content() }
+        },
+    )
 }
 
 @Composable fun NotificationsScreen(state: SessionUiState, session: SessionViewModel, openArticle: (ContentItem) -> Unit) {
