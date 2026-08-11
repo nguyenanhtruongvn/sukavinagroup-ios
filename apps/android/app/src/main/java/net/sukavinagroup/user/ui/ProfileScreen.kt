@@ -117,7 +117,7 @@ import com.google.zxing.common.BitMatrix
     val activity = LocalActivity.current as? MainActivity
     val profile = state.profile
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).padding(bottom = 24.dp),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).padding(bottom = 112.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         PortalPageTitle("Tài khoản", Modifier.fillMaxWidth())

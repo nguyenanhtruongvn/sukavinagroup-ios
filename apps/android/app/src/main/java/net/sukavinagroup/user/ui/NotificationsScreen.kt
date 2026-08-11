@@ -185,7 +185,7 @@ fun SwipeDeleteItem(
             },
             modifier = Modifier.fillMaxSize(),
         ) {
-        LazyColumn(contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.requestNotifications, key = { it.id }) { item ->
                 val request = item.requestId?.let(requests::get); val kind = request?.let { requestKind(it.kind) }
                 val tone = when {

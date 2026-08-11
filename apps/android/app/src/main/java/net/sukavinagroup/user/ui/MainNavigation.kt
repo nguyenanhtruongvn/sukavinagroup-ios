@@ -232,10 +232,7 @@ import com.google.zxing.common.BitMatrix
                 .fillMaxWidth()
                 .widthIn(max = 840.dp)
                 .fillMaxHeight()
-                .padding(
-                    top = padding.calculateTopPadding(),
-                    bottom = padding.calculateBottomPadding(),
-                ),
+                .padding(top = padding.calculateTopPadding()),
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal
                 (slideInHorizontally(spring(stiffness = 520f, dampingRatio = .86f)) {

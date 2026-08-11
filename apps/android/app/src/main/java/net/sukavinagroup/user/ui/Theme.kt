@@ -82,8 +82,17 @@ private val lightColors = lightColorScheme(
     background = SukavinaLightBackground, onBackground = Color(0xFF1F2733),
     surface = Color.White, onSurface = Color(0xFF1F2733),
     surfaceVariant = Color.White, onSurfaceVariant = Color(0xFF5C595F),
+    surfaceBright = Color.White,
+    surfaceDim = Color(0xFFE8EDF3),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFFCFDFF),
+    surfaceContainer = Color(0xFFF8FAFD),
+    surfaceContainerHigh = Color(0xFFF4F7FA),
+    surfaceContainerHighest = Color(0xFFEEF2F6),
+    surfaceTint = Color.Transparent,
     primaryContainer = Color.White, onPrimaryContainer = Color(0xFF1F2733),
-    secondary = Color(0xFF287A4B), outline = Color(0xFF8E949E),
+    secondary = Color(0xFF287A4B), secondaryContainer = Color(0xFFE7F5EE),
+    tertiaryContainer = Color(0xFFFFECEE), outline = Color(0xFF8E949E),
 )
 
 @Composable
