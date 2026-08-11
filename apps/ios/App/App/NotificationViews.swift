@@ -156,6 +156,7 @@ struct NotificationsView: View {
                         .accessibilityHidden(true)
             }
             .listStyle(.plain)
+            .contentMargins(.top, 0, for: .scrollContent)
             .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
