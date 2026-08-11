@@ -264,14 +264,14 @@ private fun ProfileActionCard(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         shape = appShape(20.dp, AppShapeRole.LARGE),
-        color = MaterialTheme.colorScheme.surface,
+        color = Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onSurface,
         border = androidx.compose.foundation.BorderStroke(
             1.dp,
             accent.copy(alpha = if (danger) .38f else .18f),
         ),
         shadowElevation = 4.dp,
-        tonalElevation = 1.dp,
+        tonalElevation = 0.dp,
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
