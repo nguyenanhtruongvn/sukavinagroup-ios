@@ -36,6 +36,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -147,18 +148,34 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             PortalPageTitle("Đơn từ", Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 10.dp))
-            PrimaryScrollableTabRow(
-                selectedTabIndex = filterIndex,
-                edgePadding = 18.dp,
-                divider = {},
-                containerColor = Color.Transparent,
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 filterOptions.forEachIndexed { index, item ->
-                    Tab(
-                        selected = filterIndex == index,
+                    val selected = filterIndex == index
+                    Surface(
                         onClick = { refreshScope.launch { pagerState.animateScrollToPage(index) } },
-                        text = { Text(item.second, maxLines = 1) },
-                    )
+                        shape = CircleShape,
+                        color = if (selected) SukavinaRed else MaterialTheme.colorScheme.surface,
+                        contentColor = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (selected) SukavinaRed else MaterialTheme.colorScheme.outline.copy(alpha = .24f),
+                        ),
+                        shadowElevation = if (selected) 3.dp else 0.dp,
+                    ) {
+                        Text(
+                            item.second,
+                            modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+                            fontSize = 13.sp,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
             PullToRefreshBox(
