@@ -117,9 +117,10 @@ import com.google.zxing.common.BitMatrix
 ) {
     val dashboard = state.dashboard
     LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+        item { PortalPageTitle("Trang chủ") }
         item {
             Text("Xin chào,", color = SukavinaMuted)
-            Text(dashboard?.name ?: state.profile?.name ?: "Nhân viên", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold)
+            Text(dashboard?.name ?: state.profile?.name ?: "Nhân viên", fontSize = 24.sp, fontWeight = FontWeight.Bold)
             Text("${dashboard?.role.orEmpty()} · ${dashboard?.employeeCode.orEmpty()}", color = SukavinaMuted)
         }
         item {

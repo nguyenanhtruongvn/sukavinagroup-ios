@@ -131,6 +131,9 @@ struct RequestsView: View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 VStack(spacing: 10) {
+                    PortalPageTitle("Đơn từ")
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
                     ScrollViewReader { proxy in
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
@@ -181,7 +184,8 @@ struct RequestsView: View {
                 .padding(.trailing, 20)
                 .padding(.bottom, 18)
             }
-            .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Đơn từ của tôi")
+            .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $composing) {
                 RequestComposer { kind, from, to, reason in
                     Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason) }

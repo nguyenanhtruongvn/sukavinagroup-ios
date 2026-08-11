@@ -42,6 +42,22 @@ enum AppTheme {
 }
 
 @available(iOS 17.0, *)
+struct PortalPageTitle: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 30, weight: .bold, design: .rounded))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+@available(iOS 17.0, *)
 struct AdaptiveGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
     var tint: Color? = nil

@@ -30,6 +30,7 @@ struct ProfileView: View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 22) {
+                    PortalPageTitle("Tài khoản")
                     ZStack {
                         Circle().fill(AppTheme.red.opacity(0.18)).frame(width: 96, height: 96)
                         Text(initials).font(.title.bold()).foregroundColor(AppTheme.red)
@@ -146,12 +147,13 @@ struct ProfileView: View {
                             .font(.footnote.weight(.semibold))
                     }
                 }
-                .padding(22)
+                .padding(20)
                 .padding(.bottom, 90)
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle("Tài khoản")
+            .navigationTitle("")
+            .toolbar(.hidden, for: .navigationBar)
             .alert("Xóa tài khoản vĩnh viễn?", isPresented: $showDelete) {
                 Button("Hủy", role: .cancel) {}
                 Button("Xóa vĩnh viễn", role: .destructive) {

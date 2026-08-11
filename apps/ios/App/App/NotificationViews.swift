@@ -44,12 +44,10 @@ struct NotificationsView: View {
     var body: some View {
         NavigationStack {
             List {
-                    Text("Thông báo")
-                        .font(.largeTitle.bold())
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    PortalPageTitle("Thông báo")
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 2, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 2, trailing: 20))
                     HStack {
                         Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()

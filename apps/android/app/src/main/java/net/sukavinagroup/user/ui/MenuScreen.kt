@@ -159,10 +159,11 @@ import com.google.zxing.common.BitMatrix
             dismissButton = { TextButton(onClick = { pendingChoice = null }) { Text("Quay lại") } },
         )
     }
-    LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item {
+            PortalPageTitle("Thực đơn")
             Text("BẾP ĂN SUKAVINA", color = SukavinaRed, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp, fontSize = 12.sp)
-            Text("Thực đơn hôm nay", fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+            Text("Thực đơn hôm nay", fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Text(menu?.day?.dayName ?: "Đang cập nhật", color = SukavinaMuted)
         }
         item {

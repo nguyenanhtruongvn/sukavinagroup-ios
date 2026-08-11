@@ -69,12 +69,13 @@ struct TodayMenuView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 5) {
+                        PortalPageTitle("Thực đơn")
                         Text("BẾP ĂN SUKAVINA")
                             .font(.caption.bold())
                             .tracking(1.5)
                             .foregroundColor(AppTheme.red)
                         Text("Thực đơn hôm nay")
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .font(.headline)
                         Text(session.todayMenu?.day.dayName ?? "Đang cập nhật")
                             .foregroundColor(AppTheme.muted)
                     }
@@ -166,7 +167,7 @@ struct TodayMenuView: View {
                 }
                 .frame(maxWidth: horizontalSizeClass == .regular ? 760 : .infinity)
                 .frame(maxWidth: .infinity)
-                .padding(18)
+                .padding(20)
                 .padding(.bottom, 94)
             }
             .hidesPortalBottomScrollEdgeEffect()
@@ -189,6 +190,7 @@ struct TodayMenuView: View {
                 }
             }
             .navigationTitle("")
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await session.refreshTodayMenu()
                 while !Task.isCancelled {
@@ -321,11 +323,12 @@ struct DashboardView: View {
         NavigationView {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    PortalPageTitle("Trang chủ")
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Xin chào,")
                             .foregroundColor(AppTheme.muted)
                         Text(session.dashboard?.name ?? session.profile?.name ?? "Nhân viên")
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .font(.title2.bold())
                         Text(session.dashboard?.employeeCode ?? session.profile?.employeeCode ?? "")
                             .font(.subheadline.monospaced())
                             .foregroundColor(AppTheme.red)
@@ -372,6 +375,7 @@ struct DashboardView: View {
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("")
+            .toolbar(.hidden, for: .navigationBar)
             .task { await requestStore.load(session.token) }
             .refreshable {
                 await session.refreshDashboard()

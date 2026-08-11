@@ -147,7 +147,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
-            Text("Đơn từ", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(18.dp, 20.dp, 18.dp, 10.dp))
+            PortalPageTitle("Đơn từ", Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 10.dp))
             PrimaryScrollableTabRow(
                 selectedTabIndex = filterIndex,
                 edgePadding = 18.dp,

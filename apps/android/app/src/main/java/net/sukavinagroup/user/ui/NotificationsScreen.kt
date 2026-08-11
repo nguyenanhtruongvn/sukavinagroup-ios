@@ -203,8 +203,8 @@ fun SwipeDeleteItem(
     val visibleArticles = state.dashboard?.contentItems.orEmpty().filterNot { it.id in state.hiddenArticleIds }
     val unread = state.unreadCount + state.requestNotifications.count { !it.read }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(18.dp, 20.dp, 18.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { Text("Thông báo", fontSize = 29.sp, fontWeight = FontWeight.ExtraBold); Text(if (unread > 0) "$unread thông báo chưa đọc" else "Bạn đã đọc tất cả", color = SukavinaMuted) }
+        Row(Modifier.fillMaxWidth().padding(20.dp, 20.dp, 20.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { PortalPageTitle("Thông báo"); Text(if (unread > 0) "$unread thông báo chưa đọc" else "Bạn đã đọc tất cả", color = SukavinaMuted) }
             if (state.requestNotifications.isNotEmpty() || visibleArticles.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text("Xóa tất cả", color = MaterialTheme.colorScheme.error) }
         }
         PullToRefreshBox(
