@@ -269,7 +269,6 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
                     }
                 }
             }
-            AttendanceLegend(month)
         }
     }
 }
@@ -296,25 +295,6 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
             Box(Modifier.matchParentSize().background(attendanceColor(statuses.firstOrNull()).copy(alpha = .22f)))
         }
         Text(LocalDate.parse(day.date).dayOfMonth.toString(), fontWeight = if (day.date == selectedDate) FontWeight.ExtraBold else FontWeight.Medium)
-    }
-}
-
-@Composable fun AttendanceLegend(month: AttendanceMonth) {
-    val values = listOf(
-        "present" to "Đủ công", "late" to "Đi trễ", "early" to "Về sớm",
-        "leave" to "Nghỉ phép", "absent" to "Vắng", "overtime" to "Làm thêm",
-    ).filter { item -> month.days.any { item.first in it.allStatuses() } }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        values.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { item ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(9.dp).clip(RoundedCornerShape(3.dp)).background(attendanceColor(item.first).copy(alpha = .5f)))
-                        Text(item.second, Modifier.padding(start = 4.dp), color = SukavinaMuted, fontSize = 10.sp)
-                    }
-                }
-            }
-        }
     }
 }
 
