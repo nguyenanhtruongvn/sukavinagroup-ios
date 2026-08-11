@@ -101,7 +101,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
-private val NotificationCardShape = RoundedCornerShape(12.dp)
+private val NotificationCardShape = RoundedCornerShape(22.dp)
 
 @Composable fun NewsScreen(items: List<ContentItem>, open: (ContentItem) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
