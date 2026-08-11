@@ -197,16 +197,23 @@ import com.google.zxing.common.BitMatrix
                 icon = Icons.AutoMirrored.Filled.Logout,
                 onClick = { signOutConfirmation = true },
             )
-            if ((profile?.employeeCode == "DEMO" || profile?.protected != true) && profile?.accountType != "SUPER_ADMIN") {
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
-                ProfileActionCard(
-                    title = "Yêu cầu xóa tài khoản",
-                    subtitle = "Xóa vĩnh viễn tài khoản và dữ liệu cá nhân",
-                    icon = Icons.Default.DeleteForever,
-                    danger = true,
-                    onClick = { deleteOpen = true },
-                )
-            }
+        }
+        if ((profile?.employeeCode == "DEMO" || profile?.protected != true) && profile?.accountType != "SUPER_ADMIN") {
+            Text(
+                "VÙNG NGUY HIỂM",
+                modifier = Modifier.fillMaxWidth().padding(top = 34.dp, start = 8.dp, bottom = 8.dp),
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.3.sp,
+            )
+            ProfileActionCard(
+                title = "Yêu cầu xóa tài khoản",
+                subtitle = "Xóa vĩnh viễn tài khoản và dữ liệu cá nhân",
+                icon = Icons.Default.DeleteForever,
+                danger = true,
+                onClick = { deleteOpen = true },
+            )
         }
     }
     if (deleteOpen) SukavinaAlert(
