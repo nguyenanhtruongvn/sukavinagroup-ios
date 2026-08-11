@@ -40,8 +40,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -134,6 +136,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     val filterOptions = remember { listOf("all" to "Tất cả", "pending" to "Chờ duyệt", "approved" to "Đã duyệt", "rejected" to "Từ chối", "cancelled" to "Đã hủy") }
     val filterIndex = filterOptions.indexOfFirst { it.first == filter }.coerceAtLeast(0)
     val pagerState = rememberPagerState(initialPage = filterIndex, pageCount = { filterOptions.size })
+    val filterListState = rememberLazyListState()
     val approvalIds = state.approvals.map { it.id }.toSet()
     val merged = (state.approvals + state.requests).distinctBy { it.id }.sortedByDescending { it.createdAt }
     LaunchedEffect(initialFilter) {
@@ -142,6 +145,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     }
     LaunchedEffect(pagerState.currentPage) {
         filter = filterOptions[pagerState.currentPage].first
+        filterListState.animateScrollToItem(pagerState.currentPage)
     }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -149,14 +153,15 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             PortalPageTitle("Đơn từ", Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 10.dp))
-            Row(
+            LazyRow(
+                state = filterListState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 18.dp, vertical = 4.dp),
+                    .padding(vertical = 4.dp),
+                contentPadding = PaddingValues(horizontal = 18.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                filterOptions.forEachIndexed { index, item ->
+                itemsIndexed(filterOptions) { index, item ->
                     val selected = filterIndex == index
                     Surface(
                         onClick = { refreshScope.launch { pagerState.animateScrollToPage(index) } },
@@ -200,7 +205,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
                             RequestCard(request, canCancel = request.status == "pending" && request.id !in approvalIds,
                                 onCancel = { cancelling = request }, onClick = { if (request.status == "pending" && request.id in approvalIds) reviewing = request })
                         }
-                        if (visible.isEmpty()) item { Text("Chưa có đơn trong mục này.", color = SukavinaMuted, modifier = Modifier.padding(top = 45.dp)) }
+                        if (visible.isEmpty()) item { RequestEmptyState(pageFilter) }
                     }
                 }
             }
@@ -225,6 +230,47 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
             Text("Đơn ${requestKind(request.kind).title} sẽ chuyển sang trạng thái đã hủy.", fontWeight = FontWeight.SemiBold)
             Text("Người quản lý sẽ nhận được thông báo ngay sau thao tác này.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+@Composable
+private fun RequestEmptyState(filter: String) {
+    val presentation = when (filter) {
+        "pending" -> Triple(Icons.Default.Schedule, "Không có đơn chờ duyệt", Color(0xFFFF9500))
+        "approved" -> Triple(Icons.Default.Verified, "Chưa có đơn được duyệt", Color(0xFF34C759))
+        "rejected" -> Triple(Icons.Default.Cancel, "Không có đơn bị từ chối", SukavinaRed)
+        "cancelled" -> Triple(Icons.Default.Inventory2, "Chưa có đơn đã hủy", Color(0xFF7E8794))
+        else -> Triple(Icons.Default.Description, "Chưa có đơn từ", Color(0xFF4B78C2))
+    }
+    val description = when (filter) {
+        "pending" -> "Các đơn cần xử lý sẽ xuất hiện tại đây."
+        "approved" -> "Những đơn đã được quản lý chấp thuận sẽ được lưu tại đây."
+        "rejected" -> "Hiện không có đơn nào bị từ chối."
+        "cancelled" -> "Những đơn bạn chủ động hủy sẽ xuất hiện tại đây."
+        else -> "Tạo đơn mới để theo dõi quá trình xét duyệt ngay trong ứng dụng."
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 34.dp, start = 8.dp, end = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Surface(
+            modifier = Modifier.size(66.dp),
+            shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE),
+            color = presentation.third.copy(alpha = .12f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, presentation.third.copy(alpha = .16f)),
+        ) {
+            Icon(presentation.first, null, tint = presentation.third, modifier = Modifier.padding(18.dp))
+        }
+        Text(presentation.second, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text(
+            description,
+            modifier = Modifier.widthIn(max = 320.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }
 
