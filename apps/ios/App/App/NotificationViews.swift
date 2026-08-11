@@ -47,7 +47,7 @@ struct NotificationsView: View {
                     PortalPageTitle("Thông báo")
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 2, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 20, leading: 20, bottom: 2, trailing: 20))
                     HStack {
                         Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
