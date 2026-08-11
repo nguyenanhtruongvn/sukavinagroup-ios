@@ -188,7 +188,19 @@ fun SwipeDeleteItem(
         LazyColumn(contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.requestNotifications, key = { it.id }) { item ->
                 val request = item.requestId?.let(requests::get); val kind = request?.let { requestKind(it.kind) }
-                val tone = kind?.color ?: when { item.type.contains("rejected") -> SukavinaRed; item.type.contains("cancelled") -> Color(0xFF8E8E93); item.type == "request_pending" -> Color(0xFFFF9500); else -> Color(0xFF34C759) }
+                val tone = when {
+                    item.type == "request_pending" && kind != null -> kind.color
+                    item.type == "request_pending" -> Color(0xFFFF9500)
+                    item.type.contains("rejected") -> SukavinaRed
+                    item.type.contains("cancelled") -> Color(0xFF8E8E93)
+                    else -> Color(0xFF34C759)
+                }
+                val notificationIcon = when {
+                    item.type == "request_pending" && kind != null -> kind.icon
+                    item.type.contains("rejected") -> Icons.Default.Cancel
+                    item.type.contains("cancelled") -> Icons.Default.RemoveCircle
+                    else -> Icons.Default.CheckCircle
+                }
                 SwipeDeleteItem(onDelete = { session.deleteNotification(item.id) }) {
                     Surface(
                         onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },
@@ -199,7 +211,7 @@ fun SwipeDeleteItem(
                         shadowElevation = if (item.read) 0.dp else 4.dp,
                         ) {
                         Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(if (item.read) Color.Transparent else tone.copy(alpha = .12f), Color.Transparent))).padding(15.dp), verticalAlignment = Alignment.Top) {
-                            Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(kind?.icon ?: if (item.type.contains("rejected")) Icons.Default.Cancel else if (item.type.contains("cancelled")) Icons.Default.RemoveCircle else Icons.Default.CheckCircle, null, tint = tone, modifier = Modifier.padding(11.dp)) }
+                            Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(notificationIcon, null, tint = tone, modifier = Modifier.padding(11.dp)) }
                             Column(Modifier.padding(horizontal = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) { Text(item.title, fontWeight = FontWeight.Bold); kind?.let { Text(it.title, color = it.color, fontSize = 11.sp, fontWeight = FontWeight.Bold) }; Text(item.message, color = SukavinaMuted, fontSize = 13.sp); Text(item.createdAt.toDateTimeLabel(), color = tone, fontSize = 11.sp) }
                             if (!item.read) Surface(shape = CircleShape, color = tone.copy(alpha = .18f)) { Text("Mới", color = tone, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) }
                         }
