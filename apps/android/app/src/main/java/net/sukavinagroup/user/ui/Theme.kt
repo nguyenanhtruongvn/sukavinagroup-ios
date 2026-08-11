@@ -37,6 +37,7 @@ val SukavinaInk = Color(0xFF121215)
 val SukavinaCard = Color(0xFF1F1F26)
 val SukavinaMuted = Color(0xFFAAA7AD)
 val LocalSukavinaExpressive = staticCompositionLocalOf { false }
+val LocalBottomNavigationClearance = staticCompositionLocalOf { 112.dp }
 
 @Composable
 fun PortalPageTitle(text: String, modifier: Modifier = Modifier) {

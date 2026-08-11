@@ -225,6 +225,9 @@ import com.google.zxing.common.BitMatrix
                 }
             }
         }
+        CompositionLocalProvider(
+            LocalBottomNavigationClearance provides padding.calculateBottomPadding() + 20.dp,
+        ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         AnimatedContent(
             targetState = tab,
@@ -264,6 +267,7 @@ import com.google.zxing.common.BitMatrix
                     MainTab.PROFILE -> ProfileScreen(state, session)
                 }
             }
+        }
         }
         }
         if (requestComposerOpen) {

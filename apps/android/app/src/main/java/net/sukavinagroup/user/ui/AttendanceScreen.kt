@@ -216,7 +216,7 @@ import com.google.zxing.common.BitMatrix
 }
 
 @Composable fun AttendanceMonthPage(month: YearMonth, data: AttendanceMonth?, error: String?, selectedDate: String?, select: (String) -> Unit, modifier: Modifier, showTitle: Boolean) {
-    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = LocalBottomNavigationClearance.current), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (showTitle) Text("Tháng ${month.monthValue} / ${month.year}", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 8.dp))
         when {
             data != null -> { AttendanceSummary(data); AttendanceCalendar(data, selectedDate, select); data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) } }

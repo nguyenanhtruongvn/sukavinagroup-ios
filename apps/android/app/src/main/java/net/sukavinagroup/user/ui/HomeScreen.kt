@@ -116,7 +116,7 @@ import com.google.zxing.common.BitMatrix
     openArticle: (ContentItem) -> Unit,
 ) {
     val dashboard = state.dashboard
-    LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(15.dp)) {
+    LazyColumn(contentPadding = PaddingValues(start = 20.dp, top = 20.dp, end = 20.dp, bottom = LocalBottomNavigationClearance.current), verticalArrangement = Arrangement.spacedBy(15.dp)) {
         item { PortalPageTitle("Trang chủ") }
         item {
             Text("Xin chào,", color = SukavinaMuted)
