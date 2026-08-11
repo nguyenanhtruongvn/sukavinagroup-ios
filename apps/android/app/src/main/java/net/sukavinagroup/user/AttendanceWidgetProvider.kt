@@ -78,7 +78,13 @@ class AttendanceWidgetProvider : AppWidgetProvider() {
             )
             ids.forEach { id ->
                 val options = manager.getAppWidgetOptions(id)
-                val isLarge = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) >= 250
+                // Launchers do not report resized widget bounds consistently: some keep
+                // MIN_HEIGHT at the provider minimum and only update MAX_HEIGHT.
+                val currentHeight = maxOf(
+                    options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT),
+                    options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT),
+                )
+                val isLarge = currentHeight >= 250
                 val views = RemoteViews(
                     context.packageName,
                     if (isLarge) R.layout.attendance_widget_large else R.layout.attendance_widget,
