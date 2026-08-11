@@ -145,6 +145,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     }
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent,
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             PortalPageTitle("Đơn từ", Modifier.padding(start = 20.dp, top = 20.dp, end = 20.dp, bottom = 10.dp))

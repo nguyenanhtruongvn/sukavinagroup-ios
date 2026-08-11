@@ -152,8 +152,9 @@ import com.google.zxing.common.BitMatrix
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        containerColor = Color.Transparent,
         topBar = {
-            Surface(color = MaterialTheme.colorScheme.background) {
+            Surface(color = Color.Transparent) {
                 Row(
                     Modifier.fillMaxWidth().statusBarsPadding().height(48.dp).padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,

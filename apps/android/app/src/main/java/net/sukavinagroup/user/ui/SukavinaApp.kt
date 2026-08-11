@@ -123,7 +123,7 @@ fun appShape(standard: Dp, role: AppShapeRole = AppShapeRole.MEDIUM): Shape {
 }
 
 @Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    SukavinaAppBackground {
         when {
             state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError)

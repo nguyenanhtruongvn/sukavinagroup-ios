@@ -119,7 +119,7 @@ import com.google.zxing.common.BitMatrix
     BackHandler(article != null || attendanceOpen) { article = null; attendanceOpen = false }
 
     val haptics = LocalHapticFeedback.current
-    Scaffold(bottomBar = {
+    Scaffold(containerColor = Color.Transparent, bottomBar = {
         val dark = isSystemInDarkTheme()
         val glassColor = if (dark) {
             MaterialTheme.colorScheme.surface.copy(alpha = .82f)
