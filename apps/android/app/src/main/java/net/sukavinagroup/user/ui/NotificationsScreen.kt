@@ -101,6 +101,7 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
+private val NotificationCardShape = RoundedCornerShape(12.dp)
 
 @Composable fun NewsScreen(items: List<ContentItem>, open: (ContentItem) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
@@ -132,6 +133,7 @@ fun SwipeDeleteItem(
     }
     SwipeToDismissBox(
         state = dismissState,
+        modifier = Modifier.clip(NotificationCardShape),
         enableDismissFromStartToEnd = false,
         enableDismissFromEndToStart = true,
         backgroundContent = {
@@ -152,8 +154,8 @@ fun SwipeDeleteItem(
         content = {
             Box(
                 modifier = Modifier
-                .fillMaxWidth()
-                    .clip(appShape(22.dp, AppShapeRole.EXTRA_LARGE)),
+                    .fillMaxWidth()
+                    .clip(NotificationCardShape),
             ) { content() }
         },
     )
@@ -183,14 +185,14 @@ fun SwipeDeleteItem(
             },
             modifier = Modifier.fillMaxSize(),
         ) {
-        LazyColumn(contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(11.dp)) {
+        LazyColumn(contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 112.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(state.requestNotifications, key = { it.id }) { item ->
                 val request = item.requestId?.let(requests::get); val kind = request?.let { requestKind(it.kind) }
                 val tone = kind?.color ?: when { item.type.contains("rejected") -> SukavinaRed; item.type.contains("cancelled") -> Color(0xFF8E8E93); item.type == "request_pending" -> Color(0xFFFF9500); else -> Color(0xFF34C759) }
                 SwipeDeleteItem(onDelete = { session.deleteNotification(item.id) }) {
                     Surface(
                         onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },
-                        shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
+                        shape = NotificationCardShape,
                         color = if (item.read) Color(0xFFF2F2F7) else MaterialTheme.colorScheme.surface,
                         tonalElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(if (item.read) 1.dp else 1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .36f)),
@@ -209,7 +211,7 @@ fun SwipeDeleteItem(
                 SwipeDeleteItem(onDelete = { session.hideArticleNotification(item.id) }) {
                     Surface(
                         onClick = { session.markArticlesRead(); openArticle(item) },
-                        shape = appShape(20.dp, AppShapeRole.EXTRA_LARGE),
+                        shape = NotificationCardShape,
                         color = if (isUnread) MaterialTheme.colorScheme.surface else Color(0xFFF2F2F7),
                         tonalElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(if (isUnread) 1.dp else 1.dp, if (isUnread) SukavinaRed.copy(alpha = .36f) else Color.Transparent),
