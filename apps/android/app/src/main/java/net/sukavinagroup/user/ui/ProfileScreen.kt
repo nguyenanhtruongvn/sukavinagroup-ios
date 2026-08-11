@@ -113,6 +113,7 @@ import com.google.zxing.common.BitMatrix
     var deleteOpen by remember { mutableStateOf(false) }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }; var passwordChangeOpen by remember { mutableStateOf(false) }
     var legalPage by remember { mutableStateOf<LegalPage?>(null) }
     var signOutConfirmation by remember { mutableStateOf(false) }
+    var biometricError by remember { mutableStateOf<String?>(null) }
     val activity = LocalActivity.current as? MainActivity
     val profile = state.profile
     Column(
@@ -138,7 +139,7 @@ import com.google.zxing.common.BitMatrix
             }
         }
         ProfileSectionTitle("THÔNG TIN TÀI KHOẢN")
-        Card(Modifier.fillMaxWidth().padding(top = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column { ProfileLine("Vai trò", profile?.role.orEmpty()); HorizontalDivider(); ProfileLine("Loại tài khoản", profile?.accountType.accountLabel()); HorizontalDivider(); Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Fingerprint, null, tint = SukavinaRed); Text("Đăng nhập sinh trắc học", Modifier.padding(start = 10.dp).weight(1f)); Switch(state.biometricEnabled, onCheckedChange = { enabled -> if (enabled) activity?.authenticateBiometric { biometricPasswordOpen = true } else session.enableBiometric("", false) }) } } }
+        Card(Modifier.fillMaxWidth().padding(top = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column { ProfileLine("Vai trò", profile?.role.orEmpty()); HorizontalDivider(); ProfileLine("Loại tài khoản", profile?.accountType.accountLabel()); HorizontalDivider(); Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Fingerprint, null, tint = SukavinaRed); Text("Đăng nhập sinh trắc học", Modifier.padding(start = 10.dp).weight(1f)); Switch(state.biometricEnabled, onCheckedChange = { enabled -> if (enabled) activity?.authenticateBiometric(onSuccess = { biometricPasswordOpen = true }, onError = { biometricError = it }) else session.enableBiometric("", false) }) } } }
         ProfileSectionTitle("QUYỀN RIÊNG TƯ & HỖ TRỢ")
         Card(Modifier.fillMaxWidth().padding(top = 14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column {
@@ -223,6 +224,15 @@ import com.google.zxing.common.BitMatrix
         Text("Thao tác này không thể hoàn tác. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
+    biometricError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { biometricError = null },
+            icon = { Icon(Icons.Default.Fingerprint, null, tint = SukavinaRed) },
+            title = { Text("Không thể bật sinh trắc học") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { biometricError = null }) { Text("Đã hiểu") } },
+        )
+    }
     if (passwordChangeOpen) PasswordChangeDialog(state, session) { passwordChangeOpen = false }
     legalPage?.let { page -> NativeLegalSheet(page) { legalPage = null } }
     if (signOutConfirmation) SukavinaAlert(

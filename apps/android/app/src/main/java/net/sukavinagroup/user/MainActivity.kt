@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.fragment.app.FragmentActivity
 import androidx.biometric.BiometricPrompt
+import androidx.biometric.BiometricManager
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
@@ -40,13 +41,39 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    fun authenticateBiometric(onSuccess: () -> Unit) {
+    fun authenticateBiometric(onSuccess: () -> Unit, onError: (String) -> Unit = {}) {
+        val authenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK
+        when (BiometricManager.from(this).canAuthenticate(authenticators)) {
+            BiometricManager.BIOMETRIC_SUCCESS -> Unit
+            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> {
+                onError("Thiết bị chưa đăng ký vân tay hoặc khuôn mặt. Vui lòng thiết lập sinh trắc học trong Cài đặt rồi thử lại.")
+                return
+            }
+            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> {
+                onError("Thiết bị này không hỗ trợ xác thực sinh trắc học.")
+                return
+            }
+            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> {
+                onError("Cảm biến sinh trắc học đang không khả dụng. Vui lòng thử lại sau.")
+                return
+            }
+            else -> {
+                onError("Không thể sử dụng sinh trắc học trên thiết bị này.")
+                return
+            }
+        }
         val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this), object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) { onSuccess() }
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                if (errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON && errorCode != BiometricPrompt.ERROR_USER_CANCELED) {
+                    onError(errString.toString().ifBlank { "Không thể xác thực sinh trắc học." })
+                }
+            }
         })
         prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Đăng nhập Sukavina")
-            .setSubtitle("Xác nhận bằng vân tay hoặc khuôn mặt")
+            .setTitle("Xác thực sinh trắc học")
+            .setSubtitle("Dùng vân tay hoặc khuôn mặt đã đăng ký trên thiết bị")
+            .setAllowedAuthenticators(authenticators)
             .setNegativeButtonText("Hủy")
             .build())
     }
