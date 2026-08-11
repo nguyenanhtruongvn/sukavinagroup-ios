@@ -281,7 +281,7 @@ private fun RequestEmptyState(filter: String) {
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .52f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
         shape = cardShape,
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {

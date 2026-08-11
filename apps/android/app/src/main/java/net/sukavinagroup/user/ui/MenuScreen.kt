@@ -264,7 +264,7 @@ fun createQrBitmap(value: String): Bitmap {
         modifier = modifier.fillMaxWidth().height(148.dp),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .52f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
     ) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
@@ -293,7 +293,7 @@ fun createQrBitmap(value: String): Bitmap {
         enabled = !disabled,
         shape = appShape(17.dp, AppShapeRole.LARGE),
         color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = if (selected) .72f else .42f)),
+        shadowElevation = if (selected) 4.dp else 3.dp,
     ) {
         Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(44.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp)) }

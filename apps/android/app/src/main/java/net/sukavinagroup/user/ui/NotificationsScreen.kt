@@ -207,8 +207,7 @@ fun SwipeDeleteItem(
                         shape = NotificationCardShape,
                         color = if (item.read) Color.White else MaterialTheme.colorScheme.surface,
                         tonalElevation = 0.dp,
-                        border = androidx.compose.foundation.BorderStroke(if (item.read) 1.dp else 1.4.dp, tone.copy(alpha = .52f)),
-                        shadowElevation = if (item.read) 0.dp else 4.dp,
+                        shadowElevation = 3.dp,
                         ) {
                         Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(if (item.read) Color.Transparent else tone.copy(alpha = .12f), Color.Transparent))).padding(15.dp), verticalAlignment = Alignment.Top) {
                             Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(notificationIcon, null, tint = tone, modifier = Modifier.padding(11.dp)) }
@@ -226,8 +225,7 @@ fun SwipeDeleteItem(
                         shape = NotificationCardShape,
                         color = if (isUnread) MaterialTheme.colorScheme.surface else Color.White,
                         tonalElevation = 0.dp,
-                        border = androidx.compose.foundation.BorderStroke(if (isUnread) 1.4.dp else 1.dp, SukavinaRed.copy(alpha = .52f)),
-                        shadowElevation = if (isUnread) 4.dp else 0.dp,
+                        shadowElevation = 3.dp,
                     ) { Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(if (isUnread) SukavinaRed.copy(alpha = .12f) else Color.Transparent, Color.Transparent))).padding(15.dp), verticalAlignment = Alignment.Top) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }; if (isUnread) Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .18f)) { Text("Mới", color = SukavinaRed, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) } } }
                 }
             }
