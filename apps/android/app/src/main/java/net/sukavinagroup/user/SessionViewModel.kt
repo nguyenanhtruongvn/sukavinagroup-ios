@@ -388,10 +388,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             .onFailure { update(working = false, error = it.message); done(null) }
     }
 
-    fun confirmPasswordChange(code: String, newPassword: String, done: (Boolean) -> Unit) = viewModelScope.launch {
+    fun confirmPasswordChange(code: String = "", currentPassword: String? = null, newPassword: String, done: (Boolean) -> Unit) = viewModelScope.launch {
         val token = _state.value.token ?: return@launch done(false)
         update(working = true, error = null)
-        runCatching { api.post<MessageResponse, PasswordChangeConfirmBody>("auth/password-change/confirm", PasswordChangeConfirmBody(code, newPassword), token) }
+        runCatching { api.post<MessageResponse, PasswordChangeConfirmBody>("auth/password-change/confirm", PasswordChangeConfirmBody(code, currentPassword, newPassword), token) }
             .onSuccess {
                 clearBiometricCredentials()
                 _state.value = _state.value.copy(working = false, biometricEnabled = false)
