@@ -7,9 +7,6 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,9 +21,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,7 +32,7 @@ import androidx.compose.ui.unit.sp
 val SukavinaRed = Color(0xFFE92A31)
 // Keep the Android canvas identical to the iOS AppTheme.ink palette:
 // light #E7E9ED, dark #121215.
-val SukavinaLightBackground = Color(0xFFF4F6FB)
+val SukavinaLightBackground = Color(0xFFE7E9ED)
 val SukavinaInk = Color(0xFF121215)
 val SukavinaCard = Color(0xFF1F1F26)
 val SukavinaMuted = Color(0xFFAAA7AD)
@@ -127,25 +123,9 @@ fun SukavinaAppBackground(content: @Composable () -> Unit) {
     val backdrop = if (dark) {
         Brush.verticalGradient(listOf(Color(0xFF111216), Color(0xFF17171D)))
     } else {
-        Brush.verticalGradient(
-            listOf(
-                Color(0xFFF9FBFF),
-                Color(0xFFF7F2F7),
-                Color(0xFFEEF7F4),
-            ),
-        )
+        SolidColor(SukavinaLightBackground)
     }
     Box(Modifier.fillMaxSize().background(backdrop)) {
-        if (!dark) {
-            Box(
-                Modifier.align(Alignment.TopEnd).offset(x = 86.dp, y = (-112).dp)
-                    .size(280.dp).blur(72.dp).background(SukavinaRed.copy(alpha = .10f), CircleShape),
-            )
-            Box(
-                Modifier.align(Alignment.BottomStart).offset(x = (-92).dp, y = 92.dp)
-                    .size(270.dp).blur(76.dp).background(Color(0xFF4FC59A).copy(alpha = .11f), CircleShape),
-            )
-        }
         content()
     }
 }
