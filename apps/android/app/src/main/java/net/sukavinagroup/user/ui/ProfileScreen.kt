@@ -180,14 +180,32 @@ import com.google.zxing.common.BitMatrix
             }
         }
         Text("BẢO MẬT", modifier = Modifier.fillMaxWidth().padding(top = 24.dp, start = 2.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp)
-        OutlinedButton(
-            onClick = { signOutConfirmation = true },
-            modifier = Modifier.fillMaxWidth().padding(top = 20.dp).height(52.dp),
-            shape = appShape(18.dp, AppShapeRole.LARGE),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-        ) { Icon(Icons.AutoMirrored.Filled.Logout, null, tint = SukavinaRed); Spacer(Modifier.width(8.dp)); Text("Đăng xuất") }
-        OutlinedButton(onClick = { passwordChangeOpen = true }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = appShape(18.dp, AppShapeRole.LARGE), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)) { Icon(Icons.Default.Key, null, tint = SukavinaRed); Spacer(Modifier.width(8.dp)); Text("Đổi mật khẩu") }
-        if ((profile?.employeeCode == "DEMO" || profile?.protected != true) && profile?.accountType != "SUPER_ADMIN") TextButton(onClick = { deleteOpen = true }, modifier = Modifier.padding(top = 10.dp)) { Text("Yêu cầu xóa tài khoản", color = MaterialTheme.colorScheme.error) }
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            ProfileActionCard(
+                title = "Đổi mật khẩu",
+                subtitle = "Xác minh OTP và thiết lập mật khẩu mới",
+                icon = Icons.Default.Key,
+                onClick = { passwordChangeOpen = true },
+            )
+            ProfileActionCard(
+                title = "Đăng xuất",
+                subtitle = "Kết thúc phiên đăng nhập trên thiết bị này",
+                icon = Icons.AutoMirrored.Filled.Logout,
+                onClick = { signOutConfirmation = true },
+            )
+            if ((profile?.employeeCode == "DEMO" || profile?.protected != true) && profile?.accountType != "SUPER_ADMIN") {
+                ProfileActionCard(
+                    title = "Yêu cầu xóa tài khoản",
+                    subtitle = "Xóa vĩnh viễn tài khoản và dữ liệu cá nhân",
+                    icon = Icons.Default.DeleteForever,
+                    danger = true,
+                    onClick = { deleteOpen = true },
+                )
+            }
+        }
     }
     if (deleteOpen) SukavinaAlert(
         title = "Xóa tài khoản vĩnh viễn?",
@@ -231,6 +249,51 @@ private fun ProfileSectionTitle(title: String) {
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.4.sp,
     )
+}
+
+@Composable
+private fun ProfileActionCard(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    danger: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val accent = if (danger) MaterialTheme.colorScheme.error else SukavinaRed
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = appShape(20.dp, AppShapeRole.LARGE),
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            accent.copy(alpha = if (danger) .38f else .18f),
+        ),
+        shadowElevation = 4.dp,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(46.dp),
+                shape = appShape(15.dp, AppShapeRole.LARGE),
+                color = accent.copy(alpha = .13f),
+            ) {
+                Icon(icon, null, tint = accent, modifier = Modifier.padding(11.dp))
+            }
+            Column(
+                modifier = Modifier.padding(start = 14.dp).weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(title, color = if (danger) accent else MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, lineHeight = 16.sp)
+            }
+            Icon(Icons.Default.ChevronRight, null, tint = accent.copy(alpha = .72f), modifier = Modifier.size(22.dp))
+        }
+    }
 }
 
 @Composable fun NativeLegalSheet(page: LegalPage, dismiss: () -> Unit) {
