@@ -356,11 +356,13 @@ private fun ProfileActionCard(
 @Composable fun PasswordChangeDialog(state: SessionUiState, session: SessionViewModel, dismiss: () -> Unit) {
     var email by remember { mutableStateOf("") }; var otpSent by remember { mutableStateOf(false) }; var code by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }; var confirmPassword by remember { mutableStateOf("") }; var completed by remember { mutableStateOf(false) }
+    val isDemo = state.profile?.accountType == "DEMO" || state.profile?.employeeCode.equals("DEMO", ignoreCase = true)
+    val validPassword = newPassword.length >= 6 && newPassword.any(Char::isLetter) && newPassword.any(Char::isDigit)
     AlertDialog(onDismissRequest = dismiss, icon = { Icon(Icons.Default.Key, null, tint = SukavinaRed) },
         title = { Text(if (completed) "Đổi mật khẩu thành công" else "Đổi mật khẩu") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (completed) Text("Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
-            else if (!otpSent) Text("Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
+            if (completed) Text(if (isDemo) "Tài khoản Demo có thể tiếp tục đổi mật khẩu khi cần. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản." else "Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
+            else if (!otpSent) Text(if (isDemo) "Mã OTP giả định sẽ được gửi vào mục Thông báo và có hiệu lực trong 10 phút." else "Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
             else { Text("Mã OTP đã được gửi tới $email", color = SukavinaRed, fontWeight = FontWeight.SemiBold)
                 OutlinedTextField(
                     code,
@@ -370,12 +372,12 @@ private fun ProfileActionCard(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.SmsOtpCode },
                 )
-                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Mật khẩu mới, ít nhất 6 ký tự") }, visualTransformation = PasswordVisualTransformation())
+                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Mật khẩu mới, ít nhất 6 ký tự gồm chữ và số") }, visualTransformation = PasswordVisualTransformation())
                 OutlinedTextField(confirmPassword, { confirmPassword = it }, label = { Text("Nhập lại mật khẩu mới") }, visualTransformation = PasswordVisualTransformation()) }
         } },
         confirmButton = { when { completed -> Button(onClick = dismiss) { Text("Hoàn tất") }
             !otpSent -> Button(onClick = { session.requestPasswordChange { if (it != null) { email = it.email; otpSent = true } } }, enabled = !state.working) { Text("Gửi mã OTP") }
-            else -> Button(onClick = { session.confirmPasswordChange(code, newPassword) { if (it) completed = true } }, enabled = code.length == 6 && newPassword.length >= 6 && newPassword == confirmPassword && !state.working) { Text("Xác nhận") } } },
+            else -> Button(onClick = { session.confirmPasswordChange(code, newPassword) { if (it) completed = true } }, enabled = code.length == 6 && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") } } },
         dismissButton = { if (!completed) TextButton(onClick = dismiss) { Text("Hủy") } })
 }
 
