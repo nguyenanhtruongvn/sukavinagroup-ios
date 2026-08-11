@@ -228,7 +228,14 @@ import com.google.zxing.common.BitMatrix
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         AnimatedContent(
             targetState = tab,
-            modifier = Modifier.fillMaxWidth().widthIn(max = 840.dp).fillMaxHeight().padding(top = padding.calculateTopPadding()),
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 840.dp)
+                .fillMaxHeight()
+                .padding(
+                    top = padding.calculateTopPadding(),
+                    bottom = padding.calculateBottomPadding(),
+                ),
             transitionSpec = {
                 val forward = targetState.ordinal > initialState.ordinal
                 (slideInHorizontally(spring(stiffness = 520f, dampingRatio = .86f)) {

@@ -176,7 +176,7 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
                     val visible = merged.filter { pageFilter == "all" || it.status == pageFilter }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 112.dp),
+                        contentPadding = PaddingValues(start = 18.dp, top = 18.dp, end = 18.dp, bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
                         items(visible, key = { it.id }) { request ->
