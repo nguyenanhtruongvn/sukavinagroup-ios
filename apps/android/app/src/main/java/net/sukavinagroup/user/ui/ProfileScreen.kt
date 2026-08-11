@@ -360,6 +360,10 @@ private fun ProfileActionCard(
     var currentPassword by remember { mutableStateOf("") }; var newPassword by remember { mutableStateOf("") }; var confirmPassword by remember { mutableStateOf("") }; var completed by remember { mutableStateOf(false) }
     val isDemo = state.profile?.accountType == "DEMO" || state.profile?.employeeCode.equals("DEMO", ignoreCase = true)
     val validPassword = newPassword.length >= 6 && newPassword.any(Char::isLetter) && newPassword.any(Char::isDigit)
+    val currentPasswordError = state.error?.takeIf {
+        isDemo && it.contains("Mật khẩu hiện tại", ignoreCase = true)
+    }
+    val reusedPasswordError = state.error?.takeIf { isDemo && it.contains("Mật khẩu mới phải khác", ignoreCase = true) }
     AlertDialog(
         onDismissRequest = dismiss,
         modifier = Modifier.fillMaxWidth(.9f).widthIn(max = 460.dp),
@@ -379,16 +383,25 @@ private fun ProfileActionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 20.sp,
                 )
-                OutlinedTextField(currentPassword, { currentPassword = it }, label = { Text("Mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(
-                    newPassword,
-                    { newPassword = it },
-                    label = { Text("Mật khẩu mới") },
-                    supportingText = { Text("Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
+                    currentPassword,
+                    { currentPassword = it; if (currentPasswordError != null) session.clearError() },
+                    label = { Text("Mật khẩu hiện tại") },
+                    supportingText = { currentPasswordError?.let { Text(it) } },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    isError = newPassword.isNotEmpty() && !validPassword,
+                    isError = currentPasswordError != null,
+                )
+                OutlinedTextField(
+                    newPassword,
+                    { newPassword = it; if (reusedPasswordError != null) session.clearError() },
+                    label = { Text("Mật khẩu mới") },
+                    supportingText = { Text(reusedPasswordError ?: "Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = (newPassword.isNotEmpty() && !validPassword) || reusedPasswordError != null,
                 )
                 OutlinedTextField(
                     confirmPassword,
