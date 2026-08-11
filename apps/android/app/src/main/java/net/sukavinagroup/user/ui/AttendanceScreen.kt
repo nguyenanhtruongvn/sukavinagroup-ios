@@ -254,7 +254,10 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
     val days = month.days
     val leading = days.firstOrNull()?.date?.let { LocalDate.parse(it).dayOfWeek.value - 1 } ?: 0
     val cells: List<AttendanceDay?> = List(leading) { null } + days
-    Card(shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
+    Card(
+        shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+    ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
             Text("Lịch chấm công", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
             Row(Modifier.fillMaxWidth()) {
@@ -298,7 +301,10 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
     }
 }
 
-@Composable fun AttendanceDayDetail(month: AttendanceMonth, day: AttendanceDay) = Card(shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)) {
+@Composable fun AttendanceDayDetail(month: AttendanceMonth, day: AttendanceDay) = Card(
+    shape = appShape(22.dp, AppShapeRole.EXTRA_LARGE),
+    colors = CardDefaults.cardColors(containerColor = Color.White),
+) {
     Column(Modifier.padding(17.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Chi tiết ngày ${LocalDate.parse(day.date).format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold)
         HorizontalDivider()

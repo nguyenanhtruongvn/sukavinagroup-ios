@@ -205,7 +205,7 @@ fun SwipeDeleteItem(
                     Surface(
                         onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },
                         shape = NotificationCardShape,
-                        color = if (item.read) Color(0xFFF2F2F7) else MaterialTheme.colorScheme.surface,
+                        color = if (item.read) Color.White else MaterialTheme.colorScheme.surface,
                         tonalElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(if (item.read) 1.dp else 1.dp, if (item.read) Color.Transparent else tone.copy(alpha = .36f)),
                         shadowElevation = if (item.read) 0.dp else 4.dp,
@@ -224,7 +224,7 @@ fun SwipeDeleteItem(
                     Surface(
                         onClick = { session.markArticlesRead(); openArticle(item) },
                         shape = NotificationCardShape,
-                        color = if (isUnread) MaterialTheme.colorScheme.surface else Color(0xFFF2F2F7),
+                        color = if (isUnread) MaterialTheme.colorScheme.surface else Color.White,
                         tonalElevation = 0.dp,
                         border = androidx.compose.foundation.BorderStroke(if (isUnread) 1.dp else 1.dp, if (isUnread) SukavinaRed.copy(alpha = .36f) else Color.Transparent),
                         shadowElevation = if (isUnread) 4.dp else 0.dp,
