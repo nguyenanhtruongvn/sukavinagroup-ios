@@ -56,7 +56,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
@@ -216,9 +215,9 @@ fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt"
     val cardShape = appShape(22.dp, AppShapeRole.EXTRA_LARGE)
     Card(
         onClick = onClick,
-        modifier = Modifier.background(Brush.linearGradient(listOf(kind.color.copy(alpha = .12f), MaterialTheme.colorScheme.surface)), cardShape),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .26f)),
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, kind.color.copy(alpha = .52f)),
         shape = cardShape,
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(13.dp)) {
