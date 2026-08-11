@@ -56,7 +56,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
@@ -261,7 +260,12 @@ fun createQrBitmap(value: String): Bitmap {
 
 @Composable fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
     val cardShape = appShape(19.dp, AppShapeRole.LARGE)
-    Card(modifier.fillMaxWidth().height(148.dp).background(Brush.linearGradient(listOf(color.copy(alpha = .13f), MaterialTheme.colorScheme.surface)), cardShape), shape = cardShape, colors = CardDefaults.cardColors(containerColor = Color.Transparent), border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .18f))) {
+    Card(
+        modifier = modifier.fillMaxWidth().height(148.dp),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = .52f)),
+    ) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
                 Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp))
@@ -288,8 +292,8 @@ fun createQrBitmap(value: String): Bitmap {
         onClick = onClick,
         enabled = !disabled,
         shape = appShape(17.dp, AppShapeRole.LARGE),
-        color = if (selected) color.copy(alpha = .12f) else MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (selected) color.copy(alpha = .45f) else MaterialTheme.colorScheme.outline.copy(alpha = .15f)),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = if (selected) .72f else .42f)),
     ) {
         Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(44.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp)) }
