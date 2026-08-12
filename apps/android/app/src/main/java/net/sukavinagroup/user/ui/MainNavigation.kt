@@ -112,7 +112,10 @@ import com.google.zxing.common.BitMatrix
 @Composable fun MainScreen(state: SessionUiState, session: SessionViewModel) {
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var article by remember { mutableStateOf<ContentItem?>(null) }
-    var attendanceOpen by remember { mutableStateOf(false) }
+    // Keep the currently opened destination when a fold switches between its
+    // cover and inner displays. MainActivity handles the size change in place,
+    // while rememberSaveable also protects this state if Android recreates it.
+    var attendanceOpen by rememberSaveable { mutableStateOf(false) }
     var demoScannerOpen by rememberSaveable { mutableStateOf(false) }
     var requestComposerOpen by rememberSaveable { mutableStateOf(false) }
     var requestInitialFilter by rememberSaveable { mutableStateOf("all") }

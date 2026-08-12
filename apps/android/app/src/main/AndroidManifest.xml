@@ -23,6 +23,7 @@
         tools:targetApi="33">
         <activity
             android:name=".MainActivity"
+            android:configChanges="density|fontScale|fontWeightAdjustment|keyboard|keyboardHidden|layoutDirection|locale|mcc|mnc|navigation|orientation|screenLayout|screenSize|smallestScreenSize|touchscreen|uiMode"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

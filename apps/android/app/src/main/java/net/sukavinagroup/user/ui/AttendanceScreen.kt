@@ -129,6 +129,10 @@ import com.google.zxing.common.BitMatrix
             innerFoldOpen = layout.displayFeatures
                 .filterIsInstance<FoldingFeature>()
                 .any {
+                    // Some Fold devices continue reporting a stale feature for
+                    // a short time while moving the app to the cover display.
+                    // A real inner-display hinge must occupy visible bounds.
+                    !it.bounds.isEmpty &&
                     it.orientation == FoldingFeature.Orientation.VERTICAL &&
                         (it.isSeparating || it.state == FoldingFeature.State.FLAT)
                 }
