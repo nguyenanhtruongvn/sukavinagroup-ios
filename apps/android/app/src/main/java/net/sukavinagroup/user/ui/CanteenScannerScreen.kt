@@ -117,6 +117,7 @@ fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
     }
     var scanning by remember { mutableStateOf(true) }
     var result by remember { mutableStateOf<MealScanResponse?>(null) }
+    var signOutConfirmation by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         cameraAllowed = it
     }
@@ -128,12 +129,20 @@ fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
         Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("NHÀ ĂN SUKAVINA", color = SukavinaRed, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
                 Text("Quét mã nhận món", fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
             }
-            TextButton(onClick = session::signOut) { Text("Đăng xuất", color = SukavinaRed, fontWeight = FontWeight.Bold) }
+            OutlinedButton(
+                onClick = { signOutConfirmation = true },
+                modifier = Modifier.heightIn(min = 44.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Đăng xuất", fontWeight = FontWeight.Bold, maxLines = 1)
+            }
         }
 
         result?.let { scan ->
@@ -212,6 +221,19 @@ fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
             onDismiss = { session.dismissError(); scanning = true },
             danger = true,
         ) { Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+    if (signOutConfirmation) SukavinaAlert(
+        title = "Xác nhận đăng xuất?",
+        eyebrow = "BẢO MẬT TÀI KHOẢN",
+        icon = Icons.AutoMirrored.Filled.Logout,
+        confirmText = "Đăng xuất",
+        dismissText = "Giữ lại",
+        danger = true,
+        onDismiss = { signOutConfirmation = false },
+        onConfirm = { signOutConfirmation = false; session.signOut() },
+    ) {
+        Text("Phiên đăng nhập trên thiết bị này sẽ kết thúc.", fontWeight = FontWeight.SemiBold)
+        Text("Dữ liệu tài khoản vẫn được giữ nguyên.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
