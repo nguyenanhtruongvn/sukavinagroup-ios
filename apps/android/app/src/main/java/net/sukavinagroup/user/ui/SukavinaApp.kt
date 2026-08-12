@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -121,6 +122,14 @@ fun appShape(standard: Dp, role: AppShapeRole = AppShapeRole.MEDIUM): Shape {
         AppShapeRole.EXTRA_LARGE -> MaterialTheme.shapes.extraLarge
     }
 }
+
+fun Modifier.iosCardShadow(shape: Shape, emphasized: Boolean = false): Modifier = shadow(
+    elevation = if (emphasized) 4.dp else 3.dp,
+    shape = shape,
+    clip = false,
+    ambientColor = Color.Black.copy(alpha = if (emphasized) 0.05f else 0.035f),
+    spotColor = Color.Black.copy(alpha = if (emphasized) 0.05f else 0.035f),
+)
 
 @Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
     SukavinaAppBackground {

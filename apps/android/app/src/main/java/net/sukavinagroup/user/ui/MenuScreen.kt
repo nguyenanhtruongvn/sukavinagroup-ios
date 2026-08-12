@@ -261,10 +261,10 @@ fun createQrBitmap(value: String): Bitmap {
 @Composable fun MenuGroupCard(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, lines: List<String?>, modifier: Modifier = Modifier) {
     val cardShape = appShape(19.dp, AppShapeRole.LARGE)
     Card(
-        modifier = modifier.fillMaxWidth().height(148.dp),
+        modifier = modifier.fillMaxWidth().height(148.dp).iosCardShadow(cardShape),
         shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.Top) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(46.dp)) {
@@ -288,12 +288,14 @@ fun createQrBitmap(value: String): Bitmap {
 }
 
 @Composable fun MealChoiceButton(title: String, detail: String?, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, selected: Boolean, disabled: Boolean, onClick: () -> Unit) {
+    val choiceShape = appShape(17.dp, AppShapeRole.LARGE)
     Surface(
+        modifier = Modifier.iosCardShadow(choiceShape, emphasized = selected),
         onClick = onClick,
         enabled = !disabled,
-        shape = appShape(17.dp, AppShapeRole.LARGE),
+        shape = choiceShape,
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = if (selected) 2.dp else 1.dp,
+        shadowElevation = 0.dp,
     ) {
         Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(44.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp)) }

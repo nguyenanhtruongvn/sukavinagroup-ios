@@ -203,11 +203,12 @@ fun SwipeDeleteItem(
                 }
                 SwipeDeleteItem(onDelete = { session.deleteNotification(item.id) }) {
                     Surface(
+                        modifier = Modifier.iosCardShadow(NotificationCardShape),
                         onClick = { session.openNotification(item.id); if (request != null) { if (item.type == "request_pending" && request.status == "pending" && state.approvals.any { it.id == request.id }) reviewing = request else selected = request } },
                         shape = NotificationCardShape,
                         color = if (item.read) Color.White else MaterialTheme.colorScheme.surface,
                         tonalElevation = 0.dp,
-                        shadowElevation = 1.dp,
+                        shadowElevation = 0.dp,
                         ) {
                         Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(if (item.read) Color.Transparent else tone.copy(alpha = .12f), Color.Transparent))).padding(15.dp), verticalAlignment = Alignment.Top) {
                             Surface(Modifier.size(44.dp), appShape(14.dp), color = tone.copy(alpha = .16f)) { Icon(notificationIcon, null, tint = tone, modifier = Modifier.padding(11.dp)) }
@@ -221,11 +222,12 @@ fun SwipeDeleteItem(
                 val isUnread = index < state.unreadCount
                 SwipeDeleteItem(onDelete = { session.hideArticleNotification(item.id) }) {
                     Surface(
+                        modifier = Modifier.iosCardShadow(NotificationCardShape),
                         onClick = { session.markArticlesRead(); openArticle(item) },
                         shape = NotificationCardShape,
                         color = if (isUnread) MaterialTheme.colorScheme.surface else Color.White,
                         tonalElevation = 0.dp,
-                        shadowElevation = 1.dp,
+                        shadowElevation = 0.dp,
                     ) { Row(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(if (isUnread) SukavinaRed.copy(alpha = .12f) else Color.Transparent, Color.Transparent))).padding(15.dp), verticalAlignment = Alignment.Top) { Surface(Modifier.size(44.dp), appShape(14.dp), color = SukavinaRed.copy(alpha = .16f)) { Icon(Icons.Default.Campaign, null, tint = SukavinaRed, modifier = Modifier.padding(11.dp)) }; Column(Modifier.padding(start = 12.dp).weight(1f)) { Text(item.title, fontWeight = FontWeight.Bold); Text(item.body.plainText(), color = SukavinaMuted, maxLines = 2, overflow = TextOverflow.Ellipsis) }; if (isUnread) Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .18f)) { Text("Mới", color = SukavinaRed, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)) } } }
                 }
             }
