@@ -134,14 +134,16 @@ fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
                 Text("NHÀ ĂN SUKAVINA", color = SukavinaRed, fontSize = 12.sp, fontWeight = FontWeight.Black, letterSpacing = 1.4.sp)
                 Text("Quét mã nhận món", fontSize = 27.sp, fontWeight = FontWeight.ExtraBold)
             }
-            OutlinedButton(
-                onClick = { signOutConfirmation = true },
-                modifier = Modifier.heightIn(min = 44.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(6.dp))
-                Text("Đăng xuất", fontWeight = FontWeight.Bold, maxLines = 1)
+            if (!state.profile?.employeeCode.equals("DEMO", ignoreCase = true)) {
+                OutlinedButton(
+                    onClick = { signOutConfirmation = true },
+                    modifier = Modifier.heightIn(min = 44.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Logout, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Đăng xuất", fontWeight = FontWeight.Bold, maxLines = 1)
+                }
             }
         }
 
@@ -222,7 +224,7 @@ fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
             danger = true,
         ) { Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
-    if (signOutConfirmation) SukavinaAlert(
+    if (signOutConfirmation && !state.profile?.employeeCode.equals("DEMO", ignoreCase = true)) SukavinaAlert(
         title = "Xác nhận đăng xuất?",
         eyebrow = "BẢO MẬT TÀI KHOẢN",
         icon = Icons.AutoMirrored.Filled.Logout,
