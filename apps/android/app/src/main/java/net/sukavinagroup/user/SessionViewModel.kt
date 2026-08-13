@@ -69,11 +69,14 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                 saveSession(upgraded)
                 _state.value = _state.value.copy(token = upgraded.accessToken)
             }
-            profile
+            profile.copy(
+                mustChangePassword = profile.mustChangePassword ||
+                    preferences.getBoolean("must_change_password", false),
+            )
         }
             .onSuccess { profile ->
                 _state.value = _state.value.copy(profile = profile, error = null)
-                startAccountServices()
+                if (!profile.mustChangePassword) startAccountServices()
             }.onFailure { error ->
                 if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
                     viewModelScope.launch {
@@ -106,7 +109,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     restoring = false, token = response.accessToken,
                     profile = response.toProfile(),
                 )
-                startAccountServices()
+                if (!response.user.mustChangePassword) startAccountServices()
             }.onFailure { error ->
                 val message = if (
                     error is ApiException &&
@@ -135,7 +138,11 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             notifyNewAttendance(dashboard)
             val ids = dashboard.contentItems.map { it.id }.toSet()
             val unread = if (knownArticles.isEmpty()) 0 else (ids - knownArticles).size
-            _state.value = _state.value.copy(profile = profile, dashboard = dashboard, working = false, unreadCount = unread, error = null)
+            val guardedProfile = profile.copy(
+                mustChangePassword = profile.mustChangePassword ||
+                    preferences.getBoolean("must_change_password", false),
+            )
+            _state.value = _state.value.copy(profile = guardedProfile, dashboard = dashboard, working = false, unreadCount = unread, error = null)
             AttendanceWidgetStore.update(getApplication(), dashboard)
             if (unread > 0) NotificationHelper.showArticleNotification(getApplication(), dashboard.contentItems.first().title, unread)
         }.onFailure { update(working = false, error = it.message) }
@@ -325,7 +332,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     biometricEnabled = true,
                     error = null,
                 )
-                startAccountServices()
+                if (!response.user.mustChangePassword) startAccountServices()
                 done(true)
             }
             .onFailure { update(error = "Mật khẩu không chính xác."); done(false) }
@@ -350,7 +357,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                 biometricEnabled = true,
                 hiddenArticleIds = hiddenArticles,
             )
-            startAccountServices()
+            if (!response.user.mustChangePassword) startAccountServices()
         }.onFailure { error ->
             if ((error as? ApiException)?.statusCode in listOf(401, 403)) {
                 clearBiometricCredentials()
@@ -407,8 +414,12 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         update(working = true, error = null)
         runCatching { api.post<MessageResponse, PasswordChangeConfirmBody>("auth/password-change/confirm", PasswordChangeConfirmBody(code, currentPassword, newPassword), token) }
             .onSuccess {
-                _state.value = _state.value.copy(working = false)
-                refresh()
+                preferences.edit { putBoolean("must_change_password", false) }
+                _state.value = _state.value.copy(
+                    working = false,
+                    profile = _state.value.profile?.copy(mustChangePassword = false),
+                )
+                startAccountServices()
                 done(true)
             }
             .onFailure { update(working = false, error = it.message); done(false) }
@@ -419,6 +430,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         events?.cancel(); events = null
         sessionRefreshJob?.cancel(); sessionRefreshJob = null
         secureStore.remove("token", "refresh_token", "widget_token")
+        preferences.edit { remove("must_change_password") }
         AttendanceWidgetStore.clear(getApplication())
         _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
     }
@@ -441,6 +453,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     private fun saveSession(response: LoginResponse) {
         secureStore.putString("token", response.accessToken)
+        preferences.edit { putBoolean("must_change_password", response.user.mustChangePassword) }
         if (response.refreshToken.isNotBlank()) secureStore.putString("refresh_token", response.refreshToken)
         if (response.widgetToken.isNotBlank()) secureStore.putString("widget_token", response.widgetToken)
         if (preferences.getBoolean("biometric_enabled", false) && response.refreshToken.isNotBlank()) {
