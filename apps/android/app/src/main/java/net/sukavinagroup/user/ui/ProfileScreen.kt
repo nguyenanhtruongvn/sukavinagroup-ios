@@ -357,7 +357,7 @@ private fun ProfileActionCard(
     }
 }
 
-@Composable fun PasswordChangeDialog(state: SessionUiState, session: SessionViewModel, dismiss: () -> Unit) {
+@Composable fun PasswordChangeDialog(state: SessionUiState, session: SessionViewModel, forced: Boolean = false, dismiss: () -> Unit) {
     var email by remember { mutableStateOf("") }; var otpSent by remember { mutableStateOf(false) }; var code by remember { mutableStateOf("") }
     var currentPassword by remember { mutableStateOf("") }; var newPassword by remember { mutableStateOf("") }; var confirmPassword by remember { mutableStateOf("") }; var completed by remember { mutableStateOf(false) }
     val isDemo = state.profile?.accountType == "DEMO" || state.profile?.employeeCode.equals("DEMO", ignoreCase = true)
@@ -367,7 +367,7 @@ private fun ProfileActionCard(
     }
     val reusedPasswordError = state.error?.takeIf { isDemo && it.contains("Mật khẩu mới phải khác", ignoreCase = true) }
     AlertDialog(
-        onDismissRequest = dismiss,
+        onDismissRequest = { if (!forced) dismiss() },
         modifier = Modifier.fillMaxWidth(.9f).widthIn(max = 460.dp),
         shape = appShape(28.dp, AppShapeRole.EXTRA_LARGE),
         icon = {
@@ -375,10 +375,10 @@ private fun ProfileActionCard(
                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Key, null, tint = SukavinaRed) }
             }
         },
-        title = { Text(if (completed) "Đổi mật khẩu thành công" else "Đổi mật khẩu", fontWeight = FontWeight.Bold) },
+        title = { Text(if (completed) "Đổi mật khẩu thành công" else if (forced) "Bắt buộc đổi mật khẩu" else "Đổi mật khẩu", fontWeight = FontWeight.Bold) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (completed) Text("Mật khẩu đã được thay đổi thành công.")
-            else if (!otpSent && !isDemo) Text("Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
+            if (completed) Text("Mật khẩu đã được thay đổi thành công. Bạn có thể tiếp tục sử dụng ứng dụng.")
+            else if (!otpSent && !isDemo) Text(if (forced) "Bạn đang dùng mật khẩu mặc định 123456. Mã OTP sẽ được gửi tới email liên kết để xác nhận đổi mật khẩu." else "Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
             else if (isDemo) {
                 Text(
                     "Tài khoản Demo không dùng OTP. Nhập mật khẩu hiện tại để xác nhận thay đổi.",
@@ -432,7 +432,7 @@ private fun ProfileActionCard(
             isDemo -> Button(onClick = { session.confirmPasswordChange(currentPassword = currentPassword, newPassword = newPassword) { if (it) completed = true } }, enabled = currentPassword.isNotEmpty() && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") }
             !otpSent -> Button(onClick = { session.requestPasswordChange { if (it != null) { email = it.email; otpSent = true } } }, enabled = !state.working) { Text("Gửi mã OTP") }
             else -> Button(onClick = { session.confirmPasswordChange(code = code, newPassword = newPassword) { if (it) completed = true } }, enabled = code.length == 6 && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") } } },
-        dismissButton = { if (!completed) TextButton(onClick = dismiss) { Text("Hủy") } },
+        dismissButton = { if (!completed && !forced) TextButton(onClick = dismiss) { Text("Hủy") } },
     )
 }
 

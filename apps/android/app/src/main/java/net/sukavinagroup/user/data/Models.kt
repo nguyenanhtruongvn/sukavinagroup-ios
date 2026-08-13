@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class UserSummary(
     val employeeCode: String = "", val name: String = "", val role: String = "",
     val accountType: String = "EMPLOYEE", val permissions: List<String> = emptyList(),
-    val protected: Boolean = false,
+    val protected: Boolean = false, val mustChangePassword: Boolean = false,
 )
 @Serializable data class LoginResponse(
     val accessToken: String,
@@ -25,6 +25,7 @@ import kotlinx.serialization.Serializable
     val role: String = "", val accountType: String = "EMPLOYEE",
     val permissions: List<String> = emptyList(), val protected: Boolean = false,
     val email: String? = null, val passwordChangedAt: String? = null,
+    val mustChangePassword: Boolean = false,
 )
 @Serializable data class ContentItem(
     val id: String, val page: String = "", val key: String = "", val title: String,

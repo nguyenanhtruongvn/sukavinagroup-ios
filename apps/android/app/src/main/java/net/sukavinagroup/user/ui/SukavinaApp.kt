@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
@@ -136,8 +137,20 @@ fun Modifier.iosCardShadow(shape: Shape, emphasized: Boolean = false): Modifier 
         when {
             state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
             state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError)
+            state.profile?.mustChangePassword == true -> ForcedPasswordChangeScreen(state, session)
             state.profile?.accountType == "CANTEEN" -> CanteenScannerScreen(state, session)
             else -> MainScreen(state, session)
         }
     }
+}
+
+@Composable private fun ForcedPasswordChangeScreen(state: SessionUiState, session: SessionViewModel) {
+    Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(Icons.Default.Security, null, tint = SukavinaRed, modifier = Modifier.size(44.dp))
+            Text("Bắt buộc đổi mật khẩu", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 14.dp))
+            Text("Bạn đang dùng mật khẩu mặc định 123456. Hãy đổi mật khẩu trước khi tiếp tục sử dụng ứng dụng.", color = SukavinaMuted, modifier = Modifier.padding(12.dp), textAlign = TextAlign.Center)
+        }
+    }
+    PasswordChangeDialog(state, session, forced = true) {}
 }

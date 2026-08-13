@@ -394,6 +394,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         runCatching { api.post<MessageResponse, PasswordChangeConfirmBody>("auth/password-change/confirm", PasswordChangeConfirmBody(code, currentPassword, newPassword), token) }
             .onSuccess {
                 _state.value = _state.value.copy(working = false)
+                refresh()
                 done(true)
             }
             .onFailure { update(working = false, error = it.message); done(false) }
@@ -447,6 +448,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         accountType = user.accountType,
         permissions = user.permissions,
         protected = user.protected,
+        mustChangePassword = user.mustChangePassword,
     )
 
     private suspend fun refreshSession(): RefreshResult {
