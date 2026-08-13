@@ -367,7 +367,7 @@ private fun ProfileActionCard(
     }
     val reusedPasswordError = state.error?.takeIf { isDemo && it.contains("Mật khẩu mới phải khác", ignoreCase = true) }
     AlertDialog(
-        onDismissRequest = { if (!forced) dismiss() },
+        onDismissRequest = { if (forced) session.signOut() else dismiss() },
         modifier = Modifier.fillMaxWidth(.9f).widthIn(max = 460.dp),
         shape = appShape(28.dp, AppShapeRole.EXTRA_LARGE),
         icon = {
@@ -432,7 +432,11 @@ private fun ProfileActionCard(
             isDemo -> Button(onClick = { session.confirmPasswordChange(currentPassword = currentPassword, newPassword = newPassword) { if (it) completed = true } }, enabled = currentPassword.isNotEmpty() && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") }
             !otpSent -> Button(onClick = { session.requestPasswordChange { if (it != null) { email = it.email; otpSent = true } } }, enabled = !state.working) { Text("Gửi mã OTP") }
             else -> Button(onClick = { session.confirmPasswordChange(code = code, newPassword = newPassword) { if (it) completed = true } }, enabled = code.length == 6 && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") } } },
-        dismissButton = { if (!completed && !forced) TextButton(onClick = dismiss) { Text("Hủy") } },
+        dismissButton = {
+            if (!completed) TextButton(onClick = { if (forced) session.signOut() else dismiss() }) {
+                Text(if (forced) "Đăng nhập tài khoản khác" else "Hủy")
+            }
+        },
     )
 }
 

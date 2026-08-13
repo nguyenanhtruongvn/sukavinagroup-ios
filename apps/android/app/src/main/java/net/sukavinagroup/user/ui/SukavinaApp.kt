@@ -145,12 +145,11 @@ fun Modifier.iosCardShadow(shape: Shape, emphasized: Boolean = false): Modifier 
 }
 
 @Composable private fun ForcedPasswordChangeScreen(state: SessionUiState, session: SessionViewModel) {
-    Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.Security, null, tint = SukavinaRed, modifier = Modifier.size(44.dp))
-            Text("Bắt buộc đổi mật khẩu", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 14.dp))
-            Text("Bạn đang dùng mật khẩu mặc định 123456. Hãy đổi mật khẩu trước khi tiếp tục sử dụng ứng dụng.", color = SukavinaMuted, modifier = Modifier.padding(12.dp), textAlign = TextAlign.Center)
-        }
-    }
+    LoginScreen(
+        state = state.copy(token = null, profile = null, error = null, working = false),
+        signIn = { _, _ -> },
+        biometricSignIn = {},
+        dismissError = {},
+    )
     PasswordChangeDialog(state, session, forced = true) {}
 }
