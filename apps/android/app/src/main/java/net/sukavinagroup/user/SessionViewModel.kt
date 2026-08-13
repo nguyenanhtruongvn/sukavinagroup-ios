@@ -388,6 +388,20 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             .onFailure { update(working = false, error = it.message); done(null) }
     }
 
+    fun requestForgotPassword(employeeCode: String, done: (ForgotPasswordRequestResponse?) -> Unit) = viewModelScope.launch {
+        update(working = true, error = null)
+        runCatching { api.post<ForgotPasswordRequestResponse, ForgotPasswordRequestBody>("auth/forgot-password/request", ForgotPasswordRequestBody(employeeCode.trim())) }
+            .onSuccess { update(working = false); done(it) }
+            .onFailure { update(working = false, error = it.message); done(null) }
+    }
+
+    fun confirmForgotPassword(employeeCode: String, code: String, newPassword: String, done: (Boolean) -> Unit) = viewModelScope.launch {
+        update(working = true, error = null)
+        runCatching { api.post<MessageResponse, ForgotPasswordConfirmBody>("auth/forgot-password/confirm", ForgotPasswordConfirmBody(employeeCode.trim(), code, newPassword)) }
+            .onSuccess { update(working = false); done(true) }
+            .onFailure { update(working = false, error = it.message); done(false) }
+    }
+
     fun confirmPasswordChange(code: String = "", currentPassword: String? = null, newPassword: String, done: (Boolean) -> Unit) = viewModelScope.launch {
         val token = _state.value.token ?: return@launch done(false)
         update(working = true, error = null)

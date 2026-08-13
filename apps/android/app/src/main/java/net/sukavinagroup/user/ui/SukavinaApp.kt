@@ -136,7 +136,7 @@ fun Modifier.iosCardShadow(shape: Shape, emphasized: Boolean = false): Modifier 
     SukavinaAppBackground {
         when {
             state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError)
+            state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError, session)
             state.profile?.mustChangePassword == true -> ForcedPasswordChangeScreen(state, session)
             state.profile?.accountType == "CANTEEN" -> CanteenScannerScreen(state, session)
             else -> MainScreen(state, session)
@@ -150,6 +150,7 @@ fun Modifier.iosCardShadow(shape: Shape, emphasized: Boolean = false): Modifier 
         signIn = { _, _ -> },
         biometricSignIn = {},
         dismissError = {},
+        session = session,
     )
     PasswordChangeDialog(state, session, forced = true) {}
 }

@@ -115,10 +115,12 @@ import com.google.zxing.common.BitMatrix
     signIn: (String, String) -> Unit,
     biometricSignIn: () -> Unit = {},
     dismissError: () -> Unit = {},
+    session: SessionViewModel? = null,
 ) {
     val activity = LocalActivity.current as? MainActivity
     var login by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var forgotOpen by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().imePadding().padding(horizontal = 26.dp),
         verticalArrangement = Arrangement.Center,
@@ -142,8 +144,10 @@ import com.google.zxing.common.BitMatrix
             if (state.working) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
             else Text("Đăng nhập", fontWeight = FontWeight.Bold)
         }
+        if (session != null) TextButton(onClick = { forgotOpen = true }) { Text("Quên mật khẩu?") }
         if (state.biometricEnabled) OutlinedButton(onClick = { activity?.authenticateBiometric(biometricSignIn) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = appShape(16.dp, AppShapeRole.LARGE)) { Icon(Icons.Default.Fingerprint, null); Spacer(Modifier.width(8.dp)); Text("Đăng nhập bằng sinh trắc học") }
     }
+    if (forgotOpen && session != null) ForgotPasswordDialog(state, session, login) { forgotOpen = false }
     state.error?.takeIf(String::isConnectionError)?.let {
         InternetConnectionAlert(dismissError)
     }
@@ -160,6 +164,20 @@ import com.google.zxing.common.BitMatrix
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 21.sp)
         }
     }
+}
+
+@Composable private fun ForgotPasswordDialog(state: SessionUiState, session: SessionViewModel, initialCode: String, dismiss: () -> Unit) {
+    var employeeCode by remember { mutableStateOf(initialCode) }; var otpSent by remember { mutableStateOf(false) }
+    var code by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var confirmation by remember { mutableStateOf("") }
+    val valid = password.length >= 6 && password.any(Char::isLetter) && password.any(Char::isDigit) && password == confirmation
+    AlertDialog(onDismissRequest = dismiss, icon = { Icon(Icons.Default.LockReset, null, tint = SukavinaRed) }, title = { Text("Khôi phục mật khẩu", fontWeight = FontWeight.Bold) },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("OTP sẽ được gửi đến email đã liên kết với mã nhân viên.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(employeeCode, { employeeCode = it }, enabled = !otpSent, label = { Text("Mã nhân viên") }, singleLine = true)
+            if (otpSent) { OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, label = { Text("Mã OTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)); OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu mới gồm chữ và số") }, visualTransformation = PasswordVisualTransformation()); OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Nhập lại mật khẩu") }, visualTransformation = PasswordVisualTransformation()) }
+        } },
+        confirmButton = { Button(enabled = !state.working && employeeCode.isNotBlank() && (!otpSent || (code.length == 6 && valid)), onClick = { if (!otpSent) session.requestForgotPassword(employeeCode) { if (it != null) otpSent = true } else session.confirmForgotPassword(employeeCode, code, password) { if (it) dismiss() } }) { Text(if (otpSent) "Đặt lại mật khẩu" else "Gửi OTP") } },
+        dismissButton = { TextButton(onClick = dismiss) { Text("Hủy") } })
 }
 
 @Composable fun InternetConnectionAlert(dismiss: () -> Unit) {
