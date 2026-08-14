@@ -416,7 +416,13 @@ private fun ProfileActionCard(
                     isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
                 )
             }
-            else { Text("Mã OTP đã được gửi tới $email", color = SukavinaRed, fontWeight = FontWeight.SemiBold)
+            else {
+                Text(
+                    "Mã OTP đã được gửi tới $email",
+                    color = SukavinaRed,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 OutlinedTextField(
                     code,
                     { code = it.filter(Char::isDigit).take(6) },
@@ -425,8 +431,31 @@ private fun ProfileActionCard(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.SmsOtpCode },
                 )
-                OutlinedTextField(newPassword, { newPassword = it }, label = { Text("Mật khẩu mới, ít nhất 6 ký tự gồm chữ và số") }, visualTransformation = PasswordVisualTransformation())
-                OutlinedTextField(confirmPassword, { confirmPassword = it }, label = { Text("Nhập lại mật khẩu mới") }, visualTransformation = PasswordVisualTransformation()) }
+                OutlinedTextField(
+                    value = newPassword,
+                    onValueChange = { newPassword = it },
+                    label = { Text("Mật khẩu mới") },
+                    supportingText = { Text("Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = newPassword.isNotEmpty() && !validPassword,
+                )
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it },
+                    label = { Text("Xác nhận mật khẩu mới") },
+                    supportingText = {
+                        if (confirmPassword.isNotEmpty() && confirmPassword != newPassword) {
+                            Text("Mật khẩu xác nhận chưa khớp")
+                        }
+                    },
+                    visualTransformation = PasswordVisualTransformation(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
+                )
+            }
         } },
         confirmButton = { when { completed -> Button(onClick = dismiss) { Text("Hoàn tất") }
             isDemo -> Button(onClick = { session.confirmPasswordChange(currentPassword = currentPassword, newPassword = newPassword) { if (it) completed = true } }, enabled = currentPassword.isNotEmpty() && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") }
