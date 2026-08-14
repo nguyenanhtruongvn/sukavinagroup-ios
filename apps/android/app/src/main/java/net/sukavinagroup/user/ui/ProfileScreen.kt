@@ -357,6 +357,24 @@ private fun ProfileActionCard(
     }
 }
 
+@Composable private fun PasswordDialogError(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = appShape(14.dp, AppShapeRole.MEDIUM),
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.ErrorOutline, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(message, modifier = Modifier.weight(1f), lineHeight = 20.sp)
+        }
+    }
+}
+
 @Composable fun PasswordChangeDialog(state: SessionUiState, session: SessionViewModel, forced: Boolean = false, dismiss: () -> Unit) {
     var email by remember { mutableStateOf("") }; var otpSent by remember { mutableStateOf(false) }; var code by remember { mutableStateOf("") }
     var currentPassword by remember { mutableStateOf("") }; var newPassword by remember { mutableStateOf("") }; var confirmPassword by remember { mutableStateOf("") }; var completed by remember { mutableStateOf(false) }
@@ -366,6 +384,7 @@ private fun ProfileActionCard(
         isDemo && it.contains("Mật khẩu hiện tại", ignoreCase = true)
     }
     val reusedPasswordError = state.error?.takeIf { isDemo && it.contains("Mật khẩu mới phải khác", ignoreCase = true) }
+    val dialogError = state.error?.takeUnless { it == currentPasswordError || it == reusedPasswordError }
     AlertDialog(
         onDismissRequest = { if (forced) session.signOut() else dismiss() },
         modifier = Modifier.fillMaxWidth(.9f).widthIn(max = 460.dp),
@@ -378,7 +397,10 @@ private fun ProfileActionCard(
         title = { Text(if (completed) "Đổi mật khẩu thành công" else if (forced) "Bắt buộc đổi mật khẩu" else "Đổi mật khẩu", fontWeight = FontWeight.Bold) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (completed) Text("Mật khẩu đã được thay đổi thành công. Bạn có thể tiếp tục sử dụng ứng dụng.")
-            else if (!otpSent && !isDemo) Text(if (forced) "Bạn đang dùng mật khẩu mặc định 123456. Mã OTP sẽ được gửi tới email liên kết để xác nhận đổi mật khẩu." else "Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
+            else if (!otpSent && !isDemo) {
+                Text(if (forced) "Bạn đang dùng mật khẩu mặc định 123456. Mã OTP sẽ được gửi tới email liên kết để xác nhận đổi mật khẩu." else "Mã OTP sẽ được gửi tới email liên kết. Tài khoản chưa có email cần liên hệ Nhân sự để cập nhật.")
+                dialogError?.let { PasswordDialogError(it) }
+            }
             else if (isDemo) {
                 Text(
                     "Tài khoản Demo không dùng OTP. Nhập mật khẩu hiện tại để xác nhận thay đổi.",
@@ -417,6 +439,7 @@ private fun ProfileActionCard(
                 )
             }
             else {
+                dialogError?.let { PasswordDialogError(it) }
                 Text(
                     "Mã OTP đã được gửi tới $email",
                     color = SukavinaRed,
@@ -425,7 +448,7 @@ private fun ProfileActionCard(
                 )
                 OutlinedTextField(
                     code,
-                    { code = it.filter(Char::isDigit).take(6) },
+                    { code = it.filter(Char::isDigit).take(6); if (state.error != null) session.clearError() },
                     label = { Text("Mã OTP gồm 6 số") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
@@ -433,7 +456,7 @@ private fun ProfileActionCard(
                 )
                 OutlinedTextField(
                     value = newPassword,
-                    onValueChange = { newPassword = it },
+                    onValueChange = { newPassword = it; if (state.error != null) session.clearError() },
                     label = { Text("Mật khẩu mới") },
                     supportingText = { Text("Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
                     visualTransformation = PasswordVisualTransformation(),
@@ -443,7 +466,7 @@ private fun ProfileActionCard(
                 )
                 OutlinedTextField(
                     value = confirmPassword,
-                    onValueChange = { confirmPassword = it },
+                    onValueChange = { confirmPassword = it; if (state.error != null) session.clearError() },
                     label = { Text("Xác nhận mật khẩu mới") },
                     supportingText = {
                         if (confirmPassword.isNotEmpty() && confirmPassword != newPassword) {
