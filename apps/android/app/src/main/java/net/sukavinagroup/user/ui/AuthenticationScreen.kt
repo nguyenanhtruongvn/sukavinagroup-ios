@@ -135,9 +135,9 @@ import com.google.zxing.common.BitMatrix
         OutlinedTextField(login, { login = it }, label = { Text("Mã nhân viên hoặc số điện thoại") },
             leadingIcon = { Icon(Icons.Default.Badge, null) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
-        OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu") },
-            leadingIcon = { Icon(Icons.Default.Lock, null) }, visualTransformation = PasswordVisualTransformation(),
-            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), modifier = Modifier.fillMaxWidth())
+        SukavinaPasswordField(password, { password = it }, label = { Text("Mật khẩu") },
+            leadingIcon = { Icon(Icons.Default.Lock, null) }, autoFillPassword = true,
+            modifier = Modifier.fillMaxWidth())
         Button(onClick = { signIn(login, password) }, enabled = login.isNotBlank() && password.isNotBlank() && !state.working,
             elevation = SukavinaButtonElevation,
             modifier = Modifier.fillMaxWidth().padding(top = 18.dp).height(54.dp), shape = appShape(16.dp, AppShapeRole.LARGE)) {
@@ -174,7 +174,11 @@ import com.google.zxing.common.BitMatrix
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("OTP sẽ được gửi đến email đã liên kết với mã nhân viên.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(employeeCode, { employeeCode = it }, enabled = !otpSent, label = { Text("Mã nhân viên") }, singleLine = true)
-            if (otpSent) { OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, label = { Text("Mã OTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)); OutlinedTextField(password, { password = it }, label = { Text("Mật khẩu mới gồm chữ và số") }, visualTransformation = PasswordVisualTransformation()); OutlinedTextField(confirmation, { confirmation = it }, label = { Text("Nhập lại mật khẩu") }, visualTransformation = PasswordVisualTransformation()) }
+            if (otpSent) {
+                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, label = { Text("Mã OTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                SukavinaPasswordField(password, { password = it }, label = { Text("Mật khẩu mới gồm chữ và số") })
+                SukavinaPasswordField(confirmation, { confirmation = it }, label = { Text("Nhập lại mật khẩu") })
+            }
         } },
         confirmButton = { Button(enabled = !state.working && employeeCode.isNotBlank() && (!otpSent || (code.length == 6 && valid)), onClick = { if (!otpSent) session.requestForgotPassword(employeeCode) { if (it != null) otpSent = true } else session.confirmForgotPassword(employeeCode, code, password) { if (it) dismiss() } }) { Text(if (otpSent) "Đặt lại mật khẩu" else "Gửi OTP") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Hủy") } })

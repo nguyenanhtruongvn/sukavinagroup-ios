@@ -232,7 +232,7 @@ import com.google.zxing.common.BitMatrix
         Text("Tài khoản, dữ liệu cá nhân, đơn từ và lựa chọn món liên quan sẽ bị xóa.", fontWeight = FontWeight.SemiBold)
         Text("Thao tác này không thể hoàn tác. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.", color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { OutlinedTextField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }, visualTransformation = PasswordVisualTransformation()) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
+    if (biometricPasswordOpen) AlertDialog(onDismissRequest = { biometricPasswordOpen = false }, title = { Text("Bật đăng nhập sinh trắc học") }, text = { SukavinaPasswordField(biometricPassword, { biometricPassword = it }, label = { Text("Nhập mật khẩu hiện tại") }) }, confirmButton = { Button(onClick = { session.enableBiometric(biometricPassword, true) { if (it) biometricPasswordOpen = false } }) { Text("Xác nhận") } }, dismissButton = { TextButton(onClick = { biometricPasswordOpen = false }) { Text("Hủy") } })
     biometricError?.let { message ->
         SukavinaAlert(
             title = "Không thể bật sinh trắc học",
@@ -407,33 +407,27 @@ private fun ProfileActionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 20.sp,
                 )
-                OutlinedTextField(
+                SukavinaPasswordField(
                     currentPassword,
                     { currentPassword = it; if (currentPasswordError != null) session.clearError() },
                     label = { Text("Mật khẩu hiện tại") },
                     supportingText = { currentPasswordError?.let { Text(it) } },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = currentPasswordError != null,
                 )
-                OutlinedTextField(
+                SukavinaPasswordField(
                     newPassword,
                     { newPassword = it; if (reusedPasswordError != null) session.clearError() },
                     label = { Text("Mật khẩu mới") },
                     supportingText = { Text(reusedPasswordError ?: "Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = (newPassword.isNotEmpty() && !validPassword) || reusedPasswordError != null,
                 )
-                OutlinedTextField(
+                SukavinaPasswordField(
                     confirmPassword,
                     { confirmPassword = it },
                     label = { Text("Xác nhận mật khẩu mới") },
                     supportingText = { if (confirmPassword.isNotEmpty() && confirmPassword != newPassword) Text("Mật khẩu xác nhận chưa khớp") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
                 )
@@ -454,17 +448,15 @@ private fun ProfileActionCard(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.SmsOtpCode },
                 )
-                OutlinedTextField(
+                SukavinaPasswordField(
                     value = newPassword,
                     onValueChange = { newPassword = it; if (state.error != null) session.clearError() },
                     label = { Text("Mật khẩu mới") },
                     supportingText = { Text("Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = newPassword.isNotEmpty() && !validPassword,
                 )
-                OutlinedTextField(
+                SukavinaPasswordField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it; if (state.error != null) session.clearError() },
                     label = { Text("Xác nhận mật khẩu mới") },
@@ -473,8 +465,6 @@ private fun ProfileActionCard(
                             Text("Mật khẩu xác nhận chưa khớp")
                         }
                     },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
                 )
