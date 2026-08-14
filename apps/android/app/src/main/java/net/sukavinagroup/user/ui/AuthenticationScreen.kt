@@ -144,7 +144,16 @@ import com.google.zxing.common.BitMatrix
             if (state.working) CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
             else Text("Đăng nhập", fontWeight = FontWeight.Bold)
         }
-        if (session != null) TextButton(onClick = { forgotOpen = true }) { Text("Quên mật khẩu?") }
+        if (session != null) {
+            TextButton(
+                onClick = { forgotOpen = true },
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Icon(Icons.Default.LockReset, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(7.dp))
+                Text("Quên mật khẩu?", fontWeight = FontWeight.SemiBold)
+            }
+        }
         if (state.biometricEnabled) OutlinedButton(onClick = { activity?.authenticateBiometric(biometricSignIn) }, modifier = Modifier.fillMaxWidth().padding(top = 10.dp).height(52.dp), shape = appShape(16.dp, AppShapeRole.LARGE)) { Icon(Icons.Default.Fingerprint, null); Spacer(Modifier.width(8.dp)); Text("Đăng nhập bằng sinh trắc học") }
     }
     if (forgotOpen && session != null) ForgotPasswordDialog(state, session, login) { forgotOpen = false }
