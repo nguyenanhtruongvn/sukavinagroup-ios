@@ -58,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -186,14 +187,19 @@ import com.google.zxing.common.BitMatrix
         else -> null
     }
     val confirmationError = if (confirmation != password) "Mật khẩu nhập lại không khớp." else null
-    AlertDialog(onDismissRequest = dismiss, icon = { Icon(Icons.Default.LockReset, null, tint = SukavinaRed) }, title = { Text("Khôi phục mật khẩu", fontWeight = FontWeight.Bold) },
-        text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    AlertDialog(
+        onDismissRequest = dismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp).widthIn(max = 520.dp),
+        icon = { Icon(Icons.Default.LockReset, null, tint = SukavinaRed) },
+        title = { Text("Khôi phục mật khẩu", fontWeight = FontWeight.Bold) },
+        text = { Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("OTP sẽ được gửi đến email đã liên kết với mã nhân viên.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(employeeCode, { employeeCode = it; formError = null }, enabled = !otpSent, label = { Text("Mã nhân viên") }, singleLine = true)
+            OutlinedTextField(employeeCode, { employeeCode = it; formError = null }, enabled = !otpSent, label = { Text("Mã nhân viên") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             if (otpSent) {
-                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6); formError = null }, label = { Text("Mã OTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = attempted && code.length != 6, supportingText = { if (attempted && code.length != 6) Text("Mã OTP phải gồm đủ 6 chữ số.") })
-                SukavinaPasswordField(password, { password = it; formError = null }, label = { Text("Mật khẩu mới") }, isError = attempted && passwordError != null, supportingText = { if (attempted) passwordError?.let { Text(it) } })
-                SukavinaPasswordField(confirmation, { confirmation = it; formError = null }, label = { Text("Nhập lại mật khẩu") }, isError = attempted && confirmationError != null, supportingText = { if (attempted) confirmationError?.let { Text(it) } })
+                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6); formError = null }, label = { Text("Mã OTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = attempted && code.length != 6, supportingText = { if (attempted && code.length != 6) Text("Mã OTP phải gồm đủ 6 chữ số.") }, modifier = Modifier.fillMaxWidth())
+                SukavinaPasswordField(password, { password = it; formError = null }, label = { Text("Mật khẩu mới") }, isError = attempted && passwordError != null, supportingText = { if (attempted) passwordError?.let { Text(it) } }, modifier = Modifier.fillMaxWidth())
+                SukavinaPasswordField(confirmation, { confirmation = it; formError = null }, label = { Text("Nhập lại mật khẩu") }, isError = attempted && confirmationError != null, supportingText = { if (attempted) confirmationError?.let { Text(it) } }, modifier = Modifier.fillMaxWidth())
             }
             formError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         } },
@@ -208,7 +214,8 @@ import com.google.zxing.common.BitMatrix
                 session.confirmForgotPassword(employeeCode, code, password) { success, error -> if (success) dismiss() else formError = error }
             }
         }) { Text(if (otpSent) "Đặt lại mật khẩu" else "Gửi OTP") } },
-        dismissButton = { TextButton(onClick = dismiss) { Text("Hủy") } })
+        dismissButton = { TextButton(onClick = dismiss) { Text("Hủy") } },
+    )
 }
 
 @Composable fun InternetConnectionAlert(dismiss: () -> Unit) {
