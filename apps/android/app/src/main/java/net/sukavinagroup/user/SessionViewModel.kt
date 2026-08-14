@@ -395,18 +395,18 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             .onFailure { update(working = false, error = it.message); done(null) }
     }
 
-    fun requestForgotPassword(employeeCode: String, done: (ForgotPasswordRequestResponse?) -> Unit) = viewModelScope.launch {
+    fun requestForgotPassword(employeeCode: String, done: (ForgotPasswordRequestResponse?, String?) -> Unit) = viewModelScope.launch {
         update(working = true, error = null)
         runCatching { api.post<ForgotPasswordRequestResponse, ForgotPasswordRequestBody>("auth/forgot-password/request", ForgotPasswordRequestBody(employeeCode.trim())) }
-            .onSuccess { update(working = false); done(it) }
-            .onFailure { update(working = false, error = it.message); done(null) }
+            .onSuccess { update(working = false); done(it, null) }
+            .onFailure { update(working = false); done(null, it.message ?: "Không thể gửi mã OTP.") }
     }
 
-    fun confirmForgotPassword(employeeCode: String, code: String, newPassword: String, done: (Boolean) -> Unit) = viewModelScope.launch {
+    fun confirmForgotPassword(employeeCode: String, code: String, newPassword: String, done: (Boolean, String?) -> Unit) = viewModelScope.launch {
         update(working = true, error = null)
         runCatching { api.post<MessageResponse, ForgotPasswordConfirmBody>("auth/forgot-password/confirm", ForgotPasswordConfirmBody(employeeCode.trim(), code, newPassword)) }
-            .onSuccess { update(working = false); done(true) }
-            .onFailure { update(working = false, error = it.message); done(false) }
+            .onSuccess { update(working = false); done(true, null) }
+            .onFailure { update(working = false); done(false, it.message ?: "Không thể đặt lại mật khẩu.") }
     }
 
     fun confirmPasswordChange(code: String = "", currentPassword: String? = null, newPassword: String, done: (Boolean) -> Unit) = viewModelScope.launch {

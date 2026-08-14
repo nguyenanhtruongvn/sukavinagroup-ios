@@ -178,18 +178,36 @@ import com.google.zxing.common.BitMatrix
 @Composable private fun ForgotPasswordDialog(state: SessionUiState, session: SessionViewModel, initialCode: String, dismiss: () -> Unit) {
     var employeeCode by remember { mutableStateOf(initialCode) }; var otpSent by remember { mutableStateOf(false) }
     var code by remember { mutableStateOf("") }; var password by remember { mutableStateOf("") }; var confirmation by remember { mutableStateOf("") }
-    val valid = password.length >= 6 && password.any(Char::isLetter) && password.any(Char::isDigit) && password == confirmation
+    var attempted by remember { mutableStateOf(false) }; var formError by remember { mutableStateOf<String?>(null) }
+    val passwordError = when {
+        password.length < 6 -> "Mật khẩu phải có ít nhất 6 ký tự."
+        password.none(Char::isLetter) -> "Mật khẩu phải có ít nhất một chữ cái."
+        password.none(Char::isDigit) -> "Mật khẩu phải có ít nhất một chữ số."
+        else -> null
+    }
+    val confirmationError = if (confirmation != password) "Mật khẩu nhập lại không khớp." else null
     AlertDialog(onDismissRequest = dismiss, icon = { Icon(Icons.Default.LockReset, null, tint = SukavinaRed) }, title = { Text("Khôi phục mật khẩu", fontWeight = FontWeight.Bold) },
         text = { Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("OTP sẽ được gửi đến email đã liên kết với mã nhân viên.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedTextField(employeeCode, { employeeCode = it }, enabled = !otpSent, label = { Text("Mã nhân viên") }, singleLine = true)
+            OutlinedTextField(employeeCode, { employeeCode = it; formError = null }, enabled = !otpSent, label = { Text("Mã nhân viên") }, singleLine = true)
             if (otpSent) {
-                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, label = { Text("Mã OTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-                SukavinaPasswordField(password, { password = it }, label = { Text("Mật khẩu mới gồm chữ và số") })
-                SukavinaPasswordField(confirmation, { confirmation = it }, label = { Text("Nhập lại mật khẩu") })
+                OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6); formError = null }, label = { Text("Mã OTP") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = attempted && code.length != 6, supportingText = { if (attempted && code.length != 6) Text("Mã OTP phải gồm đủ 6 chữ số.") })
+                SukavinaPasswordField(password, { password = it; formError = null }, label = { Text("Mật khẩu mới") }, isError = attempted && passwordError != null, supportingText = { if (attempted) passwordError?.let { Text(it) } })
+                SukavinaPasswordField(confirmation, { confirmation = it; formError = null }, label = { Text("Nhập lại mật khẩu") }, isError = attempted && confirmationError != null, supportingText = { if (attempted) confirmationError?.let { Text(it) } })
             }
+            formError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
         } },
-        confirmButton = { Button(enabled = !state.working && employeeCode.isNotBlank() && (!otpSent || (code.length == 6 && valid)), onClick = { if (!otpSent) session.requestForgotPassword(employeeCode) { if (it != null) otpSent = true } else session.confirmForgotPassword(employeeCode, code, password) { if (it) dismiss() } }) { Text(if (otpSent) "Đặt lại mật khẩu" else "Gửi OTP") } },
+        confirmButton = { Button(enabled = !state.working, onClick = {
+            attempted = true; formError = null
+            if (employeeCode.isBlank()) { formError = "Vui lòng nhập mã nhân viên."; return@Button }
+            if (!otpSent) session.requestForgotPassword(employeeCode) { response, error ->
+                formError = error ?: if (response?.maskedEmail.isNullOrBlank()) "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email." else null
+                if (response?.maskedEmail?.isNotBlank() == true) { otpSent = true; attempted = false }
+            } else {
+                if (code.length != 6 || passwordError != null || confirmationError != null) return@Button
+                session.confirmForgotPassword(employeeCode, code, password) { success, error -> if (success) dismiss() else formError = error }
+            }
+        }) { Text(if (otpSent) "Đặt lại mật khẩu" else "Gửi OTP") } },
         dismissButton = { TextButton(onClick = dismiss) { Text("Hủy") } })
 }
 

@@ -378,8 +378,15 @@ private fun ProfileActionCard(
 @Composable fun PasswordChangeDialog(state: SessionUiState, session: SessionViewModel, forced: Boolean = false, dismiss: () -> Unit) {
     var email by remember { mutableStateOf("") }; var otpSent by remember { mutableStateOf(false) }; var code by remember { mutableStateOf("") }
     var currentPassword by remember { mutableStateOf("") }; var newPassword by remember { mutableStateOf("") }; var confirmPassword by remember { mutableStateOf("") }; var completed by remember { mutableStateOf(false) }
+    var attempted by remember { mutableStateOf(false) }
     val isDemo = state.profile?.accountType == "DEMO" || state.profile?.employeeCode.equals("DEMO", ignoreCase = true)
-    val validPassword = newPassword.length >= 6 && newPassword.any(Char::isLetter) && newPassword.any(Char::isDigit)
+    val passwordRuleError = when {
+        newPassword.length < 6 -> "Mật khẩu phải có ít nhất 6 ký tự."
+        newPassword.none(Char::isLetter) -> "Mật khẩu phải có ít nhất một chữ cái."
+        newPassword.none(Char::isDigit) -> "Mật khẩu phải có ít nhất một chữ số."
+        else -> null
+    }
+    val confirmationError = if (confirmPassword != newPassword) "Mật khẩu nhập lại không khớp." else null
     val currentPasswordError = state.error?.takeIf {
         isDemo && it.contains("Mật khẩu hiện tại", ignoreCase = true)
     }
@@ -419,17 +426,17 @@ private fun ProfileActionCard(
                     newPassword,
                     { newPassword = it; if (reusedPasswordError != null) session.clearError() },
                     label = { Text("Mật khẩu mới") },
-                    supportingText = { Text(reusedPasswordError ?: "Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
+                    supportingText = { Text(reusedPasswordError ?: if (attempted) passwordRuleError.orEmpty() else "Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
                     modifier = Modifier.fillMaxWidth(),
-                    isError = (newPassword.isNotEmpty() && !validPassword) || reusedPasswordError != null,
+                    isError = (attempted && passwordRuleError != null) || reusedPasswordError != null,
                 )
                 SukavinaPasswordField(
                     confirmPassword,
                     { confirmPassword = it },
                     label = { Text("Xác nhận mật khẩu mới") },
-                    supportingText = { if (confirmPassword.isNotEmpty() && confirmPassword != newPassword) Text("Mật khẩu xác nhận chưa khớp") },
+                    supportingText = { if (attempted) confirmationError?.let { Text(it) } },
                     modifier = Modifier.fillMaxWidth(),
-                    isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
+                    isError = attempted && confirmationError != null,
                 )
             }
             else {
@@ -447,33 +454,33 @@ private fun ProfileActionCard(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().semantics { contentType = ContentType.SmsOtpCode },
+                    isError = attempted && code.length != 6,
+                    supportingText = { if (attempted && code.length != 6) Text("Mã OTP phải gồm đủ 6 chữ số.") },
                 )
                 SukavinaPasswordField(
                     value = newPassword,
                     onValueChange = { newPassword = it; if (state.error != null) session.clearError() },
                     label = { Text("Mật khẩu mới") },
-                    supportingText = { Text("Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
+                    supportingText = { Text(if (attempted) passwordRuleError.orEmpty() else "Ít nhất 6 ký tự, gồm chữ cái và chữ số") },
                     modifier = Modifier.fillMaxWidth(),
-                    isError = newPassword.isNotEmpty() && !validPassword,
+                    isError = attempted && passwordRuleError != null,
                 )
                 SukavinaPasswordField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it; if (state.error != null) session.clearError() },
                     label = { Text("Xác nhận mật khẩu mới") },
                     supportingText = {
-                        if (confirmPassword.isNotEmpty() && confirmPassword != newPassword) {
-                            Text("Mật khẩu xác nhận chưa khớp")
-                        }
+                        if (attempted) confirmationError?.let { Text(it) }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    isError = confirmPassword.isNotEmpty() && confirmPassword != newPassword,
+                    isError = attempted && confirmationError != null,
                 )
             }
         } },
         confirmButton = { when { completed -> Button(onClick = dismiss) { Text("Hoàn tất") }
-            isDemo -> Button(onClick = { session.confirmPasswordChange(currentPassword = currentPassword, newPassword = newPassword) { if (it) completed = true } }, enabled = currentPassword.isNotEmpty() && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") }
+            isDemo -> Button(onClick = { attempted = true; if (currentPassword.isNotBlank() && passwordRuleError == null && confirmationError == null) session.confirmPasswordChange(currentPassword = currentPassword, newPassword = newPassword) { if (it) completed = true } }, enabled = !state.working) { Text("Xác nhận") }
             !otpSent -> Button(onClick = { session.requestPasswordChange { if (it != null) { email = it.email; otpSent = true } } }, enabled = !state.working) { Text("Gửi mã OTP") }
-            else -> Button(onClick = { session.confirmPasswordChange(code = code, newPassword = newPassword) { if (it) completed = true } }, enabled = code.length == 6 && validPassword && newPassword == confirmPassword && !state.working) { Text("Xác nhận") } } },
+            else -> Button(onClick = { attempted = true; if (code.length == 6 && passwordRuleError == null && confirmationError == null) session.confirmPasswordChange(code = code, newPassword = newPassword) { if (it) completed = true } }, enabled = !state.working) { Text("Xác nhận") } } },
         dismissButton = {
             if (!completed) TextButton(onClick = { if (forced) session.signOut() else dismiss() }) {
                 Text(if (forced) "Đăng nhập tài khoản khác" else "Hủy")
