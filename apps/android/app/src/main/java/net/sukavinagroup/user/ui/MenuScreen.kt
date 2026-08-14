@@ -216,8 +216,11 @@ import com.google.zxing.common.BitMatrix
                                 }
                             }
                         } else {
-                            MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), false, state.working) { pendingChoice = "water" }
-                            MealChoiceButton("Món chay", listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · "), Icons.Default.Eco, Color(0xFF62D58B), false, state.working) { pendingChoice = "vegetarian" }
+                            val vegetarianDetail = listOfNotNull(menu?.day?.vegetarianMain, menu?.day?.vegetarianSide).filter { it.isNotBlank() }.joinToString(" · ")
+                            val waterAvailable = menu?.availableChoices?.water ?: !menu?.day?.featured.isNullOrBlank()
+                            val vegetarianAvailable = menu?.availableChoices?.vegetarian ?: vegetarianDetail.isNotBlank()
+                            MealChoiceButton("Món nước", menu?.day?.featured, Icons.Default.LocalDrink, Color(0xFF62C5F4), false, state.working, waterAvailable) { pendingChoice = "water" }
+                            MealChoiceButton("Món chay", vegetarianDetail, Icons.Default.Eco, Color(0xFF62D58B), false, state.working, vegetarianAvailable) { pendingChoice = "vegetarian" }
                         }
                     }
                 }
@@ -287,12 +290,12 @@ fun createQrBitmap(value: String): Bitmap {
     }
 }
 
-@Composable fun MealChoiceButton(title: String, detail: String?, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, selected: Boolean, disabled: Boolean, onClick: () -> Unit) {
+@Composable fun MealChoiceButton(title: String, detail: String?, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, selected: Boolean, disabled: Boolean, available: Boolean = true, onClick: () -> Unit) {
     val choiceShape = appShape(17.dp, AppShapeRole.LARGE)
     Surface(
         modifier = Modifier.iosCardShadow(choiceShape, emphasized = selected),
         onClick = onClick,
-        enabled = !disabled,
+        enabled = !disabled && available,
         shape = choiceShape,
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = 0.dp,
@@ -300,8 +303,8 @@ fun createQrBitmap(value: String): Bitmap {
         Row(Modifier.fillMaxWidth().padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(shape = appShape(14.dp), color = color.copy(alpha = .14f), modifier = Modifier.size(44.dp)) { Icon(icon, null, tint = color, modifier = Modifier.padding(11.dp)) }
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text(detail?.ifBlank { "..." } ?: "...", color = SukavinaMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null, tint = if (selected) color else SukavinaMuted)
+            Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold); Text(if (available) detail?.ifBlank { "..." } ?: "..." else "Đang trống", color = SukavinaMuted, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null, tint = if (selected) color else SukavinaMuted.copy(alpha = if (available) 1f else .45f))
         }
     }
 }

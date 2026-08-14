@@ -89,6 +89,11 @@ import kotlinx.serialization.Serializable
     val receivedAt: String? = null,
     val orderingOpen: Boolean = true,
     val orderingCutoff: String = "09:00",
+    val availableChoices: MealAvailability? = null,
+)
+@Serializable data class MealAvailability(
+    val water: Boolean = false,
+    val vegetarian: Boolean = false,
 )
 @Serializable data class MealSelectionBody(val choice: String)
 @Serializable data class MealQrScanBody(val token: String)
