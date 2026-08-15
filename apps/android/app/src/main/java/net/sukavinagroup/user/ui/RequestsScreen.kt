@@ -306,7 +306,7 @@ private fun RequestEmptyState(filter: String) {
     }
 }
 
-@Composable fun RequestComposer(working: Boolean, dismiss: () -> Unit, submit: (String, String, String, String, String?, String?, Double?, Double?) -> Unit) {
+@Composable fun RequestComposer(session: SessionViewModel, working: Boolean, dismiss: () -> Unit, submit: (String, String, String, String, String?, String?, Double?, Double?) -> Unit) {
     var kind by remember { mutableStateOf(requestKinds.first()) }
     var reason by remember { mutableStateOf("") }
     var destination by remember { mutableStateOf("") }
@@ -330,7 +330,7 @@ private fun RequestEmptyState(filter: String) {
             if (kind.key == "attendance") {
                 DateTimeField("Ngày đối chiếu", from) { selected -> from = selected.withHour(0).withMinute(0); to = selected.withHour(23).withMinute(59) }
                 Text("Chọn ngày để đối chiếu giờ chấm công. Ngày mặc định là ngày tạo đơn.", color = SukavinaMuted, fontSize = 12.sp)
-                Text("Thiếu giờ vào hoặc giờ ra sẽ được bổ sung sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
+                Text("Đã đối chiếu ngày đã chọn. Thiếu giờ sẽ được bổ sung sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
             } else {
                 DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
             }

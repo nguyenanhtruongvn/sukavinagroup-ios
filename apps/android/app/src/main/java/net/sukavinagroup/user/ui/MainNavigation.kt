@@ -274,8 +274,8 @@ import com.google.zxing.common.BitMatrix
         }
         }
         if (requestComposerOpen) {
-            RequestComposer(state.working, { requestComposerOpen = false }) { kind, from, to, reason ->
-                session.createRequest(kind, from, to, reason) { success ->
+            RequestComposer(session, state.working, { requestComposerOpen = false }) { kind, from, to, reason, destination, transport, distance, expense ->
+                session.createRequest(kind, from, to, reason, destination, transport, distance, expense) { success ->
                     if (success) requestComposerOpen = false
                 }
             }
