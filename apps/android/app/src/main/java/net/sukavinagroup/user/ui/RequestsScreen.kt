@@ -341,7 +341,7 @@ private fun RequestEmptyState(filter: String) {
                 }
             }
             if (kind.key == "attendance") {
-                DateTimeField("Ngày đối chiếu", attendanceDate.atStartOfDay()) { selected ->
+                DateOnlyField("Ngày đối chiếu", attendanceDate) { selected ->
                     attendanceDate = selected.toLocalDate()
                     from = attendanceDate.atStartOfDay()
                     to = attendanceDate.atTime(23, 59)
@@ -364,8 +364,8 @@ private fun RequestEmptyState(filter: String) {
                         }
                     }
                 }
-                if (checkIn == null) DateTimeField("Nhập giờ vào", from) { from = it }
-                if (checkOut == null) DateTimeField("Nhập giờ ra", to) { to = it }
+                if (checkIn == null) TimeInputField("Nhập giờ vào", from) { from = it }
+                if (checkOut == null) TimeInputField("Nhập giờ ra", to) { to = it }
                 Text("Giờ bổ sung chỉ được cập nhật sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
             } else {
                 DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
@@ -392,6 +392,53 @@ private fun RequestEmptyState(filter: String) {
             submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), if (kind.key == "attendance" || kind.key == "business") "" else reason.trim(), destination.trim().ifBlank { null }, transport.takeIf { kind.key == "business" }, distance.toDoubleOrNull(), expense.toDoubleOrNull())
         }) { Text(if (working) "Đang gửi..." else "Gửi đơn") }
     }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
+}
+
+@Composable
+private fun DateOnlyField(label: String, value: LocalDate, changed: (LocalDate) -> Unit) {
+    val context = LocalContext.current
+    OutlinedButton(
+        onClick = {
+            android.app.DatePickerDialog(
+                context,
+                { _, year, month, day -> changed(LocalDate.of(year, month + 1, day)) },
+                value.year,
+                value.monthValue - 1,
+                value.dayOfMonth,
+            ).show()
+        },
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
+    ) {
+        Icon(Icons.Default.CalendarMonth, null, Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("$label: ${value.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}", maxLines = 1)
+    }
+}
+
+@Composable
+private fun TimeInputField(label: String, value: LocalDateTime, changed: (LocalDateTime) -> Unit) {
+    var text by remember(value) { mutableStateOf(value.format(DateTimeFormatter.ofPattern("HH:mm"))) }
+    val valid = text.matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))
+    OutlinedTextField(
+        value = text,
+        onValueChange = { input ->
+            val filtered = input.filter { it.isDigit() || it == ':' }.take(5)
+            text = filtered
+            if (filtered.length == 5 && filtered.matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))) {
+                val hour = filtered.substring(0, 2).toInt()
+                val minute = filtered.substring(3, 5).toInt()
+                changed(value.withHour(hour).withMinute(minute))
+            }
+        },
+        label = { Text(label) },
+        placeholder = { Text("HH:mm") },
+        supportingText = { if (!valid && text.isNotEmpty()) Text("Nhập theo dạng  HH:mm", color = MaterialTheme.colorScheme.error) },
+        isError = !valid && text.isNotEmpty(),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable fun DateTimeField(label: String, value: LocalDateTime, changed: (LocalDateTime) -> Unit) {
