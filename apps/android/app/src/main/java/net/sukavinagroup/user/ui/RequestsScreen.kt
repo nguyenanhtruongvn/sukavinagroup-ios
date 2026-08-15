@@ -119,6 +119,8 @@ val requestKinds = listOf(
     RequestKindUi("early", "Về sớm", Icons.AutoMirrored.Filled.ExitToApp, Color(0xFFE63885)),
     RequestKindUi("overtime", "Làm thêm giờ", Icons.Default.DarkMode, Color(0xFF5266F5)),
     RequestKindUi("business", "Công tác", Icons.Default.Flight, Color(0xFF008080)),
+    RequestKindUi("attendance", "Xác nhận giờ công", Icons.Default.CheckCircle, Color(0xFF34C759)),
+    RequestKindUi("gate", "Ra cổng", Icons.AutoMirrored.Filled.ExitToApp, Color(0xFF8E63D2)),
 )
 fun requestKind(key: String) = requestKinds.firstOrNull { it.key == key } ?: requestKinds.first()
 fun requestStatus(status: String) = when (status) { "pending" -> "Chờ duyệt" to Color(0xFFFF9500); "approved" -> "Đã duyệt" to Color(0xFF34C759); "rejected" -> "Từ chối" to SukavinaRed; else -> "Đã hủy" to Color(0xFF8E8E93) }
@@ -312,9 +314,9 @@ private fun RequestEmptyState(filter: String) {
             androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(requestKinds) { item -> FilterChip(selected = kind == item, onClick = { kind = item }, label = { Text(item.title) }, leadingIcon = { Icon(item.icon, null, Modifier.size(17.dp), tint = item.color) }) } }
             DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
             OutlinedTextField(reason, { reason = it }, label = { Text("Lý do") }, minLines = 3, modifier = Modifier.fillMaxWidth())
-            Text("Tối thiểu 10 ký tự", color = if (reason.trim().length >= 10) Color(0xFF55D881) else SukavinaMuted, fontSize = 11.sp)
+            if (kind.key == "attendance") Text("Không cần nhập lý do cho đơn xác nhận giờ công.", color = SukavinaMuted, fontSize = 11.sp) else Text("Tối thiểu 10 ký tự", color = if (reason.trim().length >= 10) Color(0xFF55D881) else SukavinaMuted, fontSize = 11.sp)
         }
-    }, confirmButton = { Button(enabled = !working && reason.trim().length >= 10 && !to.isBefore(from), onClick = { submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), reason.trim()) }, elevation = SukavinaButtonElevation) { Text(if (working) "Đang gửi..." else "Gửi đơn") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
+    }, confirmButton = { Button(enabled = !working && (kind.key == "attendance" || reason.trim().length >= 10) && !to.isBefore(from), onClick = { submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), if (kind.key == "attendance") "" else reason.trim()) }, elevation = SukavinaButtonElevation) { Text(if (working) "Đang gửi..." else "Gửi đơn") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
 }
 
 @Composable fun DateTimeField(label: String, value: LocalDateTime, changed: (LocalDateTime) -> Unit) {
