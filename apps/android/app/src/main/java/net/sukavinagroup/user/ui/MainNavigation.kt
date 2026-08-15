@@ -150,7 +150,7 @@ import com.google.zxing.common.BitMatrix
                 tonalElevation = 0.dp,
                 windowInsets = WindowInsets(0, 0, 0, 0),
             ) {
-                MainTab.entries.forEach { item ->
+                MainTab.entries.filter { it != MainTab.MENU }.forEach { item ->
                     val selected = tab == item
                     val notificationCount = state.unreadCount +
                         state.requestNotifications.count { !it.read }
