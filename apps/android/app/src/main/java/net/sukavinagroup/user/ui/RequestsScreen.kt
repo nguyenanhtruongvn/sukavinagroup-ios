@@ -316,15 +316,16 @@ private fun RequestEmptyState(filter: String) {
     var from by remember { mutableStateOf(LocalDateTime.now()) }
     var to by remember { mutableStateOf(LocalDateTime.now().plusHours(8)) }
     var attendance by remember { mutableStateOf<AttendanceDay?>(null) }
+    var attendanceDate by remember { mutableStateOf(LocalDate.now()) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(kind.key, from.toLocalDate()) {
+    LaunchedEffect(kind.key, attendanceDate) {
         if (kind.key == "attendance") {
             scope.launch {
-                session.attendance(from.format(DateTimeFormatter.ofPattern("yyyy-MM"))).onSuccess { month ->
-                    val day = month.days.firstOrNull { it.date == from.toLocalDate().toString() }
+                session.attendance(attendanceDate.format(DateTimeFormatter.ofPattern("yyyy-MM"))).onSuccess { month ->
+                    val day = month.days.firstOrNull { it.date == attendanceDate.toString() }
                     attendance = day
-                    from = day?.checkIn?.let { runCatching { Instant.parse(it).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() } ?: from.withHour(0).withMinute(0)
-                    to = day?.checkOut?.let { runCatching { Instant.parse(it).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() } ?: from.withHour(23).withMinute(59)
+                    from = day?.checkIn?.let { runCatching { Instant.parse(it).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() } ?: attendanceDate.atStartOfDay()
+                    to = day?.checkOut?.let { runCatching { Instant.parse(it).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() } ?: attendanceDate.atTime(23, 59)
                 }
             }
         }
@@ -340,10 +341,32 @@ private fun RequestEmptyState(filter: String) {
                 }
             }
             if (kind.key == "attendance") {
-                DateTimeField("Ngày đối chiếu", from) { selected -> from = selected.withHour(0).withMinute(0); to = selected.withHour(23).withMinute(59) }
+                DateTimeField("Ngày đối chiếu", attendanceDate.atStartOfDay()) { selected ->
+                    attendanceDate = selected.toLocalDate()
+                    from = attendanceDate.atStartOfDay()
+                    to = attendanceDate.atTime(23, 59)
+                }
                 Text("Chọn ngày để đối chiếu giờ chấm công. Ngày mặc định là ngày tạo đơn.", color = SukavinaMuted, fontSize = 12.sp)
-                attendance?.let { Text("GIỜ VÀO  " + (it.checkIn?.let { value -> runCatching { Instant.parse(value).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).format(DateTimeFormatter.ofPattern("HH:mm")) }.getOrNull() } ?: "Thiếu") + "     GIỜ RA  " + (it.checkOut?.let { value -> runCatching { Instant.parse(value).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).format(DateTimeFormatter.ofPattern("HH:mm")) }.getOrNull() } ?: "Thiếu"), color = if (it.checkIn == null || it.checkOut == null) Color(0xFFFF9500) else Color(0xFF34C759), fontWeight = FontWeight.SemiBold) }
-                Text("Thiếu giờ sẽ được bổ sung sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
+                val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+                val checkIn = attendance?.checkIn?.let { value -> runCatching { Instant.parse(value).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() }
+                val checkOut = attendance?.checkOut?.let { value -> runCatching { Instant.parse(value).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 2.dp, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                            Text("GIỜ VÀO", fontSize = 11.sp, color = SukavinaMuted, fontWeight = FontWeight.SemiBold)
+                            Text(checkIn?.format(timeFormatter) ?: "Thiếu", color = if (checkIn == null) Color(0xFFFF9500) else Color(0xFF34C759), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Surface(shape = MaterialTheme.shapes.medium, tonalElevation = 2.dp, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                            Text("GIỜ RA", fontSize = 11.sp, color = SukavinaMuted, fontWeight = FontWeight.SemiBold)
+                            Text(checkOut?.format(timeFormatter) ?: "Thiếu", color = if (checkOut == null) Color(0xFFFF9500) else Color(0xFF34C759), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                if (checkIn == null) DateTimeField("Nhập giờ vào", from) { from = it }
+                if (checkOut == null) DateTimeField("Nhập giờ ra", to) { to = it }
+                Text("Giờ bổ sung chỉ được cập nhật sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
             } else {
                 DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
             }
