@@ -246,10 +246,10 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }.onFailure { update(error = it.message) }
     }
 
-    fun createRequest(kind: String, startsAt: String, endsAt: String, reason: String, done: (Boolean) -> Unit = {}) = viewModelScope.launch {
+    fun createRequest(kind: String, startsAt: String, endsAt: String, reason: String, businessDestination: String? = null, businessTransport: String? = null, businessDistanceKm: Double? = null, businessExpense: Double? = null, done: (Boolean) -> Unit = {}) = viewModelScope.launch {
         val token = _state.value.token ?: return@launch
         update(working = true, error = null)
-        runCatching { api.post<EmployeeRequest, CreateRequestBody>("me/requests", CreateRequestBody(kind, startsAt, endsAt, reason), token) }
+        runCatching { api.post<EmployeeRequest, CreateRequestBody>("me/requests", CreateRequestBody(kind, startsAt, endsAt, reason, businessDestination, businessTransport, businessDistanceKm, businessExpense), token) }
             .onSuccess { refreshRequests(); update(working = false); done(true) }
             .onFailure { update(working = false, error = it.message); done(false) }
     }

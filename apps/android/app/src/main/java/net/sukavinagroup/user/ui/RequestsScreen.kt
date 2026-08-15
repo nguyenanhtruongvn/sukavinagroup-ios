@@ -306,26 +306,56 @@ private fun RequestEmptyState(filter: String) {
     }
 }
 
-@Composable fun RequestComposer(working: Boolean, dismiss: () -> Unit, submit: (String, String, String, String) -> Unit) {
-    var kind by remember { mutableStateOf(requestKinds.first()) }; var reason by remember { mutableStateOf("") }
-    var from by remember { mutableStateOf(LocalDateTime.now()) }; var to by remember { mutableStateOf(LocalDateTime.now().plusHours(8)) }
+@Composable fun RequestComposer(working: Boolean, dismiss: () -> Unit, submit: (String, String, String, String, String?, String?, Double?, Double?) -> Unit) {
+    var kind by remember { mutableStateOf(requestKinds.first()) }
+    var reason by remember { mutableStateOf("") }
+    var destination by remember { mutableStateOf("") }
+    var transport by remember { mutableStateOf("company_vehicle") }
+    var distance by remember { mutableStateOf("") }
+    var expense by remember { mutableStateOf("") }
+    var from by remember { mutableStateOf(LocalDateTime.now()) }
+    var to by remember { mutableStateOf(LocalDateTime.now().plusHours(8)) }
+    var attendance by remember { mutableStateOf<AttendanceDay?>(null) }
+    val scope = rememberCoroutineScope()
     AlertDialog(onDismissRequest = { if (!working) dismiss() }, title = { Text("Tạo đơn mới") }, text = {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                requestKinds.chunked(2).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        row.forEach { item ->
-                            FilterChip(selected = kind == item, onClick = { kind = item }, label = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingIcon = { Icon(item.icon, null, Modifier.size(17.dp), tint = item.color) }, modifier = Modifier.weight(1f))
-                        }
-                        if (row.size == 1) Spacer(Modifier.weight(1f))
+        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            requestKinds.chunked(2).forEach { row ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    row.forEach { item ->
+                        FilterChip(selected = kind == item, onClick = { kind = item }, label = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingIcon = { Icon(item.icon, null, Modifier.size(17.dp), tint = item.color) }, modifier = Modifier.weight(1f))
                     }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
-            DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
-            OutlinedTextField(reason, { reason = it }, label = { Text("Lý do") }, minLines = 3, modifier = Modifier.fillMaxWidth())
-            if (kind.key == "attendance") Text("Không cần nhập lý do cho đơn xác nhận giờ công.", color = SukavinaMuted, fontSize = 11.sp) else Text("Tối thiểu 10 ký tự", color = if (reason.trim().length >= 10) Color(0xFF55D881) else SukavinaMuted, fontSize = 11.sp)
+            if (kind.key == "attendance") {
+                DateTimeField("Ngày đối chiếu", from) { selected -> from = selected.withHour(0).withMinute(0); to = selected.withHour(23).withMinute(59) }
+                Text("Chọn ngày để đối chiếu giờ chấm công. Ngày mặc định là ngày tạo đơn.", color = SukavinaMuted, fontSize = 12.sp)
+                Text("Thiếu giờ vào hoặc giờ ra sẽ được bổ sung sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
+            } else {
+                DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
+            }
+            if (kind.key == "business") {
+                OutlinedTextField(destination, { destination = it }, label = { Text("Nơi đến") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("Phương tiện", color = SukavinaMuted, fontSize = 12.sp)
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("company_vehicle" to "Xe công ty", "grab" to "Grab", "personal_vehicle" to "Xe cá nhân").forEach { (key,label) ->
+                        FilterChip(selected = transport == key, onClick = { transport = key }, label = { Text(label, maxLines=1, overflow=TextOverflow.Ellipsis) }, modifier = Modifier.weight(1f))
+                    }
+                }
+                if (transport == "personal_vehicle") OutlinedTextField(distance, { distance = it }, label = { Text("Số km") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(expense, { expense = it }, label = { Text("Chi phí (VNĐ)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text("Đơn công tác không cần nhập lý do.", color = SukavinaMuted, fontSize = 12.sp)
+            } else if (kind.key != "attendance") {
+                OutlinedTextField(reason, { reason = it }, label = { Text("Lý do") }, minLines = 3, modifier = Modifier.fillMaxWidth())
+                Text("Tối thiểu 10 ký tự", color = if (reason.trim().length >= 10) Color(0xFF55D881) else SukavinaMuted, fontSize = 11.sp)
+            }
         }
-    }, confirmButton = { Button(enabled = !working && (kind.key == "attendance" || reason.trim().length >= 10) && !to.isBefore(from), onClick = { submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), if (kind.key == "attendance") "" else reason.trim()) }, elevation = SukavinaButtonElevation) { Text(if (working) "Đang gửi..." else "Gửi đơn") } }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
+    }, confirmButton = {
+        val validBusiness = destination.trim().length >= 2 && (transport != "personal_vehicle" || (distance.toDoubleOrNull() ?: 0.0) > 0)
+        Button(enabled = !working && (kind.key == "attendance" || kind.key == "business" && validBusiness || reason.trim().length >= 10) && !to.isBefore(from), onClick = {
+            submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), if (kind.key == "attendance" || kind.key == "business") "" else reason.trim(), destination.trim().ifBlank { null }, transport.takeIf { kind.key == "business" }, distance.toDoubleOrNull(), expense.toDoubleOrNull())
+        }) { Text(if (working) "Đang gửi..." else "Gửi đơn") }
+    }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
 }
 
 @Composable fun DateTimeField(label: String, value: LocalDateTime, changed: (LocalDateTime) -> Unit) {

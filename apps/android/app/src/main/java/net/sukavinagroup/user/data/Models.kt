@@ -69,7 +69,7 @@ import kotlinx.serialization.Serializable
     val decisionNote: String? = null, val autoApproved: Boolean = false,
     val employee: EmployeeSummary? = null,
 )
-@Serializable data class CreateRequestBody(val kind: String, val startsAt: String, val endsAt: String, val reason: String)
+@Serializable data class CreateRequestBody(val kind: String, val startsAt: String, val endsAt: String, val reason: String, val businessDestination: String? = null, val businessTransport: String? = null, val businessDistanceKm: Double? = null, val businessExpense: Double? = null)
 @Serializable data class RequestDecisionBody(val status: String, val note: String? = null)
 @Serializable data class RequestNotification(
     val id: String, val type: String, val title: String, val message: String,
