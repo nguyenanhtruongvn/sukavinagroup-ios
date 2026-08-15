@@ -105,6 +105,7 @@ import kotlinx.serialization.Serializable
     val fullName: String = "",
     val department: String = "",
     val choice: String = "",
+    val mealName: String? = null,
     val mealDate: String = "",
     val receivedAt: String = "",
 )

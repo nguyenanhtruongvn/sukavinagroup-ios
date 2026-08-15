@@ -172,7 +172,8 @@ fun CanteenScannerScreen(state: SessionUiState, session: SessionViewModel) {
                             CanteenResultLine("Nhân viên", scan.fullName)
                             CanteenResultLine("MSNV", scan.employeeCode)
                             CanteenResultLine("Phòng ban", scan.department.ifBlank { "Chưa cập nhật" })
-                            CanteenResultLine("Món đã đặt", if (scan.choice == "water") "Món nước" else "Món chay")
+                            CanteenResultLine("Loại món", if (scan.choice == "water") "Món nước" else "Món chay")
+                            CanteenResultLine("Tên món", scan.mealName?.takeIf { it.isNotBlank() } ?: "Chưa cập nhật")
                         }
                     }
                     Button(
