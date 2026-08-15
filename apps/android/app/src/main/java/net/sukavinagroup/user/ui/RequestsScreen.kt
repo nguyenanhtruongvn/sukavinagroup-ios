@@ -311,7 +311,16 @@ private fun RequestEmptyState(filter: String) {
     var from by remember { mutableStateOf(LocalDateTime.now()) }; var to by remember { mutableStateOf(LocalDateTime.now().plusHours(8)) }
     AlertDialog(onDismissRequest = { if (!working) dismiss() }, title = { Text("Tạo đơn mới") }, text = {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(requestKinds) { item -> FilterChip(selected = kind == item, onClick = { kind = item }, label = { Text(item.title) }, leadingIcon = { Icon(item.icon, null, Modifier.size(17.dp), tint = item.color) }) } }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                requestKinds.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        row.forEach { item ->
+                            FilterChip(selected = kind == item, onClick = { kind = item }, label = { Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis) }, leadingIcon = { Icon(item.icon, null, Modifier.size(17.dp), tint = item.color) }, modifier = Modifier.weight(1f))
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
             DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
             OutlinedTextField(reason, { reason = it }, label = { Text("Lý do") }, minLines = 3, modifier = Modifier.fillMaxWidth())
             if (kind.key == "attendance") Text("Không cần nhập lý do cho đơn xác nhận giờ công.", color = SukavinaMuted, fontSize = 11.sp) else Text("Tối thiểu 10 ký tự", color = if (reason.trim().length >= 10) Color(0xFF55D881) else SukavinaMuted, fontSize = 11.sp)
