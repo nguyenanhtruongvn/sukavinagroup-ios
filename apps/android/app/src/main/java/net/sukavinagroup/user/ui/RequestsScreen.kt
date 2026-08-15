@@ -342,7 +342,7 @@ private fun RequestEmptyState(filter: String) {
             }
             if (kind.key == "attendance") {
                 DateOnlyField("Ngày đối chiếu", attendanceDate) { selected ->
-                    attendanceDate = selected.toLocalDate()
+                    attendanceDate = selected
                     from = attendanceDate.atStartOfDay()
                     to = attendanceDate.atTime(23, 59)
                 }
