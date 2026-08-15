@@ -317,6 +317,18 @@ private fun RequestEmptyState(filter: String) {
     var to by remember { mutableStateOf(LocalDateTime.now().plusHours(8)) }
     var attendance by remember { mutableStateOf<AttendanceDay?>(null) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(kind.key, from.toLocalDate()) {
+        if (kind.key == "attendance") {
+            scope.launch {
+                session.attendance(from.format(DateTimeFormatter.ofPattern("yyyy-MM"))).onSuccess { month ->
+                    val day = month.days.firstOrNull { it.date == from.toLocalDate().toString() }
+                    attendance = day
+                    from = day?.checkIn?.let { runCatching { LocalDateTime.parse(it.replace("Z", "")) }.getOrNull() } ?: from.withHour(0).withMinute(0)
+                    to = day?.checkOut?.let { runCatching { LocalDateTime.parse(it.replace("Z", "")) }.getOrNull() } ?: from.withHour(23).withMinute(59)
+                }
+            }
+        }
+    }
     AlertDialog(onDismissRequest = { if (!working) dismiss() }, title = { Text("Tạo đơn mới") }, text = {
         Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             requestKinds.chunked(2).forEach { row ->
@@ -330,7 +342,8 @@ private fun RequestEmptyState(filter: String) {
             if (kind.key == "attendance") {
                 DateTimeField("Ngày đối chiếu", from) { selected -> from = selected.withHour(0).withMinute(0); to = selected.withHour(23).withMinute(59) }
                 Text("Chọn ngày để đối chiếu giờ chấm công. Ngày mặc định là ngày tạo đơn.", color = SukavinaMuted, fontSize = 12.sp)
-                Text("Đã đối chiếu ngày đã chọn. Thiếu giờ sẽ được bổ sung sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
+                attendance?.let { Text("Giờ vào: " + (it.checkIn ?: "Thiếu") + "  •  Giờ ra: " + (it.checkOut ?: "Thiếu"), color = if (it.checkIn == null || it.checkOut == null) Color(0xFFFF9500) else Color(0xFF34C759), fontWeight = FontWeight.SemiBold) }
+                Text("Thiếu giờ sẽ được bổ sung sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
             } else {
                 DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
             }
