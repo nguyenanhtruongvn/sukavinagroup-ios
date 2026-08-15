@@ -310,7 +310,7 @@ private fun RequestEmptyState(filter: String) {
     var kind by remember { mutableStateOf(requestKinds.first()) }
     var reason by remember { mutableStateOf("") }
     var destination by remember { mutableStateOf("") }
-    var transport by remember { mutableStateOf("company_vehicle") }
+    var transport by remember { mutableStateOf("personal_vehicle") }
     var distance by remember { mutableStateOf("") }
     var expense by remember { mutableStateOf("") }
     var from by remember { mutableStateOf(LocalDateTime.now()) }
@@ -323,8 +323,8 @@ private fun RequestEmptyState(filter: String) {
                 session.attendance(from.format(DateTimeFormatter.ofPattern("yyyy-MM"))).onSuccess { month ->
                     val day = month.days.firstOrNull { it.date == from.toLocalDate().toString() }
                     attendance = day
-                    from = day?.checkIn?.let { runCatching { LocalDateTime.parse(it.replace("Z", "")) }.getOrNull() } ?: from.withHour(0).withMinute(0)
-                    to = day?.checkOut?.let { runCatching { LocalDateTime.parse(it.replace("Z", "")) }.getOrNull() } ?: from.withHour(23).withMinute(59)
+                    from = day?.checkIn?.let { runCatching { Instant.parse(it).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() } ?: from.withHour(0).withMinute(0)
+                    to = day?.checkOut?.let { runCatching { Instant.parse(it).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).toLocalDateTime() }.getOrNull() } ?: from.withHour(23).withMinute(59)
                 }
             }
         }
@@ -342,7 +342,7 @@ private fun RequestEmptyState(filter: String) {
             if (kind.key == "attendance") {
                 DateTimeField("Ngày đối chiếu", from) { selected -> from = selected.withHour(0).withMinute(0); to = selected.withHour(23).withMinute(59) }
                 Text("Chọn ngày để đối chiếu giờ chấm công. Ngày mặc định là ngày tạo đơn.", color = SukavinaMuted, fontSize = 12.sp)
-                attendance?.let { Text("Giờ vào: " + (it.checkIn ?: "Thiếu") + "  •  Giờ ra: " + (it.checkOut ?: "Thiếu"), color = if (it.checkIn == null || it.checkOut == null) Color(0xFFFF9500) else Color(0xFF34C759), fontWeight = FontWeight.SemiBold) }
+                attendance?.let { Text("GIỜ VÀO  " + (it.checkIn?.let { value -> runCatching { Instant.parse(value).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).format(DateTimeFormatter.ofPattern("HH:mm")) }.getOrNull() } ?: "Thiếu") + "     GIỜ RA  " + (it.checkOut?.let { value -> runCatching { Instant.parse(value).atZone(ZoneId.of("Asia/Ho_Chi_Minh")).format(DateTimeFormatter.ofPattern("HH:mm")) }.getOrNull() } ?: "Thiếu"), color = if (it.checkIn == null || it.checkOut == null) Color(0xFFFF9500) else Color(0xFF34C759), fontWeight = FontWeight.SemiBold) }
                 Text("Thiếu giờ sẽ được bổ sung sau khi đơn được duyệt.", color = SukavinaMuted, fontSize = 12.sp)
             } else {
                 DateTimeField("Bắt đầu", from) { from = it }; DateTimeField("Kết thúc", to) { to = it }
@@ -351,7 +351,7 @@ private fun RequestEmptyState(filter: String) {
                 OutlinedTextField(destination, { destination = it }, label = { Text("Nơi đến") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text("Phương tiện", color = SukavinaMuted, fontSize = 12.sp)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("company_vehicle" to "Xe công ty", "grab" to "Grab", "personal_vehicle" to "Xe cá nhân").forEach { (key,label) ->
+                    listOf("personal_vehicle" to "Xe cá nhân", "grab" to "Grab", "company_vehicle" to "Xe công ty").forEach { (key,label) ->
                         FilterChip(selected = transport == key, onClick = { transport = key }, label = { Text(label, maxLines=1, overflow=TextOverflow.Ellipsis) }, modifier = Modifier.weight(1f))
                     }
                 }
