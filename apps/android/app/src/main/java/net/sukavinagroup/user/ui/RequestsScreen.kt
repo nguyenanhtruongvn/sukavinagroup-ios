@@ -423,7 +423,8 @@ private fun TimeInputField(label: String, value: LocalDateTime, changed: (LocalD
     OutlinedTextField(
         value = text,
         onValueChange = { input ->
-            val filtered = input.filter { it.isDigit() || it == ':' }.take(5)
+            val digits = input.filter { it.isDigit() }.take(4)
+            val filtered = if (digits.length > 2) digits.substring(0, 2) + ":" + digits.substring(2) else digits
             text = filtered
             if (filtered.length == 5 && filtered.matches(Regex("^([01]\\d|2[0-3]):[0-5]\\d$"))) {
                 val hour = filtered.substring(0, 2).toInt()
