@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "net.sukavinagroup.user"
-        minSdk = 28
+        minSdk = 29
         targetSdk = 36
         versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 1
         versionName = providers.gradleProperty("versionName").orNull ?: "2.0.1"

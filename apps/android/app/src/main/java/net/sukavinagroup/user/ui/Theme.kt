@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
@@ -44,6 +45,7 @@ fun PortalPageTitle(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text,
         modifier = modifier,
+        color = MaterialTheme.colorScheme.onBackground,
         fontSize = 30.sp,
         lineHeight = 36.sp,
         fontWeight = FontWeight.ExtraBold,
@@ -109,11 +111,19 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
             motionScheme = MotionScheme.expressive(),
             shapes = sukavinaShapes,
         ) {
-            CompositionLocalProvider(LocalSukavinaExpressive provides true, content = content)
+            CompositionLocalProvider(
+                LocalSukavinaExpressive provides true,
+                LocalContentColor provides colors.onBackground,
+                content = content,
+            )
         }
     } else {
         MaterialTheme(colorScheme = colors, shapes = sukavinaShapes) {
-            CompositionLocalProvider(LocalSukavinaExpressive provides false, content = content)
+            CompositionLocalProvider(
+                LocalSukavinaExpressive provides false,
+                LocalContentColor provides colors.onBackground,
+                content = content,
+            )
         }
     }
 }

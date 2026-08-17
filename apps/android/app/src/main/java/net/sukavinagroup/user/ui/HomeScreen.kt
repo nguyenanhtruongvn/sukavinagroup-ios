@@ -120,7 +120,12 @@ import com.google.zxing.common.BitMatrix
         item { PortalPageTitle("Trang chủ") }
         item {
             Text("Xin chào,", color = SukavinaMuted)
-            Text(dashboard?.name ?: state.profile?.name ?: "Nhân viên", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            Text(
+                dashboard?.name ?: state.profile?.name ?: "Nhân viên",
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+            )
             Text("${dashboard?.role.orEmpty()} · ${dashboard?.employeeCode.orEmpty()}", color = SukavinaMuted)
         }
         item {

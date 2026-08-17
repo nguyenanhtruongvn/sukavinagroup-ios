@@ -131,7 +131,13 @@ import com.google.zxing.common.BitMatrix
                 Surface(Modifier.size(88.dp), CircleShape, color = SukavinaRed.copy(alpha = .14f)) {
                     Box(contentAlignment = Alignment.Center) { Text(profile?.name.initials(), color = SukavinaRed, fontSize = 26.sp, fontWeight = FontWeight.Bold) }
                 }
-                Text(profile?.name ?: "Nhân viên", fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 13.dp))
+                Text(
+                    profile?.name ?: "Nhân viên",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 13.dp),
+                )
                 Text(profile?.employeeCode.orEmpty(), color = SukavinaMuted, fontSize = 14.sp)
                 Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .10f), modifier = Modifier.padding(top = 10.dp)) {
                     Text(profile?.role ?: "Nhân viên", color = SukavinaRed, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
