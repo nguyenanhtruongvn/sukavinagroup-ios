@@ -110,6 +110,7 @@ import com.google.zxing.common.BitMatrix
 
 
 @Composable fun AttendanceScreen(session: SessionViewModel, back: () -> Unit) {
+    val sessionState by session.state.collectAsState()
     val activity = LocalActivity.current
     val containerWidth = with(LocalDensity.current) {
         LocalWindowInfo.current.containerSize.width.toDp()
@@ -139,7 +140,9 @@ import com.google.zxing.common.BitMatrix
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(sessionState.attendanceRevision) {
+        cache.clear()
+        errors.clear()
         months.forEach { month ->
             launch {
                 session.attendance(month.toString())

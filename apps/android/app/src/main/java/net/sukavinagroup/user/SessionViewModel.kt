@@ -27,6 +27,7 @@ data class SessionUiState(
     val biometricEnabled: Boolean = false,
     val hiddenArticleIds: Set<String> = emptySet(),
     val todayMenu: TodayMenu? = null,
+    val attendanceRevision: Long = 0L,
 )
 
 class SessionViewModel(application: Application) : AndroidViewModel(application) {
@@ -135,20 +136,27 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
             val dashboard = api.get<Dashboard>("me/dashboard", token)
             profile to dashboard
         }.onSuccess { (profile, dashboard) ->
-            notifyNewAttendance(dashboard)
+            val attendanceChanged = notifyNewAttendance(dashboard)
             val ids = dashboard.contentItems.map { it.id }.toSet()
             val unread = if (knownArticles.isEmpty()) 0 else (ids - knownArticles).size
             val guardedProfile = profile.copy(
                 mustChangePassword = profile.mustChangePassword ||
                     preferences.getBoolean("must_change_password", false),
             )
-            _state.value = _state.value.copy(profile = guardedProfile, dashboard = dashboard, working = false, unreadCount = unread, error = null)
+            _state.value = _state.value.copy(
+                profile = guardedProfile,
+                dashboard = dashboard,
+                working = false,
+                unreadCount = unread,
+                error = null,
+                attendanceRevision = if (attendanceChanged) _state.value.attendanceRevision + 1 else _state.value.attendanceRevision,
+            )
             AttendanceWidgetStore.update(getApplication(), dashboard)
             if (unread > 0) NotificationHelper.showArticleNotification(getApplication(), dashboard.contentItems.first().title, unread)
         }.onFailure { update(working = false, error = it.message) }
     }
 
-    private fun notifyNewAttendance(dashboard: Dashboard) {
+    private fun notifyNewAttendance(dashboard: Dashboard): Boolean {
         val employeeCode = dashboard.employeeCode.ifBlank { _state.value.profile?.employeeCode.orEmpty() }
         val preferenceKey = "known_attendance_record_ids_$employeeCode"
         val currentIds = dashboard.attendanceRecords.map { it.id }.toSet()
@@ -174,6 +182,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         }
 
         preferences.edit { putStringSet(preferenceKey, currentIds) }
+        return !hasBaseline || currentIds != knownIds
     }
 
     fun refreshTodayMenu() = viewModelScope.launch {
