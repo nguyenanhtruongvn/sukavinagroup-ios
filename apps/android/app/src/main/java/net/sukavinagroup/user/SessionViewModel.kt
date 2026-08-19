@@ -17,6 +17,7 @@ import net.sukavinagroup.user.data.*
 import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
+import kotlin.random.Random
 
 data class SessionUiState(
     val restoring: Boolean = true, val token: String? = null, val profile: Profile? = null,
@@ -42,6 +43,8 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private val _state = MutableStateFlow(SessionUiState())
     val state = _state.asStateFlow()
     private var events: EventSource? = null
+    private var eventRefreshJob: Job? = null
+    private val pendingRealtimeEvents = mutableSetOf<String>()
     private var sessionRefreshJob: Job? = null
     private val refreshMutex = Mutex()
     private var knownArticles = emptySet<String>()
@@ -437,6 +440,8 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     fun clearError() = update(error = null)
     fun signOut() {
         events?.cancel(); events = null
+        eventRefreshJob?.cancel(); eventRefreshJob = null
+        pendingRealtimeEvents.clear()
         sessionRefreshJob?.cancel(); sessionRefreshJob = null
         secureStore.remove("token", "refresh_token", "widget_token")
         preferences.edit { remove("must_change_password") }
@@ -448,16 +453,46 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         events?.cancel()
         events = api.events(object : EventSourceListener() {
             override fun onEvent(eventSource: EventSource, id: String?, type: String?, data: String) {
-                if (data.contains("request_changed")) refreshRequests() else if (data.contains("_changed")) refresh()
+                if (events !== eventSource) return
+                scheduleRealtimeRefresh(data)
             }
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
+                if (events !== eventSource) return
                 events = null
                 viewModelScope.launch {
-                    delay(3_000)
+                    delay(Random.nextLong(2_000, 5_001))
                     if (_state.value.token != null && events == null) startEvents()
                 }
             }
         })
+    }
+
+    private fun scheduleRealtimeRefresh(data: String) {
+        if (!data.contains("_changed")) return
+        viewModelScope.launch {
+            if (data.contains("attendance_changed")) pendingRealtimeEvents += "attendance_changed"
+            if (data.contains("request_changed")) pendingRealtimeEvents += "request_changed"
+            if (data.contains("meal_changed")) pendingRealtimeEvents += "meal_changed"
+            if (data.contains("content_changed")) pendingRealtimeEvents += "content_changed"
+            if (pendingRealtimeEvents.isEmpty() || eventRefreshJob?.isActive == true) return@launch
+            eventRefreshJob = launch {
+                // Keep updates near-instant while smoothing a broadcast burst
+                // from hundreds of simultaneously connected devices.
+                delay(Random.nextLong(250, 751))
+                val eventTypes = pendingRealtimeEvents.toSet()
+                pendingRealtimeEvents.clear()
+                eventRefreshJob = null
+                if (eventTypes.contains("request_changed")) refreshRequests()
+                if (
+                    eventTypes.contains("attendance_changed") ||
+                    eventTypes.contains("request_changed") ||
+                    eventTypes.contains("content_changed")
+                ) {
+                    refresh()
+                }
+                if (eventTypes.contains("meal_changed")) refreshTodayMenu()
+            }
+        }
     }
 
     private fun saveSession(response: LoginResponse) {
