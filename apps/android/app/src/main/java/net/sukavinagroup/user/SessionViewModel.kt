@@ -13,8 +13,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import net.sukavinagroup.user.data.*
 import com.google.firebase.messaging.FirebaseMessaging
+import net.sukavinagroup.user.data.*
 import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
@@ -574,7 +574,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun registerPushToken() {
-        val token = _state.value.token ?: return
+        if (_state.value.token.isNullOrBlank()) return
         FirebaseMessaging.getInstance().token
             .addOnSuccessListener { fcmToken ->
                 getApplication<Application>()
@@ -582,15 +582,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
                     .edit()
                     .putString(SukavinaFirebaseMessagingService.PUSH_TOKEN_KEY, fcmToken)
                     .apply()
-                viewModelScope.launch {
-                    runCatching {
-                        api.post<MessageResponse, PushTokenBody>(
-                            "auth/push-token",
-                            PushTokenBody(token = fcmToken),
-                            token,
-                        )
-                    }
-                }
+                PushTokenSync.enqueue(getApplication())
             }
     }
 

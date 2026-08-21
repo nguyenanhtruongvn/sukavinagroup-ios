@@ -11,6 +11,7 @@ class SukavinaFirebaseMessagingService : FirebaseMessagingService() {
             .edit()
             .putString(PUSH_TOKEN_KEY, token)
             .apply()
+        PushTokenSync.enqueue(this)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {

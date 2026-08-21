@@ -29,11 +29,13 @@ android {
         val keystorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
         val keyAliasValue = System.getenv("ANDROID_KEY_ALIAS")
         val keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD")
+        val keystoreType = System.getenv("ANDROID_KEYSTORE_TYPE") ?: "JKS"
         if (!keystorePath.isNullOrBlank() && !keystorePassword.isNullOrBlank() &&
             !keyAliasValue.isNullOrBlank() && !keyPasswordValue.isNullOrBlank()
         ) {
             create("release") {
                 storeFile = file(keystorePath)
+                storeType = keystoreType
                 storePassword = keystorePassword
                 keyAlias = keyAliasValue
                 keyPassword = keyPasswordValue
@@ -88,6 +90,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.core:core-splashscreen:1.2.0")
     implementation("androidx.window:window:1.5.1")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.core:core-remoteviews:1.1.0")
     implementation("androidx.camera:camera-camera2:1.6.1")
     implementation("androidx.camera:camera-lifecycle:1.6.1")
@@ -96,4 +99,5 @@ dependencies {
     implementation("com.google.zxing:core:3.5.4")
     implementation(platform("com.google.firebase:firebase-bom:34.6.0"))
     implementation("com.google.firebase:firebase-messaging")
+    testImplementation("junit:junit:4.13.2")
 }
