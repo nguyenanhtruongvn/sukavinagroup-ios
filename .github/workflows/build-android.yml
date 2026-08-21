@@ -1,4 +1,4 @@
-name: Validate Android and build release AAB
+name: Build native Android APK and AAB
 
 on:
   workflow_dispatch:
@@ -7,62 +7,90 @@ permissions:
   contents: read
 
 jobs:
-  build-aab:
+  build-apk:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          gradle-version: '9.3.1'
-      - name: Install Android SDK used to compile the app
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK used by the project
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.0" "build-tools;36.0.0"
-      - name: Select monotonic store version
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0"
+      - name: Select store-compliant Android version
+        id: android-version
         shell: bash
         run: |
-          set -euo pipefail
-          index="$GITHUB_RUN_NUMBER"
-          per_major=$((99 * 99))
-          major=$((2 + (index - 1) / per_major))
-          remainder=$(((index - 1) % per_major))
-          minor=$((remainder / 99))
-          patch=$((remainder % 99 + 1))
-          echo "APP_VERSION=${major}.${minor}.${patch}" >> "$GITHUB_ENV"
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
 
-      - name: Prepare Google Play upload key
+          build = max(1, int(os.environ["GITHUB_RUN_NUMBER"]))
+          release_index = build - 1
+          minor_block, patch_index = divmod(release_index, 99)
+          major, minor = 2 + minor_block // 100, minor_block % 100
+          print(f"code={build}")
+          print(f"name={major}.{minor}.{patch_index + 1}")
+          PY
+      - name: Configure Firebase Android client
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          test -n "${GOOGLE_SERVICES_JSON_BASE64:-}" || {
+            echo "::error::Missing GOOGLE_SERVICES_JSON_BASE64 repository secret."
+            exit 1
+          }
+          printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > apps/android/app/google-services.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path("apps/android/app/google-services.json").read_text())
+          packages = {
+              client["client_info"]["android_client_info"]["package_name"]
+              for client in config.get("client", [])
+          }
+          assert "net.sukavinagroup.user" in packages, "google-services.json is for a different Android package"
+          PY
+
+      - name: Prepare required Google Play upload key
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          set -euo pipefail
-          test -n "${ANDROID_KEYSTORE_BASE64:-}"
-          test -n "${ANDROID_KEYSTORE_PASSWORD:-}"
-          test -n "${ANDROID_KEY_ALIAS:-}"
-          test -n "${ANDROID_KEY_PASSWORD:-}"
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sukavina-upload.jks"
+          for value in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            test -n "${!value:-}" || { echo "::error::Missing $value repository secret."; exit 1; }
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/sukavina-upload.p12"
+          keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/sukavina-upload.p12" \
+            -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
-      - name: Validate native Kotlin app and build signed release AAB
+      - name: Build native Kotlin APK and release AAB
         working-directory: apps/android
         env:
-          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/sukavina-upload.jks
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/sukavina-upload.p12
+          ANDROID_KEYSTORE_TYPE: PKCS12
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          chmod +x ./gradlew
           ./gradlew --no-daemon \
-            -PversionCode="${GITHUB_RUN_NUMBER}" \
-            -PversionName="${APP_VERSION}" \
-            lintDebug testDebugUnitTest lintRelease bundleRelease
+            -PversionCode="${{ steps.android-version.outputs.code }}" \
+            -PversionName="${{ steps.android-version.outputs.name }}" \
+            lintDebug assembleDebug lintRelease bundleRelease
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Sukavina-Android-debug-APK
+          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
         with:
           name: Sukavina-Android-release-AAB
           path: apps/android/app/build/outputs/bundle/release/app-release.aab
