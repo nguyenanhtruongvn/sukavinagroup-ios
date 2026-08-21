@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.sukavinagroup.user.data.*
+import com.google.firebase.messaging.FirebaseMessaging
 import okhttp3.Response
 import okhttp3.sse.EventSource
 import okhttp3.sse.EventSourceListener
@@ -561,6 +562,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
 
     private fun startAccountServices() {
         startSessionRefresh()
+        registerPushToken()
         if (_state.value.profile?.accountType == "CANTEEN") {
             events?.cancel()
             events = null
@@ -569,6 +571,27 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         refresh()
         refreshRequests()
         startEvents()
+    }
+
+    private fun registerPushToken() {
+        val token = _state.value.token ?: return
+        FirebaseMessaging.getInstance().token
+            .addOnSuccessListener { fcmToken ->
+                getApplication<Application>()
+                    .getSharedPreferences(SukavinaFirebaseMessagingService.PUSH_PREFERENCES, Context.MODE_PRIVATE)
+                    .edit()
+                    .putString(SukavinaFirebaseMessagingService.PUSH_TOKEN_KEY, fcmToken)
+                    .apply()
+                viewModelScope.launch {
+                    runCatching {
+                        api.post<MessageResponse, PushTokenBody>(
+                            "auth/push-token",
+                            PushTokenBody(token = fcmToken),
+                            token,
+                        )
+                    }
+                }
+            }
     }
 
     private fun update(

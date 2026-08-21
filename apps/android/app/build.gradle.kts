@@ -6,6 +6,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Firebase configuration is environment-specific and deliberately excluded from Git.
+// This keeps local development builds usable before `google-services.json` is supplied.
+if (file("google-services.json").isFile) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "net.sukavinagroup.user"
     compileSdk = 37
@@ -88,4 +94,6 @@ dependencies {
     implementation("androidx.camera:camera-view:1.6.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("com.google.zxing:core:3.5.4")
+    implementation(platform("com.google.firebase:firebase-bom:34.6.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }

@@ -62,5 +62,26 @@ object NotificationHelper {
         NotificationManagerCompat.from(context).notify(1003, notification)
     }
 
+    fun showPushNotification(context: Context, title: String, body: String) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val openApp = PendingIntent.getActivity(
+            context,
+            1004,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.app_icon)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setContentIntent(openApp)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        NotificationManagerCompat.from(context).notify(1004, notification)
+    }
+
     fun clear(context: Context) = NotificationManagerCompat.from(context).cancel(1001)
 }

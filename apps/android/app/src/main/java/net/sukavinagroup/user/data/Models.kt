@@ -7,6 +7,7 @@ import kotlinx.serialization.Serializable
 @Serializable data class PasswordChangeConfirmBody(val code: String = "", val currentPassword: String? = null, val newPassword: String)
 @Serializable data class PasswordChangeRequestResponse(val message: String = "", val email: String = "", val expiresInMinutes: Int = 10)
 @Serializable data class MessageResponse(val message: String = "")
+@Serializable data class PushTokenBody(val token: String, val platform: String = "android")
 @Serializable data class ForgotPasswordRequestBody(val employeeCode: String)
 @Serializable data class ForgotPasswordConfirmBody(val employeeCode: String, val code: String, val newPassword: String)
 @Serializable data class ForgotPasswordRequestResponse(val message: String = "", val maskedEmail: String? = null, val expiresInMinutes: Int = 10)
