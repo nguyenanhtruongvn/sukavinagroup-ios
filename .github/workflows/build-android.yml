@@ -1,7 +1,18 @@
-name: Build native Android APK and AAB
+name: Build native Android AAB
 
 on:
   workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Google Play version shown to testers; increase for every published update"
+        required: true
+        default: "1.0.3"
+        type: string
+      version_code:
+        description: "Monotonic Google Play internal version code"
+        required: true
+        default: "30"
+        type: string
 
 permissions:
   contents: read
@@ -20,20 +31,24 @@ jobs:
       - name: Install Android SDK used by the project
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0"
-      - name: Select store-compliant Android version
+      - name: Validate store-compliant Android version
         id: android-version
         shell: bash
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import os
+          import re
 
-          build = max(1, int(os.environ["GITHUB_RUN_NUMBER"]))
-          release_index = build - 1
-          minor_block, patch_index = divmod(release_index, 99)
-          major, minor = 2 + minor_block // 100, minor_block % 100
-          print(f"code={build}")
-          print(f"name={major}.{minor}.{patch_index + 1}")
+          name = os.environ["VERSION_NAME"]
+          code = int(os.environ["VERSION_CODE"])
+          assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", name), "version_name must use x.y.z"
+          assert code > 0, "version_code must be a positive integer"
+          print(f"code={code}")
+          print(f"name={name}")
           PY
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+          VERSION_CODE: ${{ inputs.version_code }}
       - name: Configure Firebase Android client
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -69,7 +84,7 @@ jobs:
           keytool -list -storetype PKCS12 -keystore "$RUNNER_TEMP/sukavina-upload.p12" \
             -storepass "$ANDROID_KEYSTORE_PASSWORD" -alias "$ANDROID_KEY_ALIAS" >/dev/null
 
-      - name: Build native Kotlin APK and release AAB
+      - name: Build signed release AAB
         working-directory: apps/android
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/sukavina-upload.p12
@@ -81,14 +96,7 @@ jobs:
           ./gradlew --no-daemon \
             -PversionCode="${{ steps.android-version.outputs.code }}" \
             -PversionName="${{ steps.android-version.outputs.name }}" \
-            lintDebug assembleDebug lintRelease bundleRelease
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: Sukavina-Android-debug-APK
-          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+            lintRelease bundleRelease
 
       - uses: actions/upload-artifact@v7
         with:

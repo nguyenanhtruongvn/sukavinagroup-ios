@@ -7,6 +7,7 @@ import android.widget.TextView
 import android.graphics.Bitmap
 import android.Manifest
 import android.content.pm.PackageManager
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -65,6 +66,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -84,6 +86,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
@@ -335,17 +338,40 @@ private fun RequestEmptyState(filter: String) {
         onDismissRequest = { if (!working) dismiss() },
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Surface(
+        // Dialog windows use their own soft-input mode. Resizing this window is
+        // what keeps the persistent actions above the Android keyboard.
+        val dialogView = LocalView.current
+        DisposableEffect(dialogView) {
+            val dialogWindow = (dialogView.parent as? DialogWindowProvider)?.window
+            val originalSoftInputMode = dialogWindow?.attributes?.softInputMode
+            dialogWindow?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+            onDispose {
+                originalSoftInputMode?.let(dialogWindow::setSoftInputMode)
+            }
+        }
+        BoxWithConstraints(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-                .imePadding()
-                .heightIn(max = 680.dp),
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
-            shadowElevation = 18.dp,
+                .fillMaxSize()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center,
         ) {
+            val density = LocalDensity.current
+            val keyboardHeight = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+            val visibleComposerHeight = (maxHeight - keyboardHeight).coerceAtLeast(300.dp)
+            val composerSize = if (keyboardHeight > 0.dp) {
+                Modifier.height(visibleComposerHeight)
+            } else {
+                Modifier.heightIn(max = 680.dp)
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(composerSize),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                shadowElevation = 18.dp,
+            ) {
             Column(Modifier.fillMaxWidth()) {
                 Row(
                     modifier = Modifier
@@ -366,7 +392,7 @@ private fun RequestEmptyState(filter: String) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
                 Column(
                     Modifier
-                        .weight(1f, fill = false)
+                        .weight(1f)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -461,6 +487,7 @@ private fun RequestEmptyState(filter: String) {
                     ) { Text(if (working) "Đang gửi..." else "Gửi đơn") }
                 }
             }
+        }
         }
     }
 }

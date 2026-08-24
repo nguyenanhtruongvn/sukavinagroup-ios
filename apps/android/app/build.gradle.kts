@@ -6,6 +6,16 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Release artifacts are accepted by Google Play only when signed with the
+// registered upload key. Keep this state explicit so a locally-built unsigned
+// bundle can never be mistaken for a Play Console upload.
+val releaseSigningConfigured = listOf(
+    "ANDROID_KEYSTORE_PATH",
+    "ANDROID_KEYSTORE_PASSWORD",
+    "ANDROID_KEY_ALIAS",
+    "ANDROID_KEY_PASSWORD",
+).all { !System.getenv(it).isNullOrBlank() }
+
 // Firebase configuration is environment-specific and deliberately excluded from Git.
 // This keeps local development builds usable before `google-services.json` is supplied.
 if (file("google-services.json").isFile) {
@@ -20,8 +30,10 @@ android {
         applicationId = "net.sukavinagroup.user"
         minSdk = 29
         targetSdk = 36
-        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 1
-        versionName = providers.gradleProperty("versionName").orNull ?: "2.0.1"
+        // Keep the source defaults aligned with the next Play internal-test
+        // release. CI may override these values for a later release.
+        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 30
+        versionName = providers.gradleProperty("versionName").orNull ?: "1.0.3"
     }
 
     signingConfigs {
@@ -30,9 +42,7 @@ android {
         val keyAliasValue = System.getenv("ANDROID_KEY_ALIAS")
         val keyPasswordValue = System.getenv("ANDROID_KEY_PASSWORD")
         val keystoreType = System.getenv("ANDROID_KEYSTORE_TYPE") ?: "JKS"
-        if (!keystorePath.isNullOrBlank() && !keystorePassword.isNullOrBlank() &&
-            !keyAliasValue.isNullOrBlank() && !keyPasswordValue.isNullOrBlank()
-        ) {
+        if (releaseSigningConfigured) {
             create("release") {
                 storeFile = file(keystorePath)
                 storeType = keystoreType
@@ -57,6 +67,16 @@ android {
     }
     buildFeatures { compose = true; buildConfig = true }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+}
+
+tasks.matching { it.name == "bundleRelease" || it.name == "assembleRelease" }.configureEach {
+    doFirst {
+        check(releaseSigningConfigured) {
+            "Release signing is required. Build the Play AAB through the GitHub workflow " +
+                "or provide ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD, " +
+                "ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD."
+        }
+    }
 }
 
 kotlin {
