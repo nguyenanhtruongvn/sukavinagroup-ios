@@ -7,11 +7,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
-import androidx.compose.material3.MotionScheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.darkColorScheme
@@ -106,9 +104,8 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
     val colors = if (isSystemInDarkTheme()) darkColors else lightColors
 
     if (useExpressive) {
-        MaterialExpressiveTheme(
+        MaterialTheme(
             colorScheme = colors,
-            motionScheme = MotionScheme.expressive(),
             shapes = sukavinaShapes,
         ) {
             CompositionLocalProvider(

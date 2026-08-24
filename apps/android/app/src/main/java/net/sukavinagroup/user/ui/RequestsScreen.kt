@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.set
@@ -330,8 +331,46 @@ private fun RequestEmptyState(filter: String) {
             }
         }
     }
-    AlertDialog(onDismissRequest = { if (!working) dismiss() }, title = { Text("Tạo đơn mới") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Dialog(
+        onDismissRequest = { if (!working) dismiss() },
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .imePadding()
+                .heightIn(max = 680.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            shadowElevation = 18.dp,
+        ) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 24.dp, top = 20.dp, end = 12.dp, bottom = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Tạo đơn mới", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Text("Điền thông tin rõ ràng để đơn được xử lý nhanh hơn.", color = SukavinaMuted, fontSize = 12.sp)
+                    }
+                    IconButton(
+                        enabled = !working,
+                        onClick = dismiss,
+                        modifier = Modifier.size(44.dp),
+                    ) { Icon(Icons.Default.Close, contentDescription = "Đóng") }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
+                Column(
+                    Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
             requestKinds.chunked(2).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     row.forEach { item ->
@@ -385,13 +424,45 @@ private fun RequestEmptyState(filter: String) {
                 OutlinedTextField(reason, { reason = it }, label = { Text("Lý do") }, minLines = 3, modifier = Modifier.fillMaxWidth())
                 Text("Tối thiểu 10 ký tự", color = if (reason.trim().length >= 10) Color(0xFF55D881) else SukavinaMuted, fontSize = 11.sp)
             }
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .55f))
+                val validBusiness = destination.trim().length >= 2 &&
+                    (transport != "personal_vehicle" || (distance.toDoubleOrNull() ?: 0.0) > 0)
+                val canSubmit = !working &&
+                    (kind.key == "attendance" || kind.key == "business" && validBusiness || reason.trim().length >= 10) &&
+                    !to.isBefore(from)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 14.dp)
+                        .navigationBarsPadding(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    OutlinedButton(
+                        enabled = !working,
+                        onClick = dismiss,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Hủy") }
+                    Button(
+                        enabled = canSubmit,
+                        onClick = {
+                            submit(
+                                kind.key,
+                                from.atZone(ZoneId.systemDefault()).toInstant().toString(),
+                                to.atZone(ZoneId.systemDefault()).toInstant().toString(),
+                                if (kind.key == "attendance" || kind.key == "business") "" else reason.trim(),
+                                destination.trim().ifBlank { null },
+                                transport.takeIf { kind.key == "business" },
+                                distance.toDoubleOrNull(),
+                                expense.toDoubleOrNull(),
+                            )
+                        },
+                        modifier = Modifier.weight(1.25f),
+                    ) { Text(if (working) "Đang gửi..." else "Gửi đơn") }
+                }
+            }
         }
-    }, confirmButton = {
-        val validBusiness = destination.trim().length >= 2 && (transport != "personal_vehicle" || (distance.toDoubleOrNull() ?: 0.0) > 0)
-        Button(enabled = !working && (kind.key == "attendance" || kind.key == "business" && validBusiness || reason.trim().length >= 10) && !to.isBefore(from), onClick = {
-            submit(kind.key, from.atZone(ZoneId.systemDefault()).toInstant().toString(), to.atZone(ZoneId.systemDefault()).toInstant().toString(), if (kind.key == "attendance" || kind.key == "business") "" else reason.trim(), destination.trim().ifBlank { null }, transport.takeIf { kind.key == "business" }, distance.toDoubleOrNull(), expense.toDoubleOrNull())
-        }) { Text(if (working) "Đang gửi..." else "Gửi đơn") }
-    }, dismissButton = { TextButton(onClick = dismiss) { Text("Đóng") } })
+    }
 }
 
 @Composable
