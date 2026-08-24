@@ -66,8 +66,10 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -96,6 +98,7 @@ import kotlinx.coroutines.delay
 import net.sukavinagroup.user.SessionUiState
 import net.sukavinagroup.user.SessionViewModel
 import net.sukavinagroup.user.MainActivity
+import net.sukavinagroup.user.R
 import net.sukavinagroup.user.data.*
 import java.time.*
 import java.time.format.DateTimeFormatter
@@ -125,10 +128,16 @@ import com.google.zxing.common.BitMatrix
         Modifier.fillMaxSize().imePadding().padding(horizontal = 26.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Surface(shape = CircleShape, color = SukavinaRed.copy(alpha = .16f), modifier = Modifier.size(64.dp)) {
-            Icon(Icons.Default.Workspaces, null, tint = SukavinaRed, modifier = Modifier.padding(17.dp))
-        }
-        Spacer(Modifier.height(24.dp))
+        Image(
+            painter = painterResource(id = R.drawable.sukavina_login_logo),
+            contentDescription = "Sukavina",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .width(132.dp)
+                .height(152.dp),
+        )
+        Spacer(Modifier.height(16.dp))
         Text("SUKAVINA PORTAL", color = SukavinaRed, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         Text("Đăng nhập tài khoản", fontSize = 36.sp, fontWeight = FontWeight.Black, lineHeight = 41.sp)
         Text("Thông tin nội bộ, bài viết và chấm công trong một ứng dụng native.", color = SukavinaMuted, modifier = Modifier.padding(vertical = 14.dp))

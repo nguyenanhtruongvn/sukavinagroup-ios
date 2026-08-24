@@ -32,8 +32,8 @@ android {
         targetSdk = 36
         // Keep the source defaults aligned with the next Play internal-test
         // release. CI may override these values for a later release.
-        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 30
-        versionName = providers.gradleProperty("versionName").orNull ?: "1.0.3"
+        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 31
+        versionName = providers.gradleProperty("versionName").orNull ?: "1.0.4"
     }
 
     signingConfigs {

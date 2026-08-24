@@ -6,12 +6,12 @@ on:
       version_name:
         description: "Google Play version shown to testers; increase for every published update"
         required: true
-        default: "1.0.3"
+        default: "1.0.4"
         type: string
       version_code:
         description: "Monotonic Google Play internal version code"
         required: true
-        default: "30"
+        default: "31"
         type: string
 
 permissions:
