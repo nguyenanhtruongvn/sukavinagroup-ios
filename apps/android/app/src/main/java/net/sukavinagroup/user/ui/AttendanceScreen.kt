@@ -69,6 +69,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.semantics.contentType
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -76,6 +77,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.viewinterop.AndroidView
@@ -109,7 +111,11 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
 
-@Composable fun AttendanceScreen(session: SessionViewModel, back: () -> Unit) {
+@Composable fun AttendanceScreen(
+    session: SessionViewModel,
+    displayMode: AttendanceMonthDisplayMode,
+    back: () -> Unit,
+) {
     val sessionState by session.state.collectAsState()
     val activity = LocalActivity.current
     val containerWidth = with(LocalDensity.current) {
@@ -158,12 +164,14 @@ import com.google.zxing.common.BitMatrix
     }
 
     Scaffold(
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        // Do not opt out of safe drawing: Android 15 draws the app behind
+        // system bars by default, including display cutouts.
+        contentWindowInsets = WindowInsets.safeDrawing,
         containerColor = Color.Transparent,
         topBar = {
             Surface(color = Color.Transparent) {
                 Row(
-                    Modifier.fillMaxWidth().statusBarsPadding().height(48.dp).padding(horizontal = 4.dp),
+                    Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 48.dp).padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = back, modifier = Modifier.size(44.dp)) {
@@ -173,6 +181,7 @@ import com.google.zxing.common.BitMatrix
                         "Bảng chấm công",
                         fontSize = 19.sp,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
                         modifier = Modifier.padding(start = 4.dp),
                     )
                 }
@@ -196,6 +205,7 @@ import com.google.zxing.common.BitMatrix
                     modifier = Modifier.weight(1f),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                     fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
                 )
                 IconButton(
                     onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } },
@@ -208,13 +218,13 @@ import com.google.zxing.common.BitMatrix
                 if (useTwoPane) {
                     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         months.forEach { month ->
-                            AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.weight(1f), showTitle = true)
+                            AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, displayMode, Modifier.weight(1f), showTitle = true)
                         }
                     }
                 } else {
                     HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), beyondViewportPageCount = 1, pageSpacing = 0.dp) { page ->
                         val month = months[page]
-                        AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, Modifier.fillMaxWidth(), showTitle = false)
+                        AttendanceMonthPage(month, cache[month], errors[month], selectedDates[month], { selectedDates[month] = it }, displayMode, Modifier.fillMaxWidth(), showTitle = false)
                     }
                 }
             }
@@ -222,11 +232,17 @@ import com.google.zxing.common.BitMatrix
     }
 }
 
-@Composable fun AttendanceMonthPage(month: YearMonth, data: AttendanceMonth?, error: String?, selectedDate: String?, select: (String) -> Unit, modifier: Modifier, showTitle: Boolean) {
+@Composable fun AttendanceMonthPage(month: YearMonth, data: AttendanceMonth?, error: String?, selectedDate: String?, select: (String) -> Unit, displayMode: AttendanceMonthDisplayMode, modifier: Modifier, showTitle: Boolean) {
     Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = LocalBottomNavigationClearance.current), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (showTitle) Text("Tháng ${month.monthValue} / ${month.year}", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(top = 8.dp))
         when {
-            data != null -> { AttendanceSummary(data); AttendanceCalendar(data, selectedDate, select); data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) } }
+            data != null -> {
+                AttendanceSummary(data)
+                AttendanceCalendar(data, selectedDate, select, displayMode)
+                if (displayMode == AttendanceMonthDisplayMode.COMPACT) {
+                    data.days.firstOrNull { it.date == selectedDate }?.let { AttendanceDayDetail(data, it) }
+                }
+            }
             error != null -> Text(error, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(18.dp))
             else -> Box(Modifier.fillMaxWidth().height(260.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         }
@@ -234,6 +250,7 @@ import com.google.zxing.common.BitMatrix
 }
 
 data class AttendanceMetric(val key: String, val title: String, val color: Color, val count: Int)
+private val FullAttendanceCellHeight = 80.dp
 
 @Composable fun AttendanceSummary(month: AttendanceMonth) {
     val metrics = listOf(
@@ -246,19 +263,33 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
     ).map { item -> AttendanceMetric(item.first, item.second, item.third, month.days.count { item.first in it.allStatuses() }) }
         .filter { it.count > 0 }
     if (metrics.isEmpty()) return
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    val density = LocalDensity.current
+    val summaryDensity = remember(density.density, density.fontScale) {
+        Density(density.density, density.fontScale.coerceAtMost(1.15f))
+    }
+    CompositionLocalProvider(LocalDensity provides summaryDensity) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         metrics.forEach { metric ->
-            Surface(Modifier.weight(1f).heightIn(min = 68.dp), shape = appShape(14.dp, AppShapeRole.LARGE), color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.fillMaxSize().padding(vertical = 10.dp, horizontal = 2.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                    Text(metric.count.toString(), color = metric.color, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
-                    Text(metric.title, color = SukavinaMuted, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Surface(
+                modifier = Modifier.weight(1f).heightIn(min = 56.dp),
+                shape = appShape(14.dp, AppShapeRole.LARGE),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp, vertical = 7.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(metric.count.toString(), color = metric.color, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(metric.title, color = SukavinaMuted, fontSize = 9.sp, maxLines = 1, softWrap = false)
                 }
             }
+        }
         }
     }
 }
 
-@Composable fun AttendanceCalendar(month: AttendanceMonth, selectedDate: String?, select: (String) -> Unit) {
+@Composable fun AttendanceCalendar(month: AttendanceMonth, selectedDate: String?, select: (String) -> Unit, displayMode: AttendanceMonthDisplayMode) {
     val days = month.days
     val leading = days.firstOrNull()?.date?.let { LocalDate.parse(it).dayOfWeek.value - 1 } ?: 0
     val cells: List<AttendanceDay?> = List(leading) { null } + days
@@ -276,7 +307,7 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
             cells.chunked(7).forEach { week ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     repeat(7) { index ->
-                        AttendanceDayCell(week.getOrNull(index), selectedDate, select)
+                        AttendanceDayCell(week.getOrNull(index), selectedDate, select, displayMode)
                     }
                 }
             }
@@ -284,17 +315,26 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
     }
 }
 
-@Composable fun RowScope.AttendanceDayCell(day: AttendanceDay?, selectedDate: String?, select: (String) -> Unit) {
+@Composable fun RowScope.AttendanceDayCell(
+    day: AttendanceDay?,
+    selectedDate: String?,
+    select: (String) -> Unit,
+    displayMode: AttendanceMonthDisplayMode,
+) {
+    val full = displayMode == AttendanceMonthDisplayMode.FULL
     if (day == null) {
-        Spacer(Modifier.weight(1f).aspectRatio(0.92f))
+        Spacer(Modifier.weight(1f).then(if (full) Modifier.height(FullAttendanceCellHeight) else Modifier.aspectRatio(0.92f)))
         return
     }
     val statuses = day.allStatuses()
     val shape = appShape(11.dp)
     Box(
-        Modifier.weight(1f).aspectRatio(0.92f).clip(shape)
+        Modifier.weight(1f).then(if (full) Modifier.height(FullAttendanceCellHeight) else Modifier.aspectRatio(0.92f)).clip(shape)
             .then(if (day.date == selectedDate) Modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape) else Modifier)
-            .clickable { select(day.date) },
+            .clickable { select(day.date) }
+            .semantics {
+                contentDescription = "Ngày ${LocalDate.parse(day.date).dayOfMonth}. Giờ vào ${day.checkIn.toTime()}, giờ ra ${day.checkOut.toTime()}"
+            },
         contentAlignment = Alignment.Center,
     ) {
         if ("late" in statuses && "early" in statuses) {
@@ -305,8 +345,46 @@ data class AttendanceMetric(val key: String, val title: String, val color: Color
         } else {
             Box(Modifier.matchParentSize().background(attendanceColor(statuses.firstOrNull()).copy(alpha = .22f)))
         }
-        Text(LocalDate.parse(day.date).dayOfMonth.toString(), fontWeight = if (day.date == selectedDate) FontWeight.ExtraBold else FontWeight.Medium)
+        if (full) {
+            val density = LocalDensity.current
+            val calendarDensity = remember(density.density, density.fontScale) {
+                Density(density.density, density.fontScale.coerceAtMost(1.2f))
+            }
+            val timeColor = if (isSukavinaDarkTheme()) Color(0xFFD0CDD4) else Color(0xFF4B4D55)
+            CompositionLocalProvider(LocalDensity provides calendarDensity) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(start = 1.dp, top = 4.dp, end = 1.dp, bottom = 2.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.Top),
+                ) {
+                    Text(
+                        LocalDate.parse(day.date).dayOfMonth.toString(),
+                        modifier = Modifier.heightIn(min = 20.dp),
+                        fontSize = 12.sp,
+                        fontWeight = if (day.date == selectedDate) FontWeight.ExtraBold else FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                    AttendanceCalendarTime(day.checkIn.toTime(), timeColor)
+                    AttendanceCalendarTime(day.checkOut.toTime(), timeColor)
+                }
+            }
+        } else {
+            Text(LocalDate.parse(day.date).dayOfMonth.toString(), fontWeight = if (day.date == selectedDate) FontWeight.ExtraBold else FontWeight.Medium)
+        }
     }
+}
+
+@Composable private fun AttendanceCalendarTime(time: String, color: Color) {
+    Text(
+        time,
+        modifier = Modifier.fillMaxWidth().height(18.dp),
+        color = color,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false,
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
 }
 
 @Composable fun AttendanceDayDetail(month: AttendanceMonth, day: AttendanceDay) = Card(

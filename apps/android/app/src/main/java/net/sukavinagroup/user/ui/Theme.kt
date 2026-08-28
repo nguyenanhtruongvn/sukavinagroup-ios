@@ -37,6 +37,31 @@ val SukavinaCard = Color(0xFF1F1F26)
 val SukavinaMuted = Color(0xFFAAA7AD)
 val LocalSukavinaExpressive = staticCompositionLocalOf { false }
 val LocalBottomNavigationClearance = staticCompositionLocalOf { 112.dp }
+val LocalSukavinaDarkMode = staticCompositionLocalOf { false }
+
+enum class AppThemeMode(val preferenceValue: String, val label: String) {
+    SYSTEM("system", "Hệ thống"),
+    LIGHT("light", "Sáng"),
+    DARK("dark", "Tối");
+
+    companion object {
+        fun fromPreference(value: String?): AppThemeMode =
+            entries.firstOrNull { it.preferenceValue == value } ?: SYSTEM
+    }
+}
+
+enum class AttendanceMonthDisplayMode(val preferenceValue: String, val label: String) {
+    COMPACT("compact", "Thu gọn"),
+    FULL("full", "Đầy đủ");
+
+    companion object {
+        fun fromPreference(value: String?): AttendanceMonthDisplayMode =
+            entries.firstOrNull { it.preferenceValue == value } ?: COMPACT
+    }
+}
+
+@Composable
+fun isSukavinaDarkTheme(): Boolean = LocalSukavinaDarkMode.current
 
 @Composable
 fun PortalPageTitle(text: String, modifier: Modifier = Modifier) {
@@ -93,7 +118,10 @@ private val lightColors = lightColorScheme(
 )
 
 @Composable
-fun SukavinaTheme(content: @Composable () -> Unit) {
+fun SukavinaTheme(
+    themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    content: @Composable () -> Unit,
+) {
     val context = LocalContext.current
     val useExpressive = remember(context) {
         val activityManager =
@@ -101,7 +129,12 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA &&
             activityManager?.isLowRamDevice != true
     }
-    val colors = if (isSystemInDarkTheme()) darkColors else lightColors
+    val dark = when (themeMode) {
+        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+        AppThemeMode.LIGHT -> false
+        AppThemeMode.DARK -> true
+    }
+    val colors = if (dark) darkColors else lightColors
 
     if (useExpressive) {
         MaterialTheme(
@@ -110,6 +143,7 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
         ) {
             CompositionLocalProvider(
                 LocalSukavinaExpressive provides true,
+                LocalSukavinaDarkMode provides dark,
                 LocalContentColor provides colors.onBackground,
                 content = content,
             )
@@ -118,6 +152,7 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
         MaterialTheme(colorScheme = colors, shapes = sukavinaShapes) {
             CompositionLocalProvider(
                 LocalSukavinaExpressive provides false,
+                LocalSukavinaDarkMode provides dark,
                 LocalContentColor provides colors.onBackground,
                 content = content,
             )
@@ -127,7 +162,7 @@ fun SukavinaTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun SukavinaAppBackground(content: @Composable () -> Unit) {
-    val dark = isSystemInDarkTheme()
+    val dark = isSukavinaDarkTheme()
     val backdrop = if (dark) {
         Brush.verticalGradient(listOf(Color(0xFF111216), Color(0xFF17171D)))
     } else {

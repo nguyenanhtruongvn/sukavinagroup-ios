@@ -19,6 +19,7 @@ class SukavinaFirebaseMessagingService : FirebaseMessagingService() {
         val title = message.notification?.title ?: message.data["title"] ?: "Sukavina"
         val body = message.notification?.body ?: message.data["body"] ?: "Bạn có cập nhật mới."
         NotificationHelper.showPushNotification(this, title, body)
+        BackgroundAccountSync.enqueueImmediate(this)
     }
 
     companion object {

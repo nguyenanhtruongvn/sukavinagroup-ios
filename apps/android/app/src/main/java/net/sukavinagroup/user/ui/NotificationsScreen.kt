@@ -140,13 +140,13 @@ fun SwipeDeleteItem(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.error),
+                    .background(SukavinaRed),
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Icon(
                     Icons.Default.Delete,
                     contentDescription = "Xóa",
-                    tint = MaterialTheme.colorScheme.onError,
+                    tint = Color.White,
                     modifier = Modifier.padding(horizontal = 24.dp),
                 )
             }
@@ -173,7 +173,11 @@ fun SwipeDeleteItem(
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(20.dp, 20.dp, 20.dp, 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { PortalPageTitle("Thông báo"); Text(if (unread > 0) "$unread thông báo chưa đọc" else "Bạn đã đọc tất cả", color = SukavinaMuted) }
-            if (state.requestNotifications.isNotEmpty() || visibleArticles.isNotEmpty()) TextButton(onClick = { confirmClear = true }) { Text("Xóa tất cả", color = MaterialTheme.colorScheme.error) }
+            if (state.requestNotifications.isNotEmpty() || visibleArticles.isNotEmpty()) {
+                TextButton(onClick = { confirmClear = true }) {
+                    Text("Xóa tất cả", color = SukavinaRed, fontWeight = FontWeight.Bold)
+                }
+            }
         }
         PullToRefreshBox(
             isRefreshing = refreshing,
@@ -249,7 +253,18 @@ fun SwipeDeleteItem(
         Text("Bạn cũng có thể vuốt từng thông báo sang trái để xóa riêng.", color = SukavinaRed, fontWeight = FontWeight.SemiBold)
     }
     selected?.let { request -> AlertDialog(onDismissRequest = { selected = null }, title = { Text("Chi tiết đơn") }, text = { RequestCard(request, false, {}, {}) }, confirmButton = { TextButton(onClick = { selected = null }) { Text("Đóng") } }) }
-    reviewing?.let { request -> RequestDecisionDialog(request, state.working, { reviewing = null }) { approved, note -> session.decideRequest(request.id, approved, note) { if (it) reviewing = null } } }
+    reviewing?.let { request: EmployeeRequest ->
+        RequestDecisionDialog(
+            request = request,
+            working = state.working,
+            dismiss = { reviewing = null },
+            decide = { approved: Boolean, note: String ->
+                session.decideRequest(request.id, approved, note) { completed: Boolean ->
+                    if (completed) reviewing = null
+                }
+            },
+        )
+    }
 }
 
 @Composable fun NewsCard(item: ContentItem, onClick: () -> Unit) = Card(onClick = onClick, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {

@@ -129,13 +129,16 @@ import com.google.zxing.common.BitMatrix
             Text("${dashboard?.role.orEmpty()} · ${dashboard?.employeeCode.orEmpty()}", color = SukavinaMuted)
         }
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                MetricCard("${dashboard?.remainingLeaveDays ?: 0}", "Ngày phép", Icons.Default.EventAvailable, Modifier.weight(1f))
+            Row(
+                modifier = Modifier.height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                MetricCard("${dashboard?.remainingLeaveDays ?: 0}", "Ngày phép", Icons.Default.EventAvailable, Modifier.weight(1f).fillMaxHeight())
                 MetricCard(
                     state.requests.count { it.status == "pending" }.toString(),
                     "Đơn đang chờ",
                     Icons.Default.Description,
-                    Modifier.weight(1f),
+                    Modifier.weight(1f).fillMaxHeight(),
                     onClick = openPendingRequests,
                 )
             }
@@ -152,11 +155,11 @@ import com.google.zxing.common.BitMatrix
     onClick: (() -> Unit)? = null,
 ) {
     val content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {
-        Column(Modifier.padding(18.dp)) {
+        Column(Modifier.fillMaxHeight().padding(18.dp)) {
             Icon(icon, null, tint = SukavinaRed)
             Spacer(Modifier.height(16.dp))
             Text(value, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-            Text(label, color = SukavinaMuted)
+            Text(label, color = SukavinaMuted, maxLines = 2)
         }
     }
     val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)

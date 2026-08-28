@@ -447,6 +447,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
         secureStore.remove("token", "refresh_token", "widget_token")
         preferences.edit { remove("must_change_password") }
         AttendanceWidgetStore.clear(getApplication())
+        BackgroundAccountSync.cancel(getApplication())
         _state.value = SessionUiState(restoring = false, biometricEnabled = preferences.getBoolean("biometric_enabled", false), hiddenArticleIds = hiddenArticles)
     }
 
@@ -563,6 +564,7 @@ class SessionViewModel(application: Application) : AndroidViewModel(application)
     private fun startAccountServices() {
         startSessionRefresh()
         registerPushToken()
+        BackgroundAccountSync.schedule(getApplication())
         if (_state.value.profile?.accountType == "CANTEEN") {
             events?.cancel()
             events = null

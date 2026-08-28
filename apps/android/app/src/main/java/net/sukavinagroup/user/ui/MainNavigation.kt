@@ -68,6 +68,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -109,7 +110,16 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
 
-@Composable fun MainScreen(state: SessionUiState, session: SessionViewModel) {
+@Composable fun MainScreen(
+    state: SessionUiState,
+    session: SessionViewModel,
+    themeMode: AppThemeMode,
+    attendanceMonthDisplayMode: AttendanceMonthDisplayMode,
+    showNavigationLabels: Boolean,
+    onThemeModeChange: (AppThemeMode) -> Unit,
+    onAttendanceMonthDisplayModeChange: (AttendanceMonthDisplayMode) -> Unit,
+    onNavigationLabelsChange: (Boolean) -> Unit,
+) {
     var tab by rememberSaveable { mutableStateOf(MainTab.HOME) }
     var article by remember { mutableStateOf<ContentItem?>(null) }
     // Keep the currently opened destination when a fold switches between its
@@ -122,19 +132,30 @@ import com.google.zxing.common.BitMatrix
     BackHandler(article != null || attendanceOpen) { article = null; attendanceOpen = false }
 
     val haptics = LocalHapticFeedback.current
-    Scaffold(containerColor = Color.Transparent, bottomBar = {
-        val dark = isSystemInDarkTheme()
+    Scaffold(
+        containerColor = Color.Transparent,
+        // Let Scaffold reserve cutout, status-bar and navigation-bar space.
+        // The floating navigation surface consumes its own navigation inset.
+        contentWindowInsets = WindowInsets.safeDrawing,
+        bottomBar = {
+        val dark = isSukavinaDarkTheme()
         val glassColor = if (dark) {
             MaterialTheme.colorScheme.surface.copy(alpha = .82f)
         } else {
             Color.White.copy(alpha = .78f)
+        }
+        // Bottom navigation follows the reading-font preference, with a safe
+        // cap for four compact destinations so every label remains visible.
+        val density = LocalDensity.current
+        val navigationDensity = remember(density.density, density.fontScale) {
+            Density(density.density, density.fontScale.coerceAtMost(1.2f))
         }
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 6.dp)
-                .height(70.dp),
+                .height(if (showNavigationLabels) 78.dp else 60.dp),
             shape = appShape(26.dp, AppShapeRole.EXTRA_LARGE),
             color = glassColor,
             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -145,16 +166,17 @@ import com.google.zxing.common.BitMatrix
                 if (dark) Color.White.copy(alpha = .14f) else Color.White.copy(alpha = .86f),
             ),
         ) {
-            NavigationBar(
-                containerColor = Color.Transparent,
-                tonalElevation = 0.dp,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-            ) {
-                MainTab.entries.filter { it != MainTab.MENU }.forEach { item ->
+            CompositionLocalProvider(LocalDensity provides navigationDensity) {
+                NavigationBar(
+                    containerColor = Color.Transparent,
+                    tonalElevation = 0.dp,
+                    windowInsets = WindowInsets(0, 0, 0, 0),
+                ) {
+                    MainTab.entries.filter { it != MainTab.MENU }.forEach { item ->
                     val selected = tab == item
                     val notificationCount = state.unreadCount +
                         state.requestNotifications.count { !it.read }
-                    NavigationBarItem(
+                        NavigationBarItem(
                         selected = selected,
                         onClick = {
                             if (tab != item) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -163,9 +185,12 @@ import com.google.zxing.common.BitMatrix
                             tab = item
                         },
                         colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primary,
+                            selectedIconColor = Color.White,
+                            // On a dark indicator, the selected label must be
+                            // white for contrast. In light mode it stays the
+                            // neutral grey requested for the selected tab.
+                            selectedTextColor = if (dark) Color.White else Color(0xFF5B5C66),
+                            indicatorColor = Color(0xFF5B5C66),
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
@@ -173,7 +198,10 @@ import com.google.zxing.common.BitMatrix
                             BadgedBox(
                                 badge = {
                                     if (item == MainTab.NOTIFICATIONS && notificationCount > 0) {
-                                        Badge { Text(notificationCount.toString()) }
+                                        Badge(
+                                            containerColor = SukavinaRed,
+                                            contentColor = Color.White,
+                                        ) { Text(notificationCount.toString()) }
                                     }
                                 },
                             ) {
@@ -189,15 +217,18 @@ import com.google.zxing.common.BitMatrix
                                 )
                             }
                         },
-                        label = {
-                            Text(
-                                item.label,
-                                fontSize = 10.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                maxLines = 1,
-                            )
-                        },
-                    )
+                        label = if (showNavigationLabels) {
+                            {
+                                Text(
+                                    item.label,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    maxLines = 1,
+                                )
+                            }
+                        } else null,
+                        )
+                    }
                 }
             }
         }
@@ -252,7 +283,11 @@ import com.google.zxing.common.BitMatrix
         ) { activeTab ->
             val selectedArticle = article
             when {
-                attendanceOpen -> AttendanceScreen(session) { attendanceOpen = false }
+                attendanceOpen -> AttendanceScreen(
+                    session = session,
+                    displayMode = attendanceMonthDisplayMode,
+                    back = { attendanceOpen = false },
+                )
                 selectedArticle != null -> ArticleDetail(selectedArticle) { article = null }
                 else -> when (activeTab) {
                     MainTab.HOME -> HomeScreen(
@@ -267,7 +302,16 @@ import com.google.zxing.common.BitMatrix
                     MainTab.MENU -> TodayMenuScreen(state, session)
                     MainTab.REQUESTS -> RequestsScreen(state, session, requestInitialFilter)
                     MainTab.NOTIFICATIONS -> NotificationsScreen(state, session) { article = it }
-                    MainTab.PROFILE -> ProfileScreen(state, session)
+                    MainTab.PROFILE -> ProfileScreen(
+                        state = state,
+                        session = session,
+                        themeMode = themeMode,
+                        onThemeModeChange = onThemeModeChange,
+                        attendanceMonthDisplayMode = attendanceMonthDisplayMode,
+                        onAttendanceMonthDisplayModeChange = onAttendanceMonthDisplayModeChange,
+                        showNavigationLabels = showNavigationLabels,
+                        onNavigationLabelsChange = onNavigationLabelsChange,
+                    )
                 }
             }
         }

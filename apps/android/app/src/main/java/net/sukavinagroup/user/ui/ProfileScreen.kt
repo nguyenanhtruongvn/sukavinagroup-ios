@@ -60,6 +60,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -109,7 +110,16 @@ import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
 
 
-@Composable fun ProfileScreen(state: SessionUiState, session: SessionViewModel) {
+@Composable fun ProfileScreen(
+    state: SessionUiState,
+    session: SessionViewModel,
+    themeMode: AppThemeMode,
+    onThemeModeChange: (AppThemeMode) -> Unit,
+    attendanceMonthDisplayMode: AttendanceMonthDisplayMode,
+    onAttendanceMonthDisplayModeChange: (AttendanceMonthDisplayMode) -> Unit,
+    showNavigationLabels: Boolean,
+    onNavigationLabelsChange: (Boolean) -> Unit,
+) {
     var deleteOpen by remember { mutableStateOf(false) }; var biometricPasswordOpen by remember { mutableStateOf(false) }; var biometricPassword by remember { mutableStateOf("") }; var passwordChangeOpen by remember { mutableStateOf(false) }
     var legalPage by remember { mutableStateOf<LegalPage?>(null) }
     var signOutConfirmation by remember { mutableStateOf(false) }
@@ -146,6 +156,87 @@ import com.google.zxing.common.BitMatrix
         }
         ProfileSectionTitle("THÔNG TIN TÀI KHOẢN")
         Card(Modifier.fillMaxWidth().padding(top = 24.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) { Column { ProfileLine("Vai trò", profile?.role.orEmpty()); HorizontalDivider(); ProfileLine("Loại tài khoản", profile?.accountType.accountLabel()); HorizontalDivider(); Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Default.Fingerprint, null, tint = SukavinaRed); Text("Đăng nhập sinh trắc học", Modifier.padding(start = 10.dp).weight(1f)); Switch(state.biometricEnabled, onCheckedChange = { enabled -> if (enabled) activity?.authenticateBiometric(onSuccess = { biometricPasswordOpen = true }, onError = { biometricError = it }) else session.enableBiometric("", false) }) } } }
+        ProfileSectionTitle("GIAO DIỆN")
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                Text("Chế độ hiển thị", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Chọn giao diện phù hợp với bạn.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 3.dp, bottom = 14.dp),
+                )
+                val density = LocalDensity.current
+                val compactControlDensity = remember(density.density, density.fontScale) {
+                    // Keep the three choices readable at larger font sizes,
+                    // without allowing them to crowd one another on phones.
+                    Density(density.density, density.fontScale.coerceAtMost(1.2f))
+                }
+                CompositionLocalProvider(LocalDensity provides compactControlDensity) {
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        AppThemeMode.entries.forEachIndexed { index, mode ->
+                            SegmentedButton(
+                            selected = themeMode == mode,
+                            onClick = { onThemeModeChange(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, AppThemeMode.entries.size),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Text(mode.label, maxLines = 1, fontSize = 12.sp)
+                        }
+                    }
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(top = 18.dp, bottom = 14.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Nhãn tab menu", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Hiển thị tên bên dưới biểu tượng ở thanh điều hướng.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 3.dp),
+                        )
+                    }
+                    Switch(
+                        checked = showNavigationLabels,
+                        onCheckedChange = onNavigationLabelsChange,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                }
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 18.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                )
+                Text("Xem chấm công tháng", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Đầy đủ hiển thị trực tiếp giờ vào và giờ ra trong từng ngày.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 3.dp, bottom = 14.dp),
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    AttendanceMonthDisplayMode.entries.forEachIndexed { index, mode ->
+                        SegmentedButton(
+                            selected = attendanceMonthDisplayMode == mode,
+                            onClick = { onAttendanceMonthDisplayModeChange(mode) },
+                            shape = SegmentedButtonDefaults.itemShape(index, AttendanceMonthDisplayMode.entries.size),
+                            modifier = Modifier.weight(1f),
+                            ) {
+                                Text(mode.label, maxLines = 1, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
+        }
         ProfileSectionTitle("QUYỀN RIÊNG TƯ & HỖ TRỢ")
         Card(Modifier.fillMaxWidth().padding(top = 14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
             Column {
@@ -495,7 +586,17 @@ private fun ProfileActionCard(
     )
 }
 
-@Composable fun ProfileLine(label: String, value: String) = Row(Modifier.fillMaxWidth().padding(18.dp)) { Text(label, color = SukavinaMuted); Spacer(Modifier.weight(1f)); Text(value, fontWeight = FontWeight.Medium) }
+@Composable
+fun ProfileLine(label: String, value: String) {
+    // Use a stronger foreground as well as a heavier weight in light mode;
+    // the previous muted color made these account labels look washed out.
+    val labelColor = if (isSukavinaDarkTheme()) SukavinaMuted else Color(0xFF5B5C66)
+    Row(Modifier.fillMaxWidth().padding(18.dp)) {
+        Text(label, color = labelColor, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.weight(1f))
+        Text(value, fontWeight = FontWeight.Medium)
+    }
+}
 
 fun String?.toTime(): String { if (this.isNullOrBlank()) return "--:--"; return runCatching { OffsetDateTime.parse(this).atZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")) }.getOrDefault("--:--") }
 fun String.toDateLabel() = runCatching { OffsetDateTime.parse(this).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(Locale.forLanguageTag("vi-VN"))) }.getOrDefault("")

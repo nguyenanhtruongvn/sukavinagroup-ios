@@ -258,7 +258,13 @@ fun SukavinaAlert(
     confirmEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val dark = isSukavinaDarkTheme()
     val accent = tone ?: if (danger) Color(0xFFD92D3A) else SukavinaRed
+    // Warning dialogs keep the action red, but their surfaces must remain
+    // neutral. Material's elevated containers can otherwise pick up a muddy
+    // red tint in dark mode and make the whole dialog look like an error.
+    val dialogSurface = if (dark) Color(0xFF24242A) else MaterialTheme.colorScheme.surface
+    val messageSurface = if (dark) Color(0xFF303038) else Color(0xFFF5F3F5)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -266,8 +272,8 @@ fun SukavinaAlert(
         Surface(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).widthIn(max = 440.dp),
             shape = appShape(28.dp, AppShapeRole.EXTRA_LARGE),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp,
+            color = dialogSurface,
+            tonalElevation = 0.dp,
             shadowElevation = 18.dp,
             border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = .14f)),
         ) {
@@ -291,7 +297,7 @@ fun SukavinaAlert(
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = appShape(17.dp, AppShapeRole.LARGE),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .42f),
+                    color = messageSurface,
                 ) {
                     Column(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),

@@ -6,5 +6,6 @@ class SukavinaApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         NotificationHelper.createChannel(this)
+        BackgroundAccountSync.schedule(this)
     }
 }

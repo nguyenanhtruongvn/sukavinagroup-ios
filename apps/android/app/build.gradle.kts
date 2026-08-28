@@ -32,8 +32,8 @@ android {
         targetSdk = 36
         // Keep the source defaults aligned with the next Play internal-test
         // release. CI may override these values for a later release.
-        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 31
-        versionName = providers.gradleProperty("versionName").orNull ?: "1.0.4"
+        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 53
+        versionName = providers.gradleProperty("versionName").orNull ?: "1.0.19"
     }
 
     signingConfigs {
@@ -56,6 +56,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            // Keep the release bundle small. Resource shrinking is only safe
+            // when code shrinking is enabled, so these options intentionally
+            // stay together in the Play release variant.
+            isShrinkResources = true
             signingConfigs.findByName("release")?.let { signingConfig = it }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

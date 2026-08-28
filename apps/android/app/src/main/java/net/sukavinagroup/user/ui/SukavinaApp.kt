@@ -132,14 +132,54 @@ fun Modifier.iosCardShadow(shape: Shape, emphasized: Boolean = false): Modifier 
     spotColor = Color.Black.copy(alpha = if (emphasized) 0.05f else 0.035f),
 )
 
-@Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) = SukavinaTheme {
-    SukavinaAppBackground {
-        when {
-            state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError, session)
-            state.profile?.mustChangePassword == true -> ForcedPasswordChangeScreen(state, session)
-            state.profile?.accountType == "CANTEEN" -> CanteenScannerScreen(state, session)
-            else -> MainScreen(state, session)
+@Composable fun SukavinaApp(state: SessionUiState, session: SessionViewModel) {
+    val context = LocalContext.current.applicationContext
+    val appearancePreferences = remember(context) {
+        context.getSharedPreferences("sukavina-appearance", android.content.Context.MODE_PRIVATE)
+    }
+    var themeMode by remember(context) {
+        mutableStateOf(AppThemeMode.fromPreference(appearancePreferences.getString("theme_mode", null)))
+    }
+    var attendanceMonthDisplayMode by remember(context) {
+        mutableStateOf(
+            AttendanceMonthDisplayMode.fromPreference(
+                appearancePreferences.getString("attendance_month_display_mode", null),
+            ),
+        )
+    }
+    var showNavigationLabels by remember(context) {
+        mutableStateOf(appearancePreferences.getBoolean("show_navigation_labels", true))
+    }
+
+    SukavinaTheme(themeMode = themeMode) {
+        SukavinaAppBackground {
+            when {
+                state.restoring -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                state.token == null -> LoginScreen(state, session::signIn, session::biometricSignIn, session::dismissError, session)
+                state.profile?.mustChangePassword == true -> ForcedPasswordChangeScreen(state, session)
+                state.profile?.accountType == "CANTEEN" -> CanteenScannerScreen(state, session)
+                else -> MainScreen(
+                    state = state,
+                    session = session,
+                    themeMode = themeMode,
+                    attendanceMonthDisplayMode = attendanceMonthDisplayMode,
+                    showNavigationLabels = showNavigationLabels,
+                    onThemeModeChange = { mode ->
+                        themeMode = mode
+                        appearancePreferences.edit().putString("theme_mode", mode.preferenceValue).apply()
+                    },
+                    onAttendanceMonthDisplayModeChange = { mode ->
+                        attendanceMonthDisplayMode = mode
+                        appearancePreferences.edit()
+                            .putString("attendance_month_display_mode", mode.preferenceValue)
+                            .apply()
+                    },
+                    onNavigationLabelsChange = { show ->
+                        showNavigationLabels = show
+                        appearancePreferences.edit().putBoolean("show_navigation_labels", show).apply()
+                    },
+                )
+            }
         }
     }
 }

@@ -23,8 +23,11 @@ class MainActivity : FragmentActivity() {
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // Android 15 enforces edge-to-edge for apps targeting recent SDKs.
+        // AndroidX applies the same behaviour safely on older Android
+        // releases and manages system-bar icon contrast for us.
         enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
         setContent {
             val session: SessionViewModel = viewModel()
             val state = session.state.collectAsStateWithLifecycle().value
