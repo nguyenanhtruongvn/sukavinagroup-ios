@@ -27,6 +27,7 @@ Preview dùng dữ liệu mẫu tại máy, không đăng nhập và không thay
 
 ## Build IPA cho SideStore
 
+0. Thay đổi MARKETING_VERSION và CURRENT_PROJECT_VERSION.
 1. Vào tab **Actions** của repository.
 2. Chọn workflow **Build unsigned iOS IPA**.
 3. Chọn nhánh `main` và chọn **Publish to SideStore** khi muốn phát hành.
