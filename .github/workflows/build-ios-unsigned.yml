@@ -115,7 +115,7 @@ jobs:
       - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v6
         with:
-          name: Sukavina-IPA
+          name: Sukavina
           path: |
             build/Sukavina.ipa
             build/Sukavina.ipa.sha256
