@@ -2,11 +2,6 @@ name: Build unsigned iOS IPA
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main, master]
-    paths:
-      - 'apps/ios/**'
-      - '.github/workflows/build-ios-unsigned.yml'
 
 permissions:
   contents: read
@@ -15,9 +10,6 @@ jobs:
   build-unsigned-ipa:
     runs-on: macos-latest
     timeout-minutes: 30
-    env:
-      APP_BUILD: ${{ github.run_number }}
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v6
@@ -32,37 +24,6 @@ jobs:
           rm -f "$XCODE_VERSION_FILE"
           test "${XCODE_MAJOR:-0}" -ge 26
 
-      - name: Select next store-compliant version
-        env:
-          SIDESTORE_SOURCE_URL: https://raw.githubusercontent.com/nguyenanhtruongvn/sukavina-sidestore/main/apps.json
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import json
-          import os
-          import urllib.request
-
-          with urllib.request.urlopen(os.environ["SIDESTORE_SOURCE_URL"]) as response:
-              source = json.load(response)
-          current = source["apps"][0]["versions"][0]["version"]
-          major, minor, patch = (int(part) for part in current.split("."))
-          if (major, minor, patch) < (2, 0, 0):
-              major, minor, patch = (2, 0, 0)
-          if patch >= 99:
-              patch = 1
-              if minor >= 99:
-                  major += 1
-                  minor = 0
-              else:
-                  minor += 1
-          else:
-              patch += 1
-          version = f"{major}.{minor}.{patch}"
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
-              env_file.write(f"APP_VERSION={version}\n")
-          print(f"Building iOS version {version} after {current}")
-          PY
-
       - name: Build iOS app without code signing
         run: |
           set -euo pipefail
@@ -76,8 +37,6 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
-            MARKETING_VERSION="$APP_VERSION" \
-            CURRENT_PROJECT_VERSION="$APP_BUILD" \
             clean build
 
       - name: Embed capabilities for SideStore re-signing
@@ -139,75 +98,3 @@ jobs:
             build/Sukavina-Portal-unsigned.ipa.sha256
           if-no-files-found: error
           retention-days: 14
-
-      - name: Checkout internal SideStore source
-        uses: actions/checkout@v6
-        with:
-          repository: nguyenanhtruongvn/sukavina-sidestore
-          token: ${{ secrets.SIDESTORE_REPO_TOKEN }}
-          path: sidestore-source
-
-      - name: Publish to internal SideStore source
-        env:
-          GH_TOKEN: ${{ secrets.SIDESTORE_REPO_TOKEN }}
-          SIDESTORE_REPO: nguyenanhtruongvn/sukavina-sidestore
-        run: |
-          set -euo pipefail
-          TAG="v${APP_VERSION}"
-          IPA_PATH="$GITHUB_WORKSPACE/build/Sukavina.ipa"
-          cp "$GITHUB_WORKSPACE/build/Sukavina-Portal-unsigned.ipa" "$IPA_PATH"
-          DOWNLOAD_URL="https://github.com/${SIDESTORE_REPO}/releases/download/${TAG}/Sukavina.ipa"
-
-          if gh release view "$TAG" --repo "$SIDESTORE_REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$IPA_PATH" --repo "$SIDESTORE_REPO" --clobber
-            gh release edit "$TAG" \
-              --repo "$SIDESTORE_REPO" \
-              --title "Sukavina ${APP_VERSION}" \
-              --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
-          else
-            gh release create "$TAG" "$IPA_PATH" \
-              --repo "$SIDESTORE_REPO" \
-              --title "Sukavina ${APP_VERSION}" \
-              --notes "Bản cập nhật nội bộ tự động từ Sukavina build ${APP_BUILD}."
-          fi
-
-          cp "$GITHUB_WORKSPACE/apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" \
-            sidestore-source/icon.png
-          export DOWNLOAD_URL IPA_PATH
-          python3 - <<'PY'
-          import datetime
-          import json
-          import os
-          from pathlib import Path
-
-          source_path = Path("sidestore-source/apps.json")
-          source = json.loads(source_path.read_text(encoding="utf-8"))
-          versions = source["apps"][0]["versions"]
-          latest = {
-              "version": os.environ["APP_VERSION"],
-              "date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "localizedDescription": f"Bản cập nhật nội bộ tự động, build {os.environ['APP_BUILD']}.",
-              "downloadURL": os.environ["DOWNLOAD_URL"],
-              "size": Path(os.environ["IPA_PATH"]).stat().st_size,
-              "minOSVersion": "14.0",
-          }
-          source["apps"][0]["versions"] = [latest] + [
-              item for item in versions if item.get("version") != latest["version"]
-          ][:2]
-          source_path.write_text(json.dumps(source, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-          PY
-
-          cd sidestore-source
-          git config user.name "Sukavina Release Bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add apps.json icon.png
-          git commit -m "release: Sukavina ${APP_VERSION}"
-          git push origin main
-
-          RELEASE_INDEX=0
-          gh api "repos/${SIDESTORE_REPO}/releases?per_page=100" --jq '.[].tag_name' | while IFS= read -r OLD_TAG; do
-            RELEASE_INDEX=$((RELEASE_INDEX + 1))
-            if [ "$RELEASE_INDEX" -gt 3 ]; then
-              gh release delete "$OLD_TAG" --repo "$SIDESTORE_REPO" --cleanup-tag --yes
-            fi
-          done

@@ -20,10 +20,10 @@ enum EmployeeRequestStatus: String, Codable, CaseIterable {
 }
 
 enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
-    case leave, late, early, overtime, business
+    case leave, late, early, overtime, business, attendance, gate
     var id: String { rawValue }
     var title: String {
-        switch self { case .leave: return "Nghỉ phép"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác" }
+        switch self { case .leave: return "Nghỉ phép"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác"; case .attendance: return "Xác nhận giờ công"; case .gate: return "Ra cổng" }
     }
     var icon: String {
         switch self {
@@ -31,7 +31,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .late: return "clock.badge.exclamationmark"
         case .early: return "figure.walk.departure"
         case .overtime: return "moon.stars.fill"
-        case .business: return "airplane"
+        case .business: return "airplane"; case .attendance: return "checkmark.circle"; case .gate: return "rectangle.portrait.and.arrow.right"
         }
     }
     var color: Color {
@@ -40,7 +40,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .late: return .orange
         case .early: return Color(red: 0.9, green: 0.22, blue: 0.52)
         case .overtime: return Color(red: 0.32, green: 0.4, blue: 0.96)
-        case .business: return Color(red: 0.0, green: 0.5, blue: 0.5)
+        case .business: return Color(red: 0.0, green: 0.5, blue: 0.5); case .attendance: return .green; case .gate: return .purple
         }
     }
 }
@@ -66,7 +66,7 @@ struct EmployeeRequest: Codable, Identifiable {
     }
 }
 
-struct RequestBody: Encodable { let kind: String; let startsAt: Date; let endsAt: Date; let reason: String }
+struct RequestBody: Encodable { let kind: String; let startsAt: Date; let endsAt: Date; let reason: String; let businessDestination: String?; let businessTransport: String?; let businessDistanceKm: Double?; let businessExpense: Double? }
 struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 
 @MainActor
@@ -86,10 +86,10 @@ final class EmployeeRequestStore: ObservableObject {
         } catch { message = error.localizedDescription }
     }
 
-    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String) async -> Bool {
+    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil) async -> Bool {
         guard let token else { return false }
         do {
-            let _: EmployeeRequest = try await APIClient.shared.request("me/requests", method: "POST", token: token, body: RequestBody(kind: kind.rawValue, startsAt: from, endsAt: to, reason: reason))
+            let _: EmployeeRequest = try await APIClient.shared.request("me/requests", method: "POST", token: token, body: RequestBody(kind: kind.rawValue, startsAt: from, endsAt: to, reason: reason, businessDestination: destination, businessTransport: transport, businessDistanceKm: distanceKm, businessExpense: expense))
             await load(token); return true
         } catch { message = error.localizedDescription; return false }
     }
@@ -187,8 +187,8 @@ struct RequestsView: View {
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $composing) {
-                RequestComposer { kind, from, to, reason in
-                    Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason) }
+                RequestComposer { kind, from, to, reason, destination, transport, distance, expense in
+                    Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense) }
                 }
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
@@ -299,7 +299,7 @@ struct RequestCard: View {
             Text(request.reason).font(.subheadline)
             if let note = request.decisionNote, !note.isEmpty { Label(note, systemImage: "text.bubble").font(.caption).foregroundStyle(AppTheme.muted) }
             if canCancel && request.status == .pending { Button("Hủy đơn", role: .destructive, action: cancel).font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .trailing) }
-        }.padding(16).background(LinearGradient(colors: [request.kind.color.opacity(0.09), AppTheme.card], startPoint: .topLeading, endPoint: .bottomTrailing)).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous)).overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(request.kind.color.opacity(0.22), lineWidth: 1))
+        }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous)).shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
     }
 }
 
@@ -308,6 +308,7 @@ struct RequestDecisionView: View {
     let request: EmployeeRequest
     let decide: (Bool, String) async -> Bool
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var session: SessionStore
     @State private var note = ""
     @State private var working = false
     @State private var rejecting = false
@@ -337,15 +338,120 @@ struct RequestDecisionView: View {
 
 @available(iOS 17.0, *)
 struct RequestComposer: View {
+    private enum DurationUnit: String, CaseIterable, Identifiable {
+        case minutes
+        case hours
+
+        var id: String { rawValue }
+        var title: String { self == .minutes ? "Phút" : "Giờ" }
+        var maximumValue: Int { self == .minutes ? 60 : 24 }
+    }
+
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var session: SessionStore
     @State private var kind = EmployeeRequestKind.leave
     @State private var from = Date()
     @State private var to = Calendar.current.date(byAdding: .hour, value: 8, to: Date()) ?? Date()
     @State private var reason = ""
+    @State private var attendanceDate = Calendar.current.startOfDay(for: Date())
+    @State private var attendanceDay: AttendanceDay?
+    @State private var destination = ""
+    @State private var transport = "personal_vehicle"
+    @State private var distanceKm = ""
+    @State private var expense = ""
+    @State private var durationValue = 30
+    @State private var durationUnit: DurationUnit = .minutes
     @FocusState private var reasonFocused: Bool
-    let submit: (EmployeeRequestKind, Date, Date, String) -> Void
+    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var canSubmit: Bool { cleanReason.count >= 10 && to >= from }
+    private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
+    private var durationMinutes: Int { durationUnit == .hours ? durationValue * 60 : durationValue }
+    private var durationDescription: String { "\(durationValue) \(durationUnit.title.lowercased())" }
+
+    private var submissionDates: (from: Date, to: Date) {
+        let calendar = Calendar.current
+        switch kind {
+        case .leave:
+            let leaveStart = calendar.startOfDay(for: from)
+            return (leaveStart, calendar.date(bySettingHour: 23, minute: 59, second: 59, of: to) ?? leaveStart)
+        case .late, .early, .overtime:
+            let requestDay = calendar.startOfDay(for: from)
+            return (requestDay, requestDay.addingTimeInterval(TimeInterval(durationMinutes * 60)))
+        default:
+            return (from, to)
+        }
+    }
+
+    private var submissionReason: String {
+        guard usesDurationInput else { return cleanReason }
+        return "\(kind.title): \(durationDescription). \(cleanReason)"
+    }
+    @ViewBuilder private func businessTransportButton(_ title: String, key: String, icon: String) -> some View {
+        Button { transport = key } label: {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1).minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, minHeight: 42)
+                .background(transport == key ? EmployeeRequestKind.business.color.opacity(0.18) : AppTheme.card)
+                .foregroundStyle(transport == key ? EmployeeRequestKind.business.color : Color.primary)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(transport == key ? EmployeeRequestKind.business.color : Color.primary.opacity(0.1), lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }.buttonStyle(.plain)
+    }
+    @ViewBuilder private func labeledNumberField(_ title: String, placeholder: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+            TextField(placeholder, text: text).keyboardType(.decimalPad)
+                .padding(.horizontal, 14).frame(height: 48)
+                .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+    private func attendanceDateKey(_ date: Date, format: String) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = format
+        return formatter.string(from: date)
+    }
+    @ViewBuilder private func attendanceTimeCard(title: String, value: String?, selection: Binding<Date>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+            Text(attendanceTime(value)).font(.title3.weight(.bold)).foregroundStyle(value == nil ? AppTheme.red : .green)
+            if value == nil {
+                DatePicker("Nhập giờ", selection: selection, displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text("Đã ghi nhận").font(.caption).foregroundStyle(Color.green.opacity(0.8))
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 106, alignment: .topLeading)
+        .padding(12)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+    private func attendanceTime(_ value: String?) -> String {
+        guard let value else { return "Thiếu" }
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = parser.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        guard let date else { return "Thiếu" }
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "vi_VN"); formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+    private var canSubmit: Bool {
+        let dates = submissionDates
+        return (kind == .attendance || kind == .business || cleanReason.count >= 10)
+            && dates.to >= dates.from
+            && (kind != .business || (destination.count >= 2 && (transport != "personal_vehicle" || Double(distanceKm) ?? 0 > 0)))
+    }
+
+    private func businessEndOfDay(after start: Date) -> Date {
+        let calendar = Calendar.current
+        return calendar.date(bySettingHour: 23, minute: 59, second: 0, of: start)
+            ?? start.addingTimeInterval(60 * 60)
+    }
 
     var body: some View {
         NavigationStack {
@@ -378,7 +484,8 @@ struct RequestComposer: View {
                                             .font(.system(size: 16, weight: .semibold))
                                         Text(item.title)
                                             .font(.subheadline.weight(.semibold))
-                                            .lineLimit(1)
+                                            .lineLimit(2)
+                                            .minimumScaleFactor(0.8)
                                         Spacer(minLength: 0)
                                     }
                                     .padding(.horizontal, 13)
@@ -396,23 +503,116 @@ struct RequestComposer: View {
                         }
                     }
 
+                    if kind == .attendance {
+                        VStack(alignment: .leading, spacing: 12) {
+                            composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
+                            DatePicker("Ngày chấm công", selection: $attendanceDate, displayedComponents: .date)
+                                .datePickerStyle(.compact)
+                            if let day = attendanceDay {
+                                HStack(spacing: 10) {
+                                    attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, selection: $from)
+                                    attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, selection: $to)
+                                }
+                            } else {
+                                HStack {
+                                    DatePicker("Giờ vào", selection: $from, displayedComponents: .hourAndMinute).labelsHidden()
+                                    DatePicker("Giờ ra", selection: $to, displayedComponents: .hourAndMinute).labelsHidden()
+                                }
+                                Text("Chưa có dữ liệu: nhập cả giờ vào và giờ ra để gửi yêu cầu bổ sung.").foregroundStyle(AppTheme.muted)
+                            }
+                            Text("Giờ thiếu chỉ được cập nhật sau khi đơn được duyệt.").font(.footnote).foregroundStyle(AppTheme.muted)
+                        }
+                    }
+                    if kind == .business {
+                        VStack(alignment: .leading, spacing: 14) {
+                            composerLabel("Thời gian", icon: "calendar")
+                            VStack(spacing: 0) {
+                                dateRow("Bắt đầu", selection: $from)
+                                Divider().overlay(Color.white.opacity(0.08)).padding(.leading, 44)
+                                dateRow("Kết thúc", selection: $to, range: from...)
+                            }
+                            .padding(.horizontal, 14)
+                            .background(AppTheme.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                        VStack(alignment: .leading, spacing: 14) {
+                            composerLabel("Thông tin công tác", icon: "airplane")
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("NƠI ĐẾN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+                                TextField("Nhập địa điểm công tác", text: $destination)
+                                    .textInputAutocapitalization(.sentences)
+                                    .padding(.horizontal, 14).frame(height: 48)
+                                    .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 14))
+                            }
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("PHƯƠNG TIỆN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+                                HStack(spacing: 8) {
+                                    businessTransportButton("Xe cá nhân", key: "personal_vehicle", icon: "car.fill")
+                                    businessTransportButton("Grab", key: "grab", icon: "location.fill")
+                                    businessTransportButton("Xe công ty", key: "company_vehicle", icon: "building.2.fill")
+                                }
+                            }
+                            if transport == "personal_vehicle" {
+                                labeledNumberField("Số km", placeholder: "Nhập số km", text: $distanceKm)
+                            }
+                            labeledNumberField("Chi phí", placeholder: "Nhập chi phí (VNĐ)", text: $expense)
+                            Text("Không cần nhập lý do cho đơn công tác.")
+                                .font(.footnote).foregroundStyle(AppTheme.muted)
+                        }
+                    }
+                    if kind == .leave {
                     VStack(alignment: .leading, spacing: 12) {
                         composerLabel("Thời gian", icon: "calendar")
                         VStack(spacing: 0) {
-                            dateRow("Bắt đầu", selection: $from)
+                            dateOnlyRow("Từ ngày", selection: $from)
                             Divider().overlay(Color.white.opacity(0.08)).padding(.leading, 44)
-                            dateRow("Kết thúc", selection: $to, range: from...)
+                            dateOnlyRow("Đến ngày", selection: $to, range: from...)
                         }
                         .padding(.horizontal, 14)
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
+                    }
 
+                    if usesDurationInput {
+                        VStack(alignment: .leading, spacing: 12) {
+                            composerLabel("Thời lượng", icon: "timer")
+                            Text("Chọn thời lượng \(kind.title.lowercased()) để gửi yêu cầu.")
+                                .font(.footnote)
+                                .foregroundStyle(AppTheme.muted)
+                            HStack(spacing: 12) {
+                                durationPicker(title: "Số lượng") {
+                                    Picker("Số lượng", selection: $durationValue) {
+                                        ForEach(1...durationUnit.maximumValue, id: \.self) { value in
+                                            Text("\(value)").tag(value)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                }
+                                durationPicker(title: "Đơn vị") {
+                                    Picker("Đơn vị", selection: $durationUnit) {
+                                        ForEach(DurationUnit.allCases) { unit in
+                                            Text(unit.title).tag(unit)
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                }
+                            }
+                            Text("Thời lượng đã chọn: \(durationDescription).")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(kind.color)
+                        }
+                        .onChange(of: durationUnit) { _, unit in
+                            durationValue = min(durationValue, unit.maximumValue)
+                        }
+                    }
+
+                    if kind != .attendance && kind != .business {
                     VStack(alignment: .leading, spacing: 12) {
                         composerLabel("Nội dung đơn", icon: "text.alignleft")
                         ZStack(alignment: .topLeading) {
                             if reason.isEmpty {
-                                Text("Mô tả lý do và thông tin cần người duyệt lưu ý...")
+                                Text(kind == .attendance ? "Không cần nhập lý do cho đơn xác nhận giờ công." : "Mô tả lý do và thông tin cần người duyệt lưu ý...")
                                     .font(.body)
                                     .foregroundStyle(AppTheme.muted.opacity(0.72))
                                     .padding(.horizontal, 16)
@@ -441,12 +641,25 @@ struct RequestComposer: View {
                         }
                         .font(.caption.weight(.medium))
                     }
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, 120)
             }
             .background(AppTheme.ink.ignoresSafeArea())
+            .task(id: kind.rawValue + String(attendanceDate.timeIntervalSince1970)) {
+                guard kind == .attendance, let token = session.token else { return }
+                let month = attendanceDateKey(attendanceDate, format: "yyyy-MM")
+                let selectedKey = attendanceDateKey(attendanceDate, format: "yyyy-MM-dd")
+                if let data = try? await APIClient.shared.request("me/attendance?month=" + month, token: token) as AttendanceMonth {
+                    attendanceDay = data.days.first { $0.date == selectedKey }
+                    if let day = attendanceDay {
+                        from = day.checkIn.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Calendar.current.startOfDay(for: attendanceDate)
+                        to = day.checkOut.flatMap { ISO8601DateFormatter().date(from: $0) } ?? Calendar.current.date(bySettingHour: 23, minute: 59, second: 0, of: attendanceDate)!
+                    }
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -456,7 +669,8 @@ struct RequestComposer: View {
             }
             .safeAreaInset(edge: .bottom) {
                 Button {
-                    submit(kind, from, to, cleanReason)
+                    let dates = submissionDates
+                    submit(kind, dates.from, dates.to, kind == .business || kind == .attendance ? "" : submissionReason, destination, transport, Double(distanceKm), Double(expense))
                     dismiss()
                 } label: {
                     HStack(spacing: 10) {
@@ -478,8 +692,21 @@ struct RequestComposer: View {
             }
             .onChange(of: from) { oldValue, newValue in
                 if to < newValue {
-                    let previousDuration = max(to.timeIntervalSince(oldValue), 60 * 60)
-                    to = newValue.addingTimeInterval(previousDuration)
+                    to = kind == .business
+                        ? businessEndOfDay(after: newValue)
+                        : newValue.addingTimeInterval(max(to.timeIntervalSince(oldValue), 60 * 60))
+                }
+            }
+            .onChange(of: kind) { _, newKind in
+                let now = Date()
+                if newKind == .business {
+                    from = now
+                    to = businessEndOfDay(after: now)
+                } else if [.late, .early, .overtime].contains(newKind) {
+                    durationValue = 30
+                    durationUnit = .minutes
+                    from = Calendar.current.startOfDay(for: now)
+                    to = from.addingTimeInterval(30 * 60)
                 }
             }
         }
@@ -493,20 +720,69 @@ struct RequestComposer: View {
 
     @ViewBuilder
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: title == "Bắt đầu" ? "arrow.right.circle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(title == "Bắt đầu" ? AppTheme.red : Color.green)
                 .font(.system(size: 20))
-            Text(title).font(.subheadline.weight(.semibold))
-            Spacer()
+                .frame(width: 22)
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .multilineTextAlignment(.leading)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(width: 62, alignment: .leading)
             if let range {
-                DatePicker("", selection: selection, in: range)
+                DatePicker("", selection: selection, in: range, displayedComponents: [.date, .hourAndMinute])
                     .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .layoutPriority(1)
             } else {
-                DatePicker("", selection: selection)
+                DatePicker("", selection: selection, displayedComponents: [.date, .hourAndMinute])
                     .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .layoutPriority(1)
             }
         }
-        .frame(minHeight: 58)
+        .frame(minHeight: 64)
+    }
+
+    @ViewBuilder
+    private func durationPicker<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title.uppercased())
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.muted)
+            content()
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                .padding(.horizontal, 14)
+                .background(AppTheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func dateOnlyRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: title == "Từ ngày" ? "calendar.badge.plus" : "calendar.badge.checkmark")
+                .foregroundStyle(title == "Từ ngày" ? AppTheme.red : Color.green)
+                .font(.system(size: 19, weight: .semibold))
+                .frame(width: 22)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .frame(width: 74, alignment: .leading)
+            if let range {
+                DatePicker("", selection: selection, in: range, displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .layoutPriority(1)
+            } else {
+                DatePicker("", selection: selection, displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .layoutPriority(1)
+            }
+        }
+        .frame(minHeight: 60)
     }
 }

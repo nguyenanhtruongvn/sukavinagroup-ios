@@ -29,13 +29,19 @@ final class SessionStore: ObservableObject {
     @Published var requestUnreadCount = 0
     @Published var biometricsEnabled = BiometricPreferences.enabled
     @Published var passwordChangeRequiresEmail = false
+    @Published var passwordChangeError: String?
+    @Published var forgotPasswordError: String?
     @Published var todayMenu: TodayMenu?
+    @Published private(set) var attendanceRevision = 0
+    @Published private(set) var requestRevision = 0
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
     private let knownAttendancePrefix = "known-native-attendance-ids-"
     private var eventStreamTask: Task<Void, Never>?
+    private var realtimeRefreshTask: Task<Void, Never>?
+    private var pendingRealtimeEvents: Set<String> = []
     private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
@@ -367,6 +373,7 @@ final class SessionStore: ObservableObject {
             processNewAttendance(fresh)
             processNewArticles(fresh.contentItems)
             dashboard = fresh
+            attendanceRevision &+= 1
             AttendanceWidgetBridge.update(from: fresh)
             await refreshRequestNotificationCount()
         } catch {
@@ -411,6 +418,9 @@ final class SessionStore: ObservableObject {
     func signOut() {
         eventStreamTask?.cancel()
         eventStreamTask = nil
+        realtimeRefreshTask?.cancel()
+        realtimeRefreshTask = nil
+        pendingRealtimeEvents.removeAll()
         sessionRefreshTask?.cancel()
         sessionRefreshTask = nil
         foregroundRefreshTask?.cancel()
@@ -536,14 +546,13 @@ final class SessionStore: ObservableObject {
                     for try await line in bytes.lines {
                         if Task.isCancelled { return }
                         if line.hasPrefix("data:") && line.contains("_changed") {
-                            await refreshProfile()
-                            await refreshDashboard()
-                            if line.contains("meal_changed") { await refreshTodayMenu() }
+                            scheduleRealtimeRefresh(for: line)
                         }
                     }
                 } catch {
                     if Task.isCancelled { return }
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    let reconnectDelay = UInt64.random(in: 2_000_000_000...5_000_000_000)
+                    try? await Task.sleep(nanoseconds: reconnectDelay)
                 }
             }
         }
@@ -642,6 +651,7 @@ final class SessionStore: ObservableObject {
     func requestPasswordChange() async -> PasswordChangeRequestResponse? {
         guard let token else { return nil }
         passwordChangeRequiresEmail = false
+        passwordChangeError = nil
         isWorking = true
         defer { isWorking = false }
         do {
@@ -650,11 +660,78 @@ final class SessionStore: ObservableObject {
             )
         } catch {
             if error.localizedDescription.localizedCaseInsensitiveContains("email") {
-                presentMissingEmailForPasswordChange()
+                passwordChangeRequiresEmail = true
+                passwordChangeError = "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email."
             } else {
-                present(error)
+                passwordChangeError = error.localizedDescription
             }
             return nil
+        }
+    }
+
+    func requestForgotPassword(employeeCode: String) async -> ForgotPasswordRequestResponse? {
+        forgotPasswordError = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            return try await APIClient.shared.request(
+                "auth/forgot-password/request",
+                method: "POST",
+                body: ForgotPasswordRequestBody(employeeCode: employeeCode.trimmingCharacters(in: .whitespacesAndNewlines))
+            )
+        } catch {
+            forgotPasswordError = error.localizedDescription
+            return nil
+        }
+    }
+
+    private func scheduleRealtimeRefresh(for event: String) {
+        if event.contains("attendance_changed") { pendingRealtimeEvents.insert("attendance_changed") }
+        if event.contains("request_changed") { pendingRealtimeEvents.insert("request_changed") }
+        if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }
+        if event.contains("content_changed") { pendingRealtimeEvents.insert("content_changed") }
+        guard !pendingRealtimeEvents.isEmpty, realtimeRefreshTask == nil else { return }
+        realtimeRefreshTask = Task { [weak self] in
+            // Spread a realtime burst over less than one second so hundreds
+            // of devices do not refresh the API in the exact same millisecond.
+            let delay = UInt64.random(in: 250_000_000...750_000_000)
+            try? await Task.sleep(nanoseconds: delay)
+            guard let self, !Task.isCancelled else { return }
+            let events = self.pendingRealtimeEvents
+            self.pendingRealtimeEvents.removeAll()
+            self.realtimeRefreshTask = nil
+            if events.contains("request_changed") {
+                self.requestRevision &+= 1
+            }
+            if events.contains("attendance_changed") ||
+                events.contains("request_changed") ||
+                events.contains("content_changed") {
+                await self.refreshDashboard()
+            }
+            if events.contains("meal_changed") {
+                await self.refreshTodayMenu()
+            }
+        }
+    }
+
+    func confirmForgotPassword(employeeCode: String, code: String, newPassword: String) async -> Bool {
+        forgotPasswordError = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let _: MessageResponse = try await APIClient.shared.request(
+                "auth/forgot-password/confirm",
+                method: "POST",
+                body: ForgotPasswordConfirmBody(
+                    employeeCode: employeeCode.trimmingCharacters(in: .whitespacesAndNewlines),
+                    code: code,
+                    newPassword: newPassword
+                )
+            )
+            return true
+        } catch {
+            forgotPasswordError = error.localizedDescription
+            return false
         }
     }
 
@@ -669,21 +746,29 @@ final class SessionStore: ObservableObject {
         errorOffersSettings = false
     }
 
-    func confirmPasswordChange(code: String, newPassword: String) async -> Bool {
+    func confirmPasswordChange(code: String = "", currentPassword: String? = nil, newPassword: String) async -> Bool {
         guard let token else { return false }
+        passwordChangeError = nil
         isWorking = true
         defer { isWorking = false }
         do {
             let _: MessageResponse = try await APIClient.shared.request(
                 "auth/password-change/confirm", method: "POST", token: token,
-                body: PasswordChangeConfirmBody(code: code, newPassword: newPassword)
+                body: PasswordChangeConfirmBody(code: code, currentPassword: currentPassword, newPassword: newPassword)
             )
-            disableBiometricLogin()
             await refreshProfile()
             return true
         } catch {
-            present(error)
+            passwordChangeError = error.localizedDescription
             return false
         }
+    }
+
+    func clearPasswordChangeError() {
+        passwordChangeError = nil
+    }
+
+    func clearForgotPasswordError() {
+        forgotPasswordError = nil
     }
 }

@@ -122,8 +122,10 @@ struct CanteenScannerView: View {
                         Text("Quét mã nhận món").font(.title2.bold())
                     }
                     Spacer()
-                    Button("Đăng xuất") { session.signOut() }
-                        .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.red)
+                    if (session.profile?.employeeCode ?? "").uppercased() != "DEMO" {
+                        Button("Đăng xuất") { session.signOut() }
+                            .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.red)
+                    }
                 }
 
                 if let result {
@@ -137,7 +139,8 @@ struct CanteenScannerView: View {
                             scannerResultLine("Nhân viên", result.fullName)
                             scannerResultLine("MSNV", result.employeeCode)
                             scannerResultLine("Phòng ban", result.department)
-                            scannerResultLine("Món đã đặt", result.choice == "water" ? "Món nước" : "Món chay")
+                            scannerResultLine("Loại món", result.choice == "water" ? "Món nước" : "Món chay")
+                            scannerResultLine("Tên món", result.mealName?.isEmpty == false ? result.mealName! : "Chưa cập nhật")
                         }
                         .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
                         Button {

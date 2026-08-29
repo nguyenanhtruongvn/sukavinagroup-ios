@@ -41,19 +41,25 @@ struct NotificationsView: View {
         }
         return EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
     }
+    private var notificationTitleInsets: EdgeInsets {
+        if #available(iOS 26.0, *) {
+            return EdgeInsets(top: 20, leading: 20, bottom: 2, trailing: 20)
+        }
+        return EdgeInsets(top: 32, leading: 20, bottom: 2, trailing: 20)
+    }
     var body: some View {
         NavigationStack {
             List {
                     PortalPageTitle("Thông báo")
-                        .listRowBackground(Color.clear)
+                        .listRowBackground(notificationPageBackground)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 20, leading: 20, bottom: 2, trailing: 20))
+                        .listRowInsets(notificationTitleInsets)
                     HStack {
                         Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
                         if !requestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
                     }
-                    .listRowBackground(Color.clear)
+                    .listRowBackground(notificationPageBackground)
                     .listRowSeparator(.hidden)
                     ForEach(requestNotifications) { item in
                         Button { Task { await open(item) } } label: {
@@ -80,11 +86,7 @@ struct NotificationsView: View {
                           }
                           .padding(16)
                           .background { requestNotificationBackground(item) }
-                          .overlay {
-                              RoundedRectangle(cornerRadius: 20)
-                                  .stroke(isLegacyNotificationStyle ? Color.clear : notificationColor(item).opacity(0.52), lineWidth: isLegacyNotificationStyle ? 0 : (item.read ? 1 : 1.4))
-                          }
-                          .shadow(color: item.read || isLegacyNotificationStyle ? .clear : notificationColor(item).opacity(0.16), radius: 12, y: 5)
+                          .shadow(color: isLegacyNotificationStyle ? .clear : Color.black.opacity(0.035), radius: 5, y: 2)
                           .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
                           .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain)
@@ -96,7 +98,7 @@ struct NotificationsView: View {
                                     .accessibilityLabel("Xóa")
                             }
                         }
-                        .listRowBackground(Color.clear)
+                        .listRowBackground(notificationPageBackground)
                         .listRowSeparator(.hidden)
                         .listRowInsets(notificationRowInsets)
                     }
@@ -123,11 +125,7 @@ struct NotificationsView: View {
                             }
                             .padding(16)
                             .background { articleNotificationBackground(isUnread: isUnread) }
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(isLegacyNotificationStyle ? Color.clear : AppTheme.red.opacity(0.52), lineWidth: isLegacyNotificationStyle ? 0 : (isUnread ? 1.4 : 1))
-                            }
-                            .shadow(color: isUnread && !isLegacyNotificationStyle ? AppTheme.red.opacity(0.16) : .clear, radius: 12, y: 5)
+                            .shadow(color: isLegacyNotificationStyle ? .clear : Color.black.opacity(0.035), radius: 5, y: 2)
                             .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
                             .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
@@ -139,18 +137,18 @@ struct NotificationsView: View {
                                     .accessibilityLabel("Xóa")
                             }
                         }
-                        .listRowBackground(Color.clear)
+                        .listRowBackground(notificationPageBackground)
                         .listRowSeparator(.hidden)
                         .listRowInsets(notificationRowInsets)
                     }
                     if items.isEmpty && requestNotifications.isEmpty {
                         ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
-                            .listRowBackground(Color.clear)
+                            .listRowBackground(notificationPageBackground)
                             .listRowSeparator(.hidden)
                     }
                     Color.clear
                         .frame(height: 112)
-                        .listRowBackground(Color.clear)
+                        .listRowBackground(notificationPageBackground)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets())
                         .accessibilityHidden(true)
@@ -244,23 +242,39 @@ struct NotificationsView: View {
         return true
     }
     private var notificationPageBackground: Color {
-        isLegacyNotificationStyle ? .white : AppTheme.ink
+        if #available(iOS 26.0, *) { return AppTheme.ink }
+        return legacyNotificationSurface
+    }
+    private var legacyNotificationSurface: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
+                : .white
+        })
     }
     @ViewBuilder
     private func requestNotificationBackground(_ item: RequestNotification) -> some View {
-        LinearGradient(
-            colors: item.read ? [AppTheme.card, AppTheme.card] : [notificationColor(item).opacity(0.24), AppTheme.card],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        if isLegacyNotificationStyle {
+            legacyNotificationSurface
+        } else {
+            LinearGradient(
+                colors: item.read ? [AppTheme.card, AppTheme.card] : [notificationColor(item).opacity(0.24), AppTheme.card],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
     @ViewBuilder
     private func articleNotificationBackground(isUnread: Bool) -> some View {
-        LinearGradient(
-            colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        if isLegacyNotificationStyle {
+            legacyNotificationSurface
+        } else {
+            LinearGradient(
+                colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
     }
     @ViewBuilder
     private var legacyNotificationSeparator: some View {

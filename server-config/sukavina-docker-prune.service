@@ -1,9 +1,0 @@
-[Unit]
-Description=Remove unused Sukavina Docker build layers
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/docker container prune --force
-ExecStart=/usr/bin/docker image prune --force

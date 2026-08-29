@@ -1,39 +1,21 @@
-# Sukavina Group Platform
+# Sukavina iOS
 
 <p align="center">
   <img src="apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" width="180" alt="Sukavina">
 </p>
 
-Monorepo chính thức cho hệ thống nội bộ Sukavina Group. Dự án gồm website nhân viên, website quản trị, API và hai ứng dụng mobile native.
+Mã nguồn iPhone/iPad native của hệ thống nội bộ Sukavina Group. Ứng dụng được viết bằng SwiftUI và dùng trực tiếp API tại `https://sukavinagroup.net/api/`.
 
-## Cấu trúc
+## Cấu trúc mã nguồn
 
-| Thư mục | Thành phần | Công nghệ |
-| --- | --- | --- |
-| `apps/web` | Website nhân viên `/` và quản trị `/admin` | React, TypeScript, Vite |
-| `apps/api` | API, xác thực, nội dung, nhân viên, chấm công | NestJS, Prisma, PostgreSQL |
-| `apps/ios` | Ứng dụng iPhone/iPad native | Swift, SwiftUI |
-| `apps/android` | Ứng dụng Android native | Kotlin, Jetpack Compose |
-| `prisma` | Schema cơ sở dữ liệu | Prisma |
-| `deploy` | Cấu hình triển khai mẫu | Docker, Nginx |
+| Đường dẫn | Nội dung |
+| --- | --- |
+| `apps/ios/App/App.xcodeproj` | Dự án Xcode chính |
+| `apps/ios/App/App` | Ứng dụng SwiftUI |
+| `apps/ios/App/AttendanceWidget` | Widget chấm công |
+| `.github/workflows/build-ios-unsigned.yml` | Build IPA unsigned cho SideStore |
 
-Website thường và website quản trị dùng chung một React application nhưng được phân tách theo route và quyền truy cập. iOS và Android gọi trực tiếp cùng API tại `https://sukavinagroup.net/api/`; hai app không dùng WebView.
-
-## Phát triển website và API
-
-Yêu cầu Node.js 22 và pnpm 11.
-
-```bash
-corepack enable
-pnpm install
-pnpm prisma:generate
-pnpm build
-pnpm test
-```
-
-Tạo `.env` từ `.env.example`. Không commit `.env`, token, mật khẩu, dữ liệu PostgreSQL hoặc media thật.
-
-## Xem trước iOS trong Xcode
+## Mở và chạy bằng Xcode
 
 1. Mở `apps/ios/App/App.xcodeproj` bằng Xcode.
 2. Mở `App/AppDelegate.swift`.
@@ -41,21 +23,19 @@ Tạo `.env` từ `.env.example`. Không commit `.env`, token, mật khẩu, d�
 4. Chọn một preview: **Đăng nhập**, **Trang chủ nhân viên** hoặc **Khởi động**.
 5. Nhấn **Resume** nếu Canvas đang tạm dừng.
 
-Preview dùng dữ liệu mẫu tại máy, không đăng nhập và không thay đổi dữ liệu thật. Workflow `Build unsigned iOS IPA` tạo IPA unsigned để kiểm tra gói build.
+Preview dùng dữ liệu mẫu tại máy, không đăng nhập và không thay đổi dữ liệu thật.
 
-## Xem trước Android
+## Build IPA cho SideStore
 
-1. Mở thư mục `apps/android` bằng Android Studio.
-2. Mở `app/src/main/java/net/sukavinagroup/user/ui/SukavinaApp.kt`.
-3. Chọn chế độ **Split** hoặc **Design**.
-4. Android Studio hiển thị preview **Đăng nhập** và **Trang chủ nhân viên**.
+1. Vào tab **Actions** của repository.
+2. Chọn workflow **Build unsigned iOS IPA**.
+3. Chọn **Run workflow** trên nhánh `main`.
+4. Khi workflow hoàn tất, mở lần chạy và tải artifact IPA.
+5. Đưa IPA lên GitHub Release trong repository SideStore, sau đó cập nhật `apps.json` với version, ngày, dung lượng và URL tải.
 
-Workflow `Build native Android APK` chạy lint và tạo APK debug có thể cài thử.
+Workflow dùng phiên bản đặt trong Xcode project (hiện `1.0.5`, build `24`) và chỉ tạo artifact IPA. IPA là unsigned để SideStore ký lại bằng Apple ID của thiết bị.
 
-## CI/CD
+## Lưu ý an toàn
 
-- `Repository quality`: build và test website/API.
-- `Build unsigned iOS IPA`: biên dịch Swift và đóng gói IPA unsigned.
-- `Build native Android APK`: lint Kotlin và tạo APK debug.
-
-Chi tiết kiến trúc và nguyên tắc vận hành nằm tại [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- Không thêm chứng chỉ, provisioning profile, mật khẩu hoặc token vào repository.
+- Giữ nguyên bundle identifier `net.sukavinagroup.portal` để SideStore cập nhật đè lên ứng dụng hiện có.

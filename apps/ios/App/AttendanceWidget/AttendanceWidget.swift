@@ -3,7 +3,7 @@ import UIKit
 import WidgetKit
 
 private enum WidgetStorage {
-    private static let originalAppGroup = "group.net.sukavinagroup.portal"
+    private static let originalAppGroup = "group.net.sukavinagroup.user"
     static let stateKey = "attendance-widget-state"
     private static let tokenKey = "attendance-widget-token"
     private static let endpoint = "https://sukavinagroup.net/api/public/widget/attendance"
@@ -26,7 +26,9 @@ private enum WidgetStorage {
     static func fetchLatest() async -> State? {
         let defaults = UserDefaults(suiteName: appGroup)
         guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty,
-              let endpoint = URL(string: Self.endpoint) else { return load() }
+              var components = URLComponents(string: Self.endpoint) else { return load() }
+        components.queryItems = [URLQueryItem(name: "refresh", value: String(Int(Date().timeIntervalSince1970)))]
+        guard let endpoint = components.url else { return load() }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 15
@@ -54,6 +56,7 @@ private enum WidgetStorage {
             )
             if let encoded = try? JSONEncoder().encode(state) {
                 defaults?.set(encoded, forKey: stateKey)
+                defaults?.synchronize()
             }
             return state
         } catch {

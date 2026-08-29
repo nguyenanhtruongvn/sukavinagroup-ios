@@ -49,8 +49,8 @@ struct ProfileView: View {
 
                     accountSectionTitle("BẢO MẬT")
                     Button {
-                        if !session.hasLinkedEmail { session.presentMissingEmailForPasswordChange() }
-                        else if passwordChangedThisMonth { showPasswordChangeLimit = true }
+                        if !isDemoAccount && !session.hasLinkedEmail { session.presentMissingEmailForPasswordChange() }
+                        else if !isDemoAccount && passwordChangedThisMonth { showPasswordChangeLimit = true }
                         else { showPasswordChange = true }
                     } label: {
                         HStack(spacing: 14) {
@@ -210,8 +210,14 @@ struct ProfileView: View {
     private var isAdminAccount: Bool {
         session.profile?.accountType == "ADMIN" || session.profile?.accountType == "SUPER_ADMIN"
     }
+    private var isDemoAccount: Bool {
+        session.profile?.accountType == "DEMO" || session.profile?.employeeCode.uppercased() == "DEMO"
+    }
+
     private var passwordChangeDescription: String {
-        isAdminAccount
+        isDemoAccount
+            ? "Xác nhận bằng mật khẩu hiện tại, không giới hạn số lần đổi."
+            : isAdminAccount
             ? "Xác thực OTP qua email, không giới hạn số lần đổi."
             : "Xác thực OTP qua email, tối đa một lần mỗi tháng."
     }
@@ -326,10 +332,35 @@ struct PasswordChangeView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var email = ""
     @State private var code = ""
+    @State private var currentPassword = ""
     @State private var newPassword = ""
     @State private var confirmPassword = ""
     @State private var otpSent = false
     @State private var completed = false
+    @State private var attemptedSubmit = false
+
+    private var isDemoAccount: Bool {
+        session.profile?.accountType == "DEMO" || session.profile?.employeeCode.uppercased() == "DEMO"
+    }
+
+    private var currentPasswordError: String? {
+        guard isDemoAccount,
+              let message = session.passwordChangeError,
+              message.localizedCaseInsensitiveContains("Mật khẩu hiện tại") else { return nil }
+        return message
+    }
+
+    private var reusedPasswordError: String? {
+        guard isDemoAccount,
+              let message = session.passwordChangeError,
+              message.localizedCaseInsensitiveContains("Mật khẩu mới phải khác") else { return nil }
+        return message
+    }
+
+    private var regularAccountError: String? {
+        guard !isDemoAccount else { return nil }
+        return session.passwordChangeError
+    }
 
     var body: some View {
         NavigationView {
@@ -342,35 +373,69 @@ struct PasswordChangeView: View {
                             Image(systemName: "key.fill").font(.title2).foregroundColor(AppTheme.red)
                         }
                         Text("Bảo vệ tài khoản").font(.title2.bold())
-                        Text("Xác minh email trước khi thiết lập mật khẩu mới.")
+                        Text(isDemoAccount
+                             ? "Nhập mật khẩu hiện tại trước khi thiết lập mật khẩu mới."
+                             : "Xác minh email trước khi thiết lập mật khẩu mới.")
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
 
-                    HStack(spacing: 10) {
+                    if !isDemoAccount { HStack(spacing: 10) {
                         stepBadge(number: 1, title: "Nhận OTP", active: true)
                         Rectangle().fill(otpSent ? AppTheme.red : AppTheme.fieldBorder).frame(height: 2)
                         stepBadge(number: 2, title: "Mật khẩu mới", active: otpSent)
-                    }
+                    } }
 
-                    VStack(alignment: .leading, spacing: 14) {
-                        Label(otpSent ? "OTP đã gửi tới \(email)" : "Xác minh qua email", systemImage: "envelope.badge.fill")
+                    if !isDemoAccount { VStack(alignment: .leading, spacing: 14) {
+                        Label(otpSent ? "OTP đã gửi tới \(email)" : (isDemoAccount ? "Xác minh qua Thông báo" : "Xác minh qua email"), systemImage: isDemoAccount ? "bell.badge.fill" : "envelope.badge.fill")
                             .font(.headline).foregroundColor(AppTheme.red)
                         Text(otpSent
                              ? "Mã gồm 6 số và có hiệu lực trong 10 phút."
-                             : "Mã OTP sẽ được gửi tới email liên kết. Nếu chưa có email, vui lòng liên hệ Nhân sự để cập nhật.")
+                             : (isDemoAccount
+                                ? "Mã OTP giả định sẽ được gửi vào mục Thông báo và có hiệu lực trong 10 phút."
+                                : "Mã OTP sẽ được gửi tới email liên kết. Nếu chưa có email, vui lòng liên hệ Nhân sự để cập nhật."))
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
                     .padding(18).background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(AppTheme.cardBorder))
+                    .overlay(RoundedRectangle(cornerRadius: 20).stroke(AppTheme.cardBorder)) }
 
-                    if otpSent {
+                    if otpSent || isDemoAccount {
                         VStack(spacing: 14) {
-                            NativeField(title: "Mã OTP gồm 6 số", text: $code, icon: "number", keyboard: .numberPad, textContentType: .oneTimeCode)
-                            NativeSecureField(title: "Mật khẩu mới, ít nhất 6 ký tự", text: $newPassword)
+                            if isDemoAccount {
+                                NativeSecureField(title: "Mật khẩu hiện tại", text: $currentPassword)
+                                    .onChange(of: currentPassword) { _ in session.clearPasswordChangeError() }
+                                if attemptedSubmit && currentPassword.isEmpty {
+                                    validationMessage("Vui lòng nhập mật khẩu hiện tại.")
+                                }
+                                if let currentPasswordError {
+                                    Label(currentPasswordError, systemImage: "exclamationmark.circle.fill")
+                                        .font(.caption).foregroundColor(AppTheme.red).frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            } else {
+                                NativeField(title: "Mã OTP gồm 6 số", text: $code, icon: "number", keyboard: .numberPad, textContentType: .oneTimeCode)
+                                    .onChange(of: code) { _, value in
+                                        code = String(value.filter(\.isNumber).prefix(6))
+                                        session.clearPasswordChangeError()
+                                    }
+                                if attemptedSubmit && code.count != 6 {
+                                    validationMessage("Mã OTP phải gồm đủ 6 chữ số.")
+                                }
+                            }
+                            NativeSecureField(title: "Mật khẩu mới, ít nhất 6 ký tự gồm chữ và số", text: $newPassword)
+                                .onChange(of: newPassword) { _ in session.clearPasswordChangeError() }
+                            if let reusedPasswordError {
+                                Label(reusedPasswordError, systemImage: "exclamationmark.circle.fill")
+                                    .font(.caption).foregroundColor(AppTheme.red).frame(maxWidth: .infinity, alignment: .leading)
+                            }
                             NativeSecureField(title: "Nhập lại mật khẩu mới", text: $confirmPassword)
-                            if !confirmPassword.isEmpty && newPassword != confirmPassword {
-                                Label("Mật khẩu nhập lại chưa khớp", systemImage: "exclamationmark.circle.fill")
+                            if attemptedSubmit && newPassword != confirmPassword {
+                                validationMessage("Mật khẩu nhập lại không khớp.")
+                            }
+                            if attemptedSubmit, let passwordRuleError {
+                                validationMessage(passwordRuleError)
+                            }
+                            if let regularAccountError {
+                                Label(regularAccountError, systemImage: "exclamationmark.circle.fill")
                                     .font(.caption).foregroundColor(AppTheme.red).frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
@@ -379,7 +444,14 @@ struct PasswordChangeView: View {
                     }
 
                     Button {
-                        if otpSent {
+                        attemptedSubmit = true
+                        if isDemoAccount {
+                            guard canConfirm else { return }
+                            Task {
+                                if await session.confirmPasswordChange(currentPassword: currentPassword, newPassword: newPassword) { completed = true }
+                            }
+                        } else if otpSent {
+                            guard canConfirm else { return }
                             Task {
                                 if await session.confirmPasswordChange(code: code, newPassword: newPassword) { completed = true }
                             }
@@ -388,23 +460,21 @@ struct PasswordChangeView: View {
                                 if let response = await session.requestPasswordChange() {
                                     email = response.email
                                     otpSent = true
-                                } else if session.passwordChangeRequiresEmail {
-                                    dismiss()
                                 }
                             }
                         }
                     } label: {
                         HStack {
                             if session.isWorking { ProgressView().tint(.white) }
-                            Text(otpSent ? "Xác nhận đổi mật khẩu" : "Gửi mã OTP").fontWeight(.bold)
+                            Text(isDemoAccount || otpSent ? "Xác nhận đổi mật khẩu" : "Gửi mã OTP").fontWeight(.bold)
                             Spacer()
-                            Image(systemName: otpSent ? "checkmark.shield.fill" : "arrow.right")
+                            Image(systemName: isDemoAccount || otpSent ? "checkmark.shield.fill" : "arrow.right")
                         }.padding(.horizontal, 18).frame(maxWidth: .infinity, minHeight: 54)
                     }
                     .buttonStyle(.plain).foregroundColor(.white).background(AppTheme.red)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .disabled(session.isWorking || (otpSent && !canConfirm))
-                    .opacity(session.isWorking || (otpSent && !canConfirm) ? 0.55 : 1)
+                    .disabled(session.isWorking)
+                    .opacity(session.isWorking ? 0.55 : 1)
                 }
                 .padding(22)
             }
@@ -413,14 +483,34 @@ struct PasswordChangeView: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
             .alert("Đổi mật khẩu thành công", isPresented: $completed) {
                 Button("Hoàn tất") { dismiss() }
-            } message: {
-                Text("Bạn có thể đổi lại vào tháng tiếp theo. Đăng nhập sinh trắc học đã được tắt để bảo vệ tài khoản.")
             }
         }.navigationViewStyle(.stack)
     }
 
     private var canConfirm: Bool {
-        code.count == 6 && code.allSatisfy(\.isNumber) && newPassword.count >= 6 && newPassword == confirmPassword
+        (isDemoAccount ? !currentPassword.isEmpty : (code.count == 6 && code.allSatisfy(\.isNumber))) &&
+            isPasswordValid && newPassword == confirmPassword
+    }
+
+    private var isPasswordValid: Bool {
+        newPassword.count >= 6 &&
+            newPassword.rangeOfCharacter(from: .letters) != nil &&
+            newPassword.rangeOfCharacter(from: .decimalDigits) != nil
+    }
+
+    private var passwordRuleError: String? {
+        if newPassword.count < 6 { return "Mật khẩu phải có ít nhất 6 ký tự." }
+        if newPassword.rangeOfCharacter(from: .letters) == nil { return "Mật khẩu phải có ít nhất một chữ cái." }
+        if newPassword.rangeOfCharacter(from: .decimalDigits) == nil { return "Mật khẩu phải có ít nhất một chữ số." }
+        return nil
+    }
+
+    private func validationMessage(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.circle.fill")
+            .font(.caption)
+            .foregroundColor(AppTheme.red)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder

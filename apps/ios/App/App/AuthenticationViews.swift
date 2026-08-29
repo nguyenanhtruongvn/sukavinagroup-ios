@@ -179,6 +179,14 @@ struct AuthenticationView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
+                        Image("LoginBrand")
+                            .resizable()
+                            .scaledToFit()
+                            .blendMode(.screen)
+                            .frame(maxWidth: 248, maxHeight: 150)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityHidden(true)
+
                         VStack(alignment: .leading, spacing: 8) {
                             Text("SUKAVINA GROUP")
                                 .font(.caption.weight(.bold))
@@ -214,6 +222,7 @@ struct LoginForm: View {
     @EnvironmentObject private var session: SessionStore
     @State private var loginId = ""
     @State private var password = ""
+    @State private var showsForgotPassword = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -237,6 +246,18 @@ struct LoginForm: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .disabled(loginId.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isWorking)
             .opacity(loginId.isEmpty || password.isEmpty ? 0.55 : 1)
+
+            HStack {
+                Spacer()
+                Button {
+                    showsForgotPassword = true
+                } label: {
+                    Label("Quên mật khẩu?", systemImage: "key.horizontal.fill")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(AppTheme.red)
+            }
 
             if session.biometricsEnabled {
                 HStack(spacing: 12) {
@@ -264,6 +285,155 @@ struct LoginForm: View {
                 .disabled(session.isWorking)
             }
         }
+        .sheet(isPresented: $showsForgotPassword) {
+            ForgotPasswordView(initialEmployeeCode: loginId)
+                .environmentObject(session)
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct ForgotPasswordView: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var employeeCode: String
+    @State private var otp = ""
+    @State private var newPassword = ""
+    @State private var confirmation = ""
+    @State private var otpSent = false
+    @State private var maskedEmail: String?
+    @State private var completed = false
+    @State private var attemptedSubmit = false
+    @State private var formError: String?
+
+    init(initialEmployeeCode: String) {
+        _employeeCode = State(initialValue: initialEmployeeCode.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var passwordRuleError: String? {
+        if newPassword.count < 6 { return "Mật khẩu phải có ít nhất 6 ký tự." }
+        if !newPassword.contains(where: \.isLetter) { return "Mật khẩu phải có ít nhất một chữ cái." }
+        if !newPassword.contains(where: \.isNumber) { return "Mật khẩu phải có ít nhất một chữ số." }
+        return nil
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Image(systemName: completed ? "checkmark.shield.fill" : "key.horizontal.fill")
+                        .font(.system(size: 25, weight: .semibold))
+                        .foregroundColor(completed ? .green : AppTheme.red)
+                        .frame(width: 52, height: 52)
+                        .background((completed ? Color.green : AppTheme.red).opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                    Text(completed ? "Đã đặt lại mật khẩu" : "Khôi phục mật khẩu")
+                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                    Text(completed
+                         ? "Bạn có thể đăng nhập bằng mật khẩu mới."
+                         : "Nhập MSNV. Mã OTP sẽ được gửi tới email đã liên kết với tài khoản.")
+                        .foregroundColor(AppTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if !completed {
+                        NativeField(title: "MSNV", text: $employeeCode, icon: "person.text.rectangle")
+                            .disabled(otpSent)
+                            .onChange(of: employeeCode) { _ in formError = nil; session.clearForgotPasswordError() }
+
+                        if otpSent {
+                            if let maskedEmail {
+                                Label("OTP đã gửi tới \(maskedEmail)", systemImage: "envelope.badge.fill")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(AppTheme.red)
+                            }
+                            NativeField(title: "Mã OTP gồm 6 số", text: $otp, icon: "number", keyboard: .numberPad)
+                                .onChange(of: otp) { _, value in
+                                    otp = String(value.filter(\.isNumber).prefix(6))
+                                    formError = nil
+                                    session.clearForgotPasswordError()
+                                }
+                            if attemptedSubmit && otp.count != 6 {
+                                passwordRuleMessage("Mã OTP phải gồm đủ 6 chữ số.")
+                            }
+                            NativeSecureField(title: "Mật khẩu mới", text: $newPassword)
+                                .onChange(of: newPassword) { _ in formError = nil; session.clearForgotPasswordError() }
+                            if attemptedSubmit, let passwordRuleError { passwordRuleMessage(passwordRuleError) }
+                            NativeSecureField(title: "Nhập lại mật khẩu mới", text: $confirmation)
+                                .onChange(of: confirmation) { _ in formError = nil; session.clearForgotPasswordError() }
+                            if attemptedSubmit && confirmation != newPassword {
+                                passwordRuleMessage("Mật khẩu nhập lại không khớp.")
+                            }
+                        }
+
+                        if let message = formError ?? session.forgotPasswordError {
+                            passwordRuleMessage(message)
+                        }
+
+                        Button {
+                            attemptedSubmit = true
+                            formError = nil
+                            session.clearForgotPasswordError()
+                            Task {
+                                if otpSent {
+                                    guard otp.count == 6, passwordRuleError == nil, confirmation == newPassword else { return }
+                                    if await session.confirmForgotPassword(employeeCode: employeeCode, code: otp, newPassword: newPassword) {
+                                        completed = true
+                                    }
+                                } else if let response = await session.requestForgotPassword(employeeCode: employeeCode) {
+                                    if let email = response.maskedEmail, !email.isEmpty {
+                                        maskedEmail = email
+                                        otpSent = true
+                                        attemptedSubmit = false
+                                    } else {
+                                        formError = "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email."
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                if session.isWorking { ProgressView().tint(.white) }
+                                Text(otpSent ? "Đặt lại mật khẩu" : "Gửi mã OTP").fontWeight(.bold)
+                                Spacer()
+                                Image(systemName: "arrow.right")
+                            }
+                            .padding(.horizontal, 18)
+                            .frame(maxWidth: .infinity, minHeight: 54)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundColor(.white)
+                        .background(AppTheme.red)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .disabled(session.isWorking || employeeCode.isEmpty)
+                        .opacity(session.isWorking || employeeCode.isEmpty ? 0.55 : 1)
+                    } else {
+                        Button("Trở lại đăng nhập") { dismiss() }
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(AppTheme.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                }
+                .padding(22)
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Đóng") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func passwordRuleMessage(_ message: String) -> some View {
+        Label(message, systemImage: "exclamationmark.circle.fill")
+            .font(.caption)
+            .foregroundColor(AppTheme.red)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

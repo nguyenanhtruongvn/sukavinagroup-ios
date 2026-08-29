@@ -25,9 +25,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         tabBarAppearance.backgroundEffect = nil
         tabBarAppearance.shadowColor = .clear
         UITabBar.appearance().standardAppearance = tabBarAppearance
-        if #available(iOS 15.0, *) {
-            UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
-        }
+        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
         UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
@@ -50,7 +48,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     }
 }
 
-/// iOS 14–16 compatibility mode. The modern native experience remains the
+/// iOS 15–16 compatibility mode. The modern native experience remains the
 /// primary app on current systems; older systems use the same responsive,
 /// secured employee portal so core workflows stay available instead of
 /// crashing on newer SwiftUI APIs.

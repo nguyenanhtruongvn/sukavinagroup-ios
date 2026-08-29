@@ -140,6 +140,12 @@ struct TodayMenu: Decodable {
     let receivedAt: String?
     let orderingOpen: Bool
     let orderingCutoff: String
+    let availableChoices: MealAvailability?
+}
+
+struct MealAvailability: Decodable {
+    let water: Bool
+    let vegetarian: Bool
 }
 
 struct MealQrIssueResponse: Decodable {
@@ -155,6 +161,7 @@ struct MealScanResponse: Decodable {
     let fullName: String
     let department: String
     let choice: String
+    let mealName: String?
     let mealDate: String
     let receivedAt: String
 }
@@ -328,7 +335,7 @@ struct AttendanceRecord: Decodable, Identifiable {
 }
 
 enum AttendanceWidgetBridge {
-    private static let originalAppGroup = "group.net.sukavinagroup.portal"
+    private static let originalAppGroup = "group.net.sukavinagroup.user"
     static let kind = "SukavinaAttendanceWidget"
     private static let stateKey = "attendance-widget-state"
     private static let tokenKey = "attendance-widget-token"
@@ -338,39 +345,47 @@ enum AttendanceWidgetBridge {
         return resignedGroups?.first(where: { $0.contains(originalAppGroup) }) ?? originalAppGroup
     }
 
-    private struct State: Codable {
-        let employeeName: String
-        let status: String
+    // Keep the App Group payload identical to the widget extension payload.
+    // Extra dashboard metadata made older widget snapshots harder to invalidate.
+    private struct State: Codable, Equatable {
         let checkIn: String?
         let checkOut: String?
-        let updatedAt: Date
     }
 
     static func update(from dashboard: Dashboard) {
         let records = (dashboard.attendanceRecords ?? []).sorted { $0.punchedAt < $1.punchedAt }
         let state = State(
-            employeeName: dashboard.name,
-            status: dashboard.attendanceStatus,
             checkIn: records.first?.punchedAt,
-            checkOut: records.count > 1 ? records.last?.punchedAt : nil,
-            updatedAt: Date()
+            checkOut: records.count > 1 ? records.last?.punchedAt : nil
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         let defaults = UserDefaults(suiteName: appGroup)
+        if let existingData = defaults?.data(forKey: stateKey),
+           let existing = try? JSONDecoder().decode(State.self, from: existingData),
+           existing == state {
+            return
+        }
         defaults?.set(data, forKey: stateKey)
+        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
     static func configure(token: String) {
         let defaults = UserDefaults(suiteName: appGroup)
+        guard defaults?.string(forKey: tokenKey) != token else { return }
         defaults?.set(token, forKey: tokenKey)
+        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
     static func clear() {
         let defaults = UserDefaults(suiteName: appGroup)
+        let hasState = defaults?.object(forKey: stateKey) != nil
+        let hasToken = defaults?.object(forKey: tokenKey) != nil
+        guard hasState || hasToken else { return }
         defaults?.removeObject(forKey: stateKey)
         defaults?.removeObject(forKey: tokenKey)
+        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 }
@@ -405,6 +420,17 @@ struct AttendancePunch: Decodable, Identifiable {
 }
 
 struct LoginBody: Encodable { let loginId: String; let password: String }
+struct ForgotPasswordRequestBody: Encodable { let employeeCode: String }
+struct ForgotPasswordConfirmBody: Encodable {
+    let employeeCode: String
+    let code: String
+    let newPassword: String
+}
+struct ForgotPasswordRequestResponse: Decodable {
+    let message: String
+    let maskedEmail: String?
+    let expiresInMinutes: Int
+}
 struct RegisterBody: Encodable {
     let employeeCode: String
     let fullName: String
@@ -415,7 +441,7 @@ struct RegisterBody: Encodable {
 struct VerifyBody: Encodable { let employeeCode: String; let gmailEmail: String; let code: String }
 struct ResendBody: Encodable { let employeeCode: String; let gmailEmail: String }
 struct DeleteAccountBody: Encodable { let confirmation: String }
-struct PasswordChangeConfirmBody: Encodable { let code: String; let newPassword: String }
+struct PasswordChangeConfirmBody: Encodable { let code: String; let currentPassword: String?; let newPassword: String }
 struct MessageResponse: Decodable { let message: String }
 struct PasswordChangeRequestResponse: Decodable {
     let message: String

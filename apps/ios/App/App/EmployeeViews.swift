@@ -9,6 +9,13 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+
+
+
+
+
+
+
 @available(iOS 17.0, *)
 struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
@@ -16,23 +23,26 @@ struct EmployeePortalView: View {
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
+
+
+
+
+
+
+
     var body: some View {
         TabView(selection: $selectedTab) {
             DashboardView {
                 requestInitialFilter = .pending
-                selectedTab = 2
+                selectedTab = 1
             }
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
-            TodayMenuView()
-                .adaptivePortalTabBarBackground()
-                .tabItem { Label("Thực đơn", systemImage: "fork.knife") }
-                .tag(1)
             RequestsView(initialFilter: requestInitialFilter)
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
-                .tag(2)
+                .tag(1)
             NotificationsView()
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
@@ -54,7 +64,21 @@ struct EmployeePortalView: View {
         }
     }
 
+
+
+
+
+
+
+
 }
+
+
+
+
+
+
+
 
 @available(iOS 17.0, *)
 struct TodayMenuView: View {
@@ -63,6 +87,14 @@ struct TodayMenuView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var pendingChoice: String?
     @State private var showDemoScanner = false
+    @State private var mealSheetHeight: CGFloat = 420
+
+
+
+
+
+
+
 
     var body: some View {
         NavigationView {
@@ -80,6 +112,13 @@ struct TodayMenuView: View {
                             .foregroundColor(AppTheme.muted)
                     }
 
+
+
+
+
+
+
+
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 11) {
                         menuGroup("Món nước", icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, lines: [session.todayMenu?.day.featured])
                         menuGroup("Món thường", icon: "fork.knife", color: .orange, lines: [
@@ -94,6 +133,13 @@ struct TodayMenuView: View {
                         ])
                         menuGroup("Tăng ca", icon: "moon.stars.fill", color: .purple, lines: [session.todayMenu?.day.overtime])
                     }
+
+
+
+
+
+
+
 
                     VStack(alignment: .leading, spacing: 12) {
                         if let selection = session.todayMenu?.selection {
@@ -209,7 +255,7 @@ struct TodayMenuView: View {
                 CanteenScannerView()
                     .environmentObject(session)
             }
-            .sheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
+            .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
                 let receiving = choice == "received"
@@ -253,14 +299,35 @@ struct TodayMenuView: View {
                     }
                     Button("Quay lại") { pendingChoice = nil }
                         .font(.headline).foregroundColor(AppTheme.muted).padding(.vertical, 5)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 22)
+                    .padding(.top, 14)
+                    .padding(.bottom, 18)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: MealSheetHeightPreferenceKey.self, value: proxy.size.height)
+                    }
                 }
-                .padding(22)
-                .presentationDetents([.height((cancelling || receiving) ? 370 : 450)])
+                .onPreferenceChange(MealSheetHeightPreferenceKey.self) { height in
+                    guard height > 0 else { return }
+                    mealSheetHeight = min(max(height + 8, 300), UIScreen.main.bounds.height * 0.82)
+                }
+                .fittedMealSheetSizing(fallbackHeight: mealSheetHeight)
+                .presentationContentInteraction(.scrolls)
                 .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(28)
+                .attachedMealSheetCorners()
+                .solidMealSheetBackground()
             }
         }
     }
+
+
+
+
+
+
+
 
     private func selectedMealDetail(_ selection: String) -> String {
         if selection == "water" {
@@ -270,6 +337,13 @@ struct TodayMenuView: View {
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         return detail.isEmpty ? "..." : detail
     }
+
+
+
+
+
+
+
 
     private func menuGroup(_ title: String, icon: String, color: Color, lines: [String?]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -286,19 +360,30 @@ struct TodayMenuView: View {
         .padding(15)
         .background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 19).stroke(color.opacity(0.16)))
+        .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
     }
+
+
+
+
+
+
+
 
     private func mealButton(_ title: String, detail: String?, icon: String, color: Color, choice: String) -> some View {
         let selected = session.todayMenu?.selection == choice
+        let fallbackAvailable = !(detail?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let available = choice == "water"
+            ? (session.todayMenu?.availableChoices?.water ?? fallbackAvailable)
+            : (session.todayMenu?.availableChoices?.vegetarian ?? fallbackAvailable)
         return Button {
-            pendingChoice = choice
+            if available { pendingChoice = choice }
         } label: {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.title3).foregroundColor(color).frame(width: 44, height: 44).background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 14))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.headline)
-                    Text(detail?.isEmpty == false ? detail! : "...").font(.caption).foregroundColor(AppTheme.muted).lineLimit(1)
+                    Text(available ? (detail?.isEmpty == false ? detail! : "...") : "Đang trống").font(.caption).foregroundColor(AppTheme.muted).lineLimit(1)
                 }
                 Spacer()
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.title3).foregroundColor(selected ? .green : AppTheme.muted)
@@ -306,18 +391,83 @@ struct TodayMenuView: View {
             .padding(13)
             .background(selected ? Color.green.opacity(0.11) : Color.white.opacity(0.035))
             .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 17).stroke(selected ? Color.green.opacity(0.35) : Color.white.opacity(0.08)))
+            .shadow(color: Color.black.opacity(selected ? 0.05 : 0.03), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
-        .disabled(session.isWorking)
+        .disabled(session.isWorking || !available)
+        .opacity(available ? 1 : 0.58)
     }
 }
+
+
+
+
+
+
+
+
+private struct MealSheetHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+
+private extension View {
+    @ViewBuilder
+    func mealConfirmationSheet<SheetContent: View>(
+        isPresented: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> SheetContent
+    ) -> some View {
+        sheet(isPresented: isPresented, content: content)
+    }
+
+    @ViewBuilder
+    func attachedMealSheetCorners() -> some View {
+        if #available(iOS 26.0, *) {
+            self
+        } else if #available(iOS 16.4, *) {
+            presentationCornerRadius(28)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func solidMealSheetBackground() -> some View {
+        self
+    }
+
+    @ViewBuilder
+    func fittedMealSheetSizing(fallbackHeight: CGFloat) -> some View {
+        if #available(iOS 16.0, *) {
+            presentationDetents([.height(fallbackHeight)])
+        } else {
+            self
+        }
+    }
+}
+
+
+
+
+
+
+
 
 @available(iOS 17.0, *)
 struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
     @StateObject private var requestStore = EmployeeRequestStore()
     let openPendingRequests: () -> Void
+
+
+
+
+
+
+
 
     var body: some View {
         NavigationView {
@@ -334,6 +484,13 @@ struct DashboardView: View {
                             .foregroundColor(AppTheme.red)
                     }
 
+
+
+
+
+
+
+
                     HStack(spacing: 12) {
                         MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
                         Button(action: openPendingRequests) {
@@ -347,6 +504,13 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity)
                         .accessibilityLabel("Xem đơn từ đang chờ")
                     }
+
+
+
+
+
+
+
 
                     NavigationLink(destination: ModernAttendanceHistoryView()) {
                         VStack(alignment: .leading, spacing: 12) {
@@ -368,6 +532,13 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
 
+
+
+
+
+
+
+
                 }
                 .padding(20)
                 .padding(.bottom, 92)
@@ -377,6 +548,10 @@ struct DashboardView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .task { await requestStore.load(session.token) }
+            .task(id: session.requestRevision) {
+                guard session.requestRevision > 0 else { return }
+                await requestStore.load(session.token)
+            }
             .refreshable {
                 await session.refreshDashboard()
                 await requestStore.load(session.token)
@@ -384,6 +559,13 @@ struct DashboardView: View {
         }
         .navigationViewStyle(.stack)
     }
+
+
+
+
+
+
+
 
     @ViewBuilder
     private func attendanceMetric(title: String, value: String, color: Color) -> some View {
@@ -395,6 +577,13 @@ struct DashboardView: View {
         .padding(.horizontal, 12)
     }
 
+
+
+
+
+
+
+
     private func attendanceTime(_ value: String) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -404,10 +593,24 @@ struct DashboardView: View {
         return date.formatted(date: .omitted, time: .standard)
     }
 
+
+
+
+
+
+
+
     private var checkInTime: String {
         guard let record = session.dashboard?.attendanceRecords?.last else { return "--:--" }
         return attendanceTime(record.punchedAt)
     }
+
+
+
+
+
+
+
 
     private var checkOutTime: String {
         guard let records = session.dashboard?.attendanceRecords, records.count > 1,
@@ -416,9 +619,23 @@ struct DashboardView: View {
     }
 }
 
+
+
+
+
+
+
+
 @available(iOS 17.0, *)
 struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
+
+
+
+
+
+
+
 
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -427,6 +644,13 @@ struct ModernAttendanceHistoryView: View {
     @State private var errors: [String: String] = [:]
     @State private var selectedDates: [String: String] = [:]
     @State private var monthIndex = 1
+
+
+
+
+
+
+
 
     var body: some View {
         GeometryReader { proxy in
@@ -470,7 +694,20 @@ struct ModernAttendanceHistoryView: View {
             UISelectionFeedbackGenerator().selectionChanged()
         }
         .task { await preloadAdjacentMonths() }
+        .task(id: session.attendanceRevision) {
+            guard session.attendanceRevision > 0 else { return }
+            cache.removeAll()
+            errors.removeAll()
+            await preloadAdjacentMonths()
+        }
     }
+
+
+
+
+
+
+
 
     private func preloadedMonthPage(_ index: Int) -> some View {
         let month = options[index]
@@ -513,6 +750,13 @@ struct ModernAttendanceHistoryView: View {
         .task(id: month) { await preloadMonth(month) }
     }
 
+
+
+
+
+
+
+
     private func preloadedSummaryCards(_ data: AttendanceMonth) -> some View {
         let values: [(String, Int, Color)] = [
             ("Ngày công", preloadedCount("present", in: data), .green),
@@ -529,6 +773,13 @@ struct ModernAttendanceHistoryView: View {
         }
         .frame(maxWidth: .infinity)
     }
+
+
+
+
+
+
+
 
     private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -568,14 +819,35 @@ struct ModernAttendanceHistoryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
+
+
+
+
+
+
+
     private func preloadedCount(_ status: String, in data: AttendanceMonth) -> Int {
         data.days.filter { dayStatuses($0).contains(status) }.count
     }
+
+
+
+
+
+
+
 
     private func preloadedLeadingEmptyDays(_ data: AttendanceMonth) -> Int {
         guard let value = data.days.first?.date, let date = Self.dayParser.date(from: value) else { return 0 }
         return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
     }
+
+
+
+
+
+
+
 
     private func selectedDay(in data: AttendanceMonth, month: String) -> AttendanceDay? {
         if let selected = selectedDates[month], let day = data.days.first(where: { $0.date == selected }) {
@@ -583,6 +855,13 @@ struct ModernAttendanceHistoryView: View {
         }
         return data.days.first(where: { $0.date == Self.dayValue(Date()) }) ?? data.days.last
     }
+
+
+
+
+
+
+
 
     private func preloadedDayDetail(_ day: AttendanceDay, data: AttendanceMonth) -> some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -602,6 +881,13 @@ struct ModernAttendanceHistoryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
+
+
+
+
+
+
+
     private func preloadMonth(_ month: String) async {
         guard cache[month] == nil, let token = session.token else { return }
         do {
@@ -619,6 +905,13 @@ struct ModernAttendanceHistoryView: View {
         }
     }
 
+
+
+
+
+
+
+
     private func moveMonth(by offset: Int) {
         let target = monthIndex + offset
         guard options.indices.contains(target) else { return }
@@ -626,6 +919,13 @@ struct ModernAttendanceHistoryView: View {
             monthIndex = target
         }
     }
+
+
+
+
+
+
+
 
     private var monthNavigation: some View {
         HStack {
@@ -638,6 +938,13 @@ struct ModernAttendanceHistoryView: View {
         .padding(12).background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
     }
+
+
+
+
+
+
+
 
     private func monthButton(_ icon: String, target offset: Int) -> some View {
         let index = options.firstIndex(of: selectedMonth) ?? 0
@@ -656,6 +963,13 @@ struct ModernAttendanceHistoryView: View {
         .opacity(options.indices.contains(target) ? 1 : 0.35)
     }
 
+
+
+
+
+
+
+
     private func summary(_ value: Int, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
             Text("\(value)").font(.title3.bold()).foregroundStyle(color)
@@ -665,9 +979,23 @@ struct ModernAttendanceHistoryView: View {
         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
     }
 
+
+
+
+
+
+
+
     private func detailRow(_ title: String, _ value: String) -> some View {
         HStack { Text(title).foregroundStyle(AppTheme.muted); Spacer(); Text(value).bold() }
     }
+
+
+
+
+
+
+
 
     private var options: [String] {
         Array(
@@ -677,6 +1005,13 @@ struct ModernAttendanceHistoryView: View {
         )
     }
     private var monthTitle: String { monthTitle(for: selectedMonth) }
+
+
+
+
+
+
+
 
     private func monthTitle(for month: String) -> String {
         guard let date = Self.monthParser.date(from: month) else { return month }
@@ -756,11 +1091,25 @@ struct ModernAttendanceHistoryView: View {
     }()
 }
 
+
+
+
+
+
+
+
 @available(iOS 17.0, *)
 struct MetricCard: View {
     let value: String
     let label: String
     let icon: String
+
+
+
+
+
+
+
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {

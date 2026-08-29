@@ -4,7 +4,7 @@
 <dict>
 	<key>ALTAppGroups</key>
 	<array>
-		<string>group.net.sukavinagroup.portal</string>
+		<string>group.net.sukavinagroup.user</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>vi</string>

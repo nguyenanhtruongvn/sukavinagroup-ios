@@ -1,8 +1,0 @@
-[Unit]
-Description=Sukavina Docker stack health recovery
-After=docker.service
-Requires=docker.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/sukavina-healthcheck.sh
