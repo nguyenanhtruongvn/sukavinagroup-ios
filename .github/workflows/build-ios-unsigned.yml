@@ -6,7 +6,7 @@ on:
       publish_to_sidestore:
         description: "Tạo Release và cập nhật source SideStore"
         required: true
-        default: false
+        default: true
         type: boolean
 
 permissions:
