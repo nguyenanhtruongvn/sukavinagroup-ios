@@ -9,6 +9,68 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+/// Applies the tab-label preference to the already visible UIKit tab bar.
+/// This avoids recreating SwiftUI's `TabView`, which would otherwise briefly
+/// reset the screen when the switch is changed in the profile screen.
+private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
+    let showsLabels: Bool
+    private static let tabTitles = ["Trang chủ", "Đơn từ", "Thông báo", "Tài khoản"]
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = uiView.window,
+                  let tabBar = findTabBar(from: window) else { return }
+            for (index, item) in (tabBar.items ?? []).enumerated() {
+                guard Self.tabTitles.indices.contains(index) else { continue }
+                let title = Self.tabTitles[index]
+                item.title = showsLabels ? title : nil
+                item.accessibilityLabel = title
+                item.titlePositionAdjustment = .zero
+                item.imageInsets = showsLabels
+                    ? .zero
+                    : UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
+            }
+            tabBar.items?.forEach { $0.setTitleTextAttributes(nil, for: .normal) }
+            tabBar.setNeedsLayout()
+        }
+    }
+
+    private func findTabBar(from window: UIWindow) -> UITabBar? {
+        if let root = window.rootViewController,
+           let tabBar = findTabBar(in: root) {
+            return tabBar
+        }
+        return findTabBar(in: window)
+    }
+
+    private func findTabBar(in controller: UIViewController) -> UITabBar? {
+        if let tabController = controller as? UITabBarController {
+            return tabController.tabBar
+        }
+        for child in controller.children {
+            if let tabBar = findTabBar(in: child) { return tabBar }
+        }
+        if let presented = controller.presentedViewController {
+            return findTabBar(in: presented)
+        }
+        return nil
+    }
+
+    private func findTabBar(in view: UIView) -> UITabBar? {
+        if let tabBar = view as? UITabBar { return tabBar }
+        for child in view.subviews {
+            if let tabBar = findTabBar(in: child) { return tabBar }
+        }
+        return nil
+    }
+}
+
 
 
 
@@ -20,6 +82,8 @@ import WebKit
 struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
+    @AppStorage("sukavina.showTabLabels") private var showTabLabels = true
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
@@ -37,24 +101,34 @@ struct EmployeePortalView: View {
                 selectedTab = 1
             }
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Trang chủ", systemImage: "house.fill") }
+                .tabItem {
+                    Label("Trang chủ", systemImage: "house.fill")
+                }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
+                .tabItem {
+                    Label("Đơn từ", systemImage: "doc.text.fill")
+                }
                 .tag(1)
             NotificationsView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Thông báo", systemImage: "bell.fill") }
+                .tabItem {
+                    Label("Thông báo", systemImage: "bell.fill")
+                }
                 .badge(session.unreadCount + session.requestUnreadCount)
                 .tag(3)
             ProfileView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
+                .tabItem {
+                    Label("Tài khoản", systemImage: "person.crop.circle.fill")
+                }
                 .tag(4)
         }
+        .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
+        .preferredColorScheme(AppAppearanceMode(rawValue: appearanceMode)?.colorScheme)
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task {
@@ -639,6 +713,7 @@ struct ModernAttendanceHistoryView: View {
 
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
     @State private var selectedMonth = Self.monthValue(Date())
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var errors: [String: String] = [:]
@@ -717,7 +792,7 @@ struct ModernAttendanceHistoryView: View {
                 if let data {
                     preloadedSummaryCards(data)
                     preloadedCalendarCard(data, month: month)
-                    if let day = selectedDay(in: data, month: month) {
+                    if !showsFullMonthAttendance, let day = selectedDay(in: data, month: month) {
                         preloadedDayDetail(day, data: data)
                     }
                 } else if let message = errors[month] {
@@ -766,12 +841,15 @@ struct ModernAttendanceHistoryView: View {
             ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
             ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
         ].filter { $0.1 > 0 }
-        return HStack(spacing: 8) {
+        return HStack(spacing: 6) {
             ForEach(Array(values.enumerated()), id: \.offset) { _, item in
                 summary(item.1, item.0, item.2)
             }
         }
-        .frame(maxWidth: .infinity)
+        // Keep the complete overview on one row, even when the system uses a
+        // larger accessibility text size. Individual cards scale their text
+        // down instead of wrapping to a second line or overflowing the screen.
+        .dynamicTypeSize(.xSmall ... .accessibility1)
     }
 
 
@@ -782,7 +860,8 @@ struct ModernAttendanceHistoryView: View {
 
 
     private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        let cellHeight: CGFloat = showsFullMonthAttendance ? 78 : 50
+        return VStack(alignment: .leading, spacing: 14) {
             Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
             HStack(spacing: 4) {
                 ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
@@ -792,17 +871,30 @@ struct ModernAttendanceHistoryView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 7) {
                 ForEach(0..<preloadedLeadingEmptyDays(data), id: \.self) { _ in
-                    Color.clear.frame(height: 50)
+                    Color.clear.frame(height: cellHeight)
                 }
                 ForEach(data.days) { day in
                     let selected = selectedDay(in: data, month: month)?.date == day.date
                     Button {
                         selectedDates[month] = day.date
                     } label: {
-                        Text(String(Int(day.date.suffix(2)) ?? 0))
-                            .font(.subheadline.weight(selected ? .bold : .medium))
-                            .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                            .frame(maxWidth: .infinity, minHeight: 50)
+                        VStack(spacing: showsFullMonthAttendance ? 3 : 0) {
+                            Text(String(Int(day.date.suffix(2)) ?? 0))
+                                .font(.subheadline.weight(selected ? .bold : .medium))
+                                .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
+                            if showsFullMonthAttendance {
+                                VStack(spacing: 1) {
+                                    Text(time(day.checkIn))
+                                    Text(time(day.checkOut))
+                                }
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(Color.primary.opacity(0.72))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            }
+                        }
+                            .frame(maxWidth: .infinity, minHeight: cellHeight)
                             .background(dayBackground(day))
                             .clipShape(RoundedRectangle(cornerRadius: 11))
                             .overlay {
@@ -817,6 +909,10 @@ struct ModernAttendanceHistoryView: View {
         .padding(18)
         .background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var showsFullMonthAttendance: Bool {
+        attendanceMonthDisplayMode == AttendanceMonthDisplayMode.full.rawValue
     }
 
 
@@ -971,11 +1067,16 @@ struct ModernAttendanceHistoryView: View {
 
 
     private func summary(_ value: Int, _ label: String, _ color: Color) -> some View {
-        VStack(spacing: 5) {
+        VStack(spacing: 3) {
             Text("\(value)").font(.title3.bold()).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(AppTheme.muted)
+                .lineLimit(1)
+                .minimumScaleFactor(0.55)
+                .allowsTightening(true)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 13)
+        .frame(maxWidth: .infinity, minHeight: 78)
         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
     }
 

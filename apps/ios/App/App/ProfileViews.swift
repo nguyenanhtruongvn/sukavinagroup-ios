@@ -20,6 +20,9 @@ struct ProfileView: View {
     }
 
     @EnvironmentObject private var session: SessionStore
+    @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
+    @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
+    @AppStorage("sukavina.showTabLabels") private var showTabLabels = true
     @State private var showDelete = false
     @State private var showPasswordChange = false
     @State private var showPasswordChangeLimit = false
@@ -46,6 +49,55 @@ struct ProfileView: View {
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                    accountSectionTitle("GIAO DIỆN")
+                    VStack(alignment: .leading, spacing: 18) {
+                        VStack(alignment: .leading, spacing: 9) {
+                            Label("Chế độ hiển thị", systemImage: "circle.lefthalf.filled")
+                                .font(.headline)
+                            Text("Chọn giao diện sáng, tối hoặc theo cài đặt hệ thống.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.muted)
+                            Picker("Chế độ hiển thị", selection: $appearanceMode) {
+                                ForEach(AppAppearanceMode.allCases) { mode in
+                                    Text(mode.title).tag(mode.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+
+                        Divider()
+
+                        Toggle(isOn: $showTabLabels) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Label("Nhãn", systemImage: "text.below.photo")
+                                    .font(.headline)
+                                Text("Hiển thị tên dưới các biểu tượng ở thanh menu.")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.muted)
+                            }
+                        }
+                        .tint(AppTheme.red)
+
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 9) {
+                            Label("Xem chấm công tháng", systemImage: "calendar")
+                                .font(.headline)
+                            Text("Bản đầy đủ hiển thị giờ vào và giờ ra ngay trong từng ô ngày.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.muted)
+                            Picker("Xem chấm công tháng", selection: $attendanceMonthDisplayMode) {
+                                ForEach(AttendanceMonthDisplayMode.allCases) { mode in
+                                    Text(mode.title).tag(mode.rawValue)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
+                    .padding(18)
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                     accountSectionTitle("BẢO MẬT")
                     Button {

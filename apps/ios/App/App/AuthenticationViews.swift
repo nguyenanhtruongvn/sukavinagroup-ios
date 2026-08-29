@@ -182,9 +182,9 @@ struct AuthenticationView: View {
                         Image("LoginBrand")
                             .resizable()
                             .scaledToFit()
-                            .blendMode(.screen)
-                            .frame(maxWidth: 248, maxHeight: 150)
+                            .frame(maxWidth: 248, maxHeight: 158)
                             .frame(maxWidth: .infinity)
+                            .shadow(color: AppTheme.red.opacity(0.24), radius: 16, y: 8)
                             .accessibilityHidden(true)
 
                         VStack(alignment: .leading, spacing: 8) {
@@ -239,6 +239,7 @@ struct LoginForm: View {
                 }
                 .padding(.horizontal, 18)
                 .frame(maxWidth: .infinity, minHeight: 54)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .foregroundColor(.white)

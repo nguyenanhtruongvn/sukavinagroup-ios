@@ -9,6 +9,44 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+enum AppAppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: return "Hệ thống"
+        case .light: return "Sáng"
+        case .dark: return "Tối"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
+}
+
+enum AttendanceMonthDisplayMode: String, CaseIterable, Identifiable {
+    case compact
+    case full
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .compact: return "Thu gọn"
+        case .full: return "Đầy đủ"
+        }
+    }
+}
+
 enum AppTheme {
     static let red = Color(red: 0.91, green: 0.12, blue: 0.16)
     static let deepRed = Color(red: 0.45, green: 0.04, blue: 0.07)
