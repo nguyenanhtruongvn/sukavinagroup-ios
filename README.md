@@ -38,4 +38,4 @@ Workflow dùng phiên bản đặt trong Xcode project (hiện `1.0.5`, build `2
 ## Lưu ý an toàn
 
 - Không thêm chứng chỉ, provisioning profile, mật khẩu hoặc token vào repository.
-- Giữ nguyên bundle identifier `net.sukavinagroup.portal` để SideStore cập nhật đè lên ứng dụng hiện có.
+- Giữ nguyên bundle identifier `net.sukavinagroup.user` để SideStore cập nhật đè lên ứng dụng hiện có.
