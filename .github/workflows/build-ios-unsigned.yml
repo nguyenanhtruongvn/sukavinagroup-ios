@@ -51,7 +51,7 @@ jobs:
           plutil -lint "$WIDGET_PATH/PrivacyInfo.xcprivacy"
           APP_GROUP=$(/usr/libexec/PlistBuddy -c 'Print :ALTAppGroups:0' "$APP_PATH/Info.plist")
           WIDGET_GROUP=$(/usr/libexec/PlistBuddy -c 'Print :ALTAppGroups:0' "$WIDGET_PATH/Info.plist")
-          test "$APP_GROUP" = 'group.net.sukavinagroup.portal'
+          test "$APP_GROUP" = 'group.net.sukavinagroup.user'
           test "$WIDGET_GROUP" = "$APP_GROUP"
 
           # SideStore discovers App Groups from the existing signatures before
@@ -74,8 +74,8 @@ jobs:
           /usr/bin/codesign --verify --deep --strict "$APP_PATH"
           /usr/bin/codesign -d --entitlements :- "$APP_PATH" > build/app-entitlements.plist 2>/dev/null
           /usr/bin/codesign -d --entitlements :- "$WIDGET_PATH" > build/widget-entitlements.plist 2>/dev/null
-          /usr/bin/grep -q 'group.net.sukavinagroup.portal' build/app-entitlements.plist
-          /usr/bin/grep -q 'group.net.sukavinagroup.portal' build/widget-entitlements.plist
+          /usr/bin/grep -q 'group.net.sukavinagroup.user' build/app-entitlements.plist
+          /usr/bin/grep -q 'group.net.sukavinagroup.user' build/widget-entitlements.plist
 
       - name: Package unsigned IPA
         run: |
@@ -86,15 +86,15 @@ jobs:
           mkdir -p build/Payload
           cp -R "$APP_PATH" build/Payload/Sukavina.app
           cd build
-          /usr/bin/zip -qry Sukavina-Portal-unsigned.ipa Payload
-          shasum -a 256 Sukavina-Portal-unsigned.ipa > Sukavina-Portal-unsigned.ipa.sha256
+          /usr/bin/zip -qry Sukavina.ipa Payload
+          shasum -a 256 Sukavina.ipa > Sukavina.ipa.sha256
 
       - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v6
         with:
-          name: Sukavina-Portal-unsigned-IPA
+          name: Sukavina-IPA
           path: |
-            build/Sukavina-Portal-unsigned.ipa
-            build/Sukavina-Portal-unsigned.ipa.sha256
+            build/Sukavina.ipa
+            build/Sukavina.sha256
           if-no-files-found: error
           retention-days: 14
