@@ -2,6 +2,12 @@ name: Build unsigned iOS IPA
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_to_sidestore:
+        description: "Tạo Release và cập nhật source SideStore"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -38,6 +44,23 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             clean build
+
+      - name: Read built app metadata
+        run: |
+          set -euo pipefail
+          APP_PATH='build/DerivedData/Build/Products/Release-iphoneos/App.app'
+          test -d "$APP_PATH"
+          APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")
+          APP_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")
+          APP_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
+          test -n "$APP_VERSION"
+          test -n "$APP_BUILD"
+          test "$APP_BUNDLE_ID" = 'net.sukavinagroup.user'
+          {
+            echo "APP_VERSION=$APP_VERSION"
+            echo "APP_BUILD=$APP_BUILD"
+            echo "APP_BUNDLE_ID=$APP_BUNDLE_ID"
+          } >> "$GITHUB_ENV"
 
       - name: Embed capabilities for SideStore re-signing
         run: |
@@ -95,6 +118,93 @@ jobs:
           name: Sukavina-IPA
           path: |
             build/Sukavina.ipa
-            build/Sukavina.sha256
+            build/Sukavina.ipa.sha256
           if-no-files-found: error
           retention-days: 14
+
+      - name: Checkout SideStore source
+        if: ${{ inputs.publish_to_sidestore }}
+        uses: actions/checkout@v6
+        with:
+          repository: nguyenanhtruongvn/sukavina-sidestore
+          token: ${{ secrets.SIDESTORE_REPO_TOKEN }}
+          path: sidestore-source
+
+      - name: Publish IPA to SideStore
+        if: ${{ inputs.publish_to_sidestore }}
+        env:
+          GH_TOKEN: ${{ secrets.SIDESTORE_REPO_TOKEN }}
+          SIDESTORE_REPO: nguyenanhtruongvn/sukavina-sidestore
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" || {
+            echo 'Missing SIDESTORE_REPO_TOKEN repository secret.' >&2
+            exit 1
+          }
+
+          TAG="v${APP_VERSION}"
+          IPA_PATH="$GITHUB_WORKSPACE/build/Sukavina.ipa"
+          DOWNLOAD_URL="https://github.com/${SIDESTORE_REPO}/releases/download/${TAG}/Sukavina.ipa"
+
+          if gh release view "$TAG" --repo "$SIDESTORE_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA_PATH" --repo "$SIDESTORE_REPO" --clobber
+            gh release edit "$TAG" --repo "$SIDESTORE_REPO" \
+              --title "Sukavina ${APP_VERSION}" \
+              --notes "Sukavina ${APP_VERSION}, build ${APP_BUILD}."
+          else
+            gh release create "$TAG" "$IPA_PATH" --repo "$SIDESTORE_REPO" \
+              --title "Sukavina ${APP_VERSION}" \
+              --notes "Sukavina ${APP_VERSION}, build ${APP_BUILD}."
+          fi
+
+          cp "$GITHUB_WORKSPACE/apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" \
+            sidestore-source/icon.png
+          export DOWNLOAD_URL IPA_PATH
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          from pathlib import Path
+
+          source_path = Path('sidestore-source/apps.json')
+          source = json.loads(source_path.read_text(encoding='utf-8'))
+          version = {
+              'version': os.environ['APP_VERSION'],
+              'date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+              'localizedDescription': f"Sukavina {os.environ['APP_VERSION']}, build {os.environ['APP_BUILD']}.",
+              'downloadURL': os.environ['DOWNLOAD_URL'],
+              'size': Path(os.environ['IPA_PATH']).stat().st_size,
+              'minOSVersion': '14.0',
+          }
+          bundle_id = os.environ['APP_BUNDLE_ID']
+          app = next((item for item in source['apps'] if item.get('bundleIdentifier') == bundle_id), None)
+          if app is None:
+              app = {
+                  'name': 'Sukavina User',
+                  'bundleIdentifier': bundle_id,
+                  'developerName': 'Sukavina Group',
+                  'subtitle': 'Cổng thông tin nội bộ Sukavina',
+                  'localizedDescription': 'Ứng dụng nội bộ dành cho nhân viên Sukavina.',
+                  'iconURL': 'https://raw.githubusercontent.com/nguyenanhtruongvn/sukavina-sidestore/main/icon.png',
+                  'tintColor': 'D91F2B',
+                  'permissions': [
+                      {'type': 'network', 'usageDescription': 'Kết nối an toàn tới hệ thống nội bộ Sukavina.'},
+                      {'type': 'faceid', 'usageDescription': 'Đăng nhập an toàn bằng Face ID hoặc Touch ID khi người dùng bật tính năng.'},
+                  ],
+                  'versions': [],
+              }
+              source['apps'].append(app)
+          app['versions'] = [version] + [
+              item for item in app['versions'] if item.get('version') != version['version']
+          ][:2]
+          source_path.write_text(json.dumps(source, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+
+          cd sidestore-source
+          git config user.name 'Sukavina Release Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add apps.json icon.png
+          if ! git diff --cached --quiet; then
+            git commit -m "release: Sukavina ${APP_VERSION}"
+            git push origin main
+          fi
