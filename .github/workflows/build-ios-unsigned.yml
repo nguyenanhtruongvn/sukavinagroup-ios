@@ -182,7 +182,7 @@ jobs:
               app = {
                   'name': 'Sukavina User',
                   'bundleIdentifier': bundle_id,
-                  'developerName': 'Sukavina Group',
+                  'developerName': 'Sukavina',
                   'subtitle': 'Cổng thông tin nội bộ Sukavina',
                   'localizedDescription': 'Ứng dụng nội bộ dành cho nhân viên Sukavina.',
                   'iconURL': 'https://raw.githubusercontent.com/nguyenanhtruongvn/sukavina-sidestore/main/icon.png',
