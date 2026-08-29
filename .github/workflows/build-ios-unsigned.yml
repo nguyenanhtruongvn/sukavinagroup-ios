@@ -180,7 +180,7 @@ jobs:
           app = next((item for item in source['apps'] if item.get('bundleIdentifier') == bundle_id), None)
           if app is None:
               app = {
-                  'name': 'Sukavina User',
+                  'name': 'Sukavina',
                   'bundleIdentifier': bundle_id,
                   'developerName': 'Sukavina',
                   'subtitle': 'Cổng thông tin nội bộ Sukavina',
