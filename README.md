@@ -15,4 +15,3 @@ Preview dùng dữ liệu mẫu tại máy, không đăng nhập và không thay
 2. Chọn workflow **Build unsigned iOS IPA**.
 3. Chọn nhánh `main` và chọn **Publish to SideStore** khi muốn phát hành.
 4. Khi không chọn publish, workflow chỉ tạo artifact IPA để kiểm tra.
-5. Khi chọn publish, workflow tạo/cập nhật GitHub Release, upload `Sukavina.ipa` và cập nhật `apps.json` trong `nguyenanhtruongvn/sukavina-sidestore`.
