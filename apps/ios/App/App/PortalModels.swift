@@ -9,10 +9,50 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-struct MeetingRoom: Codable, Identifiable { let id: String; let name: String; let location: String; let capacity: Int; let equipment: [String]; let active: Bool }
-struct MeetingBooking: Codable, Identifiable { let id: String; let roomId: String; let startsAt: String; let endsAt: String; let title: String; let attendeeCount: Int; let status: String; let isMine: Bool?; let isOwner: Bool? }
-struct MeetingScheduleResponse: Codable { let rooms: [MeetingRoom]; let bookings: [MeetingBooking] }
-struct MeetingInvitee: Codable, Identifiable { let id: String; let fullName: String; let employeeCode: String; let department: String }
+struct MeetingRoom: Codable, Identifiable {
+    let id: String
+    let name: String
+    let location: String
+    let capacity: Int
+    let equipment: [String]
+    let active: Bool
+}
+
+struct MeetingBooking: Codable, Identifiable {
+    let id: String
+    let roomId: String
+    let startsAt: String
+    let endsAt: String
+    let title: String
+    let attendeeCount: Int
+    let status: String
+    let isMine: Bool?
+    let isOwner: Bool?
+}
+
+struct MeetingScheduleResponse: Codable {
+    let rooms: [MeetingRoom]
+    let bookings: [MeetingBooking]
+}
+
+struct MeetingInvitee: Codable, Identifiable {
+    let id: String
+    let fullName: String
+    let employeeCode: String
+    let department: String
+
+    private enum CodingKeys: String, CodingKey {
+        case id, fullName, employeeCode, department
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        fullName = try values.decodeIfPresent(String.self, forKey: .fullName) ?? ""
+        employeeCode = try values.decodeIfPresent(String.self, forKey: .employeeCode) ?? ""
+        department = try values.decodeIfPresent(String.self, forKey: .department) ?? ""
+    }
+}
 struct CreateMeetingBookingBody: Encodable { let roomId: String; let startsAt: String; let endsAt: String; let title: String; let attendeeCount: Int; let participantIds: [String] }
 
 struct UserSummary: Codable {
