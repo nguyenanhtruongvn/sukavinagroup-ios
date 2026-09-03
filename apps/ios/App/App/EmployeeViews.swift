@@ -9,11 +9,41 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+private enum MeetingPresentation {
+    static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+    static let clock: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.timeZone = timezone
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    static func date(from value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) { return date }
+        return ISO8601DateFormatter().date(from: value)
+    }
+
+    static func time(_ value: String) -> String {
+        guard let date = date(from: value) else {
+            return String(value.split(separator: "T").last?.prefix(5) ?? "")
+        }
+        return clock.string(from: date)
+    }
+
+    static func range(_ booking: MeetingBooking) -> String {
+        "\(time(booking.startsAt)) – \(time(booking.endsAt))"
+    }
+}
+
 @available(iOS 17.0, *)
 struct MeetingRoomsView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var day = Date()
     @State private var bookingRoom: MeetingRoom?
+    @State private var scheduleRoom: MeetingRoom?
     @State private var showMine = false
 
     var body: some View {
@@ -30,7 +60,8 @@ struct MeetingRoomsView: View {
                         MeetingRoomCard(
                             room: room,
                             bookings: session.meetingBookings.filter { $0.roomId == room.id },
-                            onBook: { bookingRoom = room }
+                            onBook: { bookingRoom = room },
+                            onSchedule: { scheduleRoom = room }
                         )
                     }
                 }
@@ -39,11 +70,9 @@ struct MeetingRoomsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await session.refreshMeetingSchedule(date: day)
-                await session.refreshMeetingInvitees()
             }
             .refreshable {
                 await session.refreshMeetingSchedule(date: day)
-                await session.refreshMeetingInvitees()
             }
             .sheet(item: $bookingRoom) { room in
                 MeetingBookingSheet(room: room, day: day)
@@ -51,6 +80,10 @@ struct MeetingRoomsView: View {
             }
             .sheet(isPresented: $showMine) {
                 MyMeetingsSheet()
+                    .environmentObject(session)
+            }
+            .sheet(item: $scheduleRoom) { room in
+                MeetingRoomScheduleSheet(room: room, day: day)
                     .environmentObject(session)
             }
         }
@@ -79,6 +112,7 @@ private struct MeetingRoomCard: View {
     let room: MeetingRoom
     let bookings: [MeetingBooking]
     let onBook: () -> Void
+    let onSchedule: () -> Void
 
     private var nextBooking: MeetingBooking? { bookings.first }
 
@@ -100,8 +134,13 @@ private struct MeetingRoomCard: View {
                 Text(bookingSummary(booking))
                     .font(.subheadline)
             }
-            Button("Đặt phòng", action: onBook)
-                .buttonStyle(.borderedProminent)
+            HStack {
+                Button("Xem lịch", action: onSchedule)
+                    .buttonStyle(.bordered)
+                Spacer()
+                Button("Đặt phòng", action: onBook)
+                    .buttonStyle(.borderedProminent)
+            }
         }
         .padding()
         .background(.thinMaterial)
@@ -110,7 +149,129 @@ private struct MeetingRoomCard: View {
 
     private func bookingSummary(_ booking: MeetingBooking) -> String {
         let title = booking.title.isEmpty ? "Đã có lịch" : booking.title
-        return "\(title) · \(booking.startsAt.prefix(16))"
+        return "\(title) · \(MeetingPresentation.range(booking))"
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingRoomScheduleSheet: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    let room: MeetingRoom
+    let day: Date
+    @State private var selectedDay: Date
+
+    init(room: MeetingRoom, day: Date) {
+        self.room = room
+        self.day = day
+        _selectedDay = State(initialValue: day)
+    }
+
+    private var bookings: [MeetingBooking] {
+        session.meetingBookings
+            .filter { $0.roomId == room.id }
+            .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    private var isToday: Bool {
+        Calendar.current.isDateInToday(selectedDay)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        DatePicker("Ngày", selection: $selectedDay, displayedComponents: .date)
+                            .datePickerStyle(.compact)
+                            .padding(.horizontal)
+                            .padding(.bottom, 12)
+                            .onChange(of: selectedDay) { _, value in
+                                Task { await session.refreshMeetingSchedule(date: value) }
+                            }
+                        ForEach(Array(6...23), id: \.self) { hour in
+                            MeetingScheduleHour(
+                                hour: hour,
+                                bookings: bookingsForHour(hour),
+                                showCurrentTime: isToday && Calendar.current.component(.hour, from: Date()) == hour
+                            )
+                            .id(hour)
+                        }
+                    }
+                }
+                .task {
+                    await session.refreshMeetingSchedule(date: selectedDay)
+                    if isToday {
+                        proxy.scrollTo(Calendar.current.component(.hour, from: Date()), anchor: .center)
+                    }
+                }
+            }
+            .navigationTitle(room.name)
+            .toolbar {
+                Button("Đóng") { dismiss() }
+            }
+        }
+    }
+
+    private func bookingsForHour(_ hour: Int) -> [MeetingBooking] {
+        bookings.filter { booking in
+            guard let start = MeetingPresentation.date(from: booking.startsAt),
+                  let end = MeetingPresentation.date(from: booking.endsAt) else { return false }
+            let calendar = Calendar.current
+            let startHour = calendar.component(.hour, from: start)
+            let endHour = calendar.component(.hour, from: end)
+            return startHour == hour || (startHour < hour && endHour >= hour)
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingScheduleHour: View {
+    let hour: Int
+    let bookings: [MeetingBooking]
+    let showCurrentTime: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            Text(String(format: "%02d:00", hour))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 54, alignment: .trailing)
+                .padding(.trailing, 8)
+            ZStack(alignment: .topLeading) {
+                Rectangle()
+                    .fill(Color.secondary.opacity(0.08))
+                    .frame(height: 72)
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(bookings) { booking in
+                        HStack(spacing: 8) {
+                            Circle().fill(bookingColor(booking)).frame(width: 8, height: 8)
+                            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                                .font(.caption.bold())
+                                .lineLimit(1)
+                            Text(MeetingPresentation.range(booking))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(8)
+                if showCurrentTime {
+                    GeometryReader { geometry in
+                        let minute = Calendar.current.component(.minute, from: Date())
+                        Rectangle()
+                            .fill(.red)
+                            .frame(height: 2)
+                            .offset(y: CGFloat(minute) / 60 * geometry.size.height)
+                    }
+                }
+            }
+        }
+    }
+
+    private func bookingColor(_ booking: MeetingBooking) -> Color {
+        let palette: [Color] = [.blue, .purple, .orange, .green, .pink]
+        return palette[abs(booking.id.hashValue) % palette.count]
     }
 }
 
@@ -123,17 +284,39 @@ private struct MeetingBookingSheet: View {
 
     @State private var title = ""
     @State private var start = Date()
-    @State private var duration = 30
+    @State private var durationValue = 30
+    @State private var durationUnit = "phút"
     @State private var query = ""
+    @State private var departmentQuery = ""
+    @State private var selectedDepartment: String?
     @State private var selected = Set<String>()
+    @State private var inviteesError: String?
+    @State private var showStartPicker = false
+    @State private var showDurationPicker = false
 
     private var people: [MeetingInvitee] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return [] }
+        guard !trimmedQuery.isEmpty || selectedDepartment != nil else { return [] }
         return session.meetingInvitees.filter {
-            $0.fullName.localizedCaseInsensitiveContains(trimmedQuery)
-                || $0.department.localizedCaseInsensitiveContains(trimmedQuery)
+            (selectedDepartment == nil || $0.department.caseInsensitiveCompare(selectedDepartment!) == .orderedSame)
+                && (trimmedQuery.isEmpty
+                    || $0.fullName.localizedCaseInsensitiveContains(trimmedQuery)
+                    || $0.employeeCode.localizedCaseInsensitiveContains(trimmedQuery))
         }
+    }
+
+    private var departments: [String] {
+        Array(Set(session.meetingInvitees.map(\.department)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }))
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var selectedInvitees: [MeetingInvitee] {
+        session.meetingInvitees.filter { selected.contains($0.id) }
+    }
+
+    private var durationMinutes: Int {
+        durationUnit == "giờ" ? durationValue * 60 : durationValue
     }
 
     var body: some View {
@@ -151,20 +334,98 @@ private struct MeetingBookingSheet: View {
                 Button("Đóng") { dismiss() }
             }
             .onAppear { start = initialStartTime }
+            .task {
+                inviteesError = await session.refreshMeetingInvitees()
+            }
         }
     }
 
     private var meetingDetailsSection: some View {
         Section("Cuộc họp") {
             TextField("Nội dung cuộc họp", text: $title)
-            DatePicker("Giờ bắt đầu", selection: $start, displayedComponents: .hourAndMinute)
-            Stepper("Thời lượng: \(duration) phút", value: $duration, in: 5...480, step: 5)
+            Button { showStartPicker.toggle() } label: {
+                LabeledContent("Giờ bắt đầu", value: MeetingPresentation.clock.string(from: start))
+            }
+            if showStartPicker {
+                HStack {
+                    Picker("Giờ", selection: startHourBinding) {
+                        ForEach(0...23, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                    }
+                    .pickerStyle(.wheel)
+                    Picker("Phút", selection: startMinuteBinding) {
+                        ForEach(0...59, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
+                    }
+                    .pickerStyle(.wheel)
+                }
+                .frame(height: 130)
+            }
+            Button { showDurationPicker.toggle() } label: {
+                LabeledContent("Thời lượng", value: "\(durationValue) \(durationUnit)")
+            }
+            if showDurationPicker {
+                HStack {
+                    Picker("Số", selection: $durationValue) {
+                        ForEach(durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) {
+                            Text("\($0)").tag($0)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    Picker("Đơn vị", selection: $durationUnit) {
+                        Text("phút").tag("phút")
+                        Text("giờ").tag("giờ")
+                    }
+                    .pickerStyle(.wheel)
+                    .onChange(of: durationUnit) { _, unit in
+                        durationValue = unit == "giờ" ? 1 : 30
+                    }
+                }
+                .frame(height: 130)
+            }
+            Text("Thời gian dự kiến: \(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: start.addingTimeInterval(Double(durationMinutes * 60))))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
     private var inviteesSection: some View {
         Section("Mời người tham gia (\(selected.count))") {
+            if !selectedInvitees.isEmpty {
+                Text("Đã mời")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                ForEach(selectedInvitees) { person in
+                    HStack {
+                        Text(person.fullName)
+                        Spacer()
+                        Button(role: .destructive) { selected.remove(person.id) } label: {
+                            Image(systemName: "xmark.circle.fill")
+                        }
+                    }
+                }
+            }
             TextField("Tìm nhân viên hoặc phòng ban", text: $query)
+            TextField("Tìm phòng ban", text: $departmentQuery)
+            if !departments.isEmpty {
+                Picker("Phòng ban", selection: $selectedDepartment) {
+                    Text("Tất cả").tag(String?.none)
+                    ForEach(departments.filter {
+                        departmentQuery.isEmpty || $0.localizedCaseInsensitiveContains(departmentQuery)
+                    }, id: \.self) { department in
+                        Text(department).tag(Optional(department))
+                    }
+                }
+            }
+            if let inviteesError {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(inviteesError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Button("Tải lại danh sách mời") {
+                        Task { inviteesError = await session.refreshMeetingInvitees() }
+                    }
+                    .font(.caption.bold())
+                }
+            }
             ForEach(people) { person in
                 Toggle(isOn: inviteeBinding(for: person.id)) {
                     VStack(alignment: .leading) {
@@ -182,6 +443,24 @@ private struct MeetingBookingSheet: View {
         return Calendar.current.date(bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day) ?? day
     }
 
+    private var startHourBinding: Binding<Int> {
+        Binding(
+            get: { Calendar.current.component(.hour, from: start) },
+            set: { hour in
+                start = Calendar.current.date(bySettingHour: hour, minute: Calendar.current.component(.minute, from: start), second: 0, of: start) ?? start
+            }
+        )
+    }
+
+    private var startMinuteBinding: Binding<Int> {
+        Binding(
+            get: { Calendar.current.component(.minute, from: start) },
+            set: { minute in
+                start = Calendar.current.date(bySettingHour: Calendar.current.component(.hour, from: start), minute: minute, second: 0, of: start) ?? start
+            }
+        )
+    }
+
     private func inviteeBinding(for id: String) -> Binding<Bool> {
         Binding(
             get: { selected.contains(id) },
@@ -197,7 +476,7 @@ private struct MeetingBookingSheet: View {
                 room: room,
                 title: title,
                 start: start,
-                duration: duration,
+                duration: durationMinutes,
                 participants: Array(selected)
             )
             if didCreate { dismiss() }
@@ -208,20 +487,35 @@ private struct MeetingBookingSheet: View {
 @available(iOS 17.0, *)
 private struct MyMeetingsSheet: View {
     @EnvironmentObject private var session: SessionStore
+    @State private var showsUpcoming = true
 
     private var meetings: [MeetingBooking] {
-        session.meetingBookings.filter { $0.isMine ?? false }
+        session.meetingBookings
+            .filter { $0.isMine ?? false }
+            .filter { meeting in
+                guard let end = MeetingPresentation.date(from: meeting.endsAt) else { return showsUpcoming }
+                return showsUpcoming ? end >= Date() : end < Date()
+            }
+            .sorted { $0.startsAt < $1.startsAt }
     }
 
     var body: some View {
         NavigationStack {
-            List(meetings) { meeting in
-                VStack(alignment: .leading) {
-                    Text(meeting.title.isEmpty ? "Cuộc họp" : meeting.title)
-                        .font(.headline)
-                    Text("\(meeting.startsAt.prefix(16)) – \(meeting.endsAt.prefix(16))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                Picker("Trạng thái lịch", selection: $showsUpcoming) {
+                    Text("Sắp tới").tag(true)
+                    Text("Đã qua").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .padding()
+                List(meetings) { meeting in
+                    VStack(alignment: .leading) {
+                        Text(meeting.title.isEmpty ? "Cuộc họp" : meeting.title)
+                            .font(.headline)
+                        Text(MeetingPresentation.range(meeting))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             .navigationTitle("Lịch của tôi")
