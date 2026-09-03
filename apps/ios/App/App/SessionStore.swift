@@ -674,8 +674,36 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshMeetingSchedule(date: Date = .now) async { guard let token else { return }; do { let day = DateFormatter.meetingDay.string(from: date); let value: MeetingScheduleResponse = try await APIClient.shared.request("me/meeting-rooms?date=\(day)", token: token); meetingRooms = value.rooms; meetingBookings = value.bookings } catch { present(error) } }
-    func refreshMeetingInvitees() async { guard let token else { return }; do { meetingInvitees = try await APIClient.shared.request("me/meeting-rooms/invitees", token: token) } catch { present(error) } }
+    func refreshMeetingSchedule(date: Date = .now) async {
+        guard let token else { return }
+        do {
+            let day = DateFormatter.meetingDay.string(from: date)
+            let value: MeetingScheduleResponse = try await APIClient.shared.request(
+                "me/meeting-rooms?date=\(day)",
+                token: token
+            )
+            meetingRooms = value.rooms
+            meetingBookings = value.bookings
+        } catch {
+            present(error)
+        }
+    }
+
+    /// Invitees are optional supporting data for the booking form. Returning the
+    /// message lets that form offer a retry without presenting a global
+    /// “offline” alert while the room schedule itself is already usable.
+    func refreshMeetingInvitees() async -> String? {
+        guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
+        do {
+            meetingInvitees = try await APIClient.shared.request(
+                "me/meeting-rooms/invitees",
+                token: token
+            )
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
     func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> Bool { guard let token else { return false }; isWorking = true; defer { isWorking = false }; do { let end = start.addingTimeInterval(Double(duration) * 60); let body = CreateMeetingBookingBody(roomId: room.id, startsAt: ISO8601DateFormatter().string(from: start), endsAt: ISO8601DateFormatter().string(from: end), title: title, attendeeCount: participants.count + 1, participantIds: participants); let _: MeetingBooking = try await APIClient.shared.request("me/meeting-bookings", method: "POST", token: token, body: body); await refreshMeetingSchedule(date: start); return true } catch { present(error); return false } }
 
     func requestForgotPassword(employeeCode: String) async -> ForgotPasswordRequestResponse? {
