@@ -415,9 +415,9 @@ private struct MeetingBookingSheet: View {
                     }
                 }
             }
-            if let inviteesError {
+            if let inviteeLoadError = inviteesError {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(inviteesError)
+                    Text(inviteeLoadError)
                         .font(.caption)
                         .foregroundStyle(.red)
                     Button("Tải lại danh sách mời") {
