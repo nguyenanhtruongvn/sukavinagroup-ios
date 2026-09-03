@@ -154,14 +154,7 @@ private struct MeetingRoomCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 13) {
-            Image(systemName: "building.2.crop.circle.fill")
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(Color.green.gradient)
-                .frame(width: 82, height: 82)
-                .padding(5)
-                .background(Color.green.opacity(0.10))
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            MeetingRoomImage(room: room)
             VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -192,6 +185,8 @@ private struct MeetingRoomCard: View {
         .padding(13)
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture(perform: onSchedule)
     }
 
     private var availabilityText: String {
@@ -202,6 +197,45 @@ private struct MeetingRoomCard: View {
             return "Trống đến \(MeetingPresentation.time(nextBooking.startsAt))"
         }
         return "Còn trống cả ngày"
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingRoomImage: View {
+    let room: MeetingRoom
+
+    var body: some View {
+        Group {
+            if let url = imageURL {
+                AsyncImage(url: url) { phase in
+                    if case let .success(image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        placeholder
+                    }
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: 92, height: 112)
+        .background(Color.green.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var imageURL: URL? {
+        let value = room.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("/") {
+            return URL(string: "https://sukavinagroup.net\(value)")
+        }
+        return URL(string: value)
+    }
+
+    private var placeholder: some View {
+        Image(systemName: "building.2.fill")
+            .font(.system(size: 34, weight: .bold))
+            .foregroundStyle(.green)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
