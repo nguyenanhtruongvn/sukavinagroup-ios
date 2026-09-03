@@ -12,12 +12,222 @@ import WebKit
 @available(iOS 17.0, *)
 struct MeetingRoomsView: View {
     @EnvironmentObject private var session: SessionStore
-    @State private var day = Date(); @State private var bookingRoom: MeetingRoom?; @State private var showMine = false
-    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 14) { HStack { Text("Phòng họp").font(.largeTitle.bold()); Spacer(); Button { showMine = true } label: { Image(systemName: "calendar") } }; DatePicker("", selection: $day, displayedComponents: .date).labelsHidden().onChange(of: day) { _, value in Task { await session.refreshMeetingSchedule(date: value) } }; ForEach(session.meetingRooms) { room in let items = session.meetingBookings.filter { $0.roomId == room.id }; VStack(alignment: .leading, spacing: 8) { HStack { VStack(alignment: .leading) { Text(room.name).font(.headline); Text("\(room.capacity) chỗ · \(room.equipment.joined(separator: " · "))").font(.caption).foregroundStyle(.secondary) }; Spacer(); Text(items.isEmpty ? "Trống" : "Đã đặt").foregroundStyle(items.isEmpty ? .green : .red).font(.caption.bold()) }; if let next = items.first { Text("\(next.title.isEmpty ? "Đã có lịch" : next.title) · \(next.startsAt.prefix(16))").font(.subheadline) }; Button("Đặt phòng") { bookingRoom = room }.buttonStyle(.borderedProminent) }.padding().background(.thinMaterial).clipShape(RoundedRectangle(cornerRadius: 18)) } }.padding() }.navigationBarTitleDisplayMode(.inline).task { await session.refreshMeetingSchedule(date: day); await session.refreshMeetingInvitees() }.refreshable { await session.refreshMeetingSchedule(date: day); await session.refreshMeetingInvitees() }.sheet(item: $bookingRoom) { room in MeetingBookingSheet(room: room, day: day).environmentObject(session) }.sheet(isPresented: $showMine) { MyMeetingsSheet(day: day).environmentObject(session) } } }
+    @State private var day = Date()
+    @State private var bookingRoom: MeetingRoom?
+    @State private var showMine = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    MeetingRoomsHeader(showMine: $showMine)
+                    DatePicker("Ngày", selection: $day, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .onChange(of: day) { _, date in
+                            Task { await session.refreshMeetingSchedule(date: date) }
+                        }
+                    ForEach(session.meetingRooms) { room in
+                        MeetingRoomCard(
+                            room: room,
+                            bookings: session.meetingBookings.filter { $0.roomId == room.id },
+                            onBook: { bookingRoom = room }
+                        )
+                    }
+                }
+                .padding()
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .task {
+                await session.refreshMeetingSchedule(date: day)
+                await session.refreshMeetingInvitees()
+            }
+            .refreshable {
+                await session.refreshMeetingSchedule(date: day)
+                await session.refreshMeetingInvitees()
+            }
+            .sheet(item: $bookingRoom) { room in
+                MeetingBookingSheet(room: room, day: day)
+                    .environmentObject(session)
+            }
+            .sheet(isPresented: $showMine) {
+                MyMeetingsSheet()
+                    .environmentObject(session)
+            }
+        }
+    }
 }
 
-@available(iOS 17.0, *) private struct MeetingBookingSheet: View { @EnvironmentObject var session: SessionStore; let room: MeetingRoom; let day: Date; @Environment(\.dismiss) var dismiss; @State var title = ""; @State var start = Date(); @State var duration = 30; @State var query = ""; @State var selected = Set<String>(); var people: [MeetingInvitee] { session.meetingInvitees.filter { query.isEmpty || $0.fullName.localizedCaseInsensitiveContains(query) || $0.department.localizedCaseInsensitiveContains(query) } }; var body: some View { NavigationStack { Form { Section("Cuộc họp") { TextField("Nội dung cuộc họp", text: $title); DatePicker("Giờ bắt đầu", selection: $start, displayedComponents: .hourAndMinute); Stepper("Thời lượng: \(duration) phút", value: $duration, in: 5...480, step: 5) }; Section("Mời người tham gia (\(selected.count))") { TextField("Tìm nhân viên hoặc phòng ban", text: $query); ForEach(people) { person in Toggle("\(person.fullName) · \(person.department)", isOn: Binding(get: { selected.contains(person.id) }, set: { $0 ? selected.insert(person.id) : selected.remove(person.id) })) } }; Button("Xác nhận đặt phòng") { Task { if await session.createMeeting(room: room, title: title, start: start, duration: duration, participants: Array(selected)) { dismiss() } } }.disabled(title.count < 3 || selected.count + 1 > room.capacity) }.navigationTitle(room.name).toolbar { Button("Đóng") { dismiss() } } } } }
-@available(iOS 17.0, *) private struct MyMeetingsSheet: View { @EnvironmentObject var session: SessionStore; let day: Date; var body: some View { NavigationStack { List(session.meetingBookings.filter { ($0.isMine ?? false) || !$0.id.isEmpty }) { item in VStack(alignment: .leading) { Text(item.title.isEmpty ? "Cuộc họp" : item.title).font(.headline); Text("\(item.startsAt.prefix(16)) – \(item.endsAt.prefix(16))").font(.caption).foregroundStyle(.secondary) } }.navigationTitle("Lịch của tôi") } } }
+@available(iOS 17.0, *)
+private struct MeetingRoomsHeader: View {
+    @Binding var showMine: Bool
+
+    var body: some View {
+        HStack {
+            Text("Phòng họp")
+                .font(.largeTitle.bold())
+            Spacer()
+            Button { showMine = true } label: {
+                Image(systemName: "calendar")
+            }
+            .accessibilityLabel("Lịch của tôi")
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingRoomCard: View {
+    let room: MeetingRoom
+    let bookings: [MeetingBooking]
+    let onBook: () -> Void
+
+    private var nextBooking: MeetingBooking? { bookings.first }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(room.name).font(.headline)
+                    Text("\(room.capacity) chỗ · \(room.equipment.joined(separator: " · "))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(bookings.isEmpty ? "Trống" : "Đã đặt")
+                    .foregroundStyle(bookings.isEmpty ? .green : .red)
+                    .font(.caption.bold())
+            }
+            if let booking = nextBooking {
+                Text(bookingSummary(booking))
+                    .font(.subheadline)
+            }
+            Button("Đặt phòng", action: onBook)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding()
+        .background(.thinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private func bookingSummary(_ booking: MeetingBooking) -> String {
+        let title = booking.title.isEmpty ? "Đã có lịch" : booking.title
+        return "\(title) · \(booking.startsAt.prefix(16))"
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingBookingSheet: View {
+    @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
+    let room: MeetingRoom
+    let day: Date
+
+    @State private var title = ""
+    @State private var start = Date()
+    @State private var duration = 30
+    @State private var query = ""
+    @State private var selected = Set<String>()
+
+    private var people: [MeetingInvitee] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return [] }
+        return session.meetingInvitees.filter {
+            $0.fullName.localizedCaseInsensitiveContains(trimmedQuery)
+                || $0.department.localizedCaseInsensitiveContains(trimmedQuery)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                meetingDetailsSection
+                inviteesSection
+                Section {
+                    Button("Xác nhận đặt phòng") { createBooking() }
+                        .disabled(title.count < 3 || selected.count + 1 > room.capacity)
+                }
+            }
+            .navigationTitle(room.name)
+            .toolbar {
+                Button("Đóng") { dismiss() }
+            }
+            .onAppear { start = initialStartTime }
+        }
+    }
+
+    private var meetingDetailsSection: some View {
+        Section("Cuộc họp") {
+            TextField("Nội dung cuộc họp", text: $title)
+            DatePicker("Giờ bắt đầu", selection: $start, displayedComponents: .hourAndMinute)
+            Stepper("Thời lượng: \(duration) phút", value: $duration, in: 5...480, step: 5)
+        }
+    }
+
+    private var inviteesSection: some View {
+        Section("Mời người tham gia (\(selected.count))") {
+            TextField("Tìm nhân viên hoặc phòng ban", text: $query)
+            ForEach(people) { person in
+                Toggle(isOn: inviteeBinding(for: person.id)) {
+                    VStack(alignment: .leading) {
+                        Text(person.fullName)
+                        Text(person.department).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var initialStartTime: Date {
+        let now = Date()
+        let time = Calendar.current.dateComponents([.hour, .minute], from: now)
+        return Calendar.current.date(bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day) ?? day
+    }
+
+    private func inviteeBinding(for id: String) -> Binding<Bool> {
+        Binding(
+            get: { selected.contains(id) },
+            set: { isSelected in
+                if isSelected { selected.insert(id) } else { selected.remove(id) }
+            }
+        )
+    }
+
+    private func createBooking() {
+        Task {
+            let didCreate = await session.createMeeting(
+                room: room,
+                title: title,
+                start: start,
+                duration: duration,
+                participants: Array(selected)
+            )
+            if didCreate { dismiss() }
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MyMeetingsSheet: View {
+    @EnvironmentObject private var session: SessionStore
+
+    private var meetings: [MeetingBooking] {
+        session.meetingBookings.filter { $0.isMine ?? false }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(meetings) { meeting in
+                VStack(alignment: .leading) {
+                    Text(meeting.title.isEmpty ? "Cuộc họp" : meeting.title)
+                        .font(.headline)
+                    Text("\(meeting.startsAt.prefix(16)) – \(meeting.endsAt.prefix(16))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Lịch của tôi")
+        }
+    }
+}
 
 
 
