@@ -9,6 +9,8 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+private extension DateFormatter { static let meetingDay: DateFormatter = { let value = DateFormatter(); value.calendar = Calendar(identifier: .gregorian); value.locale = Locale(identifier: "en_US_POSIX"); value.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh"); value.dateFormat = "yyyy-MM-dd"; return value }() }
+
 @MainActor
 @available(iOS 17.0, *)
 final class SessionStore: ObservableObject {
@@ -32,6 +34,9 @@ final class SessionStore: ObservableObject {
     @Published var passwordChangeError: String?
     @Published var forgotPasswordError: String?
     @Published var todayMenu: TodayMenu?
+    @Published var meetingRooms: [MeetingRoom] = []
+    @Published var meetingBookings: [MeetingBooking] = []
+    @Published var meetingInvitees: [MeetingInvitee] = []
     @Published private(set) var attendanceRevision = 0
     @Published private(set) var requestRevision = 0
 
@@ -668,6 +673,10 @@ final class SessionStore: ObservableObject {
             return nil
         }
     }
+
+    func refreshMeetingSchedule(date: Date = .now) async { guard let token else { return }; do { let day = DateFormatter.meetingDay.string(from: date); let value: MeetingScheduleResponse = try await APIClient.shared.request("me/meeting-rooms?date=\(day)", token: token); meetingRooms = value.rooms; meetingBookings = value.bookings } catch { present(error) } }
+    func refreshMeetingInvitees() async { guard let token else { return }; do { meetingInvitees = try await APIClient.shared.request("me/meeting-rooms/invitees", token: token) } catch { present(error) } }
+    func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> Bool { guard let token else { return false }; isWorking = true; defer { isWorking = false }; do { let end = start.addingTimeInterval(Double(duration) * 60); let body = CreateMeetingBookingBody(roomId: room.id, startsAt: ISO8601DateFormatter().string(from: start), endsAt: ISO8601DateFormatter().string(from: end), title: title, attendeeCount: participants.count + 1, participantIds: participants); let _: MeetingBooking = try await APIClient.shared.request("me/meeting-bookings", method: "POST", token: token, body: body); await refreshMeetingSchedule(date: start); return true } catch { present(error); return false } }
 
     func requestForgotPassword(employeeCode: String) async -> ForgotPasswordRequestResponse? {
         forgotPasswordError = nil
