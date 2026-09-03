@@ -404,6 +404,13 @@ private struct MeetingRoomScheduleSheet: View {
 }
 
 @available(iOS 17.0, *)
+private struct MeetingTimelineBookingStyle {
+    let fill: Color
+    let accent: Color
+    let foreground: Color
+}
+
+@available(iOS 17.0, *)
 private struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
     let date: Date
@@ -423,27 +430,45 @@ private struct MeetingTimeline: View {
                         .id(hour)
                 }
             }
+
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
                     ForEach(Array(firstHour...lastHour), id: \.self) { _ in
                         Rectangle()
-                            .fill(Color.secondary.opacity(0.07))
-                            .frame(height: hourHeight - 1)
-                        Divider()
+                            .fill(Color.secondary.opacity(0.045))
+                            .frame(height: hourHeight)
+                            .overlay(alignment: .bottom) {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.14))
+                                    .frame(height: 1)
+                            }
                     }
                 }
-                ForEach(bookings) { booking in
+
+                ForEach(Array(bookings.enumerated()), id: \.element.id) { index, booking in
                     if let position = bookingPosition(booking) {
-                        MeetingTimelineBlock(booking: booking, color: bookingColor(booking))
-                            .frame(height: position.height)
-                            .offset(y: position.top)
+                        let style = bookingStyle(at: index)
+                        MeetingTimelineBlock(
+                            booking: booking,
+                            style: style,
+                            showsTime: position.height >= 38
+                        )
+                        .frame(
+                            maxWidth: .infinity,
+                            minHeight: position.height,
+                            maxHeight: position.height,
+                            alignment: .topLeading
+                        )
+                        .offset(y: position.top)
                     }
                 }
+
                 if let currentOffset {
                     Rectangle()
                         .fill(.red)
                         .frame(height: 2)
                         .offset(y: currentOffset)
+
                     Text(MeetingPresentation.clock.string(from: Date()))
                         .font(.caption2.bold().monospacedDigit())
                         .foregroundStyle(.white)
@@ -453,7 +478,12 @@ private struct MeetingTimeline: View {
                         .offset(y: currentOffset - 13)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: hourHeight * CGFloat(lastHour - firstHour + 1), alignment: .topLeading)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: hourHeight * CGFloat(lastHour - firstHour + 1),
+                alignment: .topLeading
+            )
+            .clipped()
         }
     }
 
@@ -469,41 +499,70 @@ private struct MeetingTimeline: View {
     private func bookingPosition(_ booking: MeetingBooking) -> (top: CGFloat, height: CGFloat)? {
         guard let start = MeetingPresentation.date(from: booking.startsAt),
               let end = MeetingPresentation.date(from: booking.endsAt) else { return nil }
-        let startMinute = MeetingPresentation.calendar.component(.hour, from: start) * 60 + MeetingPresentation.calendar.component(.minute, from: start)
-        let endMinute = MeetingPresentation.calendar.component(.hour, from: end) * 60 + MeetingPresentation.calendar.component(.minute, from: end)
+
+        let startMinute = MeetingPresentation.calendar.component(.hour, from: start) * 60
+            + MeetingPresentation.calendar.component(.minute, from: start)
+        let endMinute = MeetingPresentation.calendar.component(.hour, from: end) * 60
+            + MeetingPresentation.calendar.component(.minute, from: end)
         let visibleStart = max(startMinute, firstHour * 60)
         let visibleEnd = min(endMinute, (lastHour + 1) * 60)
+
         guard visibleEnd > visibleStart else { return nil }
+
         return (
             CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
             max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 24)
         )
     }
 
-    private func bookingColor(_ booking: MeetingBooking) -> Color {
-        let palette: [Color] = [.red.opacity(0.23), .purple.opacity(0.24), .blue.opacity(0.24), .green.opacity(0.23), .orange.opacity(0.25)]
-        return palette[abs(booking.id.hashValue) % palette.count]
+    private func bookingStyle(at index: Int) -> MeetingTimelineBookingStyle {
+        let palette: [MeetingTimelineBookingStyle] = [
+            .init(fill: Color(red: 0.98, green: 0.82, blue: 0.80), accent: Color(red: 0.83, green: 0.22, blue: 0.18), foreground: Color(red: 0.39, green: 0.08, blue: 0.06)),
+            .init(fill: Color(red: 0.82, green: 0.86, blue: 1.00), accent: Color(red: 0.19, green: 0.34, blue: 0.82), foreground: Color(red: 0.06, green: 0.14, blue: 0.42)),
+            .init(fill: Color(red: 0.79, green: 0.94, blue: 0.86), accent: Color(red: 0.05, green: 0.53, blue: 0.31), foreground: Color(red: 0.02, green: 0.29, blue: 0.15)),
+            .init(fill: Color(red: 1.00, green: 0.90, blue: 0.68), accent: Color(red: 0.80, green: 0.40, blue: 0.03), foreground: Color(red: 0.39, green: 0.18, blue: 0.01)),
+            .init(fill: Color(red: 0.91, green: 0.82, blue: 0.99), accent: Color(red: 0.48, green: 0.21, blue: 0.74), foreground: Color(red: 0.24, green: 0.08, blue: 0.40)),
+            .init(fill: Color(red: 0.77, green: 0.92, blue: 0.96), accent: Color(red: 0.03, green: 0.48, blue: 0.64), foreground: Color(red: 0.02, green: 0.24, blue: 0.34))
+        ]
+        return palette[index % palette.count]
     }
 }
 
 @available(iOS 17.0, *)
 private struct MeetingTimelineBlock: View {
     let booking: MeetingBooking
-    let color: Color
+    let style: MeetingTimelineBookingStyle
+    let showsTime: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
-                .font(.caption.bold())
-                .lineLimit(1)
-            Text(MeetingPresentation.range(booking))
-                .font(.caption2.monospacedDigit())
+        HStack(spacing: 8) {
+            Rectangle()
+                .fill(style.accent)
+                .frame(width: 4)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                    .font(.caption.bold())
+                    .lineLimit(1)
+
+                if showsTime {
+                    Text(MeetingPresentation.range(booking))
+                        .font(.caption2.monospacedDigit())
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 4)
+
+            Spacer(minLength: 0)
         }
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color)
+        .foregroundStyle(style.foreground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(style.fill)
+        .overlay {
+            Rectangle()
+                .stroke(style.accent.opacity(0.30), lineWidth: 1)
+        }
     }
 }
 
