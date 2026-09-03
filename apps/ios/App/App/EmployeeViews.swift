@@ -11,6 +11,11 @@ import WebKit
 
 private enum MeetingPresentation {
     static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+    static var calendar: Calendar = {
+        var value = Calendar(identifier: .gregorian)
+        value.timeZone = timezone
+        return value
+    }()
     static let clock: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "vi_VN")
@@ -50,16 +55,12 @@ struct MeetingRoomsView: View {
         NavigationStack {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    MeetingRoomsHeader(showMine: $showMine)
-                    DatePicker("Ngày", selection: $day, displayedComponents: .date)
-                        .datePickerStyle(.compact)
-                        .onChange(of: day) { _, date in
-                            Task { await session.refreshMeetingSchedule(date: date) }
-                        }
+                    MeetingRoomsHeader(day: $day, showMine: $showMine)
                     ForEach(session.meetingRooms) { room in
                         MeetingRoomCard(
                             room: room,
                             bookings: session.meetingBookings.filter { $0.roomId == room.id },
+                            day: day,
                             onBook: { bookingRoom = room },
                             onSchedule: { scheduleRoom = room }
                         )
@@ -70,6 +71,9 @@ struct MeetingRoomsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await session.refreshMeetingSchedule(date: day)
+            }
+            .onChange(of: day) { _, date in
+                Task { await session.refreshMeetingSchedule(date: date) }
             }
             .refreshable {
                 await session.refreshMeetingSchedule(date: day)
@@ -92,17 +96,30 @@ struct MeetingRoomsView: View {
 
 @available(iOS 17.0, *)
 private struct MeetingRoomsHeader: View {
+    @Binding var day: Date
     @Binding var showMine: Bool
 
     var body: some View {
-        HStack {
+        VStack(alignment: .leading, spacing: 14) {
             Text("Phòng họp")
                 .font(.largeTitle.bold())
-            Spacer()
-            Button { showMine = true } label: {
-                Image(systemName: "calendar")
+            HStack(spacing: 9) {
+                Button("Hôm nay") { day = .now }
+                    .buttonStyle(.borderedProminent)
+                Button("Ngày mai") {
+                    day = MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: .now) ?? .now
+                }
+                .buttonStyle(.bordered)
+                Spacer()
+                DatePicker("", selection: $day, displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                Button { showMine = true } label: {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.headline)
+                }
+                .accessibilityLabel("Lịch của tôi")
             }
-            .accessibilityLabel("Lịch của tôi")
         }
     }
 }
@@ -111,13 +128,41 @@ private struct MeetingRoomsHeader: View {
 private struct MeetingRoomCard: View {
     let room: MeetingRoom
     let bookings: [MeetingBooking]
+    let day: Date
     let onBook: () -> Void
     let onSchedule: () -> Void
 
-    private var nextBooking: MeetingBooking? { bookings.first }
+    private var currentBooking: MeetingBooking? {
+        let now = Date()
+        guard MeetingPresentation.calendar.isDate(day, inSameDayAs: now) else { return nil }
+        return bookings.first {
+            guard let start = MeetingPresentation.date(from: $0.startsAt),
+                  let end = MeetingPresentation.date(from: $0.endsAt) else { return false }
+            return now >= start && now < end
+        }
+    }
+
+    private var nextBooking: MeetingBooking? {
+        let point = MeetingPresentation.calendar.isDate(day, inSameDayAs: .now) ? Date() : day
+        return bookings.first {
+            guard let start = MeetingPresentation.date(from: $0.startsAt) else { return false }
+            return start > point
+        }
+    }
+
+    private var isAvailable: Bool { currentBooking == nil }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        HStack(alignment: .top, spacing: 13) {
+            Image(systemName: "building.2.crop.circle.fill")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(Color.green.gradient)
+                .frame(width: 82, height: 82)
+                .padding(5)
+                .background(Color.green.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(room.name).font(.headline)
@@ -126,30 +171,37 @@ private struct MeetingRoomCard: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(bookings.isEmpty ? "Trống" : "Đã đặt")
-                    .foregroundStyle(bookings.isEmpty ? .green : .red)
+                Text(isAvailable ? "• Trống" : "• Đang họp")
+                    .foregroundStyle(isAvailable ? .green : .red)
                     .font(.caption.bold())
             }
-            if let booking = nextBooking {
-                Text(bookingSummary(booking))
-                    .font(.subheadline)
-            }
-            HStack {
-                Button("Xem lịch", action: onSchedule)
-                    .buttonStyle(.bordered)
-                Spacer()
-                Button("Đặt phòng", action: onBook)
-                    .buttonStyle(.borderedProminent)
+                Text(availabilityText)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isAvailable ? .green : .red)
+                if isAvailable {
+                    Button("Đặt phòng", action: onBook)
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Button("Xem lịch", action: onSchedule)
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                }
             }
         }
-        .padding()
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .padding(13)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private func bookingSummary(_ booking: MeetingBooking) -> String {
-        let title = booking.title.isEmpty ? "Đã có lịch" : booking.title
-        return "\(title) · \(MeetingPresentation.range(booking))"
+    private var availabilityText: String {
+        if let currentBooking {
+            return "Đang họp đến \(MeetingPresentation.time(currentBooking.endsAt))"
+        }
+        if let nextBooking {
+            return "Trống đến \(MeetingPresentation.time(nextBooking.startsAt))"
+        }
+        return "Còn trống cả ngày"
     }
 }
 
@@ -160,6 +212,7 @@ private struct MeetingRoomScheduleSheet: View {
     let room: MeetingRoom
     let day: Date
     @State private var selectedDay: Date
+    @State private var showBooking = false
 
     init(room: MeetingRoom, day: Date) {
         self.room = room
@@ -189,14 +242,7 @@ private struct MeetingRoomScheduleSheet: View {
                             .onChange(of: selectedDay) { _, value in
                                 Task { await session.refreshMeetingSchedule(date: value) }
                             }
-                        ForEach(Array(6...23), id: \.self) { hour in
-                            MeetingScheduleHour(
-                                hour: hour,
-                                bookings: bookingsForHour(hour),
-                                showCurrentTime: isToday && Calendar.current.component(.hour, from: Date()) == hour
-                            )
-                            .id(hour)
-                        }
+                        MeetingTimeline(bookings: bookings, date: selectedDay)
                     }
                 }
                 .task {
@@ -210,68 +256,127 @@ private struct MeetingRoomScheduleSheet: View {
             .toolbar {
                 Button("Đóng") { dismiss() }
             }
-        }
-    }
-
-    private func bookingsForHour(_ hour: Int) -> [MeetingBooking] {
-        bookings.filter { booking in
-            guard let start = MeetingPresentation.date(from: booking.startsAt),
-                  let end = MeetingPresentation.date(from: booking.endsAt) else { return false }
-            let calendar = Calendar.current
-            let startHour = calendar.component(.hour, from: start)
-            let endHour = calendar.component(.hour, from: end)
-            return startHour == hour || (startHour < hour && endHour >= hour)
+            .overlay(alignment: .bottomTrailing) {
+                Button { showBooking = true } label: {
+                    Image(systemName: "plus")
+                        .font(.title2.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 58, height: 58)
+                        .background(Color.green)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+                }
+                .padding(22)
+            }
+            .sheet(isPresented: $showBooking) {
+                MeetingBookingSheet(room: room, day: selectedDay)
+                    .environmentObject(session)
+            }
         }
     }
 }
 
 @available(iOS 17.0, *)
-private struct MeetingScheduleHour: View {
-    let hour: Int
+private struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
-    let showCurrentTime: Bool
+    let date: Date
+    private let firstHour = 6
+    private let lastHour = 23
+    private let hourHeight: CGFloat = 72
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            Text(String(format: "%02d:00", hour))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 54, alignment: .trailing)
-                .padding(.trailing, 8)
-            ZStack(alignment: .topLeading) {
-                Rectangle()
-                    .fill(Color.secondary.opacity(0.08))
-                    .frame(height: 72)
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(bookings) { booking in
-                        HStack(spacing: 8) {
-                            Circle().fill(bookingColor(booking)).frame(width: 8, height: 8)
-                            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
-                                .font(.caption.bold())
-                                .lineLimit(1)
-                            Text(MeetingPresentation.range(booking))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                .padding(8)
-                if showCurrentTime {
-                    GeometryReader { geometry in
-                        let minute = Calendar.current.component(.minute, from: Date())
-                        Rectangle()
-                            .fill(.red)
-                            .frame(height: 2)
-                            .offset(y: CGFloat(minute) / 60 * geometry.size.height)
-                    }
+            VStack(spacing: 0) {
+                ForEach(Array(firstHour...lastHour), id: \.self) { hour in
+                    Text(String(format: "%02d:00", hour))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 56, height: hourHeight, alignment: .topTrailing)
+                        .padding(.trailing, 8)
+                        .id(hour)
                 }
             }
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: 0) {
+                    ForEach(Array(firstHour...lastHour), id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.07))
+                            .frame(height: hourHeight - 1)
+                        Divider()
+                    }
+                }
+                ForEach(bookings) { booking in
+                    if let position = bookingPosition(booking) {
+                        MeetingTimelineBlock(booking: booking, color: bookingColor(booking))
+                            .frame(height: position.height)
+                            .offset(y: position.top)
+                    }
+                }
+                if let currentOffset {
+                    Rectangle()
+                        .fill(.red)
+                        .frame(height: 2)
+                        .offset(y: currentOffset)
+                    Text(MeetingPresentation.clock.string(from: Date()))
+                        .font(.caption2.bold().monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.red)
+                        .offset(y: currentOffset - 13)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: hourHeight * CGFloat(lastHour - firstHour + 1), alignment: .topLeading)
         }
     }
 
+    private var currentOffset: CGFloat? {
+        guard MeetingPresentation.calendar.isDateInToday(date) else { return nil }
+        let now = Date()
+        let hour = MeetingPresentation.calendar.component(.hour, from: now)
+        guard hour >= firstHour && hour <= lastHour else { return nil }
+        let minute = MeetingPresentation.calendar.component(.minute, from: now)
+        return CGFloat(hour - firstHour) * hourHeight + CGFloat(minute) / 60 * hourHeight
+    }
+
+    private func bookingPosition(_ booking: MeetingBooking) -> (top: CGFloat, height: CGFloat)? {
+        guard let start = MeetingPresentation.date(from: booking.startsAt),
+              let end = MeetingPresentation.date(from: booking.endsAt) else { return nil }
+        let startMinute = MeetingPresentation.calendar.component(.hour, from: start) * 60 + MeetingPresentation.calendar.component(.minute, from: start)
+        let endMinute = MeetingPresentation.calendar.component(.hour, from: end) * 60 + MeetingPresentation.calendar.component(.minute, from: end)
+        let visibleStart = max(startMinute, firstHour * 60)
+        let visibleEnd = min(endMinute, (lastHour + 1) * 60)
+        guard visibleEnd > visibleStart else { return nil }
+        return (
+            CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
+            max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 24)
+        )
+    }
+
     private func bookingColor(_ booking: MeetingBooking) -> Color {
-        let palette: [Color] = [.blue, .purple, .orange, .green, .pink]
+        let palette: [Color] = [.red.opacity(0.23), .purple.opacity(0.24), .blue.opacity(0.24), .green.opacity(0.23), .orange.opacity(0.25)]
         return palette[abs(booking.id.hashValue) % palette.count]
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTimelineBlock: View {
+    let booking: MeetingBooking
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                .font(.caption.bold())
+                .lineLimit(1)
+            Text(MeetingPresentation.range(booking))
+                .font(.caption2.monospacedDigit())
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color)
     }
 }
 
@@ -512,6 +617,9 @@ private struct MyMeetingsSheet: View {
                     VStack(alignment: .leading) {
                         Text(meeting.title.isEmpty ? "Cuộc họp" : meeting.title)
                             .font(.headline)
+                        Text(session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                         Text(MeetingPresentation.range(meeting))
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
