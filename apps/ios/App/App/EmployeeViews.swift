@@ -183,6 +183,7 @@ private struct MeetingRoomsHeader: View {
                 .accessibilityLabel("Lịch của tôi")
             }
         }
+    }
 }
 
 @available(iOS 17.0, *)
