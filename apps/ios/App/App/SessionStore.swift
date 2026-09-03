@@ -47,6 +47,7 @@ final class SessionStore: ObservableObject {
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
+    private var activeMeetingScheduleDate = Date()
     private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
@@ -675,6 +676,7 @@ final class SessionStore: ObservableObject {
     }
 
     func refreshMeetingSchedule(date: Date = .now) async {
+        activeMeetingScheduleDate = date
         guard let token else { return }
         do {
             let day = DateFormatter.meetingDay.string(from: date)
@@ -727,6 +729,7 @@ final class SessionStore: ObservableObject {
         if event.contains("request_changed") { pendingRealtimeEvents.insert("request_changed") }
         if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }
         if event.contains("content_changed") { pendingRealtimeEvents.insert("content_changed") }
+        if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
         guard !pendingRealtimeEvents.isEmpty, realtimeRefreshTask == nil else { return }
         realtimeRefreshTask = Task { [weak self] in
             // Spread a realtime burst over less than one second so hundreds
@@ -747,6 +750,9 @@ final class SessionStore: ObservableObject {
             }
             if events.contains("meal_changed") {
                 await self.refreshTodayMenu()
+            }
+            if events.contains("meeting_changed") {
+                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
             }
         }
     }
