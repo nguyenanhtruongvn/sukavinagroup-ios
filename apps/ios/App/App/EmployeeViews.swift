@@ -53,20 +53,28 @@ struct MeetingRoomsView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    MeetingRoomsHeader(day: $day, showMine: $showMine)
-                    ForEach(session.meetingRooms) { room in
-                        MeetingRoomCard(
-                            room: room,
-                            bookings: session.meetingBookings.filter { $0.roomId == room.id },
-                            day: day,
-                            onBook: { bookingRoom = room },
-                            onSchedule: { scheduleRoom = room }
-                        )
+            ZStack {
+                Color(uiColor: .systemGroupedBackground)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 16) {
+                        MeetingRoomsHeader(day: $day, showMine: $showMine)
+
+                        ForEach(session.meetingRooms) { room in
+                            MeetingRoomCard(
+                                room: room,
+                                bookings: session.meetingBookings.filter { $0.roomId == room.id },
+                                day: day,
+                                onBook: { bookingRoom = room },
+                                onSchedule: { scheduleRoom = room }
+                            )
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 24)
                 }
-                .padding()
             }
             .navigationBarTitleDisplayMode(.inline)
             .task {
@@ -99,29 +107,82 @@ private struct MeetingRoomsHeader: View {
     @Binding var day: Date
     @Binding var showMine: Bool
 
+    private var isToday: Bool {
+        MeetingPresentation.calendar.isDateInToday(day)
+    }
+
+    private var isTomorrow: Bool {
+        MeetingPresentation.calendar.isDate(
+            day,
+            inSameDayAs: MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: .now) ?? .now
+        )
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             Text("Phòng họp")
-                .font(.largeTitle.bold())
-            HStack(spacing: 9) {
-                Button("Hôm nay") { day = .now }
-                    .buttonStyle(.borderedProminent)
-                Button("Ngày mai") {
+                .font(.system(size: 27, weight: .bold, design: .rounded))
+                .foregroundStyle(Color(uiColor: .label))
+
+            HStack(spacing: 10) {
+                Button {
+                    day = .now
+                } label: {
+                    Text("Hôm nay")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(isToday ? .white : Color(uiColor: .label))
+                        .padding(.horizontal, 16)
+                        .frame(height: 40)
+                        .background(isToday ? Color.red : Color(uiColor: .systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .overlay {
+                            if !isToday {
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .stroke(Color(uiColor: .separator), lineWidth: 0.8)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+
+                Button {
                     day = MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: .now) ?? .now
+                } label: {
+                    Text("Ngày mai")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(isTomorrow ? .white : Color(uiColor: .label))
+                        .padding(.horizontal, 16)
+                        .frame(height: 40)
+                        .background(isTomorrow ? Color.red : Color(uiColor: .systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .overlay {
+                            if !isTomorrow {
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .stroke(Color(uiColor: .separator), lineWidth: 0.8)
+                            }
+                        }
                 }
-                .buttonStyle(.bordered)
-                Spacer()
-                DatePicker("", selection: $day, displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                Button { showMine = true } label: {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.headline)
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    showMine = true
+                } label: {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .label))
+                        .frame(width: 40, height: 40)
+                        .background(Color(uiColor: .systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .stroke(Color(uiColor: .separator), lineWidth: 0.8)
+                        }
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("Lịch của tôi")
             }
         }
-    }
 }
 
 @available(iOS 17.0, *)
@@ -151,42 +212,74 @@ private struct MeetingRoomCard: View {
     }
 
     private var isAvailable: Bool { currentBooking == nil }
+    private var statusColor: Color { isAvailable ? Color.green : Color.red }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 13) {
-            MeetingRoomImage(room: room)
-            VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(room.name).font(.headline)
-                    Text("\(room.capacity) chỗ · \(room.equipment.joined(separator: " · "))")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                MeetingRoomImage(room: room)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(room.name)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(Color(uiColor: .label))
+                            .lineLimit(1)
+
+                        Spacer(minLength: 4)
+
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 6, height: 6)
+                            Text(isAvailable ? "Trống" : "Đang họp")
+                                .font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(statusColor)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(statusColor.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+
+                    Text("\(room.capacity) chỗ · \(room.equipment.isEmpty ? "Thiết bị đang cập nhật" : room.equipment.joined(separator: " · "))")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                        .lineLimit(2)
+
+                    Text(availabilityText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(statusColor)
+                        .lineLimit(1)
                 }
-                Spacer()
-                Text(isAvailable ? "• Trống" : "• Đang họp")
-                    .foregroundStyle(isAvailable ? .green : .red)
-                    .font(.caption.bold())
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-                Text(availabilityText)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(isAvailable ? .green : .red)
-                if isAvailable {
-                    Button("Đặt phòng", action: onBook)
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Button("Xem lịch", action: onSchedule)
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onSchedule)
+
+            Button(action: isAvailable ? onBook : onSchedule) {
+                HStack(spacing: 7) {
+                    Image(systemName: isAvailable ? "calendar.badge.plus" : "calendar")
+                        .font(.subheadline.weight(.bold))
+                    Text(isAvailable ? "Đặt phòng" : "Xem lịch")
+                        .font(.subheadline.weight(.bold))
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .foregroundStyle(.white)
+                .background(isAvailable ? Color.red : Color(uiColor: .label))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
+            .buttonStyle(.plain)
         }
-        .padding(13)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .padding(10)
+        .background(Color(uiColor: .systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .onTapGesture(perform: onSchedule)
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.black.opacity(0.07), lineWidth: 1)
+        }
+        .shadow(color: Color.black.opacity(0.05), radius: 8, y: 3)
     }
 
     private var availabilityText: String {
@@ -218,9 +311,9 @@ private struct MeetingRoomImage: View {
                 placeholder
             }
         }
-        .frame(width: 92, height: 112)
+        .frame(width: 88, height: 108)
         .background(Color.green.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var imageURL: URL? {
@@ -233,7 +326,7 @@ private struct MeetingRoomImage: View {
 
     private var placeholder: some View {
         Image(systemName: "building.2.fill")
-            .font(.system(size: 34, weight: .bold))
+            .font(.system(size: 31, weight: .bold))
             .foregroundStyle(.green)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
