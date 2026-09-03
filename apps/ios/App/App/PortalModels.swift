@@ -9,6 +9,12 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+struct MeetingRoom: Codable, Identifiable { let id: String; let name: String; let location: String; let capacity: Int; let equipment: [String]; let active: Bool }
+struct MeetingBooking: Codable, Identifiable { let id: String; let roomId: String; let startsAt: String; let endsAt: String; let title: String; let attendeeCount: Int; let status: String; let isMine: Bool?; let isOwner: Bool? }
+struct MeetingScheduleResponse: Codable { let rooms: [MeetingRoom]; let bookings: [MeetingBooking] }
+struct MeetingInvitee: Codable, Identifiable { let id: String; let fullName: String; let employeeCode: String; let department: String }
+struct CreateMeetingBookingBody: Encodable { let roomId: String; let startsAt: String; let endsAt: String; let title: String; let attendeeCount: Int; let participantIds: [String] }
+
 struct UserSummary: Codable {
     let employeeCode: String
     let name: String
@@ -335,7 +341,7 @@ struct AttendanceRecord: Decodable, Identifiable {
 }
 
 enum AttendanceWidgetBridge {
-    private static let originalAppGroup = "group.net.sukavinagroup.user"
+    private static let originalAppGroup = "group.net.sukavinagroup.portal"
     static let kind = "SukavinaAttendanceWidget"
     private static let stateKey = "attendance-widget-state"
     private static let tokenKey = "attendance-widget-token"
