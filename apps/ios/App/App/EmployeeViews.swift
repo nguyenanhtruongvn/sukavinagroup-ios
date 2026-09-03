@@ -611,19 +611,50 @@ private struct MeetingBookingSheet: View {
         durationUnit == "giờ" ? durationValue * 60 : durationValue
     }
 
+    private var isValid: Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+            && selected.count + 1 <= room.capacity
+    }
+
+    private var endTime: Date {
+        start.addingTimeInterval(Double(durationMinutes * 60))
+    }
+
+    private var dayLabel: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.dateFormat = "EEEE, dd/MM/yyyy"
+        return formatter.string(from: day).capitalized
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                meetingDetailsSection
-                inviteesSection
-                Section {
-                    Button("Xác nhận đặt phòng") { createBooking() }
-                        .disabled(title.count < 3 || selected.count + 1 > room.capacity)
+            ZStack {
+                Color(uiColor: .systemGroupedBackground)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        bookingHeader
+                        meetingDetailsCard
+                        inviteesCard
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 110)
                 }
             }
-            .navigationTitle(room.name)
+            .safeAreaInset(edge: .bottom) {
+                confirmButton
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial)
+            }
             .toolbar {
-                Button("Đóng") { dismiss() }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Đóng") { dismiss() }
+                        .font(.subheadline.weight(.semibold))
+                }
             }
             .onAppear { start = initialStartTime }
             .task {
@@ -632,36 +663,85 @@ private struct MeetingBookingSheet: View {
         }
     }
 
-    private var meetingDetailsSection: some View {
-        Section("Cuộc họp") {
-            TextField("Nội dung cuộc họp", text: $title)
-            Button { showStartPicker.toggle() } label: {
-                LabeledContent("Giờ bắt đầu", value: MeetingPresentation.clock.string(from: start))
+    private var bookingHeader: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "calendar.badge.plus")
+                .font(.system(size: 25, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 54, height: 54)
+                .background(Color.red)
+                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("ĐẶT PHÒNG")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.red)
+                Text(room.name)
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(Color(uiColor: .label))
+                Text("\(room.capacity) chỗ · \(dayLabel)")
+                    .font(.caption)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    .lineLimit(1)
             }
-            if showStartPicker {
-                HStack {
-                    Picker("Giờ", selection: startHourBinding) {
-                        ForEach(0...23, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
-                    }
-                    .pickerStyle(.wheel)
-                    Picker("Phút", selection: startMinuteBinding) {
-                        ForEach(0...59, id: \.self) { Text(String(format: "%02d", $0)).tag($0) }
-                    }
-                    .pickerStyle(.wheel)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var meetingDetailsCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label("Thông tin cuộc họp", systemImage: "text.bubble.fill")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(Color(uiColor: .label))
+
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Nội dung cuộc họp")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                TextField("Ví dụ: Họp kế hoạch tuần", text: $title)
+                    .font(.body)
+                    .padding(.horizontal, 13)
+                    .frame(height: 48)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            }
+
+            HStack(spacing: 10) {
+                timeAction(
+                    title: "Bắt đầu",
+                    value: MeetingPresentation.clock.string(from: start),
+                    icon: "clock.fill",
+                    active: showStartPicker
+                ) {
+                    withAnimation(.snappy) { showStartPicker.toggle() }
                 }
-                .frame(height: 130)
+
+                timeAction(
+                    title: "Thời lượng",
+                    value: "\(durationValue) \(durationUnit)",
+                    icon: "timer",
+                    active: showDurationPicker
+                ) {
+                    withAnimation(.snappy) { showDurationPicker.toggle() }
+                }
             }
-            Button { showDurationPicker.toggle() } label: {
-                LabeledContent("Thời lượng", value: "\(durationValue) \(durationUnit)")
+
+            if showStartPicker {
+                HStack(spacing: 0) {
+                    pickerColumn("Giờ", selection: startHourBinding, values: Array(0...23))
+                    pickerColumn("Phút", selection: startMinuteBinding, values: Array(0...59))
+                }
+                .frame(height: 138)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
+
             if showDurationPicker {
-                HStack {
-                    Picker("Số", selection: $durationValue) {
-                        ForEach(durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) {
-                            Text("\($0)").tag($0)
-                        }
-                    }
-                    .pickerStyle(.wheel)
+                HStack(spacing: 0) {
+                    pickerColumn("Số", selection: $durationValue, values: durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120])
                     Picker("Đơn vị", selection: $durationUnit) {
                         Text("phút").tag("phút")
                         Text("giờ").tag("giờ")
@@ -671,42 +751,117 @@ private struct MeetingBookingSheet: View {
                         durationValue = unit == "giờ" ? 1 : 30
                     }
                 }
-                .frame(height: 130)
+                .frame(height: 138)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            Text("Thời gian dự kiến: \(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: start.addingTimeInterval(Double(durationMinutes * 60))))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+
+            HStack(spacing: 9) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(Color.red)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Thời gian dự kiến")
+                        .font(.caption)
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    Text("\(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: endTime))")
+                        .font(.subheadline.weight(.bold).monospacedDigit())
+                }
+                Spacer()
+            }
+            .padding(12)
+            .background(Color.red.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        }
+        .padding(16)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
         }
     }
 
-    private var inviteesSection: some View {
-        Section("Mời người tham gia (\(selected.count))") {
+    private var inviteesCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("Mời người tham gia", systemImage: "person.2.fill")
+                    .font(.subheadline.weight(.bold))
+                Spacer()
+                Text("\(selected.count) người")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color.red)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(Color.red.opacity(0.10))
+                    .clipShape(Capsule())
+            }
+
             if !selectedInvitees.isEmpty {
-                Text("Đã mời")
-                    .font(.caption.bold())
-                    .foregroundStyle(.secondary)
-                ForEach(selectedInvitees) { person in
-                    HStack {
-                        Text(person.fullName)
-                        Spacer()
-                        Button(role: .destructive) { selected.remove(person.id) } label: {
-                            Image(systemName: "xmark.circle.fill")
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Đã chọn")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    ForEach(selectedInvitees) { person in
+                        HStack(spacing: 9) {
+                            Circle()
+                                .fill(Color.red.opacity(0.14))
+                                .frame(width: 30, height: 30)
+                                .overlay {
+                                    Text(person.fullName.prefix(1).uppercased())
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(Color.red)
+                                }
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(person.fullName)
+                                    .font(.subheadline.weight(.medium))
+                                Text(person.department)
+                                    .font(.caption)
+                                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                            }
+                            Spacer()
+                            Button { selected.remove(person.id) } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
+                .padding(11)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
-            TextField("Tìm nhân viên hoặc phòng ban", text: $query)
-            TextField("Tìm phòng ban", text: $departmentQuery)
+
+            searchField(icon: "magnifyingglass", placeholder: "Tìm tên hoặc mã nhân viên", text: $query)
+            searchField(icon: "building.2", placeholder: "Tìm phòng ban", text: $departmentQuery)
+
             if !departments.isEmpty {
-                Picker("Phòng ban", selection: $selectedDepartment) {
-                    Text("Tất cả").tag(String?.none)
+                Menu {
+                    Button("Tất cả phòng ban") { selectedDepartment = nil }
                     ForEach(departments.filter {
                         departmentQuery.isEmpty || $0.localizedCaseInsensitiveContains(departmentQuery)
                     }, id: \.self) { department in
-                        Text(department).tag(Optional(department))
+                        Button(department) { selectedDepartment = department }
                     }
+                } label: {
+                    HStack {
+                        Text(selectedDepartment ?? "Chọn phòng ban")
+                            .foregroundStyle(selectedDepartment == nil ? Color(uiColor: .secondaryLabel) : Color(uiColor: .label))
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    }
+                    .font(.subheadline)
+                    .padding(.horizontal, 13)
+                    .frame(height: 46)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                 }
+                .buttonStyle(.plain)
             }
+
             if let inviteeLoadError = inviteesError {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(inviteeLoadError)
@@ -715,18 +870,144 @@ private struct MeetingBookingSheet: View {
                     Button("Tải lại danh sách mời") {
                         Task { inviteesError = await session.refreshMeetingInvitees() }
                     }
-                    .font(.caption.bold())
+                    .font(.caption.weight(.bold))
                 }
             }
+
             ForEach(people) { person in
-                Toggle(isOn: inviteeBinding(for: person.id)) {
-                    VStack(alignment: .leading) {
-                        Text(person.fullName)
-                        Text(person.department).font(.caption).foregroundStyle(.secondary)
+                let isChosen = selected.contains(person.id)
+                Button {
+                    if isChosen {
+                        selected.remove(person.id)
+                    } else {
+                        selected.insert(person.id)
                     }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: isChosen ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(isChosen ? Color.red : Color(uiColor: .tertiaryLabel))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(person.fullName)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color(uiColor: .label))
+                            Text("\(person.employeeCode) · \(person.department)")
+                                .font(.caption)
+                                .foregroundStyle(Color(uiColor: .secondaryLabel))
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
                 }
+                .buttonStyle(.plain)
+                .disabled(!isChosen && selected.count + 1 >= room.capacity)
+            }
+
+            if (query.isEmpty && selectedDepartment == nil) || (!query.isEmpty && people.isEmpty) {
+                Text(query.isEmpty ? "Gõ tên nhân viên hoặc chọn phòng ban để hiển thị danh sách." : "Không tìm thấy người phù hợp.")
+                    .font(.caption)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+
+            Text("\(selected.count + 1)/\(room.capacity) chỗ · gồm bạn và người được mời")
+                .font(.caption)
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+        }
+        .padding(16)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    private func timeAction(
+        title: String,
+        value: String,
+        icon: String,
+        active: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Image(systemName: icon)
+                        .foregroundStyle(Color.red)
+                    Spacer()
+                    Image(systemName: active ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                }
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                Text(value)
+                    .font(.headline.weight(.bold).monospacedDigit())
+                    .foregroundStyle(Color(uiColor: .label))
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(active ? Color.red.opacity(0.10) : Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(active ? Color.red.opacity(0.35) : Color.clear, lineWidth: 1)
             }
         }
+        .buttonStyle(.plain)
+    }
+
+    private func pickerColumn(
+        _ title: String,
+        selection: Binding<Int>,
+        values: [Int]
+    ) -> some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+                .padding(.top, 8)
+            Picker(title, selection: selection) {
+                ForEach(values, id: \.self) { value in
+                    Text(String(format: "%02d", value)).tag(value)
+                }
+            }
+            .pickerStyle(.wheel)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func searchField(icon: String, placeholder: String, text: Binding<String>) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+            TextField(placeholder, text: text)
+                .font(.subheadline)
+        }
+        .padding(.horizontal, 13)
+        .frame(height: 46)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    private var confirmButton: some View {
+        Button {
+            createBooking()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                Text("Xác nhận đặt phòng")
+                    .font(.headline.weight(.bold))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .foregroundStyle(.white)
+            .background(isValid ? Color.red : Color(uiColor: .systemGray3))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isValid)
     }
 
     private var initialStartTime: Date {
@@ -749,15 +1030,6 @@ private struct MeetingBookingSheet: View {
             get: { Calendar.current.component(.minute, from: start) },
             set: { minute in
                 start = Calendar.current.date(bySettingHour: Calendar.current.component(.hour, from: start), minute: minute, second: 0, of: start) ?? start
-            }
-        )
-    }
-
-    private func inviteeBinding(for id: String) -> Binding<Bool> {
-        Binding(
-            get: { selected.contains(id) },
-            set: { isSelected in
-                if isSelected { selected.insert(id) } else { selected.remove(id) }
             }
         )
     }
