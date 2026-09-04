@@ -632,6 +632,7 @@ private struct MeetingBookingDetailSheet: View {
 
                     detailCard {
                         Label("Thông tin phòng", systemImage: "person.2.fill")
+                        Text("Người tham dự: \(booking.attendeeCount) người")
                         Text("Sức chứa tối đa: \(room.capacity) người")
                         if !room.equipment.isEmpty {
                             Text(room.equipment.joined(separator: " · "))
