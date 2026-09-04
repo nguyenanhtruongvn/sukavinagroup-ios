@@ -1,11 +1,6 @@
 name: Build unsigned iOS IPA
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "apps/ios/**"
-      - ".github/workflows/build-ios-unsigned.yml"
   workflow_dispatch:
     inputs:
       publish_to_sidestore:
