@@ -359,6 +359,7 @@ private struct MeetingRoomScheduleSheet: View {
     let day: Date
     @State private var selectedDay: Date
     @State private var showBooking = false
+    @State private var selectedBooking: MeetingBooking?
 
     init(room: MeetingRoom, day: Date) {
         self.room = room
@@ -388,7 +389,7 @@ private struct MeetingRoomScheduleSheet: View {
                             .onChange(of: selectedDay) { _, value in
                                 Task { await session.refreshMeetingSchedule(date: value) }
                             }
-                        MeetingTimeline(bookings: bookings, date: selectedDay)
+                        MeetingTimeline(bookings: bookings, date: selectedDay) { selectedBooking = $0 }
                     }
                 }
                 .task {
@@ -418,6 +419,9 @@ private struct MeetingRoomScheduleSheet: View {
                 MeetingBookingSheet(room: room, day: selectedDay)
                     .environmentObject(session)
             }
+            .sheet(item: $selectedBooking) { booking in
+                MeetingBookingDetailSheet(booking: booking, room: room)
+            }
         }
     }
 }
@@ -433,6 +437,7 @@ private struct MeetingTimelineBookingStyle {
 private struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
     let date: Date
+    let onSelect: (MeetingBooking) -> Void
     private let firstHour = 6
     private let lastHour = 23
     private let hourHeight: CGFloat = 72
@@ -479,6 +484,11 @@ private struct MeetingTimeline: View {
                             alignment: .topLeading
                         )
                         .offset(y: position.top)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard !booking.id.isEmpty else { return }
+                            onSelect(booking)
+                        }
                     }
                 }
 
@@ -582,6 +592,69 @@ private struct MeetingTimelineBlock: View {
             Rectangle()
                 .stroke(style.accent.opacity(0.30), lineWidth: 1)
         }
+    }
+}
+
+
+@available(iOS 17.0, *)
+private struct MeetingBookingDetailSheet: View {
+    @Environment(.dismiss) private var dismiss
+    let booking: MeetingBooking
+    let room: MeetingRoom
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.title2.bold())
+                            .foregroundStyle(.white)
+                            .frame(width: 52, height: 52)
+                            .background(Color.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(booking.title.isEmpty ? "Cuộc họp" : booking.title)
+                                .font(.title3.bold())
+                            Text(booking.isOwner == true ? "Bạn tạo lịch" : "Bạn được mời")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.red)
+                        }
+                    }
+
+                    detailCard {
+                        Label("Thời gian", systemImage: "clock.fill")
+                        Text(MeetingPresentation.range(booking)).font(.headline.monospacedDigit())
+                        Divider()
+                        Label(room.name, systemImage: "building.2.fill")
+                        if !room.location.isEmpty { Text(room.location).foregroundStyle(.secondary) }
+                    }
+
+                    detailCard {
+                        Label("Thông tin phòng", systemImage: "person.2.fill")
+                        Text("Sức chứa tối đa: \(room.capacity) người")
+                        if !room.equipment.isEmpty {
+                            Text(room.equipment.joined(separator: " · "))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(20)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Chi tiết cuộc họp")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Đóng") { dismiss() } }
+        }
+    }
+
+    private func detailCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12, content: content)
+            .font(.subheadline)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
