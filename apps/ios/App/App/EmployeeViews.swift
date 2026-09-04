@@ -91,7 +91,7 @@ struct MeetingRoomsView: View {
                     .environmentObject(session)
             }
             .sheet(isPresented: $showMine) {
-                MyMeetingsSheet()
+                MyMeetingsSheet(day: day)
                     .environmentObject(session)
             }
             .sheet(item: $scheduleRoom) { room in
@@ -1051,6 +1051,7 @@ private struct MeetingBookingSheet: View {
 @available(iOS 17.0, *)
 private struct MyMeetingsSheet: View {
     @EnvironmentObject private var session: SessionStore
+    let day: Date
     @State private var showsUpcoming = true
 
     private var meetings: [MeetingBooking] {
@@ -1086,6 +1087,7 @@ private struct MyMeetingsSheet: View {
                 }
             }
             .navigationTitle("Lịch của tôi")
+            .task { await session.refreshMeetingSchedule(date: day) }
         }
     }
 }
