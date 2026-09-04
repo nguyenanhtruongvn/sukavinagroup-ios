@@ -51,6 +51,20 @@ struct MeetingRoomsView: View {
     @State private var scheduleRoom: MeetingRoom?
     @State private var showMine = false
 
+    private var tomorrow: Date {
+        MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: .now) ?? .now
+    }
+
+    private func switchMeetingDay(for translation: CGSize) {
+        guard abs(translation.width) > abs(translation.height), abs(translation.width) > 48 else { return }
+        let isToday = MeetingPresentation.calendar.isDateInToday(day)
+        let isTomorrow = MeetingPresentation.calendar.isDate(day, inSameDayAs: tomorrow)
+        withAnimation(.snappy) {
+            if translation.width < 0, isToday { day = tomorrow }
+            if translation.width > 0, isTomorrow { day = .now }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -75,6 +89,10 @@ struct MeetingRoomsView: View {
                     .padding(.top, 14)
                     .padding(.bottom, 24)
                 }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 24)
+                        .onEnded { switchMeetingDay(for: $0.translation) }
+                )
             }
             .navigationBarTitleDisplayMode(.inline)
             .task {
@@ -1051,6 +1069,7 @@ private struct MeetingBookingSheet: View {
 @available(iOS 17.0, *)
 private struct MyMeetingsSheet: View {
     @EnvironmentObject private var session: SessionStore
+    @Environment(\.dismiss) private var dismiss
     let day: Date
     @State private var showsUpcoming = true
 
@@ -1064,40 +1083,187 @@ private struct MyMeetingsSheet: View {
             .sorted { $0.startsAt < $1.startsAt }
     }
 
+    private var dateLabel: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.timeZone = MeetingPresentation.timezone
+        formatter.dateFormat = "EEEE, dd 'tháng' MM"
+        return formatter.string(from: day).capitalized
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Picker("Trạng thái lịch", selection: $showsUpcoming) {
-                    Text("Sắp tới").tag(true)
-                    Text("Đã qua").tag(false)
-                }
-                .pickerStyle(.segmented)
-                .padding()
-                List(meetings) { meeting in
-                    VStack(alignment: .leading) {
-                        Text(meeting.title.isEmpty ? "Cuộc họp" : meeting.title)
-                            .font(.headline)
-                        Text(session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Text(MeetingPresentation.range(meeting))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
+            ZStack {
+                Color(uiColor: .systemGroupedBackground)
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        header
+                        scheduleFilter
+
+                        if meetings.isEmpty {
+                            emptyState
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(Array(meetings.enumerated()), id: \.offset) { index, meeting in
+                                    MeetingSummaryCard(
+                                        meeting: meeting,
+                                        roomName: session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp",
+                                        color: Self.cardColors[index % Self.cardColors.count]
+                                    )
+                                }
+                            }
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 34)
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 24)
+                        .onEnded { value in
+                            guard abs(value.translation.width) > abs(value.translation.height), abs(value.translation.width) > 48 else { return }
+                            withAnimation(.snappy) { showsUpcoming = value.translation.width > 0 }
+                        }
+                )
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(Color(uiColor: .label))
+                            .frame(width: 34, height: 34)
+                            .background(Color(uiColor: .secondarySystemBackground))
+                            .clipShape(Circle())
+                    }
+                    .accessibilityLabel("Đóng lịch của tôi")
                 }
             }
-            .navigationTitle("Lịch của tôi")
             .task { await session.refreshMeetingSchedule(date: day) }
         }
     }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Lịch của tôi")
+                        .font(.system(size: 29, weight: .bold, design: .rounded))
+                    Text(dateLabel)
+                        .font(.subheadline)
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                }
+                Spacer(minLength: 12)
+                VStack(spacing: 1) {
+                    Text("\(meetings.count)")
+                        .font(.title3.weight(.bold).monospacedDigit())
+                    Text(showsUpcoming ? "sắp tới" : "đã qua")
+                        .font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(Color.red)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 8)
+                .background(Color.red.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundStyle(Color.red)
+                Text("Lịch họp được đồng bộ theo thời gian thực")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
+    private var scheduleFilter: some View {
+        Picker("Trạng thái lịch", selection: $showsUpcoming) {
+            Text("Sắp tới").tag(true)
+            Text("Đã qua").tag(false)
+        }
+        .pickerStyle(.segmented)
+        .padding(4)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label(showsUpcoming ? "Chưa có lịch sắp tới" : "Chưa có lịch đã qua", systemImage: "calendar.badge.exclamationmark")
+        } description: {
+            Text(showsUpcoming ? "Các cuộc họp bạn tạo hoặc được mời sẽ xuất hiện tại đây." : "Các cuộc họp đã kết thúc sẽ được lưu tại đây.")
+        }
+        .frame(maxWidth: .infinity, minHeight: 250)
+        .padding(20)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private static let cardColors: [Color] = [.red, .blue, .green, .orange, .purple, .teal]
 }
 
+@available(iOS 17.0, *)
+private struct MeetingSummaryCard: View {
+    let meeting: MeetingBooking
+    let roomName: String
+    let color: Color
 
+    var body: some View {
+        HStack(spacing: 13) {
+            VStack(spacing: 3) {
+                Text(MeetingPresentation.time(meeting.startsAt))
+                    .font(.headline.weight(.bold).monospacedDigit())
+                Text(MeetingPresentation.time(meeting.endsAt))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+            .frame(width: 54)
 
+            Rectangle()
+                .fill(color)
+                .frame(width: 4)
+                .clipShape(Capsule())
 
-
-
-
+            VStack(alignment: .leading, spacing: 5) {
+                Text(meeting.title.isEmpty ? "Cuộc họp" : meeting.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color(uiColor: .label))
+                    .lineLimit(2)
+                Label(roomName, systemImage: "building.2.fill")
+                    .font(.subheadline)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    .lineLimit(1)
+                Text(meeting.isOwner == true ? "Bạn tạo lịch" : "Bạn được mời")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(color.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+        }
+        .padding(14)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .stroke(color.opacity(0.14), lineWidth: 1)
+        }
+        .shadow(color: color.opacity(0.08), radius: 8, y: 3)
+    }
+}
 
 @available(iOS 17.0, *)
 struct EmployeePortalView: View {
