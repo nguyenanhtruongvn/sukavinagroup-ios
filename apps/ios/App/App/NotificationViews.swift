@@ -27,6 +27,7 @@ struct NotificationsView: View {
     @State private var requestNotifications: [RequestNotification] = []
     @State private var reviewing: EmployeeRequest?
     @State private var viewing: EmployeeRequest?
+    @State private var meetingNotification: RequestNotification?
     @State private var confirmClear = false
     @State private var hiddenArticleIDs = Set<String>()
     private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
@@ -166,6 +167,7 @@ struct NotificationsView: View {
                 .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
+                .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification) }
         }
         .ignoresSafeArea(.container, edges: .bottom)
     }
@@ -182,10 +184,14 @@ struct NotificationsView: View {
     private func open(_ item: RequestNotification) async {
         guard let token = session.token else { return }
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/\(item.id)/read", method: "PATCH", token: token)
-        await requestStore.load(token)
-        if let id = item.requestId {
-            if item.type == "request_pending", let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) { reviewing = request }
-            else { viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id }) }
+        if item.type == "meeting_invite" || item.type == "meeting_reminder" {
+            meetingNotification = item
+        } else {
+            await requestStore.load(token)
+            if let id = item.requestId {
+                if item.type == "request_pending", let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) { reviewing = request }
+                else { viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id }) }
+            }
         }
         await loadRequestNotifications()
     }
@@ -222,6 +228,8 @@ struct NotificationsView: View {
     }
     private func notificationIcon(_ item: RequestNotification) -> String {
         let type = item.type
+        if type == "meeting_invite" { return "calendar.badge.clock" }
+        if type == "meeting_reminder" { return "bell.badge.fill" }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
         if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
         if type.contains("rejected") { return "xmark.circle.fill" }
@@ -231,6 +239,7 @@ struct NotificationsView: View {
     }
     private func notificationColor(_ item: RequestNotification) -> Color {
         let type = item.type
+        if type == "meeting_invite" || type == "meeting_reminder" { return AppTheme.red }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
         if type == "request_pending" { return .orange }
         if type.contains("rejected") { return AppTheme.red }
@@ -280,6 +289,47 @@ struct NotificationsView: View {
     private var legacyNotificationSeparator: some View {
         if isLegacyNotificationStyle {
             Rectangle().fill(Color.gray.opacity(0.24)).frame(height: 0.5)
+        }
+    }
+}
+
+
+@available(iOS 17.0, *)
+private struct MeetingNotificationDetail: View {
+    @Environment(.dismiss) private var dismiss
+    let notification: RequestNotification
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Image(systemName: notification.type == "meeting_reminder" ? "bell.badge.fill" : "calendar.badge.clock")
+                        .font(.title.bold())
+                        .foregroundStyle(.white)
+                        .frame(width: 58, height: 58)
+                        .background(Color.red)
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    Text(notification.title).font(.title2.bold())
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Nội dung cuộc họp", systemImage: "text.bubble.fill")
+                            .font(.headline)
+                        Text(notification.message).font(.body).foregroundStyle(.secondary)
+                        Divider()
+                        Label(notification.createdAt.formatted(date: .long, time: .shortened), systemImage: "clock.fill")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .padding(20)
+            }
+            .background(Color(uiColor: .systemGroupedBackground))
+            .navigationTitle("Chi tiết cuộc họp")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Đóng") { dismiss() } }
         }
     }
 }
