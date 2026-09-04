@@ -598,7 +598,7 @@ private struct MeetingTimelineBlock: View {
 
 @available(iOS 17.0, *)
 private struct MeetingBookingDetailSheet: View {
-    @Environment(.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     let booking: MeetingBooking
     let room: MeetingRoom
 
