@@ -296,7 +296,7 @@ struct NotificationsView: View {
 
 @available(iOS 17.0, *)
 private struct MeetingNotificationDetail: View {
-    @Environment(.dismiss) private var dismiss
+    @Environment(\.dismiss) private var dismiss
     let notification: RequestNotification
 
     var body: some View {
