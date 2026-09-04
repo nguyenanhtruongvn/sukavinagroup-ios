@@ -292,13 +292,13 @@ private struct MeetingRoomCard: View {
             .buttonStyle(.plain)
         }
         .padding(10)
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.07), lineWidth: 1)
+                .stroke(Color.clear, lineWidth: 0)
         }
-        .shadow(color: Color.black.opacity(0.05), radius: 8, y: 3)
+        .shadow(color: Color.black.opacity(0.08), radius: 12, y: 5)
     }
 
     private var availabilityText: String {
@@ -792,7 +792,7 @@ private struct MeetingBookingSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .padding(16)
-        .background(Color(uiColor: .systemBackground))
+        .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -1110,7 +1110,7 @@ private struct MyMeetingsSheet: View {
                                     MeetingSummaryCard(
                                         meeting: meeting,
                                         roomName: session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp",
-                                        color: Self.cardColors[index % Self.cardColors.count]
+                                        color: showsUpcoming ? Self.cardColors[index % Self.cardColors.count] : .gray
                                     )
                                 }
                             }
