@@ -1146,6 +1146,7 @@ private struct MyMeetingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let day: Date
     @State private var showsUpcoming = true
+    @State private var selectedMeeting: MeetingBooking?
 
     private var meetings: [MeetingBooking] {
         session.meetingBookings
@@ -1184,8 +1185,10 @@ private struct MyMeetingsSheet: View {
                                     MeetingSummaryCard(
                                         meeting: meeting,
                                         roomName: session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp",
-                                        color: Self.cardColors[index % Self.cardColors.count]
+                                        color: showsUpcoming ? Self.cardColors[index % Self.cardColors.count] : .gray
                                     )
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { selectedMeeting = meeting }
                                 }
                             }
                         }
@@ -1216,6 +1219,13 @@ private struct MyMeetingsSheet: View {
                 }
             }
             .task { await session.refreshMeetingSchedule(date: day) }
+            .sheet(item: $selectedMeeting) { meeting in
+                if let room = session.meetingRooms.first(where: { $0.id == meeting.roomId }) {
+                    MeetingBookingDetailSheet(booking: meeting, room: room)
+                } else {
+                    ContentUnavailableView("Không tìm thấy thông tin phòng", systemImage: "building.2.crop.circle")
+                }
+            }
         }
     }
 
