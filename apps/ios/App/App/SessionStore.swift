@@ -975,6 +975,7 @@ final class SessionStore: ObservableObject {
         if event.contains("attendance_changed") { pendingRealtimeEvents.insert("attendance_changed") }
         if event.contains("request_changed") { pendingRealtimeEvents.insert("request_changed") }
         if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }
+        if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
         if event.contains("content_changed") { pendingRealtimeEvents.insert("content_changed") }
         if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
         guard !pendingRealtimeEvents.isEmpty, realtimeRefreshTask == nil else { return }
@@ -992,7 +993,8 @@ final class SessionStore: ObservableObject {
             }
             if events.contains("attendance_changed") ||
                 events.contains("request_changed") ||
-                events.contains("content_changed") {
+                events.contains("content_changed") ||
+                events.contains("meeting_changed") {
                 await self.refreshDashboard()
             }
             if events.contains("meal_changed") {

@@ -296,6 +296,8 @@ struct NotificationsView: View {
         if type == "attendance_check_out" { return "arrow.left.to.line.circle.fill" }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
         if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
+        if type == "meeting_invite" { return "person.2.fill" }
+        if type == "meeting_reminder" { return "clock.badge.fill" }
         if type.contains("rejected") { return "xmark.circle.fill" }
         if type.contains("cancelled") { return "minus.circle.fill" }
         if type.contains("auto_approved") { return "timer.circle.fill" }
@@ -309,6 +311,8 @@ struct NotificationsView: View {
         if type == "attendance_check_out" { return .blue }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
         if type == "request_pending" { return .orange }
+        if type == "meeting_invite" { return .blue }
+        if type == "meeting_reminder" { return .orange }
         if type.contains("rejected") { return AppTheme.red }
         if type.contains("cancelled") { return .gray }
         return .green
