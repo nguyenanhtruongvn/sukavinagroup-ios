@@ -257,6 +257,8 @@ private struct MeetingRoomsHeader: View {
 
 @available(iOS 17.0, *)
 private struct MeetingRoomCard: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let room: MeetingRoom
     let bookings: [MeetingBooking]
     let day: Date
@@ -283,6 +285,15 @@ private struct MeetingRoomCard: View {
 
     private var isAvailable: Bool { currentBooking == nil }
     private var statusColor: Color { isAvailable ? Color.green : Color.red }
+    private var cardBackground: Color {
+        colorScheme == .dark
+            ? Color(red: 0.13, green: 0.15, blue: 0.19)
+            : Color(uiColor: .systemBackground)
+    }
+
+    private var cardShadow: Color {
+        colorScheme == .dark ? Color.black.opacity(0.24) : Color.black.opacity(0.05)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -342,14 +353,14 @@ private struct MeetingRoomCard: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(10)
-        .background(Color(uiColor: .systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.07), lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(0.05), radius: 8, y: 3)
+        .padding(12)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(
+            color: cardShadow,
+            radius: colorScheme == .dark ? 14 : 8,
+            y: colorScheme == .dark ? 6 : 3
+        )
     }
 
     private var availabilityText: String {
