@@ -472,11 +472,18 @@ private struct MeetingTimeline: View {
                 ForEach(Array(bookings.enumerated()), id: \.element.id) { index, booking in
                     if let position = bookingPosition(booking) {
                         let style = bookingStyle(at: index)
-                        MeetingTimelineBlock(
-                            booking: booking,
-                            style: style,
-                            showsTime: position.height >= 38
-                        )
+                        Button { onSelect(booking) } label: {
+                            MeetingTimelineBlock(
+                                booking: booking,
+                                style: style,
+                                showsTime: position.height >= 38
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(booking.id.isEmpty)
+                        .accessibilityLabel(booking.id.isEmpty
+                            ? "Khung giờ đã được đặt"
+                            : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? \"đã có lịch\" : booking.title)")
                         .frame(
                             maxWidth: .infinity,
                             minHeight: position.height,
@@ -484,11 +491,6 @@ private struct MeetingTimeline: View {
                             alignment: .topLeading
                         )
                         .offset(y: position.top)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard !booking.id.isEmpty else { return }
-                            onSelect(booking)
-                        }
                     }
                 }
 
@@ -597,48 +599,73 @@ private struct MeetingTimelineBlock: View {
 
 
 @available(iOS 17.0, *)
-private struct MeetingBookingDetailSheet: View {
+struct MeetingBookingDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     let booking: MeetingBooking
     let room: MeetingRoom
+
+    private var accent: Color { booking.isOwner == true ? AppTheme.red : .blue }
+    private var roleTitle: String { booking.isOwner == true ? "Bạn là người tổ chức" : "Bạn được mời tham dự" }
+    private var roleIcon: String { booking.isOwner == true ? "person.badge.key.fill" : "person.2.badge.gearshape.fill" }
+    private var dateTitle: String {
+        guard let start = MeetingPresentation.date(from: booking.startsAt) else { return "Chưa xác định" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.timeZone = MeetingPresentation.timezone
+        formatter.dateFormat = "EEEE, dd 'tháng' MM, yyyy"
+        return formatter.string(from: start).capitalized
+    }
+    private var durationTitle: String {
+        guard let start = MeetingPresentation.date(from: booking.startsAt), let end = MeetingPresentation.date(from: booking.endsAt) else { return "—" }
+        let minutes = max(0, Int(end.timeIntervalSince(start) / 60))
+        return minutes >= 60 ? "\(minutes / 60) giờ\(minutes % 60 == 0 ? "" : " \(minutes % 60) phút")" : "\(minutes) phút"
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "calendar.badge.clock")
-                            .font(.title2.bold())
-                            .foregroundStyle(.white)
-                            .frame(width: 52, height: 52)
-                            .background(Color.red)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(booking.title.isEmpty ? "Cuộc họp" : booking.title)
-                                .font(.title3.bold())
-                            Text(booking.isOwner == true ? "Bạn tạo lịch" : "Bạn được mời")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.red)
+                    VStack(alignment: .leading, spacing: 15) {
+                        HStack(alignment: .top) {
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.title2.bold()).foregroundStyle(.white)
+                                .frame(width: 54, height: 54).background(accent.gradient)
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            Spacer()
+                            Label(booking.status == "confirmed" ? "Đã xác nhận" : booking.status, systemImage: "checkmark.seal.fill")
+                                .font(.caption.weight(.bold)).foregroundStyle(accent)
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .background(accent.opacity(0.12)).clipShape(Capsule())
+                        }
+                        Text(booking.title.isEmpty ? "Cuộc họp" : booking.title)
+                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                        Label(roleTitle, systemImage: roleIcon)
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(accent)
+                    }
+                    .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(LinearGradient(colors: [accent.opacity(0.18), Color(uiColor: .secondarySystemBackground)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+
+                    detailCard(title: "Thời gian", icon: "clock.fill") {
+                        Text(MeetingPresentation.range(booking)).font(.title3.weight(.bold).monospacedDigit())
+                        Text(dateTitle).font(.subheadline).foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            detailPill(durationTitle, icon: "timer")
+                            detailPill("\(booking.attendeeCount) người", icon: "person.2.fill")
                         }
                     }
-
-                    detailCard {
-                        Label("Thời gian", systemImage: "clock.fill")
-                        Text(MeetingPresentation.range(booking)).font(.headline.monospacedDigit())
-                        Divider()
-                        Label(room.name, systemImage: "building.2.fill")
-                        if !room.location.isEmpty { Text(room.location).foregroundStyle(.secondary) }
+                    detailCard(title: "Địa điểm", icon: "building.2.fill") {
+                        Text(room.name).font(.headline)
+                        if !room.location.isEmpty { Label(room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
+                        Text("Sức chứa phòng: \(room.capacity) người").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     }
-
-                    detailCard {
-                        Label("Thông tin phòng", systemImage: "person.2.fill")
-                        Text("Người tham dự: \(booking.attendeeCount) người")
-                        Text("Sức chứa tối đa: \(room.capacity) người")
-                        if !room.equipment.isEmpty {
-                            Text(room.equipment.joined(separator: " · "))
-                                .foregroundStyle(.secondary)
+                    if !room.equipment.isEmpty {
+                        detailCard(title: "Thiết bị sẵn có", icon: "display.2") {
+                            Text(room.equipment.joined(separator: "  ·  ")).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
+                    Text("Thông tin được đồng bộ theo thời gian thực.")
+                        .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
                 }
                 .padding(20)
             }
@@ -649,13 +676,20 @@ private struct MeetingBookingDetailSheet: View {
         }
     }
 
-    private func detailCard<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12, content: content)
-            .font(.subheadline)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
+    private func detailCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 13) {
+            Label(title, systemImage: icon).font(.subheadline.weight(.bold)).foregroundStyle(accent)
+            content()
+        }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(18)
             .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private func detailPill(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon).font(.caption.weight(.semibold)).foregroundStyle(accent)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(accent.opacity(0.12)).clipShape(Capsule())
     }
 }
 
@@ -1182,13 +1216,15 @@ private struct MyMeetingsSheet: View {
                         } else {
                             LazyVStack(spacing: 12) {
                                 ForEach(Array(meetings.enumerated()), id: \.offset) { index, meeting in
-                                    MeetingSummaryCard(
-                                        meeting: meeting,
-                                        roomName: session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp",
-                                        color: showsUpcoming ? Self.cardColors[index % Self.cardColors.count] : .gray
-                                    )
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { selectedMeeting = meeting }
+                                    Button { selectedMeeting = meeting } label: {
+                                        MeetingSummaryCard(
+                                            meeting: meeting,
+                                            roomName: session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp",
+                                            color: showsUpcoming ? Self.cardColors[index % Self.cardColors.count] : .gray
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Xem chi tiết cuộc họp \(meeting.title)")
                                 }
                             }
                         }

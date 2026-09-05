@@ -299,30 +299,64 @@ private struct MeetingNotificationDetail: View {
     @Environment(\.dismiss) private var dismiss
     let notification: RequestNotification
 
+    private var accent: Color { notification.type == "meeting_reminder" ? .orange : .blue }
+    private var title: String {
+        notification.title
+            .replacingOccurrences(of: "Bạn được mời: ", with: "")
+            .replacingOccurrences(of: "Sắp bắt đầu: ", with: "")
+    }
+    private var messageParts: [String] {
+        notification.message.split(separator: "·", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+    private var deliveryDate: String {
+        notification.createdAt.formatted(.dateTime.locale(Locale(identifier: "vi_VN")).weekday(.wide).day().month(.wide).year().hour().minute())
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
-                    Image(systemName: notification.type == "meeting_reminder" ? "bell.badge.fill" : "calendar.badge.clock")
-                        .font(.title.bold())
-                        .foregroundStyle(.white)
-                        .frame(width: 58, height: 58)
-                        .background(Color.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    Text(notification.title).font(.title2.bold())
-                    VStack(alignment: .leading, spacing: 12) {
-                        Label("Nội dung cuộc họp", systemImage: "text.bubble.fill")
-                            .font(.headline)
-                        Text(notification.message).font(.body).foregroundStyle(.secondary)
-                        Divider()
-                        Label(notification.createdAt.formatted(date: .long, time: .shortened), systemImage: "clock.fill")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .top) {
+                            Image(systemName: notification.type == "meeting_reminder" ? "bell.badge.fill" : "calendar.badge.clock")
+                                .font(.title2.bold()).foregroundStyle(.white)
+                                .frame(width: 56, height: 56).background(accent.gradient)
+                                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            Spacer()
+                            Text(notification.type == "meeting_reminder" ? "Sắp bắt đầu" : "Lời mời")
+                                .font(.caption.weight(.bold)).foregroundStyle(accent)
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .background(accent.opacity(0.12)).clipShape(Capsule())
+                        }
+                        Text(title.isEmpty ? "Cuộc họp" : title)
+                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                        Label(notification.type == "meeting_reminder" ? "Hãy chuẩn bị tham gia đúng giờ" : "Bạn được mời tham dự cuộc họp", systemImage: "person.2.fill")
+                            .font(.subheadline.weight(.semibold)).foregroundStyle(accent)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(16)
-                    .background(Color(uiColor: .secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(LinearGradient(colors: [accent.opacity(0.18), Color(uiColor: .secondarySystemBackground)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+
+                    notificationCard(title: "Thông tin cuộc họp", icon: "calendar") {
+                        if let room = messageParts.first, !room.isEmpty {
+                            Label(room, systemImage: "building.2.fill").font(.headline)
+                        }
+                        if messageParts.count > 1 {
+                            Label(messageParts[1], systemImage: "clock.fill").font(.subheadline).foregroundStyle(.secondary)
+                        } else {
+                            Text(notification.message).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+
+                    notificationCard(title: "Trạng thái thông báo", icon: "bell.badge.fill") {
+                        Text(notification.type == "meeting_reminder" ? "Đây là lời nhắc trước giờ họp." : "Lời mời đã được gửi đến bạn.")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Label("Nhận lúc \(deliveryDate)", systemImage: "clock.arrow.circlepath")
+                            .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    }
+
+                    Text("Mở Lịch của tôi để xem thời gian và thông tin phòng họp mới nhất.")
+                        .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
                 }
                 .padding(20)
             }
@@ -331,6 +365,16 @@ private struct MeetingNotificationDetail: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Đóng") { dismiss() } }
         }
+    }
+
+    private func notificationCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 13) {
+            Label(title, systemImage: icon).font(.subheadline.weight(.bold)).foregroundStyle(accent)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(18)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
