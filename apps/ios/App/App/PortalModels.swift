@@ -36,6 +36,35 @@ struct MeetingScheduleResponse: Codable {
     let bookings: [MeetingBooking]
 }
 
+/// The schedule intentionally contains only the fields needed to draw a day.
+/// Fetch this richer representation after the user opens a booking so employee
+/// information is not disclosed for meetings they did not select.
+struct MeetingBookingPerson: Codable, Identifiable {
+    let id: String
+    let fullName: String
+    let employeeCode: String
+    let department: String?
+    let jobTitle: String?
+}
+
+struct MeetingBookingParticipant: Codable, Identifiable {
+    let id: String
+    let employee: MeetingBookingPerson
+}
+
+struct MeetingBookingDetails: Codable, Identifiable {
+    let id: String
+    let roomId: String
+    let startsAt: String
+    let endsAt: String
+    let title: String
+    let attendeeCount: Int
+    let status: String
+    let room: MeetingRoom
+    let employee: MeetingBookingPerson
+    let participants: [MeetingBookingParticipant]
+}
+
 struct MeetingInvitee: Codable, Identifiable {
     let id: String
     let fullName: String

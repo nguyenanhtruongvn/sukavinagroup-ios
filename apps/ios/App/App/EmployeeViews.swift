@@ -600,9 +600,11 @@ private struct MeetingTimelineBlock: View {
 
 @available(iOS 17.0, *)
 struct MeetingBookingDetailSheet: View {
+    @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
     let booking: MeetingBooking
     let room: MeetingRoom
+    @State private var details: MeetingBookingDetails?
 
     private var accent: Color { booking.isOwner == true ? AppTheme.red : .blue }
     private var roleTitle: String { booking.isOwner == true ? "Bạn là người tổ chức" : "Bạn được mời tham dự" }
@@ -620,6 +622,7 @@ struct MeetingBookingDetailSheet: View {
         let minutes = max(0, Int(end.timeIntervalSince(start) / 60))
         return minutes >= 60 ? "\(minutes / 60) giờ\(minutes % 60 == 0 ? "" : " \(minutes % 60) phút")" : "\(minutes) phút"
     }
+    private var displayedRoom: MeetingRoom { details?.room ?? room }
 
     var body: some View {
         NavigationStack {
@@ -655,13 +658,37 @@ struct MeetingBookingDetailSheet: View {
                         }
                     }
                     detailCard(title: "Địa điểm", icon: "building.2.fill") {
-                        Text(room.name).font(.headline)
-                        if !room.location.isEmpty { Label(room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
-                        Text("Sức chứa phòng: \(room.capacity) người").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        Text(displayedRoom.name).font(.headline)
+                        if !displayedRoom.location.isEmpty { Label(displayedRoom.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
+                        Text("Sức chứa phòng: \(displayedRoom.capacity) người").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     }
-                    if !room.equipment.isEmpty {
+                    if !displayedRoom.equipment.isEmpty {
                         detailCard(title: "Thiết bị sẵn có", icon: "display.2") {
-                            Text(room.equipment.joined(separator: "  ·  ")).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                            Text(displayedRoom.equipment.joined(separator: "  ·  ")).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                        }
+                    }
+                    if let details {
+                        detailCard(title: "Người tổ chức", icon: "person.crop.circle.fill") {
+                            Text(details.employee.fullName).font(.headline)
+                            Text([details.employee.employeeCode, details.employee.department, details.employee.jobTitle]
+                                .compactMap { $0?.isEmpty == false ? $0 : nil }
+                                .joined(separator: " · "))
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        detailCard(title: "Người tham gia (\(details.participants.count))", icon: "person.2.fill") {
+                            if details.participants.isEmpty {
+                                Text("Chưa có người được mời thêm.").font(.subheadline).foregroundStyle(.secondary)
+                            } else {
+                                ForEach(details.participants) { participant in
+                                    Text(participant.employee.fullName)
+                                        .font(.subheadline.weight(.medium))
+                                }
+                            }
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                            Text("Đang tải thông tin người tham gia…").font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Text("Thông tin được đồng bộ theo thời gian thực.")
@@ -673,6 +700,9 @@ struct MeetingBookingDetailSheet: View {
             .navigationTitle("Chi tiết cuộc họp")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Đóng") { dismiss() } }
+            .task(id: booking.id) {
+                details = await session.meetingBookingDetails(id: booking.id)
+            }
         }
     }
 

@@ -706,6 +706,19 @@ final class SessionStore: ObservableObject {
             return error.localizedDescription
         }
     }
+
+    func meetingBookingDetails(id: String) async -> MeetingBookingDetails? {
+        guard let token else { return nil }
+        do {
+            return try await APIClient.shared.request(
+                "me/meeting-bookings/\(id)",
+                token: token
+            )
+        } catch {
+            present(error)
+            return nil
+        }
+    }
     func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> Bool { guard let token else { return false }; isWorking = true; defer { isWorking = false }; do { let end = start.addingTimeInterval(Double(duration) * 60); let body = CreateMeetingBookingBody(roomId: room.id, startsAt: ISO8601DateFormatter().string(from: start), endsAt: ISO8601DateFormatter().string(from: end), title: title, attendeeCount: participants.count + 1, participantIds: participants); let _: MeetingBooking = try await APIClient.shared.request("me/meeting-bookings", method: "POST", token: token, body: body); await refreshMeetingSchedule(date: start); return true } catch { present(error); return false } }
 
     func requestForgotPassword(employeeCode: String) async -> ForgotPasswordRequestResponse? {
