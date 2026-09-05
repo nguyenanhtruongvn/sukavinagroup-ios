@@ -13,6 +13,11 @@ import WebKit
 struct SukavinaAppView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var session = SessionStore()
+    @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
+
+    private var preferredAppearance: ColorScheme? {
+        (AppAppearanceMode(rawValue: appearanceMode) ?? .system).colorScheme
+    }
 
     var body: some View {
         ZStack {
@@ -51,6 +56,7 @@ struct SukavinaAppView: View {
             }
         }
         .task { await session.restore() }
+        .preferredColorScheme(preferredAppearance)
         .onChange(of: scenePhase) { _, phase in
             if phase == .active {
                 session.appBecameActive()

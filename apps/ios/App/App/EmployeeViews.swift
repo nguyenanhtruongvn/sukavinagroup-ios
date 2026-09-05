@@ -1419,6 +1419,7 @@ private struct MeetingSummaryCard: View {
 struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("sukavina.showTabLabels") private var showTabLabels = true
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
@@ -1436,24 +1437,24 @@ struct EmployeePortalView: View {
                 selectedTab = 1
             }
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Trang chủ", systemImage: "house.fill") }
+                .tabItem { portalTabItem("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
+                .tabItem { portalTabItem("Đơn từ", systemImage: "doc.text.fill") }
             .tag(1)
             MeetingRoomsView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Phòng họp", systemImage: "building.2.fill") }
+                .tabItem { portalTabItem("Phòng họp", systemImage: "building.2.fill") }
                 .tag(2)
             NotificationsView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Thông báo", systemImage: "bell.fill") }
+                .tabItem { portalTabItem("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount + session.requestUnreadCount)
                 .tag(3)
             ProfileView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
+                .tabItem { portalTabItem("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
         .accentColor(AppTheme.red)
@@ -1464,6 +1465,16 @@ struct EmployeePortalView: View {
                     await session.refreshDashboard()
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func portalTabItem(_ title: String, systemImage: String) -> some View {
+        if showTabLabels {
+            Label(title, systemImage: systemImage)
+        } else {
+            Image(systemName: systemImage)
+                .accessibilityLabel(title)
         }
     }
 
@@ -2042,11 +2053,16 @@ struct ModernAttendanceHistoryView: View {
 
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
     @State private var selectedMonth = Self.monthValue(Date())
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var errors: [String: String] = [:]
     @State private var selectedDates: [String: String] = [:]
     @State private var monthIndex = 1
+
+    private var showsFullMonthCells: Bool {
+        attendanceMonthDisplayMode == AttendanceMonthDisplayMode.full.rawValue
+    }
 
 
 
@@ -2202,10 +2218,18 @@ struct ModernAttendanceHistoryView: View {
                     Button {
                         selectedDates[month] = day.date
                     } label: {
-                        Text(String(Int(day.date.suffix(2)) ?? 0))
-                            .font(.subheadline.weight(selected ? .bold : .medium))
+                        VStack(spacing: 2) {
+                            Text(String(Int(day.date.suffix(2)) ?? 0))
+                                .font(.subheadline.weight(selected ? .bold : .medium))
+                            if showsFullMonthCells {
+                                Text("\(time(day.checkIn)) · \(time(day.checkOut))")
+                                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                            }
+                        }
                             .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .frame(maxWidth: .infinity, minHeight: showsFullMonthCells ? 64 : 50)
                             .background(dayBackground(day))
                             .clipShape(RoundedRectangle(cornerRadius: 11))
                             .overlay {
