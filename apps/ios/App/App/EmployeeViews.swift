@@ -483,7 +483,7 @@ private struct MeetingTimeline: View {
                         .disabled(booking.id.isEmpty)
                         .accessibilityLabel(booking.id.isEmpty
                             ? "Khung giờ đã được đặt"
-                            : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? \"đã có lịch\" : booking.title)")
+                            : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title)")
                         .frame(
                             maxWidth: .infinity,
                             minHeight: position.height,
