@@ -2246,7 +2246,7 @@ struct ModernAttendanceHistoryView: View {
 
     private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
         let cellHeight: CGFloat = showsFullMonthCells ? 78 : 50
-        VStack(alignment: .leading, spacing: 14) {
+        return VStack(alignment: .leading, spacing: 14) {
             Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
             HStack(spacing: 4) {
                 ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
