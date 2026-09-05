@@ -657,7 +657,8 @@ struct MeetingBookingDetailSheet: View {
     let room: MeetingRoom
     @State private var details: MeetingBookingDetails?
 
-    private var accent: Color { booking.isOwner == true ? AppTheme.red : .blue }
+    // Role color is shared with Android: organiser green, invitee blue.
+    private var accent: Color { booking.isOwner == true ? Color(red: 0.13, green: 0.71, blue: 0.45) : .blue }
     private var roleTitle: String { booking.isOwner == true ? "Bạn là người tổ chức" : "Bạn được mời tham dự" }
     private var roleIcon: String { booking.isOwner == true ? "person.badge.key.fill" : "person.2.badge.gearshape.fill" }
     private var dateTitle: String {
