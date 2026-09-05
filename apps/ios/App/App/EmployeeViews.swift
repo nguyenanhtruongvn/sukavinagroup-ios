@@ -1929,6 +1929,7 @@ private extension View {
 struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
     @StateObject private var requestStore = EmployeeRequestStore()
+    @State private var showTodayMenu = false
     let openPendingRequests: () -> Void
 
 
@@ -2001,6 +2002,14 @@ struct DashboardView: View {
                     }
                     .buttonStyle(.plain)
 
+                    Button {
+                        showTodayMenu = true
+                    } label: {
+                        todayMenuCard
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Xem thực đơn hôm nay")
+
 
 
 
@@ -2017,6 +2026,7 @@ struct DashboardView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .task { await requestStore.load(session.token) }
+            .task { await session.refreshTodayMenu() }
             .task(id: session.requestRevision) {
                 guard session.requestRevision > 0 else { return }
                 await requestStore.load(session.token)
@@ -2024,6 +2034,13 @@ struct DashboardView: View {
             .refreshable {
                 await session.refreshDashboard()
                 await requestStore.load(session.token)
+                await session.refreshTodayMenu()
+            }
+            .sheet(isPresented: $showTodayMenu) {
+                TodayMenuView()
+                    .environmentObject(session)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
         }
         .navigationViewStyle(.stack)
@@ -2044,6 +2061,86 @@ struct DashboardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
+    }
+
+    private var todayMenuCard: some View {
+        let menu = session.todayMenu
+        let mainDishes = [menu?.day.savoryMain, menu?.day.savorySide, menu?.day.vegetable, menu?.day.soup]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        let vegetarianDishes = [menu?.day.vegetarianMain, menu?.day.vegetarianSide]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 11) {
+                Image(systemName: "fork.knife")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.orange)
+                    .frame(width: 38, height: 38)
+                    .background(Color.orange.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Thực đơn hôm nay")
+                        .font(.headline)
+                        .foregroundStyle(Color.primary)
+                    Text(menu?.day.dayName ?? "Đang cập nhật")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.muted)
+            }
+
+            Divider().overlay(Color.primary.opacity(0.07))
+
+            if menu == nil {
+                HStack(spacing: 9) {
+                    ProgressView().controlSize(.small)
+                    Text("Đang tải thực đơn hôm nay…")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.muted)
+                }
+            } else {
+                menuSummaryLine("Món chính", detail: mainDishes.isEmpty ? "Đang cập nhật" : mainDishes, color: .orange)
+                if !vegetarianDishes.isEmpty {
+                    menuSummaryLine("Món chay", detail: vegetarianDishes, color: .green)
+                }
+                if let featured = menu?.day.featured, !featured.isEmpty {
+                    menuSummaryLine("Món nước", detail: featured, color: .cyan)
+                }
+                if let overtime = menu?.day.overtime, !overtime.isEmpty {
+                    menuSummaryLine("Tăng ca", detail: overtime, color: .purple)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func menuSummaryLine(_ title: String, detail: String, color: Color) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(AppTheme.muted)
+                Text(detail)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(2)
+            }
+        }
     }
 
 
