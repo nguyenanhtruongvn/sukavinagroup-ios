@@ -175,12 +175,17 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshTodayMenu() async {
+    /// Loads the optional menu widget.  Callers that are refreshing an already
+    /// populated dashboard can opt out of a global error alert so a transient
+    /// menu request does not look like the whole app has lost connectivity.
+    func refreshTodayMenu(reportFailure: Bool = true) async {
         guard let token else { return }
         do {
             todayMenu = try await APIClient.shared.request("me/menu", token: token)
         } catch {
-            present(error)
+            if reportFailure {
+                present(error)
+            }
         }
     }
 
@@ -372,7 +377,10 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshDashboard() async {
+    /// Refreshes the dashboard.  A pull-to-refresh keeps the last successful
+    /// content visible if a temporary request fails, rather than presenting an
+    /// unrelated full-screen offline alert over usable cached content.
+    func refreshDashboard(reportFailure: Bool = true) async {
         guard let token, profile?.accountType != "CANTEEN" else { return }
         do {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
@@ -383,7 +391,9 @@ final class SessionStore: ObservableObject {
             AttendanceWidgetBridge.update(from: fresh)
             await refreshRequestNotificationCount()
         } catch {
-            present(error)
+            if reportFailure {
+                present(error)
+            }
         }
     }
 

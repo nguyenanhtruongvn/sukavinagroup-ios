@@ -2026,15 +2026,15 @@ struct DashboardView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .task { await requestStore.load(session.token) }
-            .task { await session.refreshTodayMenu() }
+            .task { await session.refreshTodayMenu(reportFailure: false) }
             .task(id: session.requestRevision) {
                 guard session.requestRevision > 0 else { return }
                 await requestStore.load(session.token)
             }
             .refreshable {
-                await session.refreshDashboard()
+                await session.refreshDashboard(reportFailure: false)
                 await requestStore.load(session.token)
-                await session.refreshTodayMenu()
+                await session.refreshTodayMenu(reportFailure: false)
             }
             .sheet(isPresented: $showTodayMenu) {
                 TodayMenuView()
