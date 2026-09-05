@@ -9,6 +9,57 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+/// Applies the label preference to the UIKit tab bar already on screen.
+/// This preserves the selected tab instead of recreating SwiftUI's TabView.
+private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
+    let showsLabels: Bool
+    private static let tabTitles = ["Trang chủ", "Đơn từ", "Phòng họp", "Thông báo", "Tài khoản"]
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            guard let window = uiView.window, let tabBar = findTabBar(from: window) else { return }
+            for (index, item) in (tabBar.items ?? []).enumerated() {
+                guard Self.tabTitles.indices.contains(index) else { continue }
+                let title = Self.tabTitles[index]
+                item.title = showsLabels ? title : nil
+                item.accessibilityLabel = title
+                item.titlePositionAdjustment = .zero
+                item.imageInsets = showsLabels ? .zero : UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
+            }
+            tabBar.items?.forEach { $0.setTitleTextAttributes(nil, for: .normal) }
+            tabBar.setNeedsLayout()
+        }
+    }
+
+    private func findTabBar(from window: UIWindow) -> UITabBar? {
+        if let root = window.rootViewController, let tabBar = findTabBar(in: root) { return tabBar }
+        return findTabBar(in: window)
+    }
+
+    private func findTabBar(in controller: UIViewController) -> UITabBar? {
+        if let tabController = controller as? UITabBarController { return tabController.tabBar }
+        for child in controller.children {
+            if let tabBar = findTabBar(in: child) { return tabBar }
+        }
+        if let presented = controller.presentedViewController { return findTabBar(in: presented) }
+        return nil
+    }
+
+    private func findTabBar(in view: UIView) -> UITabBar? {
+        if let tabBar = view as? UITabBar { return tabBar }
+        for child in view.subviews {
+            if let tabBar = findTabBar(in: child) { return tabBar }
+        }
+        return nil
+    }
+}
+
 private enum MeetingPresentation {
     static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
     static var calendar: Calendar = {
@@ -1437,26 +1488,27 @@ struct EmployeePortalView: View {
                 selectedTab = 1
             }
                 .adaptivePortalTabBarBackground()
-                .tabItem { portalTabItem("Trang chủ", systemImage: "house.fill") }
+                .tabItem { Label("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
                 .adaptivePortalTabBarBackground()
-                .tabItem { portalTabItem("Đơn từ", systemImage: "doc.text.fill") }
+                .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             .tag(1)
             MeetingRoomsView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { portalTabItem("Phòng họp", systemImage: "building.2.fill") }
+                .tabItem { Label("Phòng họp", systemImage: "building.2.fill") }
                 .tag(2)
             NotificationsView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { portalTabItem("Thông báo", systemImage: "bell.fill") }
+                .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.unreadCount + session.requestUnreadCount)
                 .tag(3)
             ProfileView()
                 .adaptivePortalTabBarBackground()
-                .tabItem { portalTabItem("Tài khoản", systemImage: "person.crop.circle.fill") }
+                .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
+        .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
         .onChange(of: scenePhase) { phase in
@@ -1468,15 +1520,6 @@ struct EmployeePortalView: View {
         }
     }
 
-    @ViewBuilder
-    private func portalTabItem(_ title: String, systemImage: String) -> some View {
-        if showTabLabels {
-            Label(title, systemImage: systemImage)
-        } else {
-            Image(systemName: systemImage)
-                .accessibilityLabel(title)
-        }
-    }
 
 
 
@@ -2136,7 +2179,7 @@ struct ModernAttendanceHistoryView: View {
                 if let data {
                     preloadedSummaryCards(data)
                     preloadedCalendarCard(data, month: month)
-                    if let day = selectedDay(in: data, month: month) {
+                    if !showsFullMonthCells, let day = selectedDay(in: data, month: month) {
                         preloadedDayDetail(day, data: data)
                     }
                 } else if let message = errors[month] {
@@ -2185,12 +2228,13 @@ struct ModernAttendanceHistoryView: View {
             ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
             ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
         ].filter { $0.1 > 0 }
-        return HStack(spacing: 8) {
+        return HStack(spacing: 6) {
             ForEach(Array(values.enumerated()), id: \.offset) { _, item in
                 summary(item.1, item.0, item.2)
             }
         }
         .frame(maxWidth: .infinity)
+        .dynamicTypeSize(.xSmall ... .accessibility1)
     }
 
 
@@ -2201,6 +2245,7 @@ struct ModernAttendanceHistoryView: View {
 
 
     private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
+        let cellHeight: CGFloat = showsFullMonthCells ? 78 : 50
         VStack(alignment: .leading, spacing: 14) {
             Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
             HStack(spacing: 4) {
@@ -2211,25 +2256,30 @@ struct ModernAttendanceHistoryView: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 5), count: 7), spacing: 7) {
                 ForEach(0..<preloadedLeadingEmptyDays(data), id: \.self) { _ in
-                    Color.clear.frame(height: 50)
+                    Color.clear.frame(height: cellHeight)
                 }
                 ForEach(data.days) { day in
                     let selected = selectedDay(in: data, month: month)?.date == day.date
                     Button {
                         selectedDates[month] = day.date
                     } label: {
-                        VStack(spacing: 2) {
+                        VStack(spacing: showsFullMonthCells ? 3 : 0) {
                             Text(String(Int(day.date.suffix(2)) ?? 0))
                                 .font(.subheadline.weight(selected ? .bold : .medium))
                             if showsFullMonthCells {
-                                Text("\(time(day.checkIn)) · \(time(day.checkOut))")
-                                    .font(.system(size: 8, weight: .medium, design: .monospaced))
+                                VStack(spacing: 1) {
+                                    Text(time(day.checkIn))
+                                    Text(time(day.checkOut))
+                                }
+                                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                    .monospacedDigit()
+                                    .foregroundStyle(Color.primary.opacity(0.72))
                                     .lineLimit(1)
-                                    .minimumScaleFactor(0.6)
+                                    .minimumScaleFactor(0.7)
                             }
                         }
                             .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                            .frame(maxWidth: .infinity, minHeight: showsFullMonthCells ? 64 : 50)
+                            .frame(maxWidth: .infinity, minHeight: cellHeight)
                             .background(dayBackground(day))
                             .clipShape(RoundedRectangle(cornerRadius: 11))
                             .overlay {
