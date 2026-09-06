@@ -777,6 +777,17 @@ struct RequestComposer: View {
                     }
                     }
 
+                    if kind == .late {
+                        VStack(alignment: .leading, spacing: 12) {
+                            composerLabel("Ngày đi trễ", icon: "calendar")
+                            DatePicker("Ngày xảy ra", selection: $from, displayedComponents: .date)
+                                .datePickerStyle(.compact)
+                            Text("Chọn đúng ngày xảy ra việc đi trễ trước khi gửi đơn.")
+                                .font(.footnote)
+                                .foregroundStyle(AppTheme.muted)
+                        }
+                    }
+
                     if usesDurationInput {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Thời lượng", icon: "timer")
