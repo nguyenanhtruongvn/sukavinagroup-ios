@@ -148,6 +148,14 @@ final class EmployeeRequestStore: ObservableObject {
     @Published private(set) var approvals: [EmployeeRequest] = []
     @Published var message: String?
 
+    private func record(_ error: Error) {
+        // SwiftUI cancels obsolete .task/.refreshable work when this view is
+        // replaced or refreshed again. That is expected lifecycle behavior,
+        // not an error the employee should see in the request screen.
+        guard !(error is CancellationError) else { return }
+        message = error.localizedDescription
+    }
+
     func load(_ token: String?) async {
         guard let token else { return }
         do {
@@ -155,7 +163,7 @@ final class EmployeeRequestStore: ObservableObject {
             async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
             requests = try await mine
             approvals = try await assigned
-        } catch { message = error.localizedDescription }
+        } catch { record(error) }
     }
 
     func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil) async -> Bool {
@@ -163,13 +171,13 @@ final class EmployeeRequestStore: ObservableObject {
         do {
             let _: EmployeeRequest = try await APIClient.shared.request("me/requests", method: "POST", token: token, body: RequestBody(kind: kind.rawValue, startsAt: from, endsAt: to, reason: reason, businessDestination: destination, businessTransport: transport, businessDistanceKm: distanceKm, businessExpense: expense))
             await load(token); return true
-        } catch { message = error.localizedDescription; return false }
+        } catch { record(error); return false }
     }
 
     func cancel(token: String?, id: String) async {
         guard let token else { return }
         do { let _: EmployeeRequest = try await APIClient.shared.request("me/requests/\(id)", method: "DELETE", token: token); await load(token) }
-        catch { message = error.localizedDescription }
+        catch { record(error) }
     }
 
     func decide(token: String?, id: String, approved: Bool, note: String) async -> Bool {
@@ -177,7 +185,7 @@ final class EmployeeRequestStore: ObservableObject {
         do {
             let _: EmployeeRequest = try await APIClient.shared.request("me/requests/\(id)/decision", method: "PATCH", token: token, body: RequestDecisionBody(status: approved ? "approved" : "rejected", note: note.isEmpty ? nil : note))
             await load(token); return true
-        } catch { message = error.localizedDescription; return false }
+        } catch { record(error); return false }
     }
 }
 
