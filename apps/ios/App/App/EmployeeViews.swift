@@ -1494,7 +1494,7 @@ struct EmployeePortalView: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            DashboardView {
+            DashboardView(isActive: selectedTab == 0) {
                 requestInitialFilter = .pending
                 selectedTab = 1
             }
@@ -1922,6 +1922,7 @@ struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
     @StateObject private var requestStore = EmployeeRequestStore()
     @State private var showTodayMenu = false
+    let isActive: Bool
     let openPendingRequests: () -> Void
 
 
@@ -2019,6 +2020,18 @@ struct DashboardView: View {
             .toolbar(.hidden, for: .navigationBar)
             .task { await requestStore.load(session.token) }
             .task { await session.refreshTodayMenu() }
+            // Realtime events update attendance immediately when available.
+            // This bounded fallback keeps the Home card current if an SSE
+            // connection is briefly interrupted while the user remains here.
+            .task(id: isActive) {
+                guard isActive else { return }
+                await session.refreshDashboard()
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(30))
+                    guard !Task.isCancelled else { return }
+                    await session.refreshDashboard()
+                }
+            }
             .task(id: session.requestRevision) {
                 guard session.requestRevision > 0 else { return }
                 await requestStore.load(session.token)
