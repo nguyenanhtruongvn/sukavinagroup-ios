@@ -175,17 +175,15 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// Loads the optional menu widget.  Callers that are refreshing an already
-    /// populated dashboard can opt out of a global error alert so a transient
-    /// menu request does not look like the whole app has lost connectivity.
-    func refreshTodayMenu(reportFailure: Bool = true) async {
+    func refreshTodayMenu() async {
         guard let token else { return }
         do {
             todayMenu = try await APIClient.shared.request("me/menu", token: token)
+        } catch is CancellationError {
+            // An obsolete SwiftUI refresh was cancelled; no user-facing error.
+            return
         } catch {
-            if reportFailure {
-                present(error)
-            }
+            present(error)
         }
     }
 
@@ -377,10 +375,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// Refreshes the dashboard.  A pull-to-refresh keeps the last successful
-    /// content visible if a temporary request fails, rather than presenting an
-    /// unrelated full-screen offline alert over usable cached content.
-    func refreshDashboard(reportFailure: Bool = true) async {
+    func refreshDashboard() async {
         guard let token, profile?.accountType != "CANTEEN" else { return }
         do {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
@@ -390,10 +385,12 @@ final class SessionStore: ObservableObject {
             attendanceRevision &+= 1
             AttendanceWidgetBridge.update(from: fresh)
             await refreshRequestNotificationCount()
+        } catch is CancellationError {
+            // URLSession cancellation is a normal task-lifecycle event, not
+            // evidence that the device has lost Internet access.
+            return
         } catch {
-            if reportFailure {
-                present(error)
-            }
+            present(error)
         }
     }
 
@@ -521,6 +518,7 @@ final class SessionStore: ObservableObject {
     }
 
     private func present(_ error: Error) {
+        guard !(error is CancellationError) else { return }
         errorMessage = error.localizedDescription
         if let networkError = error as? NetworkError,
            case .cellularRestricted = networkError {

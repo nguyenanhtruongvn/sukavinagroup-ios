@@ -60,7 +60,10 @@ enum NetworkSessions {
 
     private static func makeSession(resourceTimeout: TimeInterval) -> URLSession {
         let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = false
+        // A pull-to-refresh can begin while iOS is briefly handing a live
+        // connection between Wi-Fi and cellular. Waiting lets the system
+        // complete that handoff instead of immediately failing the request.
+        configuration.waitsForConnectivity = true
         configuration.allowsCellularAccess = true
         configuration.allowsExpensiveNetworkAccess = true
         configuration.allowsConstrainedNetworkAccess = true
@@ -147,7 +150,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method
         urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
-        urlRequest.timeoutInterval = 25
+        urlRequest.timeoutInterval = 30
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
         let effectiveToken = token.flatMap { _ in KeychainStore.loadToken() } ?? token
@@ -161,10 +164,16 @@ final class APIClient {
 
         var data: Data
         var response: URLResponse
+        let retryable = ["GET", "HEAD"].contains(method.uppercased())
         let primaryHost = url.host ?? "unknown"
         ConnectionDiagnostics.record("API primary start: \(method) \(primaryHost)/\(path)")
         do {
-            (data, response) = try await NetworkSessions.api.data(for: urlRequest)
+            (data, response) = try await load(urlRequest, retryable: retryable, path: path, hostRole: "primary")
+        } catch is CancellationError {
+            // SwiftUI can cancel an obsolete refresh task. That is not a
+            // connectivity failure and must not trigger a fallback request.
+            ConnectionDiagnostics.record("API primary cancelled: \(method) \(primaryHost)/\(path)")
+            throw CancellationError()
         } catch let error as URLError where error.code == .dataNotAllowed || error.code == .internationalRoamingOff {
             ConnectionDiagnostics.record("API primary cellular denied: \(error.code.rawValue) \(error.localizedDescription)")
             throw NetworkError.cellularRestricted
@@ -172,7 +181,8 @@ final class APIClient {
             let code = (error as? URLError)?.code.rawValue
             let codeText = code.map(String.init) ?? "n/a"
             ConnectionDiagnostics.record("API primary failed: code=\(codeText) \(error.localizedDescription)")
-            guard let fallbackBaseURL,
+            guard retryable,
+                  let fallbackBaseURL,
                   let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
                 throw NetworkError.offline
             }
@@ -180,14 +190,17 @@ final class APIClient {
             let fallbackHost = fallbackURL.host ?? "unknown"
             ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackHost)/\(path)")
             do {
-                (data, response) = try await NetworkSessions.api.data(for: urlRequest)
+                (data, response) = try await load(urlRequest, retryable: true, path: path, hostRole: "fallback")
+            } catch is CancellationError {
+                ConnectionDiagnostics.record("API fallback cancelled: \(method) \(fallbackHost)/\(path)")
+                throw CancellationError()
             } catch let fallbackError as URLError where fallbackError.code == .dataNotAllowed || fallbackError.code == .internationalRoamingOff {
                 ConnectionDiagnostics.record("API fallback cellular denied: \(fallbackError.code.rawValue) \(fallbackError.localizedDescription)")
                 throw NetworkError.cellularRestricted
-            } catch {
-                let code = (error as? URLError)?.code.rawValue
+            } catch let fallbackError {
+                let code = (fallbackError as? URLError)?.code.rawValue
                 let codeText = code.map(String.init) ?? "n/a"
-                ConnectionDiagnostics.record("API fallback failed: code=\(codeText) \(error.localizedDescription)")
+                ConnectionDiagnostics.record("API fallback failed: code=\(codeText) \(fallbackError.localizedDescription)")
                 throw NetworkError.offline
             }
         }
@@ -245,6 +258,45 @@ final class APIClient {
                 "API decode failed: path=\(path) type=\(String(describing: Response.self)) bytes=\(data.count) error=\(error.localizedDescription)"
             )
             throw NetworkError.invalidResponse
+        }
+    }
+
+    private func load(
+        _ request: URLRequest,
+        retryable: Bool,
+        path: String,
+        hostRole: String
+    ) async throws -> (Data, URLResponse) {
+        let delays: [UInt64] = retryable ? [0, 750_000_000, 1_500_000_000] : [0]
+        for (attempt, delay) in delays.enumerated() {
+            if delay > 0 {
+                try await Task.sleep(nanoseconds: delay)
+            }
+            do {
+                return try await NetworkSessions.api.data(for: request)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError where error.code == .cancelled {
+                ConnectionDiagnostics.record("API \(hostRole) cancelled: code=\(error.code.rawValue) path=\(path)")
+                throw CancellationError()
+            } catch {
+                guard attempt < delays.count - 1, shouldRetry(error) else { throw error }
+                let code = (error as? URLError)?.code.rawValue
+                ConnectionDiagnostics.record("API \(hostRole) retry \(attempt + 1)/\(delays.count - 1): code=\(code.map(String.init) ?? "n/a") path=\(path)")
+            }
+        }
+        throw NetworkError.offline
+    }
+
+    private func shouldRetry(_ error: Error) -> Bool {
+        guard let error = error as? URLError else { return false }
+        switch error.code {
+        case .timedOut, .networkConnectionLost, .notConnectedToInternet,
+             .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+             .resourceUnavailable:
+            return true
+        default:
+            return false
         }
     }
 

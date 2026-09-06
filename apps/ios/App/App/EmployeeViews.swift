@@ -1481,7 +1481,6 @@ private struct MeetingSummaryCard: View {
 @available(iOS 17.0, *)
 struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
-    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("sukavina.showTabLabels") private var showTabLabels = true
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
@@ -1523,13 +1522,6 @@ struct EmployeePortalView: View {
         .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
-        .onChange(of: scenePhase) { phase in
-            if phase == .active {
-                Task {
-                    await session.refreshDashboard()
-                }
-            }
-        }
     }
 
 
@@ -2026,15 +2018,15 @@ struct DashboardView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .task { await requestStore.load(session.token) }
-            .task { await session.refreshTodayMenu(reportFailure: false) }
+            .task { await session.refreshTodayMenu() }
             .task(id: session.requestRevision) {
                 guard session.requestRevision > 0 else { return }
                 await requestStore.load(session.token)
             }
             .refreshable {
-                await session.refreshDashboard(reportFailure: false)
+                await session.refreshDashboard()
                 await requestStore.load(session.token)
-                await session.refreshTodayMenu(reportFailure: false)
+                await session.refreshTodayMenu()
             }
             .sheet(isPresented: $showTodayMenu) {
                 TodayMenuView()
