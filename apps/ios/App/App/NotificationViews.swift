@@ -230,6 +230,8 @@ struct NotificationsView: View {
         let type = item.type
         if type == "meeting_invite" { return "calendar.badge.clock" }
         if type == "meeting_reminder" { return "bell.badge.fill" }
+        if type == "attendance_check_in" { return "arrow.right.to.line.circle.fill" }
+        if type == "attendance_check_out" { return "arrow.left.to.line.circle.fill" }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
         if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
         if type.contains("rejected") { return "xmark.circle.fill" }
@@ -240,6 +242,8 @@ struct NotificationsView: View {
     private func notificationColor(_ item: RequestNotification) -> Color {
         let type = item.type
         if type == "meeting_invite" || type == "meeting_reminder" { return AppTheme.red }
+        if type == "attendance_check_in" { return .green }
+        if type == "attendance_check_out" { return .blue }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
         if type == "request_pending" { return .orange }
         if type.contains("rejected") { return AppTheme.red }
