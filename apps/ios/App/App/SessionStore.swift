@@ -39,11 +39,13 @@ final class SessionStore: ObservableObject {
     @Published var meetingInvitees: [MeetingInvitee] = []
     @Published private(set) var attendanceRevision = 0
     @Published private(set) var requestRevision = 0
+    @Published private(set) var localAttendanceNotifications: [RequestNotification] = []
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
     private let knownAttendancePrefix = "known-native-attendance-ids-"
+    private let localAttendanceNotificationsPrefix = "local-native-attendance-notifications-"
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
@@ -398,6 +400,7 @@ final class SessionStore: ObservableObject {
         let employeeCode = fresh.employeeCode.isEmpty ? (profile?.employeeCode ?? "") : fresh.employeeCode
         let key = knownAttendancePrefix + employeeCode
         let defaults = UserDefaults.standard
+        loadLocalAttendanceNotifications(employeeCode)
         let hasBaseline = defaults.object(forKey: key) != nil
         let known = Set(defaults.stringArray(forKey: key) ?? [])
         let records = fresh.attendanceRecords ?? []
@@ -405,12 +408,56 @@ final class SessionStore: ObservableObject {
            let newest = records.filter({ !known.contains($0.id) }).max(by: { $0.punchedAt < $1.punchedAt }) {
             let ordered = records.sorted { $0.punchedAt < $1.punchedAt }
             let position = (ordered.firstIndex(where: { $0.id == newest.id }) ?? 0) + 1
+            let isCheckIn = position % 2 == 1
+            let date = ISO8601DateFormatter().date(from: newest.punchedAt) ?? Date()
+            if !localAttendanceNotifications.contains(where: { $0.id == "local-attendance-\(newest.id)" }) {
+                localAttendanceNotifications.insert(RequestNotification(
+                    id: "local-attendance-\(newest.id)",
+                    type: isCheckIn ? "attendance_check_in" : "attendance_check_out",
+                    title: isCheckIn ? "Đã chấm công vào" : "Đã chấm công ra",
+                    message: "Hệ thống đã ghi nhận \(isCheckIn ? "giờ vào" : "giờ ra") lúc \(attendanceNotificationTime(newest.punchedAt)).",
+                    requestId: nil,
+                    read: false,
+                    createdAt: date
+                ), at: 0)
+                persistLocalAttendanceNotifications(employeeCode)
+            }
             NotificationManager.shared.notifyAttendance(
-                isCheckIn: position % 2 == 1,
+                isCheckIn: isCheckIn,
                 time: attendanceNotificationTime(newest.punchedAt)
             )
         }
         defaults.set(records.map(\.id), forKey: key)
+    }
+
+    func mergedRequestNotifications(_ server: [RequestNotification]) -> [RequestNotification] {
+        (localAttendanceNotifications.filter { local in
+            !server.contains { $0.type == local.type && $0.message == local.message }
+        } + server).sorted { $0.createdAt > $1.createdAt }
+    }
+
+    func isLocalAttendanceNotification(_ item: RequestNotification) -> Bool { item.id.hasPrefix("local-attendance-") }
+    func markLocalAttendanceNotificationRead(_ id: String) {
+        localAttendanceNotifications = localAttendanceNotifications.map { $0.id == id ? RequestNotification(id: $0.id, type: $0.type, title: $0.title, message: $0.message, requestId: $0.requestId, read: true, createdAt: $0.createdAt) : $0 }
+        persistLocalAttendanceNotifications(profile?.employeeCode ?? dashboard?.employeeCode ?? "")
+    }
+    func deleteLocalAttendanceNotification(_ id: String) {
+        localAttendanceNotifications.removeAll { $0.id == id }
+        persistLocalAttendanceNotifications(profile?.employeeCode ?? dashboard?.employeeCode ?? "")
+    }
+    func clearLocalAttendanceNotifications() {
+        localAttendanceNotifications = []
+        persistLocalAttendanceNotifications(profile?.employeeCode ?? dashboard?.employeeCode ?? "")
+    }
+    private func loadLocalAttendanceNotifications(_ employeeCode: String) {
+        guard !employeeCode.isEmpty,
+              let data = UserDefaults.standard.data(forKey: localAttendanceNotificationsPrefix + employeeCode),
+              let items = try? JSONDecoder().decode([RequestNotification].self, from: data) else { return }
+        localAttendanceNotifications = items
+    }
+    private func persistLocalAttendanceNotifications(_ employeeCode: String) {
+        guard !employeeCode.isEmpty, let data = try? JSONEncoder().encode(Array(localAttendanceNotifications.prefix(50))) else { return }
+        UserDefaults.standard.set(data, forKey: localAttendanceNotificationsPrefix + employeeCode)
     }
 
     private func attendanceNotificationTime(_ value: String) -> String {

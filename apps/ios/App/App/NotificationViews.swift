@@ -9,7 +9,7 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-struct RequestNotification: Decodable, Identifiable {
+struct RequestNotification: Codable, Identifiable {
     let id: String
     let type: String
     let title: String
@@ -164,6 +164,7 @@ struct NotificationsView: View {
                 .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
                 .onAppear { Task { await loadRequestNotifications() } }
                 .onChange(of: session.requestUnreadCount) { _, _ in Task { await loadRequestNotifications() } }
+                .onChange(of: session.attendanceRevision) { _, _ in Task { await loadRequestNotifications() } }
                 .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
@@ -175,13 +176,18 @@ struct NotificationsView: View {
     private func loadRequestNotifications() async {
         guard let token = session.token else { return }
         if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
-            requestNotifications = values
-            session.requestUnreadCount = values.filter { !$0.read }.count
+            requestNotifications = session.mergedRequestNotifications(values)
+            session.requestUnreadCount = requestNotifications.filter { !$0.read }.count
             await requestStore.load(token)
         }
     }
 
     private func open(_ item: RequestNotification) async {
+        if session.isLocalAttendanceNotification(item) {
+            session.markLocalAttendanceNotificationRead(item.id)
+            await loadRequestNotifications()
+            return
+        }
         guard let token = session.token else { return }
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/\(item.id)/read", method: "PATCH", token: token)
         if item.type == "meeting_invite" || item.type == "meeting_reminder" {
@@ -198,12 +204,18 @@ struct NotificationsView: View {
 
     private func clearAll() async {
         guard let token = session.token else { return }
+        session.clearLocalAttendanceNotifications()
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications", method: "DELETE", token: token)
         hiddenArticleIDs.formUnion(items.map(\.id)); UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
         session.markArticlesRead(); await loadRequestNotifications()
     }
 
     private func deleteNotification(_ item: RequestNotification) async {
+        if session.isLocalAttendanceNotification(item) {
+            session.deleteLocalAttendanceNotification(item.id)
+            requestNotifications.removeAll { $0.id == item.id }
+            return
+        }
         guard let token = session.token else { return }
         withAnimation(.easeInOut(duration: 0.28)) {
             requestNotifications.removeAll { $0.id == item.id }
