@@ -898,6 +898,12 @@ struct RequestComposer: View {
             }
             .background(AppTheme.ink.ignoresSafeArea())
             .dynamicTypeSize(.xSmall ... .accessibility1)
+            .onAppear {
+                guard kind == .leave else { return }
+                let leaveDay = Calendar.current.startOfDay(for: from)
+                from = scheduledAttendanceTime(workStartTime, on: leaveDay, fallbackHour: 7, fallbackMinute: 30)
+                to = scheduledAttendanceTime(workEndTime, on: leaveDay, fallbackHour: 16, fallbackMinute: 30)
+            }
             .task(id: kind.rawValue + String(attendanceDate.timeIntervalSince1970)) {
                 guard kind == .attendance, let token = session.token else { return }
                 let month = attendanceDateKey(attendanceDate, format: "yyyy-MM")
