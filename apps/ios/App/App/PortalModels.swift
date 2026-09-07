@@ -398,6 +398,8 @@ struct Dashboard: Decodable {
     let attendanceStatus: String
     let payrollStatus: String
     let name: String
+    let workStartTime: String?
+    let workEndTime: String?
     let attendanceRecords: [AttendanceRecord]?
     let contentItems: [ContentItem]
 }

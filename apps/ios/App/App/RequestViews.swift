@@ -548,16 +548,42 @@ struct RequestComposer: View {
     }
     private var durationMinutes: Int { durationUnit == .hours ? durationValue * 60 : durationValue }
     private var durationDescription: String { "\(durationValue) \(durationUnit.title.lowercased())" }
+    private var workStartTime: String? { session.dashboard?.workStartTime }
+    private var workEndTime: String? { session.dashboard?.workEndTime }
+
+    private var scheduledRequestDates: (from: Date, to: Date) {
+        let calendar = Calendar.current
+        let requestDay = calendar.startOfDay(for: from)
+        let shiftStart = scheduledAttendanceTime(workStartTime, on: requestDay, fallbackHour: 7, fallbackMinute: 30)
+        let shiftEnd = scheduledAttendanceTime(workEndTime, on: requestDay, fallbackHour: 16, fallbackMinute: 30)
+        switch kind {
+        case .late:
+            return (shiftStart, shiftStart.addingTimeInterval(TimeInterval(durationMinutes * 60)))
+        case .early:
+            return (shiftEnd.addingTimeInterval(TimeInterval(-durationMinutes * 60)), shiftEnd)
+        case .overtime:
+            return (shiftEnd, shiftEnd.addingTimeInterval(TimeInterval(durationMinutes * 60)))
+        case .leave:
+            let leaveEnd = scheduledAttendanceTime(workEndTime, on: calendar.startOfDay(for: to), fallbackHour: 16, fallbackMinute: 30)
+            return (shiftStart, leaveEnd)
+        default:
+            return (from, to)
+        }
+    }
+
+    private var scheduledRequestPreview: String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.dateFormat = "HH:mm"
+        let dates = scheduledRequestDates
+        return "Khung giờ theo ca làm: \(formatter.string(from: dates.from)) – \(formatter.string(from: dates.to))."
+    }
 
     private var submissionDates: (from: Date, to: Date) {
         let calendar = Calendar.current
         switch kind {
-        case .leave:
-            let leaveStart = calendar.startOfDay(for: from)
-            return (leaveStart, calendar.date(bySettingHour: 23, minute: 59, second: 59, of: to) ?? leaveStart)
-        case .late, .early, .overtime:
-            let requestDay = calendar.startOfDay(for: from)
-            return (requestDay, requestDay.addingTimeInterval(TimeInterval(durationMinutes * 60)))
+        case .leave, .late, .early, .overtime:
+            return scheduledRequestDates
         default:
             return (from, to)
         }
@@ -794,6 +820,9 @@ struct RequestComposer: View {
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)
+                            Text(scheduledRequestPreview)
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(AppTheme.muted)
                         }
                     }
 
@@ -809,6 +838,9 @@ struct RequestComposer: View {
                             }
                             Text("Thời lượng đã chọn: \(durationDescription).")
                                 .font(.footnote.weight(.medium))
+                            Text(scheduledRequestPreview)
+                                .font(.footnote)
+                                .foregroundStyle(AppTheme.muted)
                                 .foregroundStyle(kind.color)
                         }
                         .onChange(of: durationUnit) { previousUnit, unit in
