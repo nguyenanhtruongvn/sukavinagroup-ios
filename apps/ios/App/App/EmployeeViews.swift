@@ -2480,11 +2480,14 @@ struct ModernAttendanceHistoryView: View {
 
 
     private func preloadMonth(_ month: String) async {
-        guard cache[month] == nil, let token = session.token else { return }
+        if cache[month] == nil, let cached = session.cachedAttendanceMonth(month) {
+            cache[month] = cached
+            selectedDates[month] = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
+                ?? cached.days.last?.date
+        }
+        guard let token = session.token else { return }
         do {
-            let loaded: AttendanceMonth = try await APIClient.shared.request(
-                "me/attendance?month=\(month)", token: token
-            )
+            let loaded = try await session.loadAttendanceMonth(month, token: token)
             cache[month] = loaded
             errors.removeValue(forKey: month)
             if selectedDates[month] == nil {

@@ -468,7 +468,7 @@ enum AttendanceWidgetBridge {
     }
 }
 
-struct AttendanceMonth: Decodable {
+struct AttendanceMonth: Codable {
     let month: String
     let startTime: String?
     let endTime: String?
@@ -476,7 +476,7 @@ struct AttendanceMonth: Decodable {
     let days: [AttendanceDay]
 }
 
-struct AttendanceDay: Decodable, Identifiable {
+struct AttendanceDay: Codable, Identifiable {
     let date: String
     let checkIn: String?
     let checkOut: String?
@@ -490,7 +490,7 @@ struct AttendanceDay: Decodable, Identifiable {
     var id: String { date }
 }
 
-struct AttendancePunch: Decodable, Identifiable {
+struct AttendancePunch: Codable, Identifiable {
     let id: String
     let punchedAt: String
     let source: String

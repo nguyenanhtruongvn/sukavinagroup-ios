@@ -46,6 +46,8 @@ final class SessionStore: ObservableObject {
     private let knownArticlesKey = "known-native-article-ids"
     private let knownAttendancePrefix = "known-native-attendance-ids-"
     private let localAttendanceNotificationsPrefix = "local-native-attendance-notifications-"
+    private let attendanceMonthCachePrefix = "native-attendance-month-"
+    private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
@@ -57,6 +59,41 @@ final class SessionStore: ObservableObject {
     private var lastPathStatus: NWPath.Status?
     private var lastPathWasCellular: Bool?
     private var foregroundRefreshTask: Task<Void, Never>?
+
+    func cachedAttendanceMonth(_ month: String) -> AttendanceMonth? {
+        guard let cacheKey = attendanceMonthCacheKey(month),
+              let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        return try? JSONDecoder().decode(AttendanceMonth.self, from: data)
+    }
+
+    func loadAttendanceMonth(_ month: String, token: String) async throws -> AttendanceMonth {
+        do {
+            let loaded: AttendanceMonth = try await APIClient.shared.request(
+                "me/attendance?month=\(month)", token: token
+            )
+            saveAttendanceMonth(loaded, for: month)
+            return loaded
+        } catch {
+            if let cached = cachedAttendanceMonth(month) { return cached }
+            throw error
+        }
+    }
+
+    private func attendanceMonthCacheKey(_ month: String) -> String? {
+        let employeeCode = profile?.employeeCode.nilIfEmpty
+            ?? dashboard?.employeeCode.nilIfEmpty
+            ?? UserDefaults.standard.string(forKey: attendanceMonthCacheOwnerKey)?.nilIfEmpty
+        guard let employeeCode else { return nil }
+        return attendanceMonthCachePrefix + employeeCode + "-" + month
+    }
+
+    private func saveAttendanceMonth(_ month: AttendanceMonth, for keyMonth: String) {
+        guard let cacheKey = attendanceMonthCacheKey(keyMonth),
+              let employeeCode = profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty,
+              let data = try? JSONEncoder().encode(month) else { return }
+        UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
+        UserDefaults.standard.set(data, forKey: cacheKey)
+    }
 
     func restore() async {
         startNetworkMonitoring()
@@ -882,4 +919,8 @@ final class SessionStore: ObservableObject {
     func clearForgotPasswordError() {
         forgotPasswordError = nil
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }
