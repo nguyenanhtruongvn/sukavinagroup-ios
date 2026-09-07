@@ -563,9 +563,6 @@ struct RequestComposer: View {
             return (shiftEnd.addingTimeInterval(TimeInterval(-durationMinutes * 60)), shiftEnd)
         case .overtime:
             return (shiftEnd, shiftEnd.addingTimeInterval(TimeInterval(durationMinutes * 60)))
-        case .leave:
-            let leaveEnd = scheduledAttendanceTime(workEndTime, on: calendar.startOfDay(for: to), fallbackHour: 16, fallbackMinute: 30)
-            return (shiftStart, leaveEnd)
         default:
             return (from, to)
         }
@@ -582,7 +579,7 @@ struct RequestComposer: View {
     private var submissionDates: (from: Date, to: Date) {
         let calendar = Calendar.current
         switch kind {
-        case .leave, .late, .early, .overtime:
+        case .late, .early, .overtime:
             return scheduledRequestDates
         default:
             return (from, to)
@@ -799,17 +796,7 @@ struct RequestComposer: View {
                         requestTimeRange(title: "Thời gian ra cổng", icon: "calendar.badge.clock")
                     }
                     if kind == .leave {
-                    VStack(alignment: .leading, spacing: 12) {
-                        composerLabel("Thời gian", icon: "calendar")
-                        VStack(spacing: 0) {
-                            dateOnlyRow("Từ ngày", selection: $from)
-                            dateOnlyRow("Đến ngày", selection: $to, range: from...)
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(AppTheme.card)
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    }
+                        requestTimeRange(title: "Thời gian nghỉ phép", icon: "calendar.badge.clock")
                     }
 
                     if kind == .late || kind == .early {
