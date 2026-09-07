@@ -538,6 +538,7 @@ struct RequestComposer: View {
     @State private var durationUnit: DurationUnit = .minutes
     @State private var reasonEditorHeight: CGFloat = 150
     @State private var reasonFocused = false
+    @State private var leaveScheduleWasInitialized = false
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
@@ -550,6 +551,14 @@ struct RequestComposer: View {
     private var durationDescription: String { "\(durationValue) \(durationUnit.title.lowercased())" }
     private var workStartTime: String? { session.dashboard?.workStartTime }
     private var workEndTime: String? { session.dashboard?.workEndTime }
+
+    private func applyInitialLeaveSchedule() {
+        guard kind == .leave, !leaveScheduleWasInitialized else { return }
+        let leaveDay = Calendar.current.startOfDay(for: from)
+        from = scheduledAttendanceTime(workStartTime, on: leaveDay, fallbackHour: 7, fallbackMinute: 30)
+        to = scheduledAttendanceTime(workEndTime, on: leaveDay, fallbackHour: 16, fallbackMinute: 30)
+        leaveScheduleWasInitialized = true
+    }
 
     private var scheduledRequestDates: (from: Date, to: Date) {
         let calendar = Calendar.current
@@ -899,10 +908,14 @@ struct RequestComposer: View {
             .background(AppTheme.ink.ignoresSafeArea())
             .dynamicTypeSize(.xSmall ... .accessibility1)
             .onAppear {
-                guard kind == .leave else { return }
-                let leaveDay = Calendar.current.startOfDay(for: from)
-                from = scheduledAttendanceTime(workStartTime, on: leaveDay, fallbackHour: 7, fallbackMinute: 30)
-                to = scheduledAttendanceTime(workEndTime, on: leaveDay, fallbackHour: 16, fallbackMinute: 30)
+                applyInitialLeaveSchedule()
+            }
+            .onChange(of: kind) { _, nextKind in
+                if nextKind == .leave {
+                    applyInitialLeaveSchedule()
+                } else {
+                    leaveScheduleWasInitialized = false
+                }
             }
             .task(id: kind.rawValue + String(attendanceDate.timeIntervalSince1970)) {
                 guard kind == .attendance, let token = session.token else { return }
