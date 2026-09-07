@@ -785,12 +785,12 @@ struct RequestComposer: View {
                     }
                     }
 
-                    if kind == .late {
+                    if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
-                            composerLabel("Ngày đi trễ", icon: "calendar")
+                            composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
                             DatePicker("Ngày xảy ra", selection: $from, displayedComponents: .date)
                                 .datePickerStyle(.compact)
-                            Text("Chọn đúng ngày xảy ra việc đi trễ trước khi gửi đơn.")
+                            Text("Chọn đúng ngày xảy ra việc \(kind == .late ? \"đi trễ\" : \"về sớm\") trước khi gửi đơn.")
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)
                         }
