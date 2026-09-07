@@ -542,6 +542,7 @@ struct RequestComposer: View {
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
     private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
+    private var singleDayEventName: String { kind == .late ? "đi trễ" : "về sớm" }
     private var compactRequestKinds: [EmployeeRequestKind] {
         EmployeeRequestKind.allCases.filter { $0 != .attendance }
     }
@@ -790,7 +791,7 @@ struct RequestComposer: View {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
                             DatePicker("Ngày xảy ra", selection: $from, displayedComponents: .date)
                                 .datePickerStyle(.compact)
-                            Text("Chọn đúng ngày xảy ra việc \(kind == .late ? \"đi trễ\" : \"về sớm\") trước khi gửi đơn.")
+                            Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)
                         }
