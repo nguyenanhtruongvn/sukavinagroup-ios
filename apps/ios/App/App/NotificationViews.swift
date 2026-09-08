@@ -161,6 +161,9 @@ struct NotificationsView: View {
             .scrollContentBackground(.hidden)
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .top) {
+                if confirmClear { clearConfirmationBanner }
+            }
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task {
                     hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? [])
@@ -173,7 +176,6 @@ struct NotificationsView: View {
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
-                .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
                 .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification) }
@@ -219,6 +221,47 @@ struct NotificationsView: View {
         }) else { return }
         notificationRouter.consume(route)
         await open(item)
+    }
+
+    private var clearConfirmationBanner: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "trash.fill")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(width: 38, height: 38)
+                    .background(AppTheme.red)
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Xóa tất cả thông báo?").font(.headline)
+                    Text("Thao tác này sẽ xóa toàn bộ thông báo đang hiển thị.")
+                        .font(.caption).foregroundStyle(AppTheme.muted)
+                }
+                Spacer(minLength: 0)
+                Button { withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false } } label: {
+                    Image(systemName: "xmark").font(.caption.bold()).foregroundStyle(AppTheme.muted)
+                        .frame(width: 30, height: 30).background(Color.primary.opacity(0.07)).clipShape(Circle())
+                }
+            }
+            HStack(spacing: 10) {
+                Button("Hủy") { withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false } }
+                    .buttonStyle(NotificationConfirmationButtonStyle(prominent: false))
+                Button("Xóa tất cả", role: .destructive) {
+                    withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false }
+                    Task { await clearAll() }
+                }
+                .buttonStyle(NotificationConfirmationButtonStyle(prominent: true))
+            }
+        }
+        .padding(16)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(AppTheme.red.opacity(0.22), lineWidth: 1) }
+        .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
+        .padding(.horizontal, 16)
+        .padding(.top, 54)
+        .transition(.move(edge: .top).combined(with: .opacity))
+        .zIndex(2)
     }
 
     private func clearAll() async {
@@ -418,6 +461,22 @@ struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
     var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
+}
+
+@available(iOS 17.0, *)
+private struct NotificationConfirmationButtonStyle: ButtonStyle {
+    let prominent: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.subheadline.bold())
+            .foregroundStyle(prominent ? .white : AppTheme.muted)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 11)
+            .background(prominent ? AppTheme.red : Color.primary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+            .opacity(configuration.isPressed ? 0.7 : 1)
+    }
 }
 
 @available(iOS 17.0, *)
