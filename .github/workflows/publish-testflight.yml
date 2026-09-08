@@ -122,7 +122,7 @@ jobs:
           EXPORT_PATH="$RUNNER_TEMP/export"
           EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
           mkdir -p "$EXPORT_PATH"
-          /usr/libexec/PlistBuddy -c 'Add :method string app-store' "$EXPORT_OPTIONS"
+          /usr/libexec/PlistBuddy -c 'Add :method string app-store-connect' "$EXPORT_OPTIONS"
           /usr/libexec/PlistBuddy -c 'Add :signingStyle string manual' "$EXPORT_OPTIONS"
           /usr/libexec/PlistBuddy -c 'Add :teamID string '"$IOS_TEAM_ID" "$EXPORT_OPTIONS"
           /usr/libexec/PlistBuddy -c 'Add :provisioningProfiles dict' "$EXPORT_OPTIONS"
@@ -132,8 +132,8 @@ jobs:
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS"
-          IPA_PATH="$EXPORT_PATH/Sukavina.ipa"
-          test -f "$IPA_PATH"
+          IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
+          test -n "$IPA_PATH" && test -f "$IPA_PATH"
           echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
       - name: Upload build to App Store Connect
