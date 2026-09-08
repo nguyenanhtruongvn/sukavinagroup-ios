@@ -17,7 +17,10 @@ enum APNsRegistration {
     private static let deviceTokenKey = "net.sukavinagroup.apns-device-token"
 
     static var deviceToken: String? {
-        UserDefaults.standard.string(forKey: deviceTokenKey)?.nilIfEmpty
+        guard let value = UserDefaults.standard.string(forKey: deviceTokenKey), !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 
     @MainActor
