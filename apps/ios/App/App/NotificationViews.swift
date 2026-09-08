@@ -224,42 +224,33 @@ struct NotificationsView: View {
     }
 
     private var clearConfirmationBanner: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "trash.fill")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .background(AppTheme.red)
-                    .clipShape(Circle())
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Xóa tất cả thông báo?").font(.headline)
-                    Text("Thao tác này sẽ xóa toàn bộ thông báo đang hiển thị.")
-                        .font(.caption).foregroundStyle(AppTheme.muted)
-                }
-                Spacer(minLength: 0)
-                Button { withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false } } label: {
-                    Image(systemName: "xmark").font(.caption.bold()).foregroundStyle(AppTheme.muted)
-                        .frame(width: 30, height: 30).background(Color.primary.opacity(0.07)).clipShape(Circle())
-                }
+        VStack(spacing: 10) {
+            Text("Xóa tất cả thông báo?")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.primary.opacity(0.78))
+            Button("Xóa tất cả", role: .destructive) {
+                withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false }
+                Task { await clearAll() }
             }
-            HStack(spacing: 10) {
-                Button("Hủy") { withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false } }
-                    .buttonStyle(NotificationConfirmationButtonStyle(prominent: false))
-                Button("Xóa tất cả", role: .destructive) {
-                    withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false }
-                    Task { await clearAll() }
-                }
-                .buttonStyle(NotificationConfirmationButtonStyle(prominent: true))
-            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(AppTheme.red)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color.primary.opacity(0.07))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .padding(16)
+        .padding(14)
+        .frame(width: 224)
         .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(AppTheme.red.opacity(0.22), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
-        .padding(.horizontal, 16)
-        .padding(.top, 54)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(alignment: .top) {
+            NotificationConfirmationPointer()
+                .fill(.regularMaterial)
+                .frame(width: 22, height: 12)
+                .offset(y: -10)
+        }
+        .shadow(color: .black.opacity(0.15), radius: 14, y: 6)
+        .padding(.top, 112)
         .transition(.move(edge: .top).combined(with: .opacity))
         .zIndex(2)
     }
@@ -463,19 +454,14 @@ struct RequestNotificationDetail: View {
     var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
 }
 
-@available(iOS 17.0, *)
-private struct NotificationConfirmationButtonStyle: ButtonStyle {
-    let prominent: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.subheadline.bold())
-            .foregroundStyle(prominent ? .white : AppTheme.muted)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 11)
-            .background(prominent ? AppTheme.red : Color.primary.opacity(0.08))
-            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .opacity(configuration.isPressed ? 0.7 : 1)
+private struct NotificationConfirmationPointer: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
     }
 }
 
