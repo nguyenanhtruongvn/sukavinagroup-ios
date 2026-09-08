@@ -478,10 +478,9 @@ final class SessionStore: ObservableObject {
                 ), at: 0)
                 persistLocalAttendanceNotifications(employeeCode)
             }
-            NotificationManager.shared.notifyAttendance(
-                isCheckIn: isCheckIn,
-                time: attendanceNotificationTime(newest.punchedAt)
-            )
+            // Attendance events already arrive as APNs alerts from the server.
+            // Keep the in-app fallback above, but do not show a second local
+            // banner when the dashboard refreshes after the user opens it.
         }
         defaults.set(records.map(\.id), forKey: key)
     }
