@@ -190,7 +190,7 @@ final class SessionStore: ObservableObject {
                 self.startSessionRefresh()
                 return
             }
-            await self.refreshDashboard(refreshRequestNotificationCount: false)
+            await self.refreshDashboard(shouldRefreshRequestNotificationCount: false)
             _ = await notificationCountRefresh
             self.startRealTimeUpdates()
             self.startSessionRefresh()
@@ -437,7 +437,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshDashboard(refreshRequestNotificationCount: Bool = true) async {
+    func refreshDashboard(shouldRefreshRequestNotificationCount: Bool = true) async {
         guard let token, profile?.accountType != "CANTEEN" else { return }
         do {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
@@ -446,7 +446,7 @@ final class SessionStore: ObservableObject {
             dashboard = fresh
             attendanceRevision &+= 1
             AttendanceWidgetBridge.update(from: fresh)
-            if refreshRequestNotificationCount {
+            if shouldRefreshRequestNotificationCount {
                 await refreshRequestNotificationCount()
             }
         } catch is CancellationError {
