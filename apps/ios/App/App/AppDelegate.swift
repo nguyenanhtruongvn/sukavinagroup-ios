@@ -13,6 +13,29 @@ extension Notification.Name {
     static let sukavinaAPNsTokenUpdated = Notification.Name("net.sukavinagroup.apns-token-updated")
 }
 
+struct APNsNotificationRoute: Equatable {
+    let type: String
+    let referenceID: String?
+}
+
+/// Keeps an APNs tap available while SwiftUI restores a signed-in session.
+final class APNsNotificationRouter: ObservableObject {
+    @Published private(set) var pendingRoute: APNsNotificationRoute?
+
+    func handle(userInfo: [AnyHashable: Any]) {
+        guard let type = userInfo["type"] as? String, !type.isEmpty else { return }
+        let referenceID = (userInfo["requestId"] as? String) ?? (userInfo["bookingId"] as? String)
+        DispatchQueue.main.async { [weak self] in
+            self?.pendingRoute = APNsNotificationRoute(type: type, referenceID: referenceID)
+        }
+    }
+
+    func consume(_ route: APNsNotificationRoute) {
+        guard pendingRoute == route else { return }
+        pendingRoute = nil
+    }
+}
+
 enum APNsRegistration {
     private static let deviceTokenKey = "net.sukavinagroup.apns-device-token"
 
@@ -55,6 +78,7 @@ enum APNsRegistration {
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var window: UIWindow?
+    private let notificationRouter = APNsNotificationRouter()
 
     func application(
         _ application: UIApplication,
@@ -73,7 +97,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
         if #available(iOS 17.0, *) {
-            window.rootViewController = UIHostingController(rootView: SukavinaAppView())
+            window.rootViewController = UIHostingController(
+                rootView: SukavinaAppView().environmentObject(notificationRouter)
+            )
         } else {
             window.rootViewController = LegacyPortalViewController()
         }
@@ -88,6 +114,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound, .badge])
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        notificationRouter.handle(userInfo: response.notification.request.content.userInfo)
+        completionHandler()
     }
 
     func application(

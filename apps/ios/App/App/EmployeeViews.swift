@@ -1481,6 +1481,7 @@ private struct MeetingSummaryCard: View {
 @available(iOS 17.0, *)
 struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     @AppStorage("sukavina.showTabLabels") private var showTabLabels = true
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
@@ -1522,6 +1523,9 @@ struct EmployeePortalView: View {
         .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
+        .onChange(of: notificationRouter.pendingRoute) { _, route in
+            if route != nil { selectedTab = 3 }
+        }
     }
 
 

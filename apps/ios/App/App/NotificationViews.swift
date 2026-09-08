@@ -23,6 +23,7 @@ struct UpdateCount: Decodable { let count: Int }
 @available(iOS 17.0, *)
 struct NotificationsView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     @StateObject private var requestStore = EmployeeRequestStore()
     @State private var requestNotifications: [RequestNotification] = []
     @State private var reviewing: EmployeeRequest?
@@ -161,10 +162,17 @@ struct NotificationsView: View {
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
-                .task { hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? []); await loadRequestNotifications() }
-                .onAppear { Task { await loadRequestNotifications() } }
+                .task {
+                    hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? [])
+                    await loadRequestNotifications()
+                    await openPendingAPNsRouteIfNeeded()
+                }
+                .onAppear { Task { await loadRequestNotifications(); await openPendingAPNsRouteIfNeeded() } }
                 .onChange(of: session.requestUnreadCount) { _, _ in Task { await loadRequestNotifications() } }
                 .onChange(of: session.attendanceRevision) { _, _ in Task { await loadRequestNotifications() } }
+                .onChange(of: notificationRouter.pendingRoute) { _, _ in
+                    Task { await openPendingAPNsRouteIfNeeded() }
+                }
                 .confirmationDialog("Xóa tất cả thông báo?", isPresented: $confirmClear, titleVisibility: .visible) { Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }; Button("Hủy", role: .cancel) {} }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
@@ -200,6 +208,17 @@ struct NotificationsView: View {
             }
         }
         await loadRequestNotifications()
+    }
+
+    private func openPendingAPNsRouteIfNeeded() async {
+        guard let route = notificationRouter.pendingRoute, session.token != nil else { return }
+        if requestNotifications.isEmpty { await loadRequestNotifications() }
+        guard let item = requestNotifications.first(where: {
+            guard $0.type == route.type else { return false }
+            return route.referenceID == nil || $0.requestId == route.referenceID
+        }) else { return }
+        notificationRouter.consume(route)
+        await open(item)
     }
 
     private func clearAll() async {
