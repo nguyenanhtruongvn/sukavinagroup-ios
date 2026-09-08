@@ -19,7 +19,7 @@ jobs:
       MARKETING_VERSION: 1.0.0
       APP_BUNDLE_ID: net.sukavinagroup.user
       WIDGET_BUNDLE_ID: net.sukavinagroup.user.AttendanceWidget
-      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+      IOS_TEAM_ID: TZWRHJ9UYN
       IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
       IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
       IOS_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
@@ -37,7 +37,6 @@ jobs:
         run: |
           set -euo pipefail
           required=(
-            IOS_TEAM_ID
             IOS_DISTRIBUTION_CERTIFICATE_BASE64
             IOS_DISTRIBUTION_CERTIFICATE_PASSWORD
             IOS_APPSTORE_PROFILE_BASE64
