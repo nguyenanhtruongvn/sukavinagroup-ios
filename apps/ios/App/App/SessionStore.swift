@@ -59,6 +59,25 @@ final class SessionStore: ObservableObject {
     private var lastPathStatus: NWPath.Status?
     private var lastPathWasCellular: Bool?
     private var foregroundRefreshTask: Task<Void, Never>?
+    private var apnsTokenObserver: NSObjectProtocol?
+
+    init() {
+        apnsTokenObserver = NotificationCenter.default.addObserver(
+            forName: .sukavinaAPNsTokenUpdated,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.syncAPNsToken()
+            }
+        }
+    }
+
+    deinit {
+        if let apnsTokenObserver {
+            NotificationCenter.default.removeObserver(apnsTokenObserver)
+        }
+    }
 
     func cachedAttendanceMonth(_ month: String) -> AttendanceMonth? {
         guard let cacheKey = attendanceMonthCacheKey(month),
@@ -554,6 +573,31 @@ final class SessionStore: ObservableObject {
             passwordChangedAt: nil
         )
         if let profile { SessionCache.save(profile: profile) }
+        Task { @MainActor [weak self] in
+            await APNsRegistration.requestAuthorizationAndRegister()
+            await self?.syncAPNsToken()
+        }
+    }
+
+    private func syncAPNsToken() async {
+        guard let token,
+              let deviceToken = APNsRegistration.deviceToken,
+              let employeeCode = profile?.employeeCode.nilIfEmpty else { return }
+
+        let uploadedKey = "net.sukavinagroup.apns-token-uploaded-\(employeeCode)"
+        guard UserDefaults.standard.string(forKey: uploadedKey) != deviceToken else { return }
+
+        do {
+            let _: MessageResponse = try await APIClient.shared.request(
+                "auth/push-token",
+                method: "POST",
+                token: token,
+                body: PushTokenRegistrationBody(token: deviceToken, platform: "ios")
+            )
+            UserDefaults.standard.set(deviceToken, forKey: uploadedKey)
+        } catch {
+            ConnectionDiagnostics.record("APNs token upload failed: \(error.localizedDescription)")
+        }
     }
 
     private func refreshSession() async throws {

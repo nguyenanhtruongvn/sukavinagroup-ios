@@ -9,6 +9,46 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
+extension Notification.Name {
+    static let sukavinaAPNsTokenUpdated = Notification.Name("net.sukavinagroup.apns-token-updated")
+}
+
+enum APNsRegistration {
+    private static let deviceTokenKey = "net.sukavinagroup.apns-device-token"
+
+    static var deviceToken: String? {
+        UserDefaults.standard.string(forKey: deviceTokenKey)?.nilIfEmpty
+    }
+
+    @MainActor
+    static func requestAuthorizationAndRegister() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+
+        let isAuthorized: Bool
+        switch settings.authorizationStatus {
+        case .authorized, .provisional, .ephemeral:
+            isAuthorized = true
+        case .notDetermined:
+            isAuthorized = (try? await center.requestAuthorization(options: [.alert, .badge, .sound])) ?? false
+        case .denied:
+            isAuthorized = false
+        @unknown default:
+            isAuthorized = false
+        }
+
+        guard isAuthorized else { return }
+        UIApplication.shared.registerForRemoteNotifications()
+    }
+
+    static func store(deviceToken: Data) {
+        let value = deviceToken.map { String(format: "%02x", $0) }.joined()
+        guard !value.isEmpty, value != self.deviceToken else { return }
+        UserDefaults.standard.set(value, forKey: deviceTokenKey)
+        NotificationCenter.default.post(name: .sukavinaAPNsTokenUpdated, object: nil)
+    }
+}
+
 @UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var window: UIWindow?
@@ -45,6 +85,20 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         completionHandler([.banner, .sound, .badge])
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        APNsRegistration.store(deviceToken: deviceToken)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        ConnectionDiagnostics.record("APNs registration failed: \(error.localizedDescription)")
     }
 }
 
