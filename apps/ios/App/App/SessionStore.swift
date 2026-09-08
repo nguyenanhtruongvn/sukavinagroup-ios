@@ -182,12 +182,16 @@ final class SessionStore: ObservableObject {
                 ConnectionDiagnostics.record("Foreground session refresh deferred: \(error.localizedDescription)")
             }
             guard !Task.isCancelled else { return }
+            // Fetch the tab/icon count immediately. Previously it waited for
+            // the profile and dashboard refreshes to finish first.
+            async let notificationCountRefresh: Void = self.refreshRequestNotificationCount()
             await self.refreshProfile()
             if self.profile?.accountType == "CANTEEN" {
                 self.startSessionRefresh()
                 return
             }
-            await self.refreshDashboard()
+            await self.refreshDashboard(refreshRequestNotificationCount: false)
+            _ = await notificationCountRefresh
             self.startRealTimeUpdates()
             self.startSessionRefresh()
         }
@@ -433,7 +437,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshDashboard() async {
+    func refreshDashboard(refreshRequestNotificationCount: Bool = true) async {
         guard let token, profile?.accountType != "CANTEEN" else { return }
         do {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
@@ -442,7 +446,9 @@ final class SessionStore: ObservableObject {
             dashboard = fresh
             attendanceRevision &+= 1
             AttendanceWidgetBridge.update(from: fresh)
-            await refreshRequestNotificationCount()
+            if refreshRequestNotificationCount {
+                await refreshRequestNotificationCount()
+            }
         } catch is CancellationError {
             // URLSession cancellation is a normal task-lifecycle event, not
             // evidence that the device has lost Internet access.
@@ -548,6 +554,7 @@ final class SessionStore: ObservableObject {
         AttendanceWidgetBridge.clear()
         unreadCount = 0
         requestUnreadCount = 0
+        syncApplicationBadge()
         state = .signedOut
     }
 
@@ -635,7 +642,16 @@ final class SessionStore: ObservableObject {
     func refreshRequestNotificationCount() async {
         guard let token,
               let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) else { return }
-        requestUnreadCount = values.filter { !$0.read }.count
+        updateRequestUnreadCount(values.filter { !$0.read }.count)
+    }
+
+    func updateRequestUnreadCount(_ value: Int) {
+        requestUnreadCount = max(0, value)
+        syncApplicationBadge()
+    }
+
+    private func syncApplicationBadge() {
+        UIApplication.shared.applicationIconBadgeNumber = max(0, unreadCount + requestUnreadCount)
     }
 
     func dismissError() {
@@ -742,7 +758,7 @@ final class SessionStore: ObservableObject {
         knownArticleIDs.formUnion(items.map(\.id))
         persistKnownArticles()
         unreadCount = 0
-        NotificationManager.shared.clearBadge()
+        syncApplicationBadge()
     }
 
     private func loadKnownArticles() {
@@ -759,7 +775,8 @@ final class SessionStore: ObservableObject {
         let newItems = items.filter { !knownArticleIDs.contains($0.id) }
         if !newItems.isEmpty {
             unreadCount += newItems.count
-            NotificationManager.shared.notifyNewArticles(newItems)
+            syncApplicationBadge()
+            NotificationManager.shared.notifyNewArticles(newItems, badge: unreadCount + requestUnreadCount)
             knownArticleIDs.formUnion(newItems.map(\.id))
             persistKnownArticles()
         }

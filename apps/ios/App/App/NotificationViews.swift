@@ -187,7 +187,7 @@ struct NotificationsView: View {
         guard let token = session.token else { return }
         if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
             requestNotifications = session.mergedRequestNotifications(values)
-            session.requestUnreadCount = requestNotifications.filter { !$0.read }.count
+            session.updateRequestUnreadCount(requestNotifications.filter { !$0.read }.count)
             await requestStore.load(token)
         }
     }
@@ -273,7 +273,7 @@ struct NotificationsView: View {
         withAnimation(.easeInOut(duration: 0.28)) {
             requestNotifications.removeAll { $0.id == item.id }
         }
-        session.requestUnreadCount = requestNotifications.filter { !$0.read }.count
+        session.updateRequestUnreadCount(requestNotifications.filter { !$0.read }.count)
         let _: UpdateCount? = try? await APIClient.shared.request(
             "me/requests/notifications/\(item.id)", method: "DELETE", token: token
         )

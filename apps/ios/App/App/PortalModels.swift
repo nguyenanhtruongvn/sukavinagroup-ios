@@ -352,13 +352,13 @@ final class NotificationManager {
         _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
     }
 
-    func notifyNewArticles(_ items: [ContentItem]) {
+    func notifyNewArticles(_ items: [ContentItem], badge: Int) {
         for item in items.prefix(3) {
             let content = UNMutableNotificationContent()
             content.title = "Bài viết nội bộ mới"
             content.body = item.title
             content.sound = .default
-            content.badge = NSNumber(value: items.count)
+            content.badge = NSNumber(value: badge)
             content.userInfo = ["articleId": item.id]
             let request = UNNotificationRequest(
                 identifier: "article-\(item.id)",
