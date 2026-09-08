@@ -161,9 +161,6 @@ struct NotificationsView: View {
             .scrollContentBackground(.hidden)
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
-            .overlay(alignment: .top) {
-                if confirmClear { clearConfirmationBanner }
-            }
                 .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
                 .task {
                     hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? [])
@@ -179,6 +176,33 @@ struct NotificationsView: View {
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
                 .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification) }
+        }
+        // Use the system confirmation UI: the iOS 26+ action sheet and the
+        // compatible alert presentation on earlier iOS releases.
+        .confirmationDialog(
+            "Xóa tất cả thông báo?",
+            isPresented: Binding(
+                get: { isIOS26OrLater && confirmClear },
+                set: { confirmClear = $0 }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }
+            Button("Hủy", role: .cancel) {}
+        } message: {
+            Text("Tất cả thông báo trong danh sách sẽ bị xóa.")
+        }
+        .alert(
+            "Xóa tất cả thông báo?",
+            isPresented: Binding(
+                get: { !isIOS26OrLater && confirmClear },
+                set: { confirmClear = $0 }
+            )
+        ) {
+            Button("Hủy", role: .cancel) {}
+            Button("Xóa tất cả", role: .destructive) { Task { await clearAll() } }
+        } message: {
+            Text("Tất cả thông báo trong danh sách sẽ bị xóa.")
         }
         .ignoresSafeArea(.container, edges: .bottom)
     }
@@ -223,36 +247,9 @@ struct NotificationsView: View {
         await open(item)
     }
 
-    private var clearConfirmationBanner: some View {
-        VStack(spacing: 10) {
-            Text("Xóa tất cả thông báo?")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.primary.opacity(0.78))
-            Button("Xóa tất cả", role: .destructive) {
-                withAnimation(.easeInOut(duration: 0.2)) { confirmClear = false }
-                Task { await clearAll() }
-            }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(AppTheme.red)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Color.primary.opacity(0.07))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-        .padding(14)
-        .frame(width: 224)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(alignment: .top) {
-            NotificationConfirmationPointer()
-                .fill(.regularMaterial)
-                .frame(width: 22, height: 12)
-                .offset(y: -10)
-        }
-        .shadow(color: .black.opacity(0.15), radius: 14, y: 6)
-        .padding(.top, 112)
-        .transition(.move(edge: .top).combined(with: .opacity))
-        .zIndex(2)
+    private var isIOS26OrLater: Bool {
+        if #available(iOS 26.0, *) { return true }
+        return false
     }
 
     private func clearAll() async {
@@ -452,17 +449,6 @@ struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
     var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
-}
-
-private struct NotificationConfirmationPointer: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        path.closeSubpath()
-        return path
-    }
 }
 
 @available(iOS 17.0, *)

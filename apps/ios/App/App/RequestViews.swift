@@ -990,9 +990,12 @@ struct RequestComposer: View {
     @ViewBuilder
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
         if usesCompactDateRows {
-            HStack(spacing: 12) {
+            // iOS 18's compact DatePicker has a large intrinsic width. Keeping
+            // the label fixed and removing the flexible spacer prevents
+            // "Bắt đầu" and "Kết thúc" from being truncated on narrow phones.
+            HStack(spacing: 6) {
                 requestDateLabel(title)
-                Spacer(minLength: 8)
+                    .fixedSize(horizontal: true, vertical: false)
                 dateTimePicker(selection: selection, range: range)
                     .fixedSize(horizontal: true, vertical: false)
             }
@@ -1083,9 +1086,9 @@ struct RequestComposer: View {
     @ViewBuilder
     private func dateOnlyRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
         if usesCompactDateRows {
-            HStack(spacing: 12) {
+            HStack(spacing: 6) {
                 leaveDateLabel(title)
-                Spacer(minLength: 8)
+                    .fixedSize(horizontal: true, vertical: false)
                 dateOnlyPicker(selection: selection, range: range)
                     .fixedSize(horizontal: true, vertical: false)
             }
