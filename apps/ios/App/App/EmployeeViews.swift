@@ -799,7 +799,7 @@ private struct MeetingBookingSheet: View {
     @State private var durationUnit = "phút"
     @State private var query = ""
     @State private var departmentQuery = ""
-    @State private var selectedDepartment: String?
+    @State private var selectedDepartments = Set<String>()
     @State private var selected = Set<String>()
     @State private var inviteesError: String?
     @State private var showStartPicker = false
@@ -813,9 +813,9 @@ private struct MeetingBookingSheet: View {
 
     private var people: [MeetingInvitee] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty || selectedDepartment != nil else { return [] }
+        guard !trimmedQuery.isEmpty || !selectedDepartments.isEmpty else { return [] }
         return session.meetingInvitees.filter {
-            (selectedDepartment == nil || $0.department.caseInsensitiveCompare(selectedDepartment!) == .orderedSame)
+            (selectedDepartments.isEmpty || selectedDepartments.contains($0.department))
                 && (trimmedQuery.isEmpty
                     || $0.fullName.localizedCaseInsensitiveContains(trimmedQuery)
                     || $0.employeeCode.localizedCaseInsensitiveContains(trimmedQuery))
@@ -839,14 +839,14 @@ private struct MeetingBookingSheet: View {
     }
 
     private var displayedDepartments: [String] {
-        guard let selectedDepartment else { return matchingDepartments }
-        return ([selectedDepartment] + matchingDepartments.filter { $0 != selectedDepartment })
+        Array(selectedDepartments).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+            + matchingDepartments.filter { !selectedDepartments.contains($0) }
     }
 
     private var unselectedDepartmentInvitees: [MeetingInvitee] {
-        guard let selectedDepartment else { return [] }
+        guard !selectedDepartments.isEmpty else { return [] }
         return session.meetingInvitees.filter {
-            $0.department.caseInsensitiveCompare(selectedDepartment) == .orderedSame && !selected.contains($0.id)
+            selectedDepartments.contains($0.department) && !selected.contains($0.id)
         }
     }
 
@@ -855,15 +855,13 @@ private struct MeetingBookingSheet: View {
     }
 
     private var reservesPeopleResultRow: Bool {
-        focusedInviteeField == .people
-            || !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || selectedDepartment != nil
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !selectedDepartments.isEmpty
     }
 
     private var reservesDepartmentResultRow: Bool {
-        focusedInviteeField == .departments
-            || !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || selectedDepartment != nil
+        !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !selectedDepartments.isEmpty
     }
 
     private var durationMinutes: Int {
@@ -915,7 +913,7 @@ private struct MeetingBookingSheet: View {
                     .onChange(of: selected) { _, _ in
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
-                    .onChange(of: selectedDepartment) { _, _ in
+                    .onChange(of: selectedDepartments) { _, _ in
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
                 }
@@ -1109,14 +1107,14 @@ private struct MeetingBookingSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
-            departmentSearchSection
+            departmentSearchResults
 
-            if let selectedDepartment, !unselectedDepartmentInvitees.isEmpty {
+            if !selectedDepartments.isEmpty, !unselectedDepartmentInvitees.isEmpty {
                 Button {
                     selected.formUnion(unselectedDepartmentInvitees.map(\.id))
                 } label: {
                     Label(
-                        "Mời tất cả \(unselectedDepartmentInvitees.count) người thuộc \(selectedDepartment)",
+                        "Mời tất cả \(unselectedDepartmentInvitees.count) người thuộc \(selectedDepartments.count) phòng ban",
                         systemImage: "person.3.fill"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -1135,6 +1133,7 @@ private struct MeetingBookingSheet: View {
             }
 
             peopleSearchSection
+            departmentSearchField
 
             if let inviteeLoadError = inviteesError {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1148,7 +1147,7 @@ private struct MeetingBookingSheet: View {
                 }
             }
 
-            if query.isEmpty && selectedDepartment == nil {
+            if query.isEmpty && selectedDepartments.isEmpty {
                 Text("Gõ tên nhân viên hoặc chọn phòng ban để hiển thị danh sách.")
                     .font(.caption)
                     .foregroundStyle(Color(uiColor: .secondaryLabel))
@@ -1213,7 +1212,6 @@ private struct MeetingBookingSheet: View {
                             .foregroundStyle(Color(uiColor: .secondaryLabel))
                     }
                 }
-                .frame(height: 72, alignment: .top)
             }
 
             searchField(
@@ -1226,20 +1224,20 @@ private struct MeetingBookingSheet: View {
         .id("meeting-person-search")
     }
 
-    private var departmentSearchSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var departmentSearchResults: some View {
+        Group {
             if reservesDepartmentResultRow {
                 VStack(alignment: .leading, spacing: 5) {
-                    if selectedDepartment != nil || !matchingDepartments.isEmpty {
+                    if !selectedDepartments.isEmpty || !matchingDepartments.isEmpty {
                         Text("Kết quả phòng ban")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color(uiColor: .secondaryLabel))
 
                         ScrollView(.horizontal, showsIndicators: false) {
                             LazyHStack(spacing: 8) {
-                                if selectedDepartment != nil {
-                                    Button("Tất cả phòng ban") {
-                                        selectedDepartment = nil
+                                if !selectedDepartments.isEmpty {
+                                    Button("Bỏ chọn tất cả") {
+                                        selectedDepartments.removeAll()
                                         query = ""
                                     }
                                     .font(.subheadline.weight(.semibold))
@@ -1251,11 +1249,14 @@ private struct MeetingBookingSheet: View {
                                 }
 
                                 ForEach(displayedDepartments, id: \.self) { department in
-                                    let isSelected = department == selectedDepartment
+                                    let isSelected = selectedDepartments.contains(department)
                                     Button {
-                                        selectedDepartment = department
-                                        departmentQuery = ""
-                                        query = ""
+                                        if isSelected {
+                                            selectedDepartments.remove(department)
+                                        } else {
+                                            selectedDepartments.insert(department)
+                                            query = ""
+                                        }
                                     } label: {
                                         Text(department)
                                             .font(.subheadline.weight(.semibold))
@@ -1271,22 +1272,23 @@ private struct MeetingBookingSheet: View {
                             }
                             .padding(.horizontal, 1)
                         }
-                    } else if !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    } else {
                         Text("Không tìm thấy phòng ban phù hợp.")
                             .font(.caption)
                             .foregroundStyle(Color(uiColor: .secondaryLabel))
                     }
                 }
-                .frame(height: 72, alignment: .top)
             }
-
-            searchField(
-                icon: "building.2",
-                placeholder: "Tìm phòng ban",
-                text: $departmentQuery,
-                focus: .departments
-            )
         }
+    }
+
+    private var departmentSearchField: some View {
+        searchField(
+            icon: "building.2",
+            placeholder: "Tìm phòng ban",
+            text: $departmentQuery,
+            focus: .departments
+        )
         .id("meeting-department-search")
     }
 

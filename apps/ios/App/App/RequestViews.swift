@@ -927,10 +927,6 @@ struct RequestComposer: View {
                     guard focused else { return }
                     keepActiveInputVisible(using: proxy)
                 }
-                .onChange(of: reasonEditorHeight) { _, _ in
-                    guard reasonFocused else { return }
-                    keepActiveInputVisible(using: proxy)
-                }
             }
             .background(AppTheme.ink.ignoresSafeArea())
             .dynamicTypeSize(.xSmall ... .accessibility1)
