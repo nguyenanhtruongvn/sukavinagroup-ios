@@ -56,10 +56,14 @@ struct SukavinaAppView: View {
             }
 
             if session.isOfflineNoticeVisible {
-                OfflineConnectionNotice()
-                    .padding(.top, 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(1)
+                VStack {
+                    OfflineConnectionNotice()
+                        .padding(.top, 8)
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .zIndex(1)
             }
         }
         .task { await session.restore() }

@@ -435,7 +435,10 @@ struct AttendanceRecord: Decodable, Identifiable {
 }
 
 enum AttendanceWidgetBridge {
-    private static let originalAppGroup = "group.net.sukavinagroup.portal"
+    // Must match the App Group entitlement used by both the main app and the
+    // widget extension. A mismatch prevents the widget from receiving the
+    // WiseEye-backed attendance payload and its short-lived widget token.
+    private static let originalAppGroup = "group.net.sukavinagroup.user"
     static let kind = "SukavinaAttendanceWidget"
     private static let stateKey = "attendance-widget-state"
     private static let tokenKey = "attendance-widget-token"

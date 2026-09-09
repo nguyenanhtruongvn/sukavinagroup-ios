@@ -1101,7 +1101,6 @@ private struct MeetingBookingSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
-            peopleSearchSection
             departmentSearchSection
 
             if let selectedDepartment, !unselectedDepartmentInvitees.isEmpty {
@@ -1126,6 +1125,8 @@ private struct MeetingBookingSheet: View {
                         .foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
             }
+
+            peopleSearchSection
 
             if let inviteeLoadError = inviteesError {
                 VStack(alignment: .leading, spacing: 6) {
