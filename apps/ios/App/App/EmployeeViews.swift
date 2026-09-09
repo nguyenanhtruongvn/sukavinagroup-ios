@@ -287,9 +287,23 @@ private struct MeetingRoomCard: View {
     private var isAvailable: Bool { currentBooking == nil }
     private var statusColor: Color { isAvailable ? Color.green : Color.red }
     private var cardBackground: Color {
-        colorScheme == .dark
-            ? Color(red: 0.13, green: 0.15, blue: 0.19)
-            : Color(uiColor: .systemBackground)
+        // Match the notification-card surface on each supported iOS design.
+        if #available(iOS 26.0, *) {
+            return AppTheme.card
+        }
+        return Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
+                : .white
+        })
+    }
+
+    private var unavailableButtonFill: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.07)
+    }
+
+    private var unavailableButtonForeground: Color {
+        Color(uiColor: .label)
     }
 
     private var cardShadow: Color {
@@ -348,8 +362,8 @@ private struct MeetingRoomCard: View {
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 44)
-                .foregroundStyle(.white)
-                .background(isAvailable ? Color.red : Color(uiColor: .label))
+                .foregroundStyle(isAvailable ? .white : unavailableButtonForeground)
+                .background(isAvailable ? Color.red : unavailableButtonFill)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
