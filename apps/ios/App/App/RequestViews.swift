@@ -712,8 +712,7 @@ struct RequestComposer: View {
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
-                ScrollView {
+            ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 7) {
                         ZStack {
@@ -882,29 +881,13 @@ struct RequestComposer: View {
                         }
                         .font(.caption.weight(.medium))
                     }
-                    .id("request-composer-reason")
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, 120)
             }
-                .scrollDismissesKeyboard(.interactively)
-                .onChange(of: reasonFocused) { _, focused in
-                    guard focused else { return }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo("request-composer-reason", anchor: .bottom)
-                        }
-                    }
-                }
-                .onChange(of: reasonEditorHeight) { _, _ in
-                    guard reasonFocused else { return }
-                    DispatchQueue.main.async {
-                        proxy.scrollTo("request-composer-reason", anchor: .bottom)
-                    }
-                }
-            }
+            .scrollDismissesKeyboard(.interactively)
             .background(AppTheme.ink.ignoresSafeArea())
             .dynamicTypeSize(.xSmall ... .accessibility1)
             .onAppear {

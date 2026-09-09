@@ -804,12 +804,6 @@ private struct MeetingBookingSheet: View {
     @State private var inviteesError: String?
     @State private var showStartPicker = false
     @State private var showDurationPicker = false
-    @FocusState private var focusedInviteeField: InviteeSearchField?
-
-    private enum InviteeSearchField: Hashable {
-        case people
-        case departments
-    }
 
     private var people: [MeetingInvitee] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -884,33 +878,17 @@ private struct MeetingBookingSheet: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 18) {
-                            bookingHeader
-                            meetingDetailsCard
-                            inviteesCard
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                        .padding(.bottom, 110)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        bookingHeader
+                        meetingDetailsCard
+                        inviteesCard
                     }
-                    .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: focusedInviteeField) { _, field in
-                        guard let field else { return }
-                        let target = field == .people ? "meeting-person-search" : "meeting-department-search"
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(target, anchor: .center)
-                        }
-                    }
-                    .onChange(of: selected) { _, _ in
-                        guard let field = focusedInviteeField else { return }
-                        let target = field == .people ? "meeting-person-search" : "meeting-department-search"
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            proxy.scrollTo(target, anchor: .center)
-                        }
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 110)
                 }
+                .scrollDismissesKeyboard(.interactively)
             }
             .safeAreaInset(edge: .bottom) {
                 confirmButton
@@ -1207,11 +1185,9 @@ private struct MeetingBookingSheet: View {
             searchField(
                 icon: "magnifyingglass",
                 placeholder: "Tìm tên hoặc mã nhân viên",
-                text: $query,
-                focus: .people
+                text: $query
             )
         }
-        .id("meeting-person-search")
     }
 
     private var departmentSearchSection: some View {
@@ -1262,11 +1238,9 @@ private struct MeetingBookingSheet: View {
             searchField(
                 icon: "building.2",
                 placeholder: "Tìm phòng ban",
-                text: $departmentQuery,
-                focus: .departments
+                text: $departmentQuery
             )
         }
-        .id("meeting-department-search")
     }
 
     private func timeAction(
@@ -1328,15 +1302,13 @@ private struct MeetingBookingSheet: View {
     private func searchField(
         icon: String,
         placeholder: String,
-        text: Binding<String>,
-        focus: InviteeSearchField
+        text: Binding<String>
     ) -> some View {
         HStack(spacing: 9) {
             Image(systemName: icon)
                 .foregroundStyle(Color(uiColor: .secondaryLabel))
             TextField(placeholder, text: text)
                 .font(.subheadline)
-                .focused($focusedInviteeField, equals: focus)
         }
         .padding(.horizontal, 13)
         .frame(height: 46)
