@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import Combine
 import Security
 import UserNotifications
 import Network
@@ -899,6 +900,13 @@ private struct MeetingBookingSheet: View {
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
                     .onChange(of: selectedDepartments) { _, _ in
+                        keepFocusedInviteeFieldVisible(using: proxy)
+                    }
+                    // On iOS 18 the focus update precedes the keyboard safe-area
+                    // update. Reposition once its final frame is known so the
+                    // bottom of the active search field sits above the keyboard.
+                    .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                        guard focusedInviteeField != nil else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
                 }

@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import Combine
 import Security
 import UserNotifications
 import Network
@@ -902,6 +903,7 @@ struct RequestComposer: View {
                                 .stroke(reasonFocused ? AppTheme.red.opacity(0.78) : Color.white.opacity(0.08), lineWidth: 1)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .id("request-reason-editor")
 
                         HStack {
                             Label(cleanReason.count >= 10 ? "Nội dung hợp lệ" : "Tối thiểu 10 ký tự", systemImage: cleanReason.count >= 10 ? "checkmark.circle.fill" : "info.circle")
@@ -925,6 +927,12 @@ struct RequestComposer: View {
                 }
                 .onChange(of: reasonFocused) { _, focused in
                     guard focused else { return }
+                    keepActiveInputVisible(using: proxy)
+                }
+                // iOS 18 reports focus before it applies the keyboard inset.
+                // Re-run the non-animated scroll after that inset changes.
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                    guard focusedInput != nil || reasonFocused else { return }
                     keepActiveInputVisible(using: proxy)
                 }
             }
@@ -1007,7 +1015,7 @@ struct RequestComposer: View {
     private func keepActiveInputVisible(using proxy: ScrollViewProxy) {
         let target: String?
         if reasonFocused {
-            target = "request-reason"
+            target = "request-reason-editor"
         } else {
             switch focusedInput {
             case .some(.destination): target = "request-destination"
