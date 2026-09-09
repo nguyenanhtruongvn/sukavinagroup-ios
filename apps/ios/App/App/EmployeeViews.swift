@@ -804,6 +804,12 @@ private struct MeetingBookingSheet: View {
     @State private var inviteesError: String?
     @State private var showStartPicker = false
     @State private var showDurationPicker = false
+    @FocusState private var focusedInviteeField: InviteeSearchField?
+
+    private enum InviteeSearchField: Hashable {
+        case people
+        case departments
+    }
 
     private var people: [MeetingInvitee] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -848,6 +854,18 @@ private struct MeetingBookingSheet: View {
         selected.count + unselectedDepartmentInvitees.count + 1 <= room.capacity
     }
 
+    private var reservesPeopleResultRow: Bool {
+        focusedInviteeField == .people
+            || !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || selectedDepartment != nil
+    }
+
+    private var reservesDepartmentResultRow: Bool {
+        focusedInviteeField == .departments
+            || !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || selectedDepartment != nil
+    }
+
     private var durationMinutes: Int {
         durationUnit == "giờ" ? durationValue * 60 : durationValue
     }
@@ -878,17 +896,29 @@ private struct MeetingBookingSheet: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        bookingHeader
-                        meetingDetailsCard
-                        inviteesCard
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            bookingHeader
+                            meetingDetailsCard
+                            inviteesCard
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 110)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 110)
+                    .scrollDismissesKeyboard(.interactively)
+                    .onChange(of: focusedInviteeField) { _, field in
+                        guard field != nil else { return }
+                        keepFocusedInviteeFieldVisible(using: proxy)
+                    }
+                    .onChange(of: selected) { _, _ in
+                        keepFocusedInviteeFieldVisible(using: proxy)
+                    }
+                    .onChange(of: selectedDepartment) { _, _ in
+                        keepFocusedInviteeFieldVisible(using: proxy)
+                    }
                 }
-                .scrollDismissesKeyboard(.interactively)
             }
             .safeAreaInset(edge: .bottom) {
                 confirmButton
@@ -1118,8 +1148,8 @@ private struct MeetingBookingSheet: View {
                 }
             }
 
-            if (query.isEmpty && selectedDepartment == nil) || (!query.isEmpty && people.isEmpty) {
-                Text(query.isEmpty ? "Gõ tên nhân viên hoặc chọn phòng ban để hiển thị danh sách." : "Không tìm thấy người phù hợp.")
+            if query.isEmpty && selectedDepartment == nil {
+                Text("Gõ tên nhân viên hoặc chọn phòng ban để hiển thị danh sách.")
                     .font(.caption)
                     .foregroundStyle(Color(uiColor: .secondaryLabel))
             }
@@ -1139,108 +1169,125 @@ private struct MeetingBookingSheet: View {
 
     private var peopleSearchSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !people.isEmpty {
-                Text("Kết quả người tham gia")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            if reservesPeopleResultRow {
+                VStack(alignment: .leading, spacing: 5) {
+                    if !people.isEmpty {
+                        Text("Kết quả người tham gia")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color(uiColor: .secondaryLabel))
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 8) {
-                        ForEach(people) { person in
-                            let isChosen = selected.contains(person.id)
-                            Button {
-                                if isChosen {
-                                    selected.remove(person.id)
-                                } else {
-                                    selected.insert(person.id)
-                                }
-                            } label: {
-                                HStack(spacing: 8) {
-                                    Image(systemName: isChosen ? "checkmark.circle.fill" : "plus.circle")
-                                        .foregroundStyle(isChosen ? Color.red : Color(uiColor: .secondaryLabel))
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(person.fullName)
-                                            .font(.subheadline.weight(.semibold))
-                                            .lineLimit(1)
-                                        Text("\(person.employeeCode) · \(person.department)")
-                                            .font(.caption)
-                                            .foregroundStyle(Color(uiColor: .secondaryLabel))
-                                            .lineLimit(1)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(spacing: 8) {
+                                ForEach(people) { person in
+                                    let isChosen = selected.contains(person.id)
+                                    Button {
+                                        if isChosen { selected.remove(person.id) }
+                                        else { selected.insert(person.id) }
+                                    } label: {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: isChosen ? "checkmark.circle.fill" : "plus.circle")
+                                                .foregroundStyle(isChosen ? Color.red : Color(uiColor: .secondaryLabel))
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(person.fullName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                                Text("\(person.employeeCode) · \(person.department)")
+                                                    .font(.caption)
+                                                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                        .padding(.horizontal, 11)
+                                        .padding(.vertical, 9)
+                                        .frame(maxWidth: 220, alignment: .leading)
+                                        .background(isChosen ? Color.red.opacity(0.10) : Color(uiColor: .secondarySystemBackground))
+                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                     }
+                                    .buttonStyle(.plain)
+                                    .disabled(!isChosen && selected.count + 1 >= room.capacity)
                                 }
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 9)
-                                .frame(maxWidth: 220, alignment: .leading)
-                                .background(isChosen ? Color.red.opacity(0.10) : Color(uiColor: .secondarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
-                            .buttonStyle(.plain)
-                            .disabled(!isChosen && selected.count + 1 >= room.capacity)
+                            .padding(.horizontal, 1)
                         }
+                    } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Không tìm thấy người phù hợp.")
+                            .font(.caption)
+                            .foregroundStyle(Color(uiColor: .secondaryLabel))
                     }
-                    .padding(.horizontal, 1)
                 }
+                .frame(height: 72, alignment: .top)
             }
 
             searchField(
                 icon: "magnifyingglass",
                 placeholder: "Tìm tên hoặc mã nhân viên",
-                text: $query
+                text: $query,
+                focus: .people
             )
         }
+        .id("meeting-person-search")
     }
 
     private var departmentSearchSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if selectedDepartment != nil || !matchingDepartments.isEmpty {
-                Text("Kết quả phòng ban")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            if reservesDepartmentResultRow {
+                VStack(alignment: .leading, spacing: 5) {
+                    if selectedDepartment != nil || !matchingDepartments.isEmpty {
+                        Text("Kết quả phòng ban")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Color(uiColor: .secondaryLabel))
 
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 8) {
-                        if selectedDepartment != nil {
-                            Button("Tất cả phòng ban") {
-                                selectedDepartment = nil
-                                query = ""
-                            }
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(Color(uiColor: .secondarySystemBackground))
-                            .clipShape(Capsule())
-                            .buttonStyle(.plain)
-                        }
-
-                        ForEach(displayedDepartments, id: \.self) { department in
-                            let isSelected = department == selectedDepartment
-                            Button {
-                                selectedDepartment = department
-                                departmentQuery = ""
-                                query = ""
-                            } label: {
-                                Text(department)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            LazyHStack(spacing: 8) {
+                                if selectedDepartment != nil {
+                                    Button("Tất cả phòng ban") {
+                                        selectedDepartment = nil
+                                        query = ""
+                                    }
                                     .font(.subheadline.weight(.semibold))
-                                    .lineLimit(1)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
-                                    .foregroundStyle(isSelected ? .white : Color(uiColor: .label))
-                                    .background(isSelected ? Color.red : Color(uiColor: .secondarySystemBackground))
+                                    .background(Color(uiColor: .secondarySystemBackground))
                                     .clipShape(Capsule())
+                                    .buttonStyle(.plain)
+                                }
+
+                                ForEach(displayedDepartments, id: \.self) { department in
+                                    let isSelected = department == selectedDepartment
+                                    Button {
+                                        selectedDepartment = department
+                                        departmentQuery = ""
+                                        query = ""
+                                    } label: {
+                                        Text(department)
+                                            .font(.subheadline.weight(.semibold))
+                                            .lineLimit(1)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 10)
+                                            .foregroundStyle(isSelected ? .white : Color(uiColor: .label))
+                                            .background(isSelected ? Color.red : Color(uiColor: .secondarySystemBackground))
+                                            .clipShape(Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            .buttonStyle(.plain)
+                            .padding(.horizontal, 1)
                         }
+                    } else if !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Không tìm thấy phòng ban phù hợp.")
+                            .font(.caption)
+                            .foregroundStyle(Color(uiColor: .secondaryLabel))
                     }
-                    .padding(.horizontal, 1)
                 }
+                .frame(height: 72, alignment: .top)
             }
 
             searchField(
                 icon: "building.2",
                 placeholder: "Tìm phòng ban",
-                text: $departmentQuery
+                text: $departmentQuery,
+                focus: .departments
             )
         }
+        .id("meeting-department-search")
     }
 
     private func timeAction(
@@ -1302,18 +1349,37 @@ private struct MeetingBookingSheet: View {
     private func searchField(
         icon: String,
         placeholder: String,
-        text: Binding<String>
+        text: Binding<String>,
+        focus: InviteeSearchField
     ) -> some View {
         HStack(spacing: 9) {
             Image(systemName: icon)
                 .foregroundStyle(Color(uiColor: .secondaryLabel))
             TextField(placeholder, text: text)
                 .font(.subheadline)
+                .focused($focusedInviteeField, equals: focus)
         }
         .padding(.horizontal, 13)
         .frame(height: 46)
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    private func keepFocusedInviteeFieldVisible(using proxy: ScrollViewProxy) {
+        guard let focusedInviteeField else { return }
+        let target = focusedInviteeField == .people
+            ? "meeting-person-search"
+            : "meeting-department-search"
+
+        // Do not animate layout changes. This keeps the field's lower edge in
+        // the keyboard-safe area while only the content above it is repositioned.
+        DispatchQueue.main.async {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo(target, anchor: .bottom)
+            }
+        }
     }
 
     private var confirmButton: some View {
