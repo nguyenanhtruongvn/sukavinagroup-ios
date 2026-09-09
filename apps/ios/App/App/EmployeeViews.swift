@@ -838,11 +838,6 @@ private struct MeetingBookingSheet: View {
         return departments.filter { $0.localizedCaseInsensitiveContains(value) }
     }
 
-    private var displayedDepartments: [String] {
-        Array(selectedDepartments).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-            + matchingDepartments.filter { !selectedDepartments.contains($0) }
-    }
-
     private var unselectedDepartmentInvitees: [MeetingInvitee] {
         guard !selectedDepartments.isEmpty else { return [] }
         return session.meetingInvitees.filter {
@@ -852,16 +847,6 @@ private struct MeetingBookingSheet: View {
 
     private var canInviteEntireDepartment: Bool {
         selected.count + unselectedDepartmentInvitees.count + 1 <= room.capacity
-    }
-
-    private var reservesPeopleResultRow: Bool {
-        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !selectedDepartments.isEmpty
-    }
-
-    private var reservesDepartmentResultRow: Bool {
-        !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !selectedDepartments.isEmpty
     }
 
     private var durationMinutes: Int {
@@ -1168,50 +1153,11 @@ private struct MeetingBookingSheet: View {
 
     private var peopleSearchSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if reservesPeopleResultRow {
-                VStack(alignment: .leading, spacing: 5) {
-                    if !people.isEmpty {
-                        Text("Kết quả người tham gia")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color(uiColor: .secondaryLabel))
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 8) {
-                                ForEach(people) { person in
-                                    let isChosen = selected.contains(person.id)
-                                    Button {
-                                        if isChosen { selected.remove(person.id) }
-                                        else { selected.insert(person.id) }
-                                    } label: {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: isChosen ? "checkmark.circle.fill" : "plus.circle")
-                                                .foregroundStyle(isChosen ? Color.red : Color(uiColor: .secondaryLabel))
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(person.fullName).font(.subheadline.weight(.semibold)).lineLimit(1)
-                                                Text("\(person.employeeCode) · \(person.department)")
-                                                    .font(.caption)
-                                                    .foregroundStyle(Color(uiColor: .secondaryLabel))
-                                                    .lineLimit(1)
-                                            }
-                                        }
-                                        .padding(.horizontal, 11)
-                                        .padding(.vertical, 9)
-                                        .frame(maxWidth: 220, alignment: .leading)
-                                        .background(isChosen ? Color.red.opacity(0.10) : Color(uiColor: .secondarySystemBackground))
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .disabled(!isChosen && selected.count + 1 >= room.capacity)
-                                }
-                            }
-                            .padding(.horizontal, 1)
-                        }
-                    } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text("Không tìm thấy người phù hợp.")
-                            .font(.caption)
-                            .foregroundStyle(Color(uiColor: .secondaryLabel))
-                    }
-                }
+            // Selected departments show their people as normal card content.
+            // Typed lookup results are instead presented as an overlay below.
+            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !selectedDepartments.isEmpty {
+                peopleSearchResults
             }
 
             searchField(
@@ -1220,62 +1166,106 @@ private struct MeetingBookingSheet: View {
                 text: $query,
                 focus: .people
             )
+            .overlay(alignment: .bottom) {
+                if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    peopleSearchResults
+                        .offset(y: -54)
+                        .zIndex(2)
+                }
+            }
         }
         .id("meeting-person-search")
     }
 
+    private var peopleSearchResults: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if !people.isEmpty {
+                Text("Kết quả người tham gia")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(people) { person in
+                            let isChosen = selected.contains(person.id)
+                            Button {
+                                if isChosen { selected.remove(person.id) }
+                                else { selected.insert(person.id) }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: isChosen ? "checkmark.circle.fill" : "plus.circle")
+                                        .foregroundStyle(isChosen ? Color.red : Color(uiColor: .secondaryLabel))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(person.fullName).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                        Text("\(person.employeeCode) · \(person.department)")
+                                            .font(.caption)
+                                            .foregroundStyle(Color(uiColor: .secondaryLabel))
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 9)
+                                .frame(maxWidth: 220, alignment: .leading)
+                                .background(isChosen ? Color.red.opacity(0.10) : Color(uiColor: .secondarySystemBackground))
+                                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!isChosen && selected.count + 1 >= room.capacity)
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                }
+            } else {
+                Text("Không tìm thấy người phù hợp.")
+                    .font(.caption)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
+    }
+
     private var departmentSearchResults: some View {
         Group {
-            if reservesDepartmentResultRow {
+            if !selectedDepartments.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
-                    if !selectedDepartments.isEmpty || !matchingDepartments.isEmpty {
-                        Text("Kết quả phòng ban")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    Text("Phòng ban đã chọn")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
 
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 8) {
-                                if !selectedDepartments.isEmpty {
-                                    Button("Bỏ chọn tất cả") {
-                                        selectedDepartments.removeAll()
-                                        query = ""
-                                    }
-                                    .font(.subheadline.weight(.semibold))
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 10)
-                                    .background(Color(uiColor: .secondarySystemBackground))
-                                    .clipShape(Capsule())
-                                    .buttonStyle(.plain)
-                                }
-
-                                ForEach(displayedDepartments, id: \.self) { department in
-                                    let isSelected = selectedDepartments.contains(department)
-                                    Button {
-                                        if isSelected {
-                                            selectedDepartments.remove(department)
-                                        } else {
-                                            selectedDepartments.insert(department)
-                                            query = ""
-                                        }
-                                    } label: {
-                                        Text(department)
-                                            .font(.subheadline.weight(.semibold))
-                                            .lineLimit(1)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 10)
-                                            .foregroundStyle(isSelected ? .white : Color(uiColor: .label))
-                                            .background(isSelected ? Color.red : Color(uiColor: .secondarySystemBackground))
-                                            .clipShape(Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 8) {
+                            Button("Bỏ chọn tất cả") {
+                                selectedDepartments.removeAll()
+                                query = ""
                             }
-                            .padding(.horizontal, 1)
+                            .font(.subheadline.weight(.semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(Color(uiColor: .secondarySystemBackground))
+                            .clipShape(Capsule())
+                            .buttonStyle(.plain)
+
+                            ForEach(selectedDepartments.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }, id: \.self) { department in
+                                Button {
+                                    selectedDepartments.remove(department)
+                                } label: {
+                                    Text(department)
+                                        .font(.subheadline.weight(.semibold))
+                                        .lineLimit(1)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 10)
+                                        .foregroundStyle(.white)
+                                        .background(Color.red)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
-                    } else {
-                        Text("Không tìm thấy phòng ban phù hợp.")
-                            .font(.caption)
-                            .foregroundStyle(Color(uiColor: .secondaryLabel))
+                        .padding(.horizontal, 1)
                     }
                 }
             }
@@ -1289,7 +1279,60 @@ private struct MeetingBookingSheet: View {
             text: $departmentQuery,
             focus: .departments
         )
+        .overlay(alignment: .bottom) {
+            if !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                departmentAutocompleteResults
+                    .offset(y: -54)
+                    .zIndex(2)
+            }
+        }
         .id("meeting-department-search")
+    }
+
+    private var departmentAutocompleteResults: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            if !matchingDepartments.isEmpty {
+                Text("Kết quả phòng ban")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(matchingDepartments, id: \.self) { department in
+                            let isSelected = selectedDepartments.contains(department)
+                            Button {
+                                if isSelected {
+                                    selectedDepartments.remove(department)
+                                } else {
+                                    selectedDepartments.insert(department)
+                                    query = ""
+                                }
+                            } label: {
+                                Text(department)
+                                    .font(.subheadline.weight(.semibold))
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .foregroundStyle(isSelected ? .white : Color(uiColor: .label))
+                                    .background(isSelected ? Color.red : Color(uiColor: .secondarySystemBackground))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                }
+            } else {
+                Text("Không tìm thấy phòng ban phù hợp.")
+                    .font(.caption)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
     }
 
     private func timeAction(
