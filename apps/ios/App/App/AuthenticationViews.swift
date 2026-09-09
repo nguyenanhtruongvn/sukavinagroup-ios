@@ -54,6 +54,13 @@ struct SukavinaAppView: View {
                 .padding(.horizontal, 22)
                 .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
+
+            if session.isOfflineNoticeVisible {
+                OfflineConnectionNotice()
+                    .padding(.top, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(1)
+            }
         }
         .task { await session.restore() }
         .preferredColorScheme(preferredAppearance)
@@ -63,6 +70,21 @@ struct SukavinaAppView: View {
             }
         }
         .animation(.spring(response: 0.34, dampingFraction: 0.86), value: session.errorMessage)
+        .animation(.easeInOut(duration: 0.2), value: session.isOfflineNoticeVisible)
+    }
+}
+
+@available(iOS 17.0, *)
+private struct OfflineConnectionNotice: View {
+    var body: some View {
+        Label("Mất kết nối internet", systemImage: "wifi.slash")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.12), in: Capsule())
+            .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
+            .accessibilityLabel("Mất kết nối internet")
     }
 }
 

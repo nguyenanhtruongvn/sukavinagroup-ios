@@ -40,6 +40,7 @@ final class SessionStore: ObservableObject {
     @Published private(set) var attendanceRevision = 0
     @Published private(set) var requestRevision = 0
     @Published private(set) var localAttendanceNotifications: [RequestNotification] = []
+    @Published private(set) var isOfflineNoticeVisible = false
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
@@ -58,6 +59,7 @@ final class SessionStore: ObservableObject {
     private var isMonitoringNetwork = false
     private var lastPathStatus: NWPath.Status?
     private var lastPathWasCellular: Bool?
+    private var offlineNoticeTask: Task<Void, Never>?
     private var foregroundRefreshTask: Task<Void, Never>?
     private var apnsTokenObserver: NSObjectProtocol?
 
@@ -74,6 +76,7 @@ final class SessionStore: ObservableObject {
     }
 
     deinit {
+        offlineNoticeTask?.cancel()
         if let apnsTokenObserver {
             NotificationCenter.default.removeObserver(apnsTokenObserver)
         }
@@ -546,6 +549,9 @@ final class SessionStore: ObservableObject {
         sessionRefreshTask = nil
         foregroundRefreshTask?.cancel()
         foregroundRefreshTask = nil
+        offlineNoticeTask?.cancel()
+        offlineNoticeTask = nil
+        isOfflineNoticeVisible = false
         KeychainStore.clear()
         SessionCache.clear()
         token = nil
@@ -728,6 +734,7 @@ final class SessionStore: ObservableObject {
                 ConnectionDiagnostics.record("Network path: status=\(String(describing: path.status)) cellular=\(isCellular) wifi=\(isWiFi) expensive=\(path.isExpensive) constrained=\(path.isConstrained)")
                 self.lastPathStatus = path.status
                 self.lastPathWasCellular = isCellular
+                self.showOfflineNoticeIfNeeded(previousStatus: wasStatus, currentStatus: path.status)
 
                 // The first callback only records the current path. Refresh after a real reconnect or handoff.
                 guard wasStatus != nil,
@@ -741,6 +748,21 @@ final class SessionStore: ObservableObject {
             }
         }
         pathMonitor.start(queue: pathMonitorQueue)
+    }
+
+    private func showOfflineNoticeIfNeeded(previousStatus: NWPath.Status?, currentStatus: NWPath.Status) {
+        // Also show it on the initial path when the app starts offline, but do not repeat it
+        // for intermediate unsatisfied/requires-connection transitions.
+        guard currentStatus != .satisfied,
+              previousStatus == nil || previousStatus == .satisfied else { return }
+
+        offlineNoticeTask?.cancel()
+        isOfflineNoticeVisible = true
+        offlineNoticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.isOfflineNoticeVisible = false
+        }
     }
 
     private func refreshProfile() async {
