@@ -17,6 +17,24 @@ struct MeetingRoom: Codable, Identifiable {
     let capacity: Int
     let equipment: [String]
     let active: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, location, imageUrl, capacity, equipment, active
+    }
+
+    /// Older API responses did not include `imageUrl`. Keep these rooms usable
+    /// when they are embedded in a meeting-detail response instead of rejecting
+    /// the entire response during decoding.
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(String.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        location = try values.decodeIfPresent(String.self, forKey: .location) ?? ""
+        imageUrl = try values.decodeIfPresent(String.self, forKey: .imageUrl) ?? ""
+        capacity = try values.decode(Int.self, forKey: .capacity)
+        equipment = try values.decodeIfPresent([String].self, forKey: .equipment) ?? []
+        active = try values.decodeIfPresent(Bool.self, forKey: .active) ?? true
+    }
 }
 
 struct MeetingBooking: Codable, Identifiable {
