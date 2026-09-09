@@ -2520,6 +2520,7 @@ struct ModernAttendanceHistoryView: View {
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var errors: [String: String] = [:]
     @State private var selectedDates: [String: String] = [:]
+    @State private var loadingMonths = Set<String>()
     @State private var monthIndex = 1
 
     private var showsFullMonthCells: Bool {
@@ -2573,6 +2574,7 @@ struct ModernAttendanceHistoryView: View {
             guard options.indices.contains(newIndex) else { return }
             selectedMonth = options[newIndex]
             UISelectionFeedbackGenerator().selectionChanged()
+            Task { await preloadMonth(options[newIndex]) }
         }
         .task { await preloadAdjacentMonths() }
         .task(id: session.attendanceRevision) {
@@ -2628,7 +2630,6 @@ struct ModernAttendanceHistoryView: View {
             .background(AttendanceScrollInsetNeutralizer())
         }
         .hidesPortalBottomScrollEdgeEffect()
-        .task(id: month) { await preloadMonth(month) }
     }
 
 
@@ -2785,6 +2786,13 @@ struct ModernAttendanceHistoryView: View {
 
 
     private func preloadMonth(_ month: String) async {
+        // A TabView keeps both neighbour pages alive while the user swipes.
+        // Do not let page creation, preloading, and selection start duplicate
+        // requests for the same month on the main actor.
+        guard cache[month] == nil, !loadingMonths.contains(month) else { return }
+        loadingMonths.insert(month)
+        defer { loadingMonths.remove(month) }
+
         if cache[month] == nil, let cached = session.cachedAttendanceMonth(month) {
             cache[month] = cached
             selectedDates[month] = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
