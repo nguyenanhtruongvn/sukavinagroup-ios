@@ -145,6 +145,8 @@ struct Profile: Codable {
 
 enum SessionCache {
     private static let profileKey = "cached-session-profile-v1"
+    private static let meetingRoomsPrefix = "cached-meeting-rooms-v1-"
+    private static let meetingSchedulePrefix = "cached-meeting-schedule-v1-"
 
     static func save(profile: Profile) {
         guard let data = try? JSONEncoder().encode(profile) else { return }
@@ -154,6 +156,26 @@ enum SessionCache {
     static func loadProfile() -> Profile? {
         guard let data = UserDefaults.standard.data(forKey: profileKey) else { return nil }
         return try? JSONDecoder().decode(Profile.self, from: data)
+    }
+
+    static func saveMeetingRooms(_ rooms: [MeetingRoom], employeeCode: String) {
+        guard let data = try? JSONEncoder().encode(rooms) else { return }
+        UserDefaults.standard.set(data, forKey: meetingRoomsPrefix + employeeCode)
+    }
+
+    static func loadMeetingRooms(employeeCode: String) -> [MeetingRoom] {
+        guard let data = UserDefaults.standard.data(forKey: meetingRoomsPrefix + employeeCode) else { return [] }
+        return (try? JSONDecoder().decode([MeetingRoom].self, from: data)) ?? []
+    }
+
+    static func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, day: String, employeeCode: String) {
+        guard let data = try? JSONEncoder().encode(schedule) else { return }
+        UserDefaults.standard.set(data, forKey: meetingSchedulePrefix + employeeCode + "-" + day)
+    }
+
+    static func loadMeetingSchedule(day: String, employeeCode: String) -> MeetingScheduleResponse? {
+        guard let data = UserDefaults.standard.data(forKey: meetingSchedulePrefix + employeeCode + "-" + day) else { return nil }
+        return try? JSONDecoder().decode(MeetingScheduleResponse.self, from: data)
     }
 
     static func clear() {

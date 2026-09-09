@@ -863,6 +863,10 @@ private struct MeetingBookingSheet: View {
             && selected.count + 1 <= room.capacity
     }
 
+    private var canConfirmBooking: Bool {
+        isValid && session.isNetworkAvailable
+    }
+
     private var endTime: Date {
         start.addingTimeInterval(Double(durationMinutes * 60))
     }
@@ -1351,11 +1355,11 @@ private struct MeetingBookingSheet: View {
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .foregroundStyle(.white)
-            .background(isValid ? Color.red : Color(uiColor: .systemGray3))
+            .background(canConfirmBooking ? Color.red : Color(uiColor: .systemGray3))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
-        .disabled(!isValid)
+        .disabled(!canConfirmBooking)
     }
 
     private var initialStartTime: Date {

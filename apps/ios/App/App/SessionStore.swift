@@ -41,6 +41,7 @@ final class SessionStore: ObservableObject {
     @Published private(set) var requestRevision = 0
     @Published private(set) var localAttendanceNotifications: [RequestNotification] = []
     @Published private(set) var isOfflineNoticeVisible = false
+    @Published private(set) var isNetworkAvailable = false
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
@@ -734,6 +735,7 @@ final class SessionStore: ObservableObject {
                 ConnectionDiagnostics.record("Network path: status=\(String(describing: path.status)) cellular=\(isCellular) wifi=\(isWiFi) expensive=\(path.isExpensive) constrained=\(path.isConstrained)")
                 self.lastPathStatus = path.status
                 self.lastPathWasCellular = isCellular
+                self.isNetworkAvailable = path.status == .satisfied
                 self.showOfflineNoticeIfNeeded(previousStatus: wasStatus, currentStatus: path.status)
 
                 // The first callback only records the current path. Refresh after a real reconnect or handoff.
@@ -744,6 +746,7 @@ final class SessionStore: ObservableObject {
                 await self.refreshProfile()
                 if self.profile?.accountType == "CANTEEN" { return }
                 await self.refreshDashboard()
+                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
                 self.startRealTimeUpdates()
             }
         }
@@ -851,18 +854,45 @@ final class SessionStore: ObservableObject {
 
     func refreshMeetingSchedule(date: Date = .now) async {
         activeMeetingScheduleDate = date
+        let day = DateFormatter.meetingDay.string(from: date)
+        restoreCachedMeetingSchedule(for: day)
+
         guard let token else { return }
+        // Before the first path callback, allow the request to proceed. Once the
+        // monitor confirms an offline path, use the cached schedule only.
+        guard isNetworkAvailable || lastPathStatus == nil else { return }
         do {
-            let day = DateFormatter.meetingDay.string(from: date)
             let value: MeetingScheduleResponse = try await APIClient.shared.request(
                 "me/meeting-rooms?date=\(day)",
                 token: token
             )
             meetingRooms = value.rooms
             meetingBookings = value.bookings
+            saveMeetingSchedule(value, for: day)
         } catch {
-            present(error)
+            ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
         }
+    }
+
+    private var meetingCacheEmployeeCode: String? {
+        profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty
+    }
+
+    private func restoreCachedMeetingSchedule(for day: String) {
+        guard let employeeCode = meetingCacheEmployeeCode else { return }
+        let rooms = SessionCache.loadMeetingRooms(employeeCode: employeeCode)
+        let roomIDs = Set(rooms.map(\.id))
+        let bookings = SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
+        meetingRooms = rooms
+        // A room removed by admin disappears as soon as the next online catalog
+        // refresh is cached, even if an older day's booking cache still exists.
+        meetingBookings = bookings.filter { roomIDs.contains($0.roomId) }
+    }
+
+    private func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, for day: String) {
+        guard let employeeCode = meetingCacheEmployeeCode else { return }
+        SessionCache.saveMeetingRooms(schedule.rooms, employeeCode: employeeCode)
+        SessionCache.saveMeetingSchedule(schedule, day: day, employeeCode: employeeCode)
     }
 
     /// Invitees are optional supporting data for the booking form. Returning the
@@ -893,7 +923,33 @@ final class SessionStore: ObservableObject {
             return nil
         }
     }
-    func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> Bool { guard let token else { return false }; isWorking = true; defer { isWorking = false }; do { let end = start.addingTimeInterval(Double(duration) * 60); let body = CreateMeetingBookingBody(roomId: room.id, startsAt: ISO8601DateFormatter().string(from: start), endsAt: ISO8601DateFormatter().string(from: end), title: title, attendeeCount: participants.count + 1, participantIds: participants); let _: MeetingBooking = try await APIClient.shared.request("me/meeting-bookings", method: "POST", token: token, body: body); await refreshMeetingSchedule(date: start); return true } catch { present(error); return false } }
+    func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> Bool {
+        guard let token, isNetworkAvailable else { return false }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let end = start.addingTimeInterval(Double(duration) * 60)
+            let body = CreateMeetingBookingBody(
+                roomId: room.id,
+                startsAt: ISO8601DateFormatter().string(from: start),
+                endsAt: ISO8601DateFormatter().string(from: end),
+                title: title,
+                attendeeCount: participants.count + 1,
+                participantIds: participants
+            )
+            let _: MeetingBooking = try await APIClient.shared.request(
+                "me/meeting-bookings",
+                method: "POST",
+                token: token,
+                body: body
+            )
+            await refreshMeetingSchedule(date: start)
+            return true
+        } catch {
+            present(error)
+            return false
+        }
+    }
 
     func requestForgotPassword(employeeCode: String) async -> ForgotPasswordRequestResponse? {
         forgotPasswordError = nil
