@@ -1215,6 +1215,10 @@ private struct MeetingBookingSheet: View {
                     }
                     .padding(.horizontal, 1)
                 }
+                // An overlay does not receive a proposed height from its text
+                // field. Keep this row explicit so its two-line chips cannot be
+                // compressed or drawn on top of the search field.
+                .frame(height: 54)
             } else {
                 Text("Không tìm thấy người phù hợp.")
                     .font(.caption)
@@ -1223,6 +1227,7 @@ private struct MeetingBookingSheet: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
         .background(Color(uiColor: .systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
@@ -1267,6 +1272,7 @@ private struct MeetingBookingSheet: View {
                         }
                         .padding(.horizontal, 1)
                     }
+                    .frame(height: 44)
                 }
             }
         }
@@ -1322,6 +1328,10 @@ private struct MeetingBookingSheet: View {
                     }
                     .padding(.horizontal, 1)
                 }
+                // This panel is presented above the field. Its horizontal row
+                // must keep a real height instead of inheriting the field's
+                // height from the overlay layout.
+                .frame(height: 44)
             } else {
                 Text("Không tìm thấy phòng ban phù hợp.")
                     .font(.caption)
@@ -1330,6 +1340,7 @@ private struct MeetingBookingSheet: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
         .background(Color(uiColor: .systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
