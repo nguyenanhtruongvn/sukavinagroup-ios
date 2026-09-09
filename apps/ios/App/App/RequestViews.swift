@@ -539,6 +539,13 @@ struct RequestComposer: View {
     @State private var reasonEditorHeight: CGFloat = 150
     @State private var reasonFocused = false
     @State private var leaveScheduleWasInitialized = false
+    @FocusState private var focusedInput: RequestInputFocus?
+
+    private enum RequestInputFocus: Hashable {
+        case destination
+        case distance
+        case expense
+    }
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
@@ -611,13 +618,21 @@ struct RequestComposer: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
         }.buttonStyle(.plain)
     }
-    @ViewBuilder private func labeledNumberField(_ title: String, placeholder: String, text: Binding<String>) -> some View {
+    @ViewBuilder private func labeledNumberField(
+        _ title: String,
+        placeholder: String,
+        text: Binding<String>,
+        focus: RequestInputFocus,
+        scrollID: String
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
             TextField(placeholder, text: text).keyboardType(.decimalPad)
+                .focused($focusedInput, equals: focus)
                 .padding(.horizontal, 14).frame(height: 48)
                 .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 14))
         }
+        .id(scrollID)
     }
     private func attendanceDateKey(_ date: Date, format: String) -> String {
         let formatter = DateFormatter()
@@ -712,8 +727,9 @@ struct RequestComposer: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 7) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -781,9 +797,11 @@ struct RequestComposer: View {
                                 Text("NƠI ĐẾN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
                                 TextField("Nhập địa điểm công tác", text: $destination)
                                     .textInputAutocapitalization(.sentences)
+                                    .focused($focusedInput, equals: .destination)
                                     .padding(.horizontal, 14).frame(height: 48)
                                     .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 14))
                             }
+                            .id("request-destination")
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("PHƯƠNG TIỆN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
                                 HStack(spacing: 8) {
@@ -793,9 +811,21 @@ struct RequestComposer: View {
                                 }
                             }
                             if transport == "personal_vehicle" {
-                                labeledNumberField("Số km", placeholder: "Nhập số km", text: $distanceKm)
+                                labeledNumberField(
+                                    "Số km",
+                                    placeholder: "Nhập số km",
+                                    text: $distanceKm,
+                                    focus: .distance,
+                                    scrollID: "request-distance"
+                                )
                             }
-                            labeledNumberField("Chi phí", placeholder: "Nhập chi phí (VNĐ)", text: $expense)
+                            labeledNumberField(
+                                "Chi phí",
+                                placeholder: "Nhập chi phí (VNĐ)",
+                                text: $expense,
+                                focus: .expense,
+                                scrollID: "request-expense"
+                            )
                             Text("Không cần nhập lý do cho đơn công tác.")
                                 .font(.footnote).foregroundStyle(AppTheme.muted)
                         }
@@ -881,13 +911,27 @@ struct RequestComposer: View {
                         }
                         .font(.caption.weight(.medium))
                     }
+                    .id("request-reason")
                     }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
                 .padding(.bottom, 120)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: focusedInput) { _, field in
+                    guard field != nil else { return }
+                    keepActiveInputVisible(using: proxy)
+                }
+                .onChange(of: reasonFocused) { _, focused in
+                    guard focused else { return }
+                    keepActiveInputVisible(using: proxy)
+                }
+                .onChange(of: reasonEditorHeight) { _, _ in
+                    guard reasonFocused else { return }
+                    keepActiveInputVisible(using: proxy)
+                }
             }
-            .scrollDismissesKeyboard(.interactively)
             .background(AppTheme.ink.ignoresSafeArea())
             .dynamicTypeSize(.xSmall ... .accessibility1)
             .onAppear {
@@ -960,6 +1004,29 @@ struct RequestComposer: View {
                     from = Calendar.current.startOfDay(for: now)
                     to = from.addingTimeInterval(30 * 60)
                 }
+            }
+        }
+    }
+
+    private func keepActiveInputVisible(using proxy: ScrollViewProxy) {
+        let target: String?
+        if reasonFocused {
+            target = "request-reason"
+        } else {
+            switch focusedInput {
+            case .some(.destination): target = "request-destination"
+            case .some(.distance): target = "request-distance"
+            case .some(.expense): target = "request-expense"
+            case .none: target = nil
+            }
+        }
+        guard let target else { return }
+
+        DispatchQueue.main.async {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo(target, anchor: .bottom)
             }
         }
     }
