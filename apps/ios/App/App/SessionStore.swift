@@ -923,8 +923,11 @@ final class SessionStore: ObservableObject {
             return nil
         }
     }
-    func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> Bool {
-        guard let token, isNetworkAvailable else { return false }
+    /// Returns a server-facing failure message so the booking form can present
+    /// a short, contextual notice instead of a global blocking alert.
+    func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> String? {
+        guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
+        guard isNetworkAvailable else { return "Mất kết nối internet. Không thể đặt phòng khi đang ngoại tuyến." }
         isWorking = true
         defer { isWorking = false }
         do {
@@ -946,10 +949,9 @@ final class SessionStore: ObservableObject {
             // The server has confirmed the reservation. Do not keep the form
             // visible while the independent schedule refresh is in flight.
             Task { await refreshMeetingSchedule(date: start) }
-            return true
+            return nil
         } catch {
-            present(error)
-            return false
+            return error.localizedDescription
         }
     }
 

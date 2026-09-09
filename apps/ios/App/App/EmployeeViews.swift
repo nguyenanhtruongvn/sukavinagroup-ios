@@ -806,6 +806,8 @@ private struct MeetingBookingSheet: View {
     @State private var showStartPicker = false
     @State private var showDurationPicker = false
     @State private var isSubmittingBooking = false
+    @State private var bookingErrorMessage: String?
+    @State private var bookingErrorRevision = 0
     @FocusState private var focusedInviteeField: InviteeSearchField?
 
     private enum InviteeSearchField: Hashable {
@@ -919,6 +921,17 @@ private struct MeetingBookingSheet: View {
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
                 }
+
+                if let bookingErrorMessage {
+                    VStack {
+                        MeetingBookingErrorNotice(message: bookingErrorMessage)
+                            .padding(.top, 10)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .allowsHitTesting(false)
+                    .zIndex(3)
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 confirmButton
@@ -935,6 +948,12 @@ private struct MeetingBookingSheet: View {
             .onAppear { start = initialStartTime }
             .task {
                 inviteesError = await session.refreshMeetingInvitees()
+            }
+            .task(id: bookingErrorRevision) {
+                guard bookingErrorMessage != nil else { return }
+                try? await Task.sleep(for: .seconds(5))
+                guard !Task.isCancelled else { return }
+                bookingErrorMessage = nil
             }
         }
     }
@@ -1495,19 +1514,43 @@ private struct MeetingBookingSheet: View {
         guard canConfirmBooking else { return }
         isSubmittingBooking = true
         Task {
-            let didCreate = await session.createMeeting(
+            let failureMessage = await session.createMeeting(
                 room: room,
                 title: title,
                 start: start,
                 duration: durationMinutes,
                 participants: Array(selected)
             )
-            if didCreate {
-                dismiss()
-            } else {
+            if let failureMessage {
                 isSubmittingBooking = false
+                bookingErrorMessage = failureMessage
+                bookingErrorRevision += 1
+            } else {
+                dismiss()
             }
         }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingBookingErrorNotice: View {
+    let message: String
+
+    var body: some View {
+        Label {
+            Text(message)
+                .multilineTextAlignment(.leading)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: 360, alignment: .leading)
+        .background(Color.black.opacity(0.90), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.24), radius: 10, y: 4)
+        .accessibilityLabel("Không thể đặt phòng: \(message)")
     }
 }
 

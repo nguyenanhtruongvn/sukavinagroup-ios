@@ -303,7 +303,8 @@ struct NotificationsView: View {
     }
     private func notificationColor(_ item: RequestNotification) -> Color {
         let type = item.type
-        if type == "meeting_invite" || type == "meeting_reminder" { return AppTheme.red }
+        if type == "meeting_invite" { return .blue }
+        if type == "meeting_reminder" { return .orange }
         if type == "attendance_check_in" { return .green }
         if type == "attendance_check_out" { return .blue }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
