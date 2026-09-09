@@ -902,6 +902,14 @@ private struct MeetingBookingSheet: View {
                     .onChange(of: selectedDepartments) { _, _ in
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
+                    .onChange(of: query) { _, _ in
+                        guard focusedInviteeField == .people else { return }
+                        keepFocusedInviteeFieldVisible(using: proxy)
+                    }
+                    .onChange(of: departmentQuery) { _, _ in
+                        guard focusedInviteeField == .departments else { return }
+                        keepFocusedInviteeFieldVisible(using: proxy)
+                    }
                     // On iOS 18 the focus update precedes the keyboard safe-area
                     // update. Reposition once its final frame is known so the
                     // bottom of the active search field sits above the keyboard.
@@ -1161,10 +1169,12 @@ private struct MeetingBookingSheet: View {
 
     private var peopleSearchSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Selected departments show their people as normal card content.
-            // Typed lookup results are instead presented as an overlay below.
-            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               !selectedDepartments.isEmpty {
+            // Results stay in the card's layout, immediately above the active
+            // field. The scroll position is then adjusted without animation,
+            // so expanding this panel does not push the field toward the
+            // keyboard or overlap another result row.
+            if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                !selectedDepartments.isEmpty {
                 peopleSearchResults
             }
 
@@ -1174,13 +1184,6 @@ private struct MeetingBookingSheet: View {
                 text: $query,
                 focus: .people
             )
-            .overlay(alignment: .bottom) {
-                if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    peopleSearchResults
-                        .offset(y: -54)
-                        .zIndex(2)
-                }
-            }
         }
         .id("meeting-person-search")
     }
@@ -1223,10 +1226,7 @@ private struct MeetingBookingSheet: View {
                     }
                     .padding(.horizontal, 1)
                 }
-                // An overlay does not receive a proposed height from its text
-                // field. Keep this row explicit so its two-line chips cannot be
-                // compressed or drawn on top of the search field.
-                .frame(height: 54)
+                .frame(height: 62)
             } else {
                 Text("Không tìm thấy người phù hợp.")
                     .font(.caption)
@@ -1287,18 +1287,17 @@ private struct MeetingBookingSheet: View {
     }
 
     private var departmentSearchField: some View {
-        searchField(
-            icon: "building.2",
-            placeholder: "Tìm phòng ban",
-            text: $departmentQuery,
-            focus: .departments
-        )
-        .overlay(alignment: .bottom) {
+        VStack(alignment: .leading, spacing: 8) {
             if !departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 departmentAutocompleteResults
-                    .offset(y: -54)
-                    .zIndex(2)
             }
+
+            searchField(
+                icon: "building.2",
+                placeholder: "Tìm phòng ban",
+                text: $departmentQuery,
+                focus: .departments
+            )
         }
         .id("meeting-department-search")
     }
@@ -1336,10 +1335,7 @@ private struct MeetingBookingSheet: View {
                     }
                     .padding(.horizontal, 1)
                 }
-                // This panel is presented above the field. Its horizontal row
-                // must keep a real height instead of inheriting the field's
-                // height from the overlay layout.
-                .frame(height: 44)
+                .frame(height: 48)
             } else {
                 Text("Không tìm thấy phòng ban phù hợp.")
                     .font(.caption)
