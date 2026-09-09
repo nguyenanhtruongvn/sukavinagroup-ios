@@ -805,6 +805,7 @@ private struct MeetingBookingSheet: View {
     @State private var inviteesError: String?
     @State private var showStartPicker = false
     @State private var showDurationPicker = false
+    @State private var isSubmittingBooking = false
     @FocusState private var focusedInviteeField: InviteeSearchField?
 
     private enum InviteeSearchField: Hashable {
@@ -860,7 +861,7 @@ private struct MeetingBookingSheet: View {
     }
 
     private var canConfirmBooking: Bool {
-        isValid && session.isNetworkAvailable
+        isValid && session.isNetworkAvailable && !isSubmittingBooking
     }
 
     private var endTime: Date {
@@ -1447,8 +1448,13 @@ private struct MeetingBookingSheet: View {
             createBooking()
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "checkmark.circle.fill")
-                Text("Xác nhận đặt phòng")
+                if isSubmittingBooking {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                }
+                Text(isSubmittingBooking ? "Đang đặt phòng..." : "Xác nhận đặt phòng")
                     .font(.headline.weight(.bold))
             }
             .frame(maxWidth: .infinity)
@@ -1486,6 +1492,8 @@ private struct MeetingBookingSheet: View {
     }
 
     private func createBooking() {
+        guard canConfirmBooking else { return }
+        isSubmittingBooking = true
         Task {
             let didCreate = await session.createMeeting(
                 room: room,
@@ -1494,7 +1502,11 @@ private struct MeetingBookingSheet: View {
                 duration: durationMinutes,
                 participants: Array(selected)
             )
-            if didCreate { dismiss() }
+            if didCreate {
+                dismiss()
+            } else {
+                isSubmittingBooking = false
+            }
         }
     }
 }

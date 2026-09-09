@@ -943,7 +943,9 @@ final class SessionStore: ObservableObject {
                 token: token,
                 body: body
             )
-            await refreshMeetingSchedule(date: start)
+            // The server has confirmed the reservation. Do not keep the form
+            // visible while the independent schedule refresh is in flight.
+            Task { await refreshMeetingSchedule(date: start) }
             return true
         } catch {
             present(error)
