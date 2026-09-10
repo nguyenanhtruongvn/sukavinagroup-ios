@@ -88,22 +88,19 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
         let tabBarAppearance = UITabBarAppearance()
-        tabBarAppearance.configureWithOpaqueBackground()
-        tabBarAppearance.backgroundColor = AppTheme.inkUIColor
+        tabBarAppearance.configureWithTransparentBackground()
+        tabBarAppearance.backgroundColor = .clear
+        tabBarAppearance.backgroundEffect = nil
         tabBarAppearance.shadowColor = .clear
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
-        UITabBar.appearance().isTranslucent = false
+        UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
         if #available(iOS 17.0, *) {
-            let rootViewController = UIHostingController(
+            window.rootViewController = UIHostingController(
                 rootView: SukavinaAppView().environmentObject(notificationRouter)
             )
-            // SwiftUI tab children occasionally leave their bottom safe area
-            // transparent. Never allow UIKit's default white view to show.
-            rootViewController.view.backgroundColor = AppTheme.inkUIColor
-            window.rootViewController = rootViewController
         } else {
             window.rootViewController = LegacyPortalViewController()
         }

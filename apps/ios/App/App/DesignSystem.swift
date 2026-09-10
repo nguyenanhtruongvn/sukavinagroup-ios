@@ -50,10 +50,9 @@ enum AttendanceMonthDisplayMode: String, CaseIterable, Identifiable {
 enum AppTheme {
     static let red = Color(red: 0.91, green: 0.12, blue: 0.16)
     static let deepRed = Color(red: 0.45, green: 0.04, blue: 0.07)
-    static let inkUIColor = UIColor { traits in
+    static let ink = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1) : UIColor(red: 0.906, green: 0.914, blue: 0.929, alpha: 1)
-    }
-    static let ink = Color(inkUIColor)
+    })
     static let card = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor(red: 0.12, green: 0.12, blue: 0.15, alpha: 1) : UIColor.white
     })
@@ -148,16 +147,19 @@ extension View {
         // framework that is absent on older iOS releases.
         self
             .scrollIndicators(.hidden)
+            .ignoresSafeArea(.container, edges: .bottom)
             .scrollBounceBehavior(.always, axes: .vertical)
     }
 
+    @ViewBuilder
     func adaptivePortalTabBarBackground() -> some View {
-        // The tab bar must always use the portal's adaptive canvas colour.
-        // A transparent iOS 26 bar or systemBackground on iOS 17–18 exposes a
-        // white strip whenever a child screen ends above the safe area.
-        self
-            .toolbarBackground(AppTheme.ink, for: .tabBar)
-            .toolbarBackground(.visible, for: .tabBar)
+        if #available(iOS 26.0, *) {
+            self.toolbarBackground(.hidden, for: .tabBar)
+        } else {
+            self
+                .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+                .toolbarBackground(.visible, for: .tabBar)
+        }
     }
 
 }
