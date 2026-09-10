@@ -2952,6 +2952,7 @@ struct ModernAttendanceHistoryView: View {
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
         case "weekend": return .gray.opacity(0.13)
         case "not-started": return .gray.opacity(0.18)
+        case "pending": return .orange.opacity(0.16)
         case "upcoming": return AppTheme.muted.opacity(0.1)
         default: return AppTheme.muted.opacity(0.1)
         }
@@ -2965,7 +2966,8 @@ struct ModernAttendanceHistoryView: View {
         case "absent": return "Vắng"
         case "overtime": return "Làm thêm giờ"
         case "weekend": return "Cuối tuần"
-        case "not-started": return "Chưa vào làm"
+        case "not-started": return "Chưa tới giờ làm"
+        case "pending": return "Chưa ghi nhận"
         case "upcoming": return "Chưa tới"
         default: return "Chưa xác định"
         }
