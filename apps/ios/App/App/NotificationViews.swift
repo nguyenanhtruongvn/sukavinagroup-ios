@@ -90,7 +90,6 @@ struct NotificationsView: View {
                           .background { requestNotificationBackground(item) }
                           .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
                           .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
-                          .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -129,7 +128,6 @@ struct NotificationsView: View {
                             .background { articleNotificationBackground(isUnread: isUnread) }
                             .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
                             .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
-                            .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
@@ -317,10 +315,6 @@ struct NotificationsView: View {
         if type.contains("cancelled") { return .gray }
         return .green
     }
-    private var isLegacyNotificationStyle: Bool {
-        if #available(iOS 26.0, *) { return false }
-        return true
-    }
     private var notificationPageBackground: Color {
         if #available(iOS 26.0, *) { return AppTheme.ink }
         return legacyNotificationSurface
@@ -347,10 +341,6 @@ struct NotificationsView: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-    }
-    @ViewBuilder
-    private var legacyNotificationSeparator: some View {
-        EmptyView()
     }
 }
 
