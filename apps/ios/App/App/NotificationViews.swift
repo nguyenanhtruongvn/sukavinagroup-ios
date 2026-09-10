@@ -88,7 +88,7 @@ struct NotificationsView: View {
                           }
                           .padding(16)
                           .background { requestNotificationBackground(item) }
-                          .shadow(color: isLegacyNotificationStyle ? .clear : Color.black.opacity(0.035), radius: 5, y: 2)
+                          .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
                           .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
                           .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain)
@@ -127,7 +127,7 @@ struct NotificationsView: View {
                             }
                             .padding(16)
                             .background { articleNotificationBackground(isUnread: isUnread) }
-                            .shadow(color: isLegacyNotificationStyle ? .clear : Color.black.opacity(0.035), radius: 5, y: 2)
+                            .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
                             .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
                             .overlay(alignment: .bottom) { legacyNotificationSeparator }
                         }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
@@ -334,33 +334,23 @@ struct NotificationsView: View {
     }
     @ViewBuilder
     private func requestNotificationBackground(_ item: RequestNotification) -> some View {
-        if isLegacyNotificationStyle {
-            legacyNotificationSurface
-        } else {
-            LinearGradient(
-                colors: item.read ? [AppTheme.card, AppTheme.card] : [notificationColor(item).opacity(0.24), AppTheme.card],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        LinearGradient(
+            colors: item.read ? [AppTheme.card, AppTheme.card] : [notificationColor(item).opacity(0.24), AppTheme.card],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
     @ViewBuilder
     private func articleNotificationBackground(isUnread: Bool) -> some View {
-        if isLegacyNotificationStyle {
-            legacyNotificationSurface
-        } else {
-            LinearGradient(
-                colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
+        LinearGradient(
+            colors: isUnread ? [AppTheme.red.opacity(0.24), AppTheme.card] : [AppTheme.card, AppTheme.card],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
     @ViewBuilder
     private var legacyNotificationSeparator: some View {
-        if isLegacyNotificationStyle {
-            Rectangle().fill(Color.gray.opacity(0.24)).frame(height: 0.5)
-        }
+        EmptyView()
     }
 }
 
