@@ -44,7 +44,9 @@ jobs:
           # simulator runtimes. Xcode 15.4 downloads an iOS 17 runtime, while
           # newer Xcode releases cannot do so.
           for xcode in /Applications/Xcode_15.4.app /Applications/Xcode_15.4.0.app; do
-            if test -x "$xcode/Contents/Developer/usr/bin/xcrun"; then
+            # xcrun belongs to macOS (/usr/bin/xcrun), not inside an Xcode
+            # bundle. xcodebuild is the tool that proves this Xcode exists.
+            if test -x "$xcode/Contents/Developer/usr/bin/xcodebuild"; then
               export DEVELOPER_DIR="$xcode/Contents/Developer"
               break
             fi
