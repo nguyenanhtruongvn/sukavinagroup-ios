@@ -556,6 +556,7 @@ struct AttendancePunch: Codable, Identifiable {
 
 struct LoginBody: Encodable { let loginId: String; let password: String }
 struct PushTokenRegistrationBody: Encodable { let token: String; let platform: String }
+struct PushBadgeResetBody: Encodable { let token: String; let acknowledgedAt: Date }
 struct ForgotPasswordRequestBody: Encodable { let employeeCode: String }
 struct ForgotPasswordConfirmBody: Encodable {
     let employeeCode: String

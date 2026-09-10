@@ -627,6 +627,7 @@ final class SessionStore: ObservableObject {
         Task { @MainActor [weak self] in
             await APNsRegistration.requestAuthorizationAndRegister()
             await self?.syncAPNsToken()
+            await self?.syncPushBadgeReset()
         }
     }
 
@@ -710,12 +711,38 @@ final class SessionStore: ObservableObject {
     func clearNotificationBadge() {
         let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
         guard !employeeCode.isEmpty else { return }
+        let acknowledgedAt = Date()
         let currentUnreadIDs = latestRequestNotifications.filter { !$0.read }.map(\.id)
         UserDefaults.standard.set(currentUnreadIDs, forKey: acknowledgedNotificationBadgePrefix + employeeCode)
-        UserDefaults.standard.set(Date(), forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
+        UserDefaults.standard.set(acknowledgedAt, forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
         articleBadgeCount = 0
         notificationBadgeCount = 0
         NotificationManager.shared.clearBadge()
+        Task { await syncPushBadgeReset(acknowledgedAt: acknowledgedAt) }
+    }
+
+    /// APNs applies the badge while the app is suspended, so the reset marker
+    /// must be stored per iPhone on the server as well as locally. Unread
+    /// notifications remain unread; only future notifications count again.
+    private func syncPushBadgeReset(acknowledgedAt: Date? = nil) async {
+        guard let token,
+              let deviceToken = APNsRegistration.deviceToken,
+              let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode,
+              !employeeCode.isEmpty else { return }
+        let resetAt = acknowledgedAt ?? (UserDefaults.standard.object(
+            forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode
+        ) as? Date)
+        guard let resetAt else { return }
+        do {
+            let _: MessageResponse = try await APIClient.shared.request(
+                "auth/push-token/badge-reset",
+                method: "POST",
+                token: token,
+                body: PushBadgeResetBody(token: deviceToken, acknowledgedAt: resetAt)
+            )
+        } catch {
+            ConnectionDiagnostics.record("APNs badge reset sync deferred: \(error.localizedDescription)")
+        }
     }
 
     private func syncApplicationBadge() {
@@ -805,6 +832,7 @@ final class SessionStore: ObservableObject {
                       wasStatus != .satisfied || wasCellular != isCellular,
                       self.token != nil else { return }
                 await self.refreshProfile()
+                await self.syncPushBadgeReset()
                 if self.profile?.accountType == "CANTEEN" { return }
                 await self.refreshDashboard()
                 await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
