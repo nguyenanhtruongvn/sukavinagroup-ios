@@ -105,21 +105,18 @@ struct AdaptiveGlassSurface: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(
-                    .regular.tint(tint).interactive(interactive),
-                    in: .rect(cornerRadius: cornerRadius)
-                )
-        } else {
-            content
-                .background(legacyFill.opacity(legacyOpacity))
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-        }
+        // Do not reference the iOS 26 Liquid Glass APIs from the app binary.
+        // Xcode 26 can turn that reference into a required SwiftUICore.framework
+        // dependency even inside an availability check, which prevents the app
+        // from launching on iOS 15–17.  This adaptive surface intentionally uses
+        // the same supported material treatment on every OS version instead.
+        content
+            .background(legacyFill.opacity(legacyOpacity))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            )
     }
 }
 
@@ -145,18 +142,13 @@ extension View {
 
     @ViewBuilder
     func hidesPortalBottomScrollEdgeEffect() -> some View {
-        if #available(iOS 26.0, *) {
-            self
-                .scrollIndicators(.hidden)
-                .ignoresSafeArea(.container, edges: .bottom)
-                .scrollBounceBehavior(.always, axes: .vertical)
-                .scrollEdgeEffectHidden(true, for: .bottom)
-        } else {
-            self
-                .scrollIndicators(.hidden)
-                .ignoresSafeArea(.container, edges: .bottom)
-                .scrollBounceBehavior(.always, axes: .vertical)
-        }
+        // scrollEdgeEffectHidden is also an iOS 26-only SwiftUI API. Keep the
+        // cross-version behaviour here so the app never gains a hard link to a
+        // framework that is absent on older iOS releases.
+        self
+            .scrollIndicators(.hidden)
+            .ignoresSafeArea(.container, edges: .bottom)
+            .scrollBounceBehavior(.always, axes: .vertical)
     }
 
     @ViewBuilder
