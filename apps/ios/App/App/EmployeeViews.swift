@@ -1851,11 +1851,9 @@ struct EmployeePortalView: View {
 
 @available(iOS 17.0, *)
 struct TodayMenuView: View {
-    // Keep the demo QR action clear of the floating tab bar on iPhone and iPad.
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var pendingChoice: String?
-    @State private var showDemoScanner = false
     @State private var mealSheetHeight: CGFloat = 420
 
 
@@ -1987,23 +1985,6 @@ struct TodayMenuView: View {
             }
             .hidesPortalBottomScrollEdgeEffect()
             .background(AppTheme.ink.ignoresSafeArea())
-            .overlay(alignment: .bottomTrailing) {
-                if session.profile?.employeeCode == "DEMO" {
-                    Button {
-                        showDemoScanner = true
-                    } label: {
-                        Image(systemName: "qrcode.viewfinder")
-                            .font(.system(size: 23, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(width: 58, height: 58)
-                            .background(Color.green)
-                            .clipShape(Circle())
-                            .shadow(color: Color.green.opacity(0.3), radius: 12, y: 6)
-                    }
-                    .padding(.trailing, 20)
-                    .padding(.bottom, 18)
-                }
-            }
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .task {
@@ -2020,10 +2001,6 @@ struct TodayMenuView: View {
                 }
             }
             .refreshable { await session.refreshTodayMenu() }
-            .sheet(isPresented: $showDemoScanner) {
-                CanteenScannerView()
-                    .environmentObject(session)
-            }
             .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
