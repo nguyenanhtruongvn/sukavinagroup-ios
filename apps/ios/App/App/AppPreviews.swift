@@ -22,12 +22,14 @@ struct SukavinaPreviewContainer: View {
         if mode == .signedIn {
             previewSession.profile = Profile(
                 id: "preview", employeeCode: "SKV-001", name: "Nguyễn Văn A",
-                role: "Nhân viên", accountType: "EMPLOYEE", permissions: [], protected: false
+                role: "Nhân viên", accountType: "EMPLOYEE", permissions: [], protected: false,
+                email: "preview@sukavinagroup.net", passwordChangedAt: nil
             )
             previewSession.dashboard = Dashboard(
                 employeeCode: "SKV-001", fullName: "Nguyễn Văn A", role: "Nhân sự vận hành",
                 remainingLeaveDays: 8, attendanceStatus: "Đã ghi nhận", payrollStatus: "Đã cập nhật",
-                name: "Nguyễn Văn A", attendanceRecords: [], contentItems: []
+                name: "Nguyễn Văn A", workStartTime: "07:30", workEndTime: "16:30",
+                attendanceRecords: [], contentItems: []
             )
         }
         _session = StateObject(wrappedValue: previewSession)
