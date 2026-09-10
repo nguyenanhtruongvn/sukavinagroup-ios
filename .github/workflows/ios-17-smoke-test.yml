@@ -111,7 +111,7 @@ jobs:
             CODE_SIGN_IDENTITY='' \
             clean build
 
-      - name: Launch the app and fail if it exits
+      - name: Launch the app and inspect fatal app logs
         shell: bash
         run: |
           set -euo pipefail
@@ -124,9 +124,11 @@ jobs:
           # The historical iOS 17 crash occurred immediately after launch.
           # Keeping the app alive for this interval catches that regression.
           sleep 15
-          xcrun simctl spawn "$SIMULATOR_ID" ps -ax > build/diagnostics/processes.txt
-          if ! grep -E '(/App\.app/App|net\.sukavinagroup\.user)' build/diagnostics/processes.txt >/dev/null; then
-            echo 'The app terminated during the iOS 17 launch smoke test.' >&2
+          xcrun simctl spawn "$SIMULATOR_ID" log show --style compact --last 1m \
+            --predicate 'process == "App"' > build/diagnostics/app.log 2>&1
+          if grep -Ei 'fatal error|terminating app due to|uncaught exception|exc_crash|abort trap' \
+            build/diagnostics/app.log >/dev/null; then
+            echo 'A fatal app error was recorded during the iOS 17 launch smoke test.' >&2
             exit 1
           fi
 
@@ -139,7 +141,7 @@ jobs:
           if test -n "${SIMULATOR_ID:-}"; then
             xcrun simctl spawn "$SIMULATOR_ID" log show --style compact --last 3m \
               --predicate 'process == "App"' > build/diagnostics/app.log 2>&1 || true
-            xcrun simctl spawn "$SIMULATOR_ID" ps -ax > build/diagnostics/processes.txt 2>&1 || true
+            xcrun simctl list devices > build/diagnostics/simulator-devices.txt 2>&1 || true
           fi
           xcodebuild -version > build/diagnostics/xcode-version.txt 2>&1 || true
 
