@@ -101,7 +101,21 @@ struct MeetingInvitee: Codable, Identifiable {
         department = try values.decodeIfPresent(String.self, forKey: .department) ?? ""
     }
 }
-struct CreateMeetingBookingBody: Encodable { let roomId: String; let startsAt: String; let endsAt: String; let title: String; let attendeeCount: Int; let participantIds: [String] }
+struct CreateMeetingBookingBody: Encodable {
+    let roomId: String
+    let startsAt: String
+    let endsAt: String
+    let title: String
+    let attendeeCount: Int
+    let participantIds: [String]
+
+    // The API expects employee UUIDs under these exact camel-case keys.
+    // Keeping them explicit prevents a future encoder-wide key strategy from
+    // silently dropping the invitee list.
+    private enum CodingKeys: String, CodingKey {
+        case roomId, startsAt, endsAt, title, attendeeCount, participantIds
+    }
+}
 
 struct UserSummary: Codable {
     let employeeCode: String

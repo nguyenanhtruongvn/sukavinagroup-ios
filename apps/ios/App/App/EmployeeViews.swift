@@ -1814,7 +1814,7 @@ struct EmployeePortalView: View {
             NotificationsView()
                 .adaptivePortalTabBarBackground()
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
-                .badge(session.unreadCount + session.requestUnreadCount)
+                .badge(session.notificationBadgeCount)
                 .tag(3)
             ProfileView()
                 .adaptivePortalTabBarBackground()
@@ -1824,6 +1824,9 @@ struct EmployeePortalView: View {
         .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
+        .onChange(of: selectedTab) { _, tab in
+            if tab == 3 { session.clearNotificationBadge() }
+        }
         .onChange(of: notificationRouter.pendingRoute) { _, route in
             if route != nil { selectedTab = 3 }
         }

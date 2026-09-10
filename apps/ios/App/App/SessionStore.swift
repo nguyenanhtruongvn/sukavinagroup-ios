@@ -29,6 +29,7 @@ final class SessionStore: ObservableObject {
     @Published var isWorking = false
     @Published var unreadCount = 0
     @Published var requestUnreadCount = 0
+    @Published var notificationBadgeCount = 0
     @Published var biometricsEnabled = BiometricPreferences.enabled
     @Published var passwordChangeRequiresEmail = false
     @Published var passwordChangeError: String?
@@ -48,6 +49,10 @@ final class SessionStore: ObservableObject {
     private let knownArticlesKey = "known-native-article-ids"
     private let knownAttendancePrefix = "known-native-attendance-ids-"
     private let localAttendanceNotificationsPrefix = "local-native-attendance-notifications-"
+    private let acknowledgedNotificationBadgePrefix = "acknowledged-native-notification-badge-"
+    private let acknowledgedNotificationBadgeDatePrefix = "acknowledged-native-notification-badge-date-"
+    private var latestRequestNotifications: [RequestNotification] = []
+    private var articleBadgeCount = 0
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
     private var eventStreamTask: Task<Void, Never>?
@@ -561,6 +566,8 @@ final class SessionStore: ObservableObject {
         AttendanceWidgetBridge.clear()
         unreadCount = 0
         requestUnreadCount = 0
+        notificationBadgeCount = 0
+        articleBadgeCount = 0
         syncApplicationBadge()
         state = .signedOut
     }
@@ -649,16 +656,39 @@ final class SessionStore: ObservableObject {
     func refreshRequestNotificationCount() async {
         guard let token,
               let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) else { return }
-        updateRequestUnreadCount(values.filter { !$0.read }.count)
+        updateRequestUnreadCount(values)
     }
 
-    func updateRequestUnreadCount(_ value: Int) {
-        requestUnreadCount = max(0, value)
+    func updateRequestUnreadCount(_ values: [RequestNotification]) {
+        latestRequestNotifications = values
+        requestUnreadCount = values.filter { !$0.read }.count
+        let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
+        let acknowledged = UserDefaults.standard.stringArray(forKey: acknowledgedNotificationBadgePrefix + employeeCode)
+        let acknowledgedAt = UserDefaults.standard.object(forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode) as? Date
+        let requestBadgeCount = values.filter { notification in
+            guard !notification.read else { return false }
+            if acknowledged?.contains(notification.id) == true { return false }
+            return acknowledgedAt == nil || notification.createdAt > acknowledgedAt!
+        }.count
+        notificationBadgeCount = max(0, articleBadgeCount + requestBadgeCount)
         syncApplicationBadge()
     }
 
+    /// Opening Notifications clears only its visual badge. The underlying
+    /// notifications remain unread until the user opens or removes them.
+    func clearNotificationBadge() {
+        let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
+        guard !employeeCode.isEmpty else { return }
+        let currentUnreadIDs = latestRequestNotifications.filter { !$0.read }.map(\.id)
+        UserDefaults.standard.set(currentUnreadIDs, forKey: acknowledgedNotificationBadgePrefix + employeeCode)
+        UserDefaults.standard.set(Date(), forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
+        articleBadgeCount = 0
+        notificationBadgeCount = 0
+        NotificationManager.shared.clearBadge()
+    }
+
     private func syncApplicationBadge() {
-        UIApplication.shared.applicationIconBadgeNumber = max(0, unreadCount + requestUnreadCount)
+        UIApplication.shared.applicationIconBadgeNumber = max(0, notificationBadgeCount)
     }
 
     func dismissError() {
@@ -783,6 +813,8 @@ final class SessionStore: ObservableObject {
         knownArticleIDs.formUnion(items.map(\.id))
         persistKnownArticles()
         unreadCount = 0
+        notificationBadgeCount = max(0, notificationBadgeCount - articleBadgeCount)
+        articleBadgeCount = 0
         syncApplicationBadge()
     }
 
@@ -800,8 +832,10 @@ final class SessionStore: ObservableObject {
         let newItems = items.filter { !knownArticleIDs.contains($0.id) }
         if !newItems.isEmpty {
             unreadCount += newItems.count
+            articleBadgeCount += newItems.count
+            notificationBadgeCount += newItems.count
             syncApplicationBadge()
-            NotificationManager.shared.notifyNewArticles(newItems, badge: unreadCount + requestUnreadCount)
+            NotificationManager.shared.notifyNewArticles(newItems, badge: notificationBadgeCount)
             knownArticleIDs.formUnion(newItems.map(\.id))
             persistKnownArticles()
         }
@@ -940,15 +974,31 @@ final class SessionStore: ObservableObject {
                 attendeeCount: participants.count + 1,
                 participantIds: participants
             )
-            let _: MeetingBooking = try await APIClient.shared.request(
+            let created: MeetingBooking = try await APIClient.shared.request(
                 "me/meeting-bookings",
                 method: "POST",
                 token: token,
                 body: body
             )
-            // The server has confirmed the reservation. Do not keep the form
-            // visible while the independent schedule refresh is in flight.
-            Task { await refreshMeetingSchedule(date: start) }
+            // Render the confirmed booking immediately. Waiting only for an
+            // independent schedule refresh made a successful booking appear
+            // absent in the iOS timeline for several seconds.
+            let optimistic = MeetingBooking(
+                id: created.id,
+                roomId: created.roomId,
+                startsAt: created.startsAt,
+                endsAt: created.endsAt,
+                title: created.title,
+                attendeeCount: created.attendeeCount,
+                status: created.status,
+                isMine: true,
+                isOwner: true
+            )
+            if !meetingBookings.contains(where: { $0.id == optimistic.id }) {
+                meetingBookings.append(optimistic)
+                meetingBookings.sort { $0.startsAt < $1.startsAt }
+            }
+            await refreshMeetingSchedule(date: start)
             return nil
         } catch {
             return error.localizedDescription
