@@ -1,0 +1,160 @@
+name: iOS 17 simulator smoke test
+
+on:
+  pull_request:
+    paths:
+      - 'apps/ios/**'
+      - '.github/workflows/ios-17-smoke-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ios/**'
+      - '.github/workflows/ios-17-smoke-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sukavina-ios-17-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-launch:
+    name: Build and launch on iOS 17
+    # macos-14 is retained because it can provide Xcode releases carrying an
+    # iOS 17 simulator runtime. The selection step below verifies that runtime
+    # instead of silently testing a different iOS version.
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      APP_BUNDLE_ID: net.sukavinagroup.user
+      DERIVED_DATA: build/DerivedData
+      DEVICE_NAME: Sukavina iOS 17 CI
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Select an installed Xcode with an iOS 17 simulator runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          selected_xcode=''
+          selected_runtime=''
+
+          shopt -s nullglob
+          for xcode in /Applications/Xcode*.app; do
+            candidate_developer_dir="$xcode/Contents/Developer"
+            test -x "$candidate_developer_dir/usr/bin/xcrun" || continue
+            export DEVELOPER_DIR="$candidate_developer_dir"
+
+            runtime_json="$RUNNER_TEMP/simulator-runtimes.json"
+            xcrun simctl list runtimes --json > "$runtime_json" || continue
+            runtime_id="$(python3 - "$runtime_json" <<'PY'
+          import json
+          import sys
+
+          for runtime in json.load(open(sys.argv[1], encoding='utf-8')).get('runtimes', []):
+              identifier = runtime.get('identifier', '')
+              available = runtime.get('isAvailable', True)
+              if available and identifier.startswith('com.apple.CoreSimulator.SimRuntime.iOS-17-'):
+                  print(identifier)
+                  break
+          PY
+          )"
+            if test -n "$runtime_id"; then
+              selected_xcode="$candidate_developer_dir"
+              selected_runtime="$runtime_id"
+              break
+            fi
+          done
+
+          if test -z "$selected_xcode"; then
+            echo 'No installed Xcode provides an available iOS 17 simulator runtime.' >&2
+            echo 'Installed Xcode applications:' >&2
+            ls -1d /Applications/Xcode*.app >&2 || true
+            exit 1
+          fi
+
+          {
+            echo "DEVELOPER_DIR=$selected_xcode"
+            echo "IOS17_RUNTIME=$selected_runtime"
+          } >> "$GITHUB_ENV"
+          export DEVELOPER_DIR="$selected_xcode"
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Create and boot an iPhone 15 running iOS 17
+        shell: bash
+        run: |
+          set -euo pipefail
+          SIMULATOR_ID="$(xcrun simctl create "$DEVICE_NAME" 'com.apple.CoreSimulator.SimDeviceType.iPhone-15' "$IOS17_RUNTIME")"
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+
+      - name: Build the app for the iOS 17 simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project apps/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "id=$SIMULATOR_ID" \
+            -derivedDataPath "$DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            clean build
+
+      - name: Launch the app and fail if it exits
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/diagnostics
+          APP_PATH="$DERIVED_DATA/Build/Products/Debug-iphonesimulator/App.app"
+          test -d "$APP_PATH"
+          xcrun simctl install "$SIMULATOR_ID" "$APP_PATH"
+          xcrun simctl launch --terminate-running-process "$SIMULATOR_ID" "$APP_BUNDLE_ID"
+
+          # The historical iOS 17 crash occurred immediately after launch.
+          # Keeping the app alive for this interval catches that regression.
+          sleep 15
+          xcrun simctl spawn "$SIMULATOR_ID" ps -ax > build/diagnostics/processes.txt
+          if ! grep -E '(/App\.app/App|net\.sukavinagroup\.user)' build/diagnostics/processes.txt >/dev/null; then
+            echo 'The app terminated during the iOS 17 launch smoke test.' >&2
+            exit 1
+          fi
+
+      - name: Collect iOS 17 simulator diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/diagnostics
+          if test -n "${SIMULATOR_ID:-}"; then
+            xcrun simctl spawn "$SIMULATOR_ID" log show --style compact --last 3m \
+              --predicate 'process == "App"' > build/diagnostics/app.log 2>&1 || true
+            xcrun simctl spawn "$SIMULATOR_ID" ps -ax > build/diagnostics/processes.txt 2>&1 || true
+          fi
+          xcodebuild -version > build/diagnostics/xcode-version.txt 2>&1 || true
+
+      - name: Upload simulator diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-17-simulator-diagnostics
+          path: build/diagnostics
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Delete temporary simulator
+        if: always()
+        shell: bash
+        run: |
+          if test -n "${SIMULATOR_ID:-}"; then
+            xcrun simctl delete "$SIMULATOR_ID" || true
+          fi
