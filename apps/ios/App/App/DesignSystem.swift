@@ -147,7 +147,6 @@ extension View {
         // framework that is absent on older iOS releases.
         self
             .scrollIndicators(.hidden)
-            .ignoresSafeArea(.container, edges: .bottom)
             .scrollBounceBehavior(.always, axes: .vertical)
     }
 

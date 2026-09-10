@@ -239,7 +239,6 @@ struct RequestsView: View {
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .animation(.easeInOut(duration: 0.22), value: filterIndex)
-                    .ignoresSafeArea(.container, edges: .bottom)
                 }
                 .padding(.top, 8)
                 .onChange(of: filterIndex) { _, newIndex in
@@ -250,7 +249,6 @@ struct RequestsView: View {
                 .onChange(of: initialFilter, initial: true) { _, value in
                     selectFilter(value, animated: false)
                 }
-                .ignoresSafeArea(.container, edges: .bottom)
 
                 Button { composing = true } label: {
                     Image(systemName: "plus")
