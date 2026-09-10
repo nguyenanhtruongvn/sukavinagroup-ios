@@ -68,6 +68,7 @@ final class SessionStore: ObservableObject {
     private var offlineNoticeTask: Task<Void, Never>?
     private var foregroundRefreshTask: Task<Void, Never>?
     private var apnsTokenObserver: NSObjectProtocol?
+    private var meetingPushObserver: NSObjectProtocol?
 
     init() {
         apnsTokenObserver = NotificationCenter.default.addObserver(
@@ -79,12 +80,25 @@ final class SessionStore: ObservableObject {
                 await self?.syncAPNsToken()
             }
         }
+        meetingPushObserver = NotificationCenter.default.addObserver(
+            forName: .sukavinaMeetingChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
+            }
+        }
     }
 
     deinit {
         offlineNoticeTask?.cancel()
         if let apnsTokenObserver {
             NotificationCenter.default.removeObserver(apnsTokenObserver)
+        }
+        if let meetingPushObserver {
+            NotificationCenter.default.removeObserver(meetingPushObserver)
         }
     }
 
@@ -955,6 +969,28 @@ final class SessionStore: ObservableObject {
         } catch {
             present(error)
             return nil
+        }
+    }
+
+    /// Cancelling is restricted by the server to the organiser and to meetings
+    /// that have not started yet. Keep the visible day in sync immediately;
+    /// the server also broadcasts the change to every other signed-in client.
+    func cancelMeeting(id: String, scheduledAt: String) async -> String? {
+        guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
+        guard isNetworkAvailable else { return "Mất kết nối internet. Không thể hủy lịch khi đang ngoại tuyến." }
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let _: MeetingBooking = try await APIClient.shared.request(
+                "me/meeting-bookings/\(id)",
+                method: "DELETE",
+                token: token
+            )
+            meetingBookings.removeAll { $0.id == id }
+            await refreshMeetingSchedule(date: MeetingPresentation.date(from: scheduledAt) ?? activeMeetingScheduleDate)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
     /// Returns a server-facing failure message so the booking form can present

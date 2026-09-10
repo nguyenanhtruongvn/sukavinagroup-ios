@@ -11,6 +11,7 @@ import WebKit
 
 extension Notification.Name {
     static let sukavinaAPNsTokenUpdated = Notification.Name("net.sukavinagroup.apns-token-updated")
+    static let sukavinaMeetingChanged = Notification.Name("net.sukavinagroup.meeting-changed")
 }
 
 struct APNsNotificationRoute: Equatable {
@@ -113,6 +114,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        publishMeetingChangeIfNeeded(notification.request.content.userInfo)
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -122,7 +124,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         notificationRouter.handle(userInfo: response.notification.request.content.userInfo)
+        publishMeetingChangeIfNeeded(response.notification.request.content.userInfo)
         completionHandler()
+    }
+
+    private func publishMeetingChangeIfNeeded(_ userInfo: [AnyHashable: Any]) {
+        guard let type = userInfo["type"] as? String, type.hasPrefix("meeting_") else { return }
+        NotificationCenter.default.post(name: .sukavinaMeetingChanged, object: nil)
     }
 
     func application(

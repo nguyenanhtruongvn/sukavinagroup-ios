@@ -61,7 +61,7 @@ private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
     }
 }
 
-private enum MeetingPresentation {
+enum MeetingPresentation {
     static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
     static var calendar: Calendar = {
         var value = Calendar(identifier: .gregorian)
@@ -682,6 +682,9 @@ struct MeetingBookingDetailSheet: View {
     let booking: MeetingBooking
     let room: MeetingRoom
     @State private var details: MeetingBookingDetails?
+    @State private var isCancelling = false
+    @State private var showCancelConfirmation = false
+    @State private var cancelError: String?
 
     // Role color is shared with Android: organiser green, invitee blue.
     private var accent: Color { booking.isOwner == true ? Color(red: 0.13, green: 0.71, blue: 0.45) : .blue }
@@ -701,6 +704,12 @@ struct MeetingBookingDetailSheet: View {
         return minutes >= 60 ? "\(minutes / 60) giờ\(minutes % 60 == 0 ? "" : " \(minutes % 60) phút")" : "\(minutes) phút"
     }
     private var displayedRoom: MeetingRoom { details?.room ?? room }
+    private var canCancel: Bool {
+        guard booking.isOwner == true,
+              booking.status == "confirmed",
+              let start = MeetingPresentation.date(from: booking.startsAt) else { return false }
+        return start > Date()
+    }
 
     var body: some View {
         NavigationStack {
@@ -769,6 +778,19 @@ struct MeetingBookingDetailSheet: View {
                             Text("Đang tải thông tin người tham gia…").font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    if canCancel {
+                        Button(role: .destructive) {
+                            showCancelConfirmation = true
+                        } label: {
+                            Label(isCancelling ? "Đang hủy lịch…" : "Hủy lịch", systemImage: "calendar.badge.minus")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .disabled(isCancelling)
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    }
                     Text("Thông tin được đồng bộ theo thời gian thực.")
                         .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
                 }
@@ -780,6 +802,27 @@ struct MeetingBookingDetailSheet: View {
             .toolbar { Button("Đóng") { dismiss() } }
             .task(id: booking.id) {
                 details = await session.meetingBookingDetails(id: booking.id)
+            }
+            .alert("Hủy lịch họp?", isPresented: $showCancelConfirmation) {
+                Button("Không", role: .cancel) {}
+                Button("Hủy lịch", role: .destructive) {
+                    Task {
+                        isCancelling = true
+                        let error = await session.cancelMeeting(id: booking.id, scheduledAt: booking.startsAt)
+                        isCancelling = false
+                        if let error { cancelError = error } else { dismiss() }
+                    }
+                }
+            } message: {
+                Text("Những người được mời sẽ nhận được thông báo lịch họp đã hủy.")
+            }
+            .alert("Chưa thể hủy lịch", isPresented: Binding(
+                get: { cancelError != nil },
+                set: { if !$0 { cancelError = nil } }
+            )) {
+                Button("Đã hiểu", role: .cancel) {}
+            } message: {
+                Text(cancelError ?? "")
             }
         }
     }

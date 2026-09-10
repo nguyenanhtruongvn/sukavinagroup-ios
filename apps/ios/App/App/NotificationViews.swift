@@ -224,7 +224,7 @@ struct NotificationsView: View {
         }
         guard let token = session.token else { return }
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/\(item.id)/read", method: "PATCH", token: token)
-        if item.type == "meeting_invite" || item.type == "meeting_reminder" {
+        if item.type == "meeting_invite" || item.type == "meeting_reminder" || item.type == "meeting_cancelled" {
             meetingNotification = item
         } else {
             await requestStore.load(token)
@@ -367,10 +367,17 @@ struct NotificationsView: View {
 
 @available(iOS 17.0, *)
 private struct MeetingNotificationDetail: View {
+    @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
     let notification: RequestNotification
+    @State private var details: MeetingBookingDetails?
+    @State private var isLoading = false
 
-    private var accent: Color { notification.type == "meeting_reminder" ? .orange : .blue }
+    private var accent: Color {
+        if notification.type == "meeting_reminder" { return .orange }
+        if notification.type == "meeting_cancelled" { return .gray }
+        return .blue
+    }
     private var title: String {
         notification.title
             .replacingOccurrences(of: "Bạn được mời: ", with: "")
@@ -394,14 +401,14 @@ private struct MeetingNotificationDetail: View {
                                 .frame(width: 56, height: 56).background(accent.gradient)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             Spacer()
-                            Text(notification.type == "meeting_reminder" ? "Sắp bắt đầu" : "Lời mời")
+                            Text(notification.type == "meeting_reminder" ? "Sắp bắt đầu" : notification.type == "meeting_cancelled" ? "Đã hủy" : "Lời mời")
                                 .font(.caption.weight(.bold)).foregroundStyle(accent)
                                 .padding(.horizontal, 10).padding(.vertical, 7)
                                 .background(accent.opacity(0.12)).clipShape(Capsule())
                         }
                         Text(title.isEmpty ? "Cuộc họp" : title)
                             .font(.system(size: 27, weight: .bold, design: .rounded))
-                        Label(notification.type == "meeting_reminder" ? "Hãy chuẩn bị tham gia đúng giờ" : "Bạn được mời tham dự cuộc họp", systemImage: "person.2.fill")
+                        Label(notification.type == "meeting_reminder" ? "Hãy chuẩn bị tham gia đúng giờ" : notification.type == "meeting_cancelled" ? "Lịch họp này đã được hủy" : "Bạn được mời tham dự cuộc họp", systemImage: "person.2.fill")
                             .font(.subheadline.weight(.semibold)).foregroundStyle(accent)
                     }
                     .padding(20).frame(maxWidth: .infinity, alignment: .leading)
@@ -409,13 +416,17 @@ private struct MeetingNotificationDetail: View {
                     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
 
                     notificationCard(title: "Thông tin cuộc họp", icon: "calendar") {
-                        if let room = messageParts.first, !room.isEmpty {
-                            Label(room, systemImage: "building.2.fill").font(.headline)
-                        }
-                        if messageParts.count > 1 {
-                            Label(messageParts[1], systemImage: "clock.fill").font(.subheadline).foregroundStyle(.secondary)
+                        if let details {
+                            Label(details.room.name, systemImage: "building.2.fill").font(.headline)
+                            Label(MeetingPresentation.range(MeetingBooking(id: details.id, roomId: details.roomId, startsAt: details.startsAt, endsAt: details.endsAt, title: details.title, attendeeCount: details.attendeeCount, status: details.status, isMine: true, isOwner: false)), systemImage: "clock.fill").font(.subheadline).foregroundStyle(.secondary)
+                            if !details.room.location.isEmpty { Label(details.room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
+                            Label("Người tổ chức: \(details.employee.fullName)", systemImage: "person.crop.circle").font(.subheadline).foregroundStyle(.secondary)
+                            if !details.participants.isEmpty { Text("Người tham gia: \(details.participants.map { $0.employee.fullName }.joined(separator: ", "))").font(.subheadline).foregroundStyle(.secondary) }
                         } else {
-                            Text(notification.message).font(.subheadline).foregroundStyle(.secondary)
+                            if let room = messageParts.first, !room.isEmpty { Label(room, systemImage: "building.2.fill").font(.headline) }
+                            if messageParts.count > 1 { Label(messageParts[1], systemImage: "clock.fill").font(.subheadline).foregroundStyle(.secondary) }
+                            else { Text(notification.message).font(.subheadline).foregroundStyle(.secondary) }
+                            if isLoading { ProgressView().controlSize(.small) }
                         }
                     }
 
@@ -435,6 +446,12 @@ private struct MeetingNotificationDetail: View {
             .navigationTitle("Chi tiết cuộc họp")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Đóng") { dismiss() } }
+            .task(id: notification.requestId) {
+                guard let id = notification.requestId else { return }
+                isLoading = true
+                details = await session.meetingBookingDetails(id: id)
+                isLoading = false
+            }
         }
     }
 
