@@ -561,7 +561,11 @@ private struct MeetingTimeline: View {
                     }
                 }
 
-                ForEach(Array(bookings.enumerated()), id: \.element.id) { index, booking in
+                // Private bookings deliberately have an empty server id.  Do
+                // not use that id for SwiftUI identity: several private
+                // bookings would otherwise share "" and only one time block
+                // is rendered in another employee's room timeline.
+                ForEach(Array(bookings.enumerated()), id: \.offset) { index, booking in
                     if let position = bookingPosition(booking) {
                         let style = bookingStyle(at: index)
                         Button { onSelect(booking) } label: {

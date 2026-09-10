@@ -157,7 +157,7 @@ extension View {
             self.toolbarBackground(.hidden, for: .tabBar)
         } else {
             self
-                .toolbarBackground(.ultraThinMaterial, for: .tabBar)
+                .toolbarBackground(Color(uiColor: .systemBackground), for: .tabBar)
                 .toolbarBackground(.visible, for: .tabBar)
         }
     }

@@ -88,13 +88,22 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
         let tabBarAppearance = UITabBarAppearance()
-        tabBarAppearance.configureWithTransparentBackground()
-        tabBarAppearance.backgroundColor = .clear
-        tabBarAppearance.backgroundEffect = nil
-        tabBarAppearance.shadowColor = .clear
+        if #available(iOS 26.0, *) {
+            tabBarAppearance.configureWithTransparentBackground()
+            tabBarAppearance.backgroundColor = .clear
+            tabBarAppearance.backgroundEffect = nil
+            tabBarAppearance.shadowColor = .clear
+        } else {
+            // iOS 17–18 does not reliably retain a SwiftUI material set on a
+            // TabView. Give the UIKit bar an adaptive opaque background so it
+            // remains visible in both light and dark appearance.
+            tabBarAppearance.configureWithOpaqueBackground()
+            tabBarAppearance.backgroundColor = .systemBackground
+            tabBarAppearance.shadowColor = .separator
+        }
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
-        UITabBar.appearance().isTranslucent = true
+        UITabBar.appearance().isTranslucent = false
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
         if #available(iOS 17.0, *) {
