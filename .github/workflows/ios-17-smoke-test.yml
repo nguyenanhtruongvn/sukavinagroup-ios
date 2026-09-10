@@ -36,22 +36,30 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v6
 
-      - name: Select an installed Xcode with an iOS 17 simulator runtime
+      - name: Install the iOS 17 runtime from Xcode 15.4
         shell: bash
         run: |
           set -euo pipefail
-          selected_xcode=''
-          selected_runtime=''
+          # GitHub's macos-14 image keeps Xcode 15.4 but does not retain its
+          # simulator runtimes. Xcode 15.4 downloads an iOS 17 runtime, while
+          # newer Xcode releases cannot do so.
+          for xcode in /Applications/Xcode_15.4.app /Applications/Xcode_15.4.0.app; do
+            if test -x "$xcode/Contents/Developer/usr/bin/xcrun"; then
+              export DEVELOPER_DIR="$xcode/Contents/Developer"
+              break
+            fi
+          done
+          test -n "${DEVELOPER_DIR:-}" || {
+            echo 'Xcode 15.4 is required to install the iOS 17 simulator runtime.' >&2
+            exit 1
+          }
 
-          shopt -s nullglob
-          for xcode in /Applications/Xcode*.app; do
-            candidate_developer_dir="$xcode/Contents/Developer"
-            test -x "$candidate_developer_dir/usr/bin/xcrun" || continue
-            export DEVELOPER_DIR="$candidate_developer_dir"
+          xcodebuild -version
+          xcodebuild -downloadPlatform iOS
 
-            runtime_json="$RUNNER_TEMP/simulator-runtimes.json"
-            xcrun simctl list runtimes --json > "$runtime_json" || continue
-            runtime_id="$(python3 - "$runtime_json" <<'PY'
+          runtime_json="$RUNNER_TEMP/simulator-runtimes.json"
+          xcrun simctl list runtimes --json > "$runtime_json"
+          selected_runtime="$(python3 - "$runtime_json" <<'PY'
           import json
           import sys
 
@@ -63,26 +71,17 @@ jobs:
                   break
           PY
           )"
-            if test -n "$runtime_id"; then
-              selected_xcode="$candidate_developer_dir"
-              selected_runtime="$runtime_id"
-              break
-            fi
-          done
 
-          if test -z "$selected_xcode"; then
-            echo 'No installed Xcode provides an available iOS 17 simulator runtime.' >&2
-            echo 'Installed Xcode applications:' >&2
-            ls -1d /Applications/Xcode*.app >&2 || true
+          if test -z "$selected_runtime"; then
+            echo 'Xcode 15.4 completed the download but no iOS 17 runtime is available.' >&2
+            xcrun simctl list runtimes >&2 || true
             exit 1
           fi
 
           {
-            echo "DEVELOPER_DIR=$selected_xcode"
+            echo "DEVELOPER_DIR=$DEVELOPER_DIR"
             echo "IOS17_RUNTIME=$selected_runtime"
           } >> "$GITHUB_ENV"
-          export DEVELOPER_DIR="$selected_xcode"
-          xcodebuild -version
           xcrun simctl list runtimes
 
       - name: Create and boot an iPhone 15 running iOS 17
