@@ -69,6 +69,10 @@ final class SessionStore: ObservableObject {
     private var foregroundRefreshTask: Task<Void, Never>?
     private var apnsTokenObserver: NSObjectProtocol?
     private var meetingPushObserver: NSObjectProtocol?
+    // Kept only for the current app session. Persisting this acknowledgement
+    // made a valid APNs token silently disappear from the server after a token
+    // cleanup or an account switch on the same iPhone.
+    private var registeredAPNsIdentity: String?
 
     init() {
         apnsTokenObserver = NotificationCenter.default.addObserver(
@@ -618,8 +622,8 @@ final class SessionStore: ObservableObject {
               let deviceToken = APNsRegistration.deviceToken,
               let employeeCode = profile?.employeeCode.nilIfEmpty else { return }
 
-        let uploadedKey = "net.sukavinagroup.apns-token-uploaded-\(employeeCode)"
-        guard UserDefaults.standard.string(forKey: uploadedKey) != deviceToken else { return }
+        let registrationIdentity = "\(employeeCode):\(deviceToken)"
+        guard registeredAPNsIdentity != registrationIdentity else { return }
 
         do {
             let _: MessageResponse = try await APIClient.shared.request(
@@ -628,7 +632,7 @@ final class SessionStore: ObservableObject {
                 token: token,
                 body: PushTokenRegistrationBody(token: deviceToken, platform: "ios")
             )
-            UserDefaults.standard.set(deviceToken, forKey: uploadedKey)
+            registeredAPNsIdentity = registrationIdentity
         } catch {
             ConnectionDiagnostics.record("APNs token upload failed: \(error.localizedDescription)")
         }
