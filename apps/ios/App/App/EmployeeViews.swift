@@ -16,6 +16,15 @@ private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
     let showsLabels: Bool
     private static let tabTitles = ["Trang chủ", "Đơn từ", "Phòng họp", "Thông báo", "Tài khoản"]
 
+    final class Coordinator {
+        weak var tabBar: UITabBar?
+        var showsLabels: Bool?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeUIView(context: Context) -> UIView {
         let view = UIView(frame: .zero)
         view.isUserInteractionEnabled = false
@@ -25,6 +34,13 @@ private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         DispatchQueue.main.async {
             guard let window = uiView.window, let tabBar = findTabBar(from: window) else { return }
+            // Changing UIKit tab-bar layout during every SwiftUI reconciliation
+            // re-enters layout on iOS 17 and can recurse until the app aborts.
+            // Only touch the bar when its actual label preference changes.
+            guard context.coordinator.tabBar !== tabBar || context.coordinator.showsLabels != showsLabels else { return }
+
+            context.coordinator.tabBar = tabBar
+            context.coordinator.showsLabels = showsLabels
             for (index, item) in (tabBar.items ?? []).enumerated() {
                 guard Self.tabTitles.indices.contains(index) else { continue }
                 let title = Self.tabTitles[index]
@@ -34,7 +50,6 @@ private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
                 item.imageInsets = showsLabels ? .zero : UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
             }
             tabBar.items?.forEach { $0.setTitleTextAttributes(nil, for: .normal) }
-            tabBar.setNeedsLayout()
         }
     }
 
@@ -1843,24 +1858,19 @@ struct EmployeePortalView: View {
                 requestInitialFilter = .pending
                 selectedTab = 1
             }
-                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
-                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             .tag(1)
             MeetingRoomsView()
-                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Phòng họp", systemImage: "building.2.fill") }
                 .tag(2)
             NotificationsView()
-                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.notificationBadgeCount)
                 .tag(3)
             ProfileView()
-                .adaptivePortalTabBarBackground()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
