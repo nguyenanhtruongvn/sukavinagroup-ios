@@ -90,7 +90,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         let tabBarAppearance = UITabBarAppearance()
         tabBarAppearance.configureWithTransparentBackground()
         tabBarAppearance.backgroundColor = .clear
-        tabBarAppearance.backgroundEffect = nil
+        // iOS 17–18 do not reliably apply SwiftUI's tab-bar material after a
+        // screen has extended below the safe area. Keep the material on the
+        // native bar itself; unlike an opaque background, this does not add a
+        // bottom panel or reserve extra content height.
+        if #available(iOS 26.0, *) {
+            tabBarAppearance.backgroundEffect = nil
+        } else {
+            tabBarAppearance.backgroundEffect = UIBlurEffect(style: .systemChromeMaterial)
+        }
         tabBarAppearance.shadowColor = .clear
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
