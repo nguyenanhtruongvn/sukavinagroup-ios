@@ -97,9 +97,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
         if #available(iOS 17.0, *) {
-            window.rootViewController = UIHostingController(
+            let rootViewController = UIHostingController(
                 rootView: SukavinaAppView().environmentObject(notificationRouter)
             )
+            // SwiftUI tab children occasionally leave their bottom safe area
+            // transparent. Never allow UIKit's default white view to show.
+            rootViewController.view.backgroundColor = AppTheme.inkUIColor
+            window.rootViewController = rootViewController
         } else {
             window.rootViewController = LegacyPortalViewController()
         }

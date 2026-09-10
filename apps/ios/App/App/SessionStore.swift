@@ -564,6 +564,18 @@ final class SessionStore: ObservableObject {
     }
 
     func signOut() {
+        let logoutToken = token
+        let deviceToken = APNsRegistration.deviceToken
+        if let logoutToken, let deviceToken {
+            Task {
+                let _: MessageResponse? = try? await APIClient.shared.request(
+                    "auth/push-token",
+                    method: "DELETE",
+                    token: logoutToken,
+                    body: PushTokenRegistrationBody(token: deviceToken, platform: "ios")
+                )
+            }
+        }
         eventStreamTask?.cancel()
         eventStreamTask = nil
         realtimeRefreshTask?.cancel()
@@ -576,6 +588,7 @@ final class SessionStore: ObservableObject {
         offlineNoticeTask?.cancel()
         offlineNoticeTask = nil
         isOfflineNoticeVisible = false
+        registeredAPNsIdentity = nil
         KeychainStore.clear()
         SessionCache.clear()
         token = nil

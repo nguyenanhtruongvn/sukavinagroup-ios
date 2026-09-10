@@ -1857,7 +1857,12 @@ struct EmployeePortalView: View {
 
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        ZStack {
+            // Keep the portal canvas behind the UIKit tab controller on every
+            // iOS version. Some tab children finish above its bottom safe area.
+            AppTheme.ink.ignoresSafeArea()
+
+            TabView(selection: $selectedTab) {
             DashboardView(isActive: selectedTab == 0) {
                 requestInitialFilter = .pending
                 selectedTab = 1
@@ -1877,15 +1882,17 @@ struct EmployeePortalView: View {
             ProfileView()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
-        }
-        .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
-        .accentColor(AppTheme.red)
-        .adaptivePortalTabBarBackground()
-        .onChange(of: selectedTab) { _, tab in
-            if tab == 3 { session.clearNotificationBadge() }
-        }
-        .onChange(of: notificationRouter.pendingRoute) { _, route in
-            if route != nil { selectedTab = 3 }
+            }
+            .background(AppTheme.ink)
+            .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
+            .accentColor(AppTheme.red)
+            .adaptivePortalTabBarBackground()
+            .onChange(of: selectedTab) { _, tab in
+                if tab == 3 { session.clearNotificationBadge() }
+            }
+            .onChange(of: notificationRouter.pendingRoute) { _, route in
+                if route != nil { selectedTab = 3 }
+            }
         }
     }
 
