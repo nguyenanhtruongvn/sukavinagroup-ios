@@ -200,7 +200,6 @@ extension View {
         self
             .scrollIndicators(.hidden)
             .ignoresSafeArea(.container, edges: .bottom)
-            .scrollBounceBehavior(.always, axes: .vertical)
     }
 
     @ViewBuilder

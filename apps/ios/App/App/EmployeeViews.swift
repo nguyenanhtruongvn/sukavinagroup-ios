@@ -2056,16 +2056,6 @@ struct TodayMenuView: View {
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 await session.refreshTodayMenu()
-                while !Task.isCancelled {
-                    var calendar = Calendar(identifier: .gregorian)
-                    calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
-                    let now = Date()
-                    let nextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now.addingTimeInterval(86_400)
-                    let delay = max(1, nextDay.timeIntervalSince(now) + 0.5)
-                    try? await Task.sleep(for: .seconds(delay))
-                    guard !Task.isCancelled else { return }
-                    await session.refreshTodayMenu()
-                }
             }
             .refreshable { await session.refreshTodayMenu() }
             .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
@@ -2372,17 +2362,12 @@ struct DashboardView: View {
             .toolbar(.hidden, for: .navigationBar)
             .task { await requestStore.load(session.token) }
             .task { await session.refreshTodayMenu() }
-            // Realtime events update attendance immediately when available.
-            // This bounded fallback keeps the Home card current if an SSE
-            // connection is briefly interrupted while the user remains here.
+            // Realtime events and app activation keep the dashboard current.
+            // Do not poll while the user scrolls: replacing card data during a
+            // pull gesture makes SwiftUI's List visibly jump.
             .task(id: isActive) {
                 guard isActive else { return }
                 await session.refreshDashboard()
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(30))
-                    guard !Task.isCancelled else { return }
-                    await session.refreshDashboard()
-                }
             }
             .task(id: session.requestRevision) {
                 guard session.requestRevision > 0 else { return }

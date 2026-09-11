@@ -280,6 +280,7 @@ final class SessionStore: ObservableObject {
                 return
             }
             await self.refreshDashboard(shouldRefreshRequestNotificationCount: false)
+            await self.refreshTodayMenu()
             _ = await notificationCountRefresh
             self.startRealTimeUpdates()
             self.startSessionRefresh()

@@ -9,7 +9,7 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-struct RequestNotification: Codable, Identifiable {
+struct RequestNotification: Codable, Identifiable, Equatable {
     let id: String
     let type: String
     let title: String
@@ -31,6 +31,7 @@ struct NotificationsView: View {
     @State private var meetingNotification: RequestNotification?
     @State private var confirmClear = false
     @State private var hiddenArticleIDs = Set<String>()
+    @State private var isReloadingNotifications = false
     private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
     private var totalUnread: Int { session.unreadCount + requestNotifications.filter { !$0.read }.count }
     private var notificationCornerRadius: CGFloat {
@@ -161,15 +162,14 @@ struct NotificationsView: View {
             .scrollContentBackground(.hidden)
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
-                .refreshable { await session.refreshDashboard(); await loadRequestNotifications() }
+                .refreshable { await reloadNotifications(refreshDashboard: true) }
                 .task {
                     hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? [])
-                    await loadRequestNotifications()
+                    await reloadNotifications()
                     await openPendingAPNsRouteIfNeeded()
                 }
-                .onAppear { Task { await loadRequestNotifications(); await openPendingAPNsRouteIfNeeded() } }
-                .onChange(of: session.requestUnreadCount) { _, _ in Task { await loadRequestNotifications() } }
-                .onChange(of: session.attendanceRevision) { _, _ in Task { await loadRequestNotifications() } }
+                .onAppear { Task { await openPendingAPNsRouteIfNeeded() } }
+                .onChange(of: session.attendanceRevision) { _, _ in Task { await reloadNotifications() } }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
@@ -210,16 +210,32 @@ struct NotificationsView: View {
     private func loadRequestNotifications() async {
         guard let token = session.token else { return }
         if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
-            requestNotifications = session.mergedRequestNotifications(values)
-            session.updateRequestUnreadCount(requestNotifications)
+            let merged = session.mergedRequestNotifications(values)
+            if requestNotifications != merged {
+                requestNotifications = merged
+            }
+            session.updateRequestUnreadCount(merged)
             await requestStore.load(token)
         }
+    }
+
+    /// A List refresh keeps its scroll position stable only while its backing
+    /// data is replaced once. Dashboard updates used to trigger this method
+    /// again through two independent observers during the same pull gesture.
+    private func reloadNotifications(refreshDashboard: Bool = false) async {
+        guard !isReloadingNotifications else { return }
+        isReloadingNotifications = true
+        defer { isReloadingNotifications = false }
+        if refreshDashboard {
+            await session.refreshDashboard(shouldRefreshRequestNotificationCount: false)
+        }
+        await loadRequestNotifications()
     }
 
     private func open(_ item: RequestNotification) async {
         if session.isLocalAttendanceNotification(item) {
             session.markLocalAttendanceNotificationRead(item.id)
-            await loadRequestNotifications()
+            await reloadNotifications()
             return
         }
         guard let token = session.token else { return }
@@ -233,12 +249,12 @@ struct NotificationsView: View {
                 else { viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id }) }
             }
         }
-        await loadRequestNotifications()
+        await reloadNotifications()
     }
 
     private func openPendingAPNsRouteIfNeeded() async {
         guard let route = notificationRouter.pendingRoute, session.token != nil else { return }
-        if requestNotifications.isEmpty { await loadRequestNotifications() }
+        if requestNotifications.isEmpty { await reloadNotifications() }
         guard let item = requestNotifications.first(where: {
             guard $0.type == route.type else { return false }
             return route.referenceID == nil || $0.requestId == route.referenceID
@@ -257,7 +273,7 @@ struct NotificationsView: View {
         session.clearLocalAttendanceNotifications()
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications", method: "DELETE", token: token)
         hiddenArticleIDs.formUnion(items.map(\.id)); UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
-        session.markArticlesRead(); await loadRequestNotifications()
+        session.markArticlesRead(); await reloadNotifications()
     }
 
     private func deleteNotification(_ item: RequestNotification) async {
