@@ -38,9 +38,10 @@ jobs:
           audit_dir="$RUNNER_TEMP/ios17-link-audit"
           object_dir="$audit_dir/Build/Intermediates.noindex/App.build/Release-iphoneos/App.build/Objects-normal/arm64"
           app_binary="$audit_dir/Build/Products/Release-iphoneos/App.app/App"
-          autolink_extract="$(xcrun --find swift-autolink-extract)"
+          autolink_extract="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-autolink-extract"
           test -d "$object_dir"
           test -f "$app_binary"
+          test -x "$autolink_extract"
 
           : > "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"
           while IFS= read -r -d '' object_file; do
