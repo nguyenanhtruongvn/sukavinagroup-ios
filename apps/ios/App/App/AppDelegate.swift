@@ -238,6 +238,11 @@ private final class NativeAppContainerViewController: UIViewController {
         applyAppearance()
     }
 
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        updateLaunchAppearance()
+    }
+
     private func beginAsyncRestoreAfterHostMount() {
         guard !hasStartedRestore else { return }
         hasStartedRestore = true
@@ -289,12 +294,12 @@ private final class NativeAppContainerViewController: UIViewController {
 
     private func configureLaunchView() {
         launchView.translatesAutoresizingMaskIntoConstraints = false
-        launchView.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
+        launchView.backgroundColor = .systemBackground
         launchSpinner.translatesAutoresizingMaskIntoConstraints = false
         launchSpinner.color = .systemRed
         launchTitle.translatesAutoresizingMaskIntoConstraints = false
         launchTitle.text = "S U K A V I N A"
-        launchTitle.textColor = UIColor(white: 0.82, alpha: 1)
+        launchTitle.textColor = .label
         launchTitle.font = .systemFont(ofSize: 13, weight: .medium)
         launchTitle.textAlignment = .center
         view.addSubview(launchView)
@@ -313,6 +318,7 @@ private final class NativeAppContainerViewController: UIViewController {
     }
 
     private func showLaunchView() {
+        updateLaunchAppearance()
         launchView.isHidden = false
         view.bringSubviewToFront(launchView)
         launchSpinner.startAnimating()
@@ -353,7 +359,8 @@ private final class NativeAppContainerViewController: UIViewController {
 
     private func applyAppearance() {
         let rawValue = UserDefaults.standard.string(forKey: "sukavina.appearanceMode")
-        switch AppAppearanceMode(rawValue: rawValue ?? AppAppearanceMode.system.rawValue) ?? .system {
+        let mode = AppAppearanceMode(rawValue: rawValue ?? AppAppearanceMode.system.rawValue) ?? .system
+        switch mode {
         case .system:
             view.window?.overrideUserInterfaceStyle = .unspecified
         case .light:
@@ -361,6 +368,26 @@ private final class NativeAppContainerViewController: UIViewController {
         case .dark:
             view.window?.overrideUserInterfaceStyle = .dark
         }
+        updateLaunchAppearance(mode: mode)
+    }
+
+    private func updateLaunchAppearance(mode: AppAppearanceMode? = nil) {
+        let activeMode = mode ?? (AppAppearanceMode(
+            rawValue: UserDefaults.standard.string(forKey: "sukavina.appearanceMode") ?? AppAppearanceMode.system.rawValue
+        ) ?? .system)
+        let isDark: Bool
+        switch activeMode {
+        case .dark:
+            isDark = true
+        case .light:
+            isDark = false
+        case .system:
+            isDark = traitCollection.userInterfaceStyle == .dark
+        }
+        launchView.backgroundColor = isDark
+            ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
+            : .systemBackground
+        launchTitle.textColor = isDark ? UIColor(white: 0.82, alpha: 1) : .label
     }
 
     private func configureOfflineNotice() {

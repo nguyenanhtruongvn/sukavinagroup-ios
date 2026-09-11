@@ -71,6 +71,7 @@ final class SessionStore: ObservableObject {
     private var foregroundRefreshTask: Task<Void, Never>?
     private var apnsTokenObserver: NSObjectProtocol?
     private var meetingPushObserver: NSObjectProtocol?
+    private var activeRestoreAttempt: UUID?
     // Kept only for the current app session. Persisting this acknowledgement
     // made a valid APNs token silently disappear from the server after a token
     // cleanup or an account switch on the same iPhone.
@@ -145,14 +146,31 @@ final class SessionStore: ObservableObject {
 
     func restore() async {
         startNetworkMonitoring()
-        // Security.framework can wait while the protected-data service wakes
-        // on older devices.  Read it away from the UI actor so the login view
-        // remains immediately interactive.
-        let credentials = await Task.detached(priority: .userInitiated) {
-            (KeychainStore.loadToken(), KeychainStore.loadRefreshToken())
-        }.value
-        let savedToken = credentials.0
-        let savedRefreshToken = credentials.1
+        let attemptID = UUID()
+        activeRestoreAttempt = attemptID
+        // Security.framework can wait while protected data wakes. Keep it off
+        // the UI actor and never let it hold the launch screen indefinitely.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let accessToken = KeychainStore.loadToken()
+            let refreshToken = KeychainStore.loadRefreshToken()
+            Task { @MainActor [weak self] in
+                await self?.completeRestore(
+                    accessToken: accessToken,
+                    refreshToken: refreshToken,
+                    attemptID: attemptID
+                )
+            }
+        }
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        guard activeRestoreAttempt == attemptID, state == .restoring else { return }
+        activeRestoreAttempt = nil
+        ConnectionDiagnostics.record("Session restoration timed out; showing sign-in")
+        state = .signedOut
+    }
+
+    private func completeRestore(accessToken savedToken: String?, refreshToken savedRefreshToken: String?, attemptID: UUID) async {
+        guard activeRestoreAttempt == attemptID else { return }
+        activeRestoreAttempt = nil
         guard savedToken != nil || savedRefreshToken != nil else {
             state = .signedOut
             return
@@ -207,6 +225,7 @@ final class SessionStore: ObservableObject {
     /// normal restore or sign-in can still use them.
     func abandonRestore() {
         guard state == .restoring else { return }
+        activeRestoreAttempt = nil
         state = .signedOut
     }
 
@@ -240,6 +259,7 @@ final class SessionStore: ObservableObject {
     }
 
     func signIn(loginId: String, password: String) async -> Bool {
+        activeRestoreAttempt = nil
         isWorking = true
         defer { isWorking = false }
         ConnectionDiagnostics.record("Sign-in started; identifierLength=\(loginId.count)")
@@ -575,6 +595,7 @@ final class SessionStore: ObservableObject {
     }
 
     func signOut() {
+        activeRestoreAttempt = nil
         let logoutToken = token
         let deviceToken = APNsRegistration.deviceToken
         if let logoutToken, let deviceToken {
