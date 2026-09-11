@@ -222,7 +222,7 @@ private final class NativeAppContainerViewController: UIViewController {
         // Resolve the first screen synchronously once UIKit has mounted the
         // initial host.  Neither viewDidAppear nor a dispatched first task is
         // allowed to gate the login screen on iOS 17 or iOS 18+.
-        beginRestoreAfterHostMount()
+        beginAsyncRestoreAfterHostMount()
     }
 
     func appBecameActive() {
@@ -234,21 +234,13 @@ private final class NativeAppContainerViewController: UIViewController {
         applyAppearance()
     }
 
-    private func beginRestoreAfterHostMount() {
+    private func beginAsyncRestoreAfterHostMount() {
         guard !hasStartedRestore else { return }
         hasStartedRestore = true
-        launchLogger.notice("Beginning synchronous launch restoration")
-
-        // Do not start the first task from viewDidLoad on iOS 17.  On the
-        // affected physical device that task can remain deferred forever while
-        // the launch SwiftUI view is visible.  The credential/cache step is
-        // synchronous and immediately replaces the launch view; networking is
-        // then allowed to continue asynchronously.
-        let plan = session.beginRestore()
-        launchLogger.notice("Launch restoration state resolved")
+        launchLogger.notice("Beginning nonblocking launch restoration")
         restoreTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.session.completeRestore(plan)
+            await self.session.restore()
         }
     }
 

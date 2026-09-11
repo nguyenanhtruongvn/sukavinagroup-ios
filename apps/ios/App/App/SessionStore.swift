@@ -20,16 +20,9 @@ final class SessionStore: ObservableObject {
         case signedIn
     }
 
-    /// The part of restoration that can be completed without waiting for the
-    /// network.  Keeping this synchronous lets the UIKit iOS 17 launch host
-    /// leave the launch screen even if its first Swift concurrency task is
-    /// deferred by the OS.
-    enum RestorePlan {
-        case signedOut
-        case continueWith(accessToken: String?)
-    }
-
-    @Published var state: State = .restoring
+    // The authentication screen is always safe to render.  Do not use a
+    // blocking launch state while Keychain is consulted on a real device.
+    @Published var state: State = .signedOut
     @Published var profile: Profile?
     @Published var dashboard: Dashboard?
     @Published var errorMessage: String?
@@ -150,28 +143,24 @@ final class SessionStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: cacheKey)
     }
 
-    func beginRestore() -> RestorePlan {
+    func restore() async {
         startNetworkMonitoring()
-        let savedToken = KeychainStore.loadToken()
-        let savedRefreshToken = KeychainStore.loadRefreshToken()
+        // Security.framework can wait while the protected-data service wakes
+        // on older devices.  Read it away from the UI actor so the login view
+        // remains immediately interactive.
+        let credentials = await Task.detached(priority: .userInitiated) {
+            (KeychainStore.loadToken(), KeychainStore.loadRefreshToken())
+        }.value
+        let savedToken = credentials.0
+        let savedRefreshToken = credentials.1
         guard savedToken != nil || savedRefreshToken != nil else {
             state = .signedOut
-            return .signedOut
+            return
         }
         token = savedToken
         profile = SessionCache.loadProfile()
         state = .signedIn
         loadKnownArticles()
-        return .continueWith(accessToken: savedToken)
-    }
-
-    func restore() async {
-        let plan = beginRestore()
-        await completeRestore(plan)
-    }
-
-    func completeRestore(_ plan: RestorePlan) async {
-        guard case let .continueWith(savedToken) = plan else { return }
         do {
             if let savedToken {
                 do {
