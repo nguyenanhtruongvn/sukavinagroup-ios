@@ -2854,6 +2854,14 @@ struct ModernAttendanceHistoryView: View {
             selectedDates[month] = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
                 ?? cached.days.last?.date
         }
+        // Do not leave an uncached neighbour in a loading state while the
+        // device is known to be offline. Cached months above remain usable.
+        if session.hasConfirmedOfflineConnection {
+            if cache[month] == nil {
+                errors[month] = "Chưa có bản lưu ngoại tuyến cho tháng này."
+            }
+            return
+        }
         // Historical months are served instantly from a recent disk snapshot.
         // The current month is revalidated frequently because punches change it.
         guard session.shouldRevalidateAttendanceMonth(month) else { return }
@@ -3040,7 +3048,10 @@ struct ModernAttendanceHistoryView: View {
         let formatter = DateFormatter(); formatter.dateFormat = "dd/MM/yyyy"; return formatter.string(from: date)
     }
     private func preloadAdjacentMonths() async {
-        for month in options where cache[month] == nil {
+        // Always hydrate the visible month first. A missing neighbouring month
+        // must never block it behind a slow or offline network request.
+        let orderedMonths = [selectedMonth] + options.filter { $0 != selectedMonth }
+        for month in orderedMonths where cache[month] == nil {
             await preloadMonth(month)
         }
     }

@@ -60,6 +60,12 @@ final class SessionStore: ObservableObject {
     @Published private(set) var isOfflineNoticeVisible = false
     @Published private(set) var isNetworkAvailable = false
 
+    /// `false` only after NWPathMonitor has confirmed an offline path. Before
+    /// its first callback callers may still make their normal initial request.
+    var hasConfirmedOfflineConnection: Bool {
+        lastPathStatus != nil && !isNetworkAvailable
+    }
+
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
