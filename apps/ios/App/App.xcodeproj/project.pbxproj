@@ -65,7 +65,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "app_binary=\"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\"\nif [ \"${CONFIGURATION}\" = \"Release\" ] && /usr/bin/otool -L \"${app_binary}\" | /usr/bin/grep -q \"SwiftUICore.framework\"; then\n  # Xcode 26 autolinks SwiftUICore for SwiftUI. It is safe for iOS 17 only\n  # when the Mach-O load command is weak; a strong load crashes before launch.\n  if ! /usr/bin/otool -l \"${app_binary}\" | /usr/bin/awk '\n    $1 == \"cmd\" && $2 == \"LC_LOAD_WEAK_DYLIB\" { weak = 1; next }\n    $1 == \"cmd\" { weak = 0 }\n    weak && $1 == \"name\" && $2 ~ /SwiftUICore\\.framework/ { found = 1; exit }\n    END { exit(found ? 0 : 1) }\n  '; then\n    echo \"error: App strongly links SwiftUICore.framework, which cannot launch on iOS 17.\"\n    exit 1\n  fi\nfi\n";
+			shellScript = "app_binary=\"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\"\nif [ \"${CONFIGURATION}\" = \"Release\" ] && /usr/bin/otool -L \"${app_binary}\" | /usr/bin/grep -q \"SwiftUICore.framework\"; then\n  echo \"error: App links SwiftUICore.framework, which is unavailable on iOS 17.\"\n  exit 1\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -452,8 +452,10 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				OTHER_LDFLAGS = "$(inherited) -weak_framework SwiftUICore";
+				OTHER_LDFLAGS = "$(inherited) -framework AVFoundation -framework Combine -framework CoreImage -framework LocalAuthentication -framework Network -framework Security -framework SwiftUI -framework UIKit -framework UserNotifications -framework WebKit -framework WidgetKit";
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
+				SWIFT_MODULES_AUTOLINK = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = net.sukavinagroup.user;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -479,11 +481,13 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
-				OTHER_LDFLAGS = "$(inherited) -weak_framework SwiftUICore";
+				OTHER_LDFLAGS = "$(inherited) -framework AVFoundation -framework Combine -framework CoreImage -framework LocalAuthentication -framework Network -framework Security -framework SwiftUI -framework UIKit -framework UserNotifications -framework WebKit -framework WidgetKit";
 				PRODUCT_BUNDLE_IDENTIFIER = net.sukavinagroup.user;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "Sukavina App Store 2026";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_ENABLE_EXPLICIT_MODULES = NO;
+				SWIFT_MODULES_AUTOLINK = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
