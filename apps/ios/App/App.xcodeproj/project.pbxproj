@@ -65,7 +65,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "app_binary=\"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\"\nif [ \"${CONFIGURATION}\" = \"Release\" ] && /usr/bin/otool -L \"${app_binary}\" | /usr/bin/grep -q \"SwiftUICore.framework\"; then\n  echo \"error: App binary links SwiftUICore.framework, which cannot launch on iOS 17.\"\n  echo \"SwiftUICore provenance follows; remove the reported iOS 26-only SwiftUI reference.\"\n  link_args=\"${TARGET_TEMP_DIR}/Objects-normal/${CURRENT_ARCH}/${EXECUTABLE_NAME}-linker-args.resp\"\n  if [ -r \"${link_args}\" ]; then\n    echo \"--- linker arguments containing SwiftUICore ---\"\n    /usr/bin/grep -n -C 2 \"SwiftUICore\" \"${link_args}\" || true\n  fi\n  link_file_list=\"${TARGET_TEMP_DIR}/Objects-normal/${CURRENT_ARCH}/${EXECUTABLE_NAME}.LinkFileList\"\n  swift_autolink=\"$(xcrun --find swift-autolink-extract 2>/dev/null || true)\"\n  if [ -n \"${swift_autolink}\" ] && [ -r \"${link_file_list}\" ]; then\n    while IFS= read -r object_file; do\n      if \"${swift_autolink}\" \"${object_file}\" 2>/dev/null | /usr/bin/grep -q \"SwiftUICore\"; then\n        echo \"SwiftUICore is automatically linked by: ${object_file}\"\n      fi\n    done < \"${link_file_list}\"\n  fi\n  exit 1\nfi\n";
+			shellScript = "app_binary=\"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\"\nif [ \"${CONFIGURATION}\" = \"Release\" ] && /usr/bin/otool -L \"${app_binary}\" | /usr/bin/grep -q \"SwiftUICore.framework\"; then\n  # Xcode 26 autolinks SwiftUICore for SwiftUI. It is safe for iOS 17 only\n  # when the Mach-O load command is weak; a strong load crashes before launch.\n  if ! /usr/bin/otool -l \"${app_binary}\" | /usr/bin/awk '\n    $1 == \"cmd\" && $2 == \"LC_LOAD_WEAK_DYLIB\" { weak = 1; next }\n    $1 == \"cmd\" { weak = 0 }\n    weak && $1 == \"name\" && $2 ~ /SwiftUICore\\.framework/ { found = 1; exit }\n    END { exit(found ? 0 : 1) }\n  '; then\n    echo \"error: App strongly links SwiftUICore.framework, which cannot launch on iOS 17.\"\n    exit 1\n  fi\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -452,6 +452,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = "$(inherited) -weak_framework SwiftUICore";
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = net.sukavinagroup.user;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -478,6 +479,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0.0;
+				OTHER_LDFLAGS = "$(inherited) -weak_framework SwiftUICore";
 				PRODUCT_BUNDLE_IDENTIFIER = net.sukavinagroup.user;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "Sukavina App Store 2026";
