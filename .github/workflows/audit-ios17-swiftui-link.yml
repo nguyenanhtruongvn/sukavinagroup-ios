@@ -38,16 +38,14 @@ jobs:
           audit_dir="$RUNNER_TEMP/ios17-link-audit"
           object_dir="$audit_dir/Build/Intermediates.noindex/App.build/Release-iphoneos/App.build/Objects-normal/arm64"
           app_binary="$audit_dir/Build/Products/Release-iphoneos/App.app/App"
-          autolink_extract="$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift-autolink-extract"
           test -d "$object_dir"
           test -f "$app_binary"
-          test -x "$autolink_extract"
 
           : > "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"
           while IFS= read -r -d '' object_file; do
-            autolinks="$("$autolink_extract" "$object_file" 2>/dev/null || true)"
-            if printf '%s\n' "$autolinks" | grep -q 'SwiftUICore'; then
-              printf '%s\n%s\n\n' "$object_file" "$autolinks" | tee -a "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"
+            references="$(strings "$object_file" | grep 'SwiftUICore' || true)"
+            if test -n "$references"; then
+              printf '%s\n%s\n\n' "$object_file" "$references" | tee -a "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"
             fi
           done < <(find "$object_dir" -name '*.o' -print0)
 
