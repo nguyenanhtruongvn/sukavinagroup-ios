@@ -186,6 +186,9 @@ private final class NativeAppContainerViewController: UIViewController {
     private var hasStartedRestore = false
     private var host: UIHostingController<AnyView>?
     private var renderedScreenKind: ScreenKind?
+    private let launchView = UIView()
+    private let launchSpinner = UIActivityIndicatorView(style: .large)
+    private let launchTitle = UILabel()
     private let offlineNotice = UILabel()
 
     init(notificationRouter: APNsNotificationRouter) {
@@ -200,6 +203,7 @@ private final class NativeAppContainerViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        configureLaunchView()
         installRootView()
         stateObservation = session.$state.sink { [weak self] _ in
             self?.installRootView()
@@ -245,6 +249,11 @@ private final class NativeAppContainerViewController: UIViewController {
     }
 
     private func installRootView() {
+        guard session.state != .restoring else {
+            showLaunchView()
+            return
+        }
+        hideLaunchView()
         let rootView = screenForCurrentSession()
         // A UIHostingController can keep its first erased AnyView when its
         // root is reassigned during application launch.  Replace the concrete
@@ -276,6 +285,43 @@ private final class NativeAppContainerViewController: UIViewController {
         ])
         host.didMove(toParent: self)
         self.host = host
+    }
+
+    private func configureLaunchView() {
+        launchView.translatesAutoresizingMaskIntoConstraints = false
+        launchView.backgroundColor = UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
+        launchSpinner.translatesAutoresizingMaskIntoConstraints = false
+        launchSpinner.color = .systemRed
+        launchTitle.translatesAutoresizingMaskIntoConstraints = false
+        launchTitle.text = "S U K A V I N A"
+        launchTitle.textColor = UIColor(white: 0.82, alpha: 1)
+        launchTitle.font = .systemFont(ofSize: 13, weight: .medium)
+        launchTitle.textAlignment = .center
+        view.addSubview(launchView)
+        launchView.addSubview(launchSpinner)
+        launchView.addSubview(launchTitle)
+        NSLayoutConstraint.activate([
+            launchView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            launchView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            launchView.topAnchor.constraint(equalTo: view.topAnchor),
+            launchView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            launchSpinner.centerXAnchor.constraint(equalTo: launchView.centerXAnchor),
+            launchSpinner.centerYAnchor.constraint(equalTo: launchView.centerYAnchor, constant: -22),
+            launchTitle.topAnchor.constraint(equalTo: launchSpinner.bottomAnchor, constant: 20),
+            launchTitle.centerXAnchor.constraint(equalTo: launchView.centerXAnchor)
+        ])
+    }
+
+    private func showLaunchView() {
+        launchView.isHidden = false
+        view.bringSubviewToFront(launchView)
+        launchSpinner.startAnimating()
+    }
+
+    private func hideLaunchView() {
+        guard !launchView.isHidden else { return }
+        launchSpinner.stopAnimating()
+        launchView.isHidden = true
     }
 
     private var currentScreenKind: ScreenKind {

@@ -20,9 +20,9 @@ final class SessionStore: ObservableObject {
         case signedIn
     }
 
-    // The authentication screen is always safe to render.  Do not use a
-    // blocking launch state while Keychain is consulted on a real device.
-    @Published var state: State = .signedOut
+    // The launch host is UIKit, so this state can show a stable loading screen
+    // while Keychain is consulted without creating a SwiftUI launch deadlock.
+    @Published var state: State = .restoring
     @Published var profile: Profile?
     @Published var dashboard: Dashboard?
     @Published var errorMessage: String?
@@ -259,18 +259,14 @@ final class SessionStore: ObservableObject {
             loadKnownArticles()
             state = .signedIn
             startNetworkMonitoring()
-            if response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO" {
-                await refreshProfile()
-                startSessionRefresh()
-                ConnectionDiagnostics.record("Canteen sign-in completed successfully")
-                return true
+            // The session is authenticated at this point.  Present the portal
+            // immediately and hydrate its data in the background rather than
+            // holding the login button until every dashboard request finishes.
+            Task { @MainActor [weak self] in
+                await self?.hydrateSignedInSession(
+                    isCanteen: response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO"
+                )
             }
-            await NotificationManager.shared.requestAuthorizationIfNeeded()
-            await refreshDashboard()
-            await refreshProfile()
-            startRealTimeUpdates()
-            startSessionRefresh()
-            ConnectionDiagnostics.record("Sign-in completed successfully")
             return true
         } catch {
             ConnectionDiagnostics.record("Sign-in failed: \(error.localizedDescription)")
@@ -604,7 +600,6 @@ final class SessionStore: ObservableObject {
         offlineNoticeTask = nil
         isOfflineNoticeVisible = false
         registeredAPNsIdentity = nil
-        KeychainStore.clear()
         SessionCache.clear()
         token = nil
         profile = nil
@@ -615,7 +610,27 @@ final class SessionStore: ObservableObject {
         notificationBadgeCount = 0
         articleBadgeCount = 0
         syncApplicationBadge()
+        // Move to the login UI before touching Security.framework.  On some
+        // devices SecItemDelete can wait for the protected-data service.
         state = .signedOut
+        Task.detached(priority: .utility) {
+            KeychainStore.clear(accessToken: logoutToken)
+        }
+    }
+
+    private func hydrateSignedInSession(isCanteen: Bool) async {
+        if isCanteen {
+            await refreshProfile()
+            startSessionRefresh()
+            ConnectionDiagnostics.record("Canteen sign-in completed successfully")
+            return
+        }
+        await NotificationManager.shared.requestAuthorizationIfNeeded()
+        await refreshDashboard()
+        await refreshProfile()
+        startRealTimeUpdates()
+        startSessionRefresh()
+        ConnectionDiagnostics.record("Sign-in completed successfully")
     }
 
     private func applySession(_ response: LoginResponse) {

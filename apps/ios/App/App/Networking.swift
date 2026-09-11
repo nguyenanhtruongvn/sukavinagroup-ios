@@ -315,16 +315,21 @@ enum KeychainStore {
     private static let service = "net.sukavinagroup.user"
     private static let accessTokenAccount = "access-token"
     private static let refreshTokenAccount = "refresh-token"
+    private static let lock = NSLock()
 
     static func save(token: String) {
-        save(token, account: accessTokenAccount)
+        lock.lock()
+        defer { lock.unlock() }
+        saveUnlocked(token, account: accessTokenAccount)
     }
 
     static func save(refreshToken: String) {
-        save(refreshToken, account: refreshTokenAccount)
+        lock.lock()
+        defer { lock.unlock() }
+        saveUnlocked(refreshToken, account: refreshTokenAccount)
     }
 
-    private static func save(_ value: String, account: String) {
+    private static func saveUnlocked(_ value: String, account: String) {
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -339,14 +344,18 @@ enum KeychainStore {
     }
 
     static func loadToken() -> String? {
-        load(account: accessTokenAccount)
+        lock.lock()
+        defer { lock.unlock() }
+        return loadUnlocked(account: accessTokenAccount)
     }
 
     static func loadRefreshToken() -> String? {
-        load(account: refreshTokenAccount)
+        lock.lock()
+        defer { lock.unlock() }
+        return loadUnlocked(account: refreshTokenAccount)
     }
 
-    private static func load(account: String) -> String? {
+    private static func loadUnlocked(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -361,6 +370,18 @@ enum KeychainStore {
     }
 
     static func clear() {
+        clear(accessToken: nil)
+    }
+
+    /// Deletes only the signed-out session.  If a new sign-in writes a newer
+    /// access token first, its credentials remain intact.
+    static func clear(accessToken expectedAccessToken: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let expectedAccessToken,
+           loadUnlocked(account: accessTokenAccount) != expectedAccessToken {
+            return
+        }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service
