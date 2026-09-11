@@ -174,7 +174,7 @@ private final class NativeAppContainerViewController: UIViewController {
     private var offlineNoticeObservation: AnyCancellable?
     private var appearanceObservation: AnyCancellable?
     private var restoreTask: Task<Void, Never>?
-    private var restoreFallbackTask: Task<Void, Never>?
+    private var hasStartedRestore = false
     private var host: UIHostingController<AnyView>?
     private let offlineNotice = UILabel()
 
@@ -209,17 +209,6 @@ private final class NativeAppContainerViewController: UIViewController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyAppearance() }
         applyAppearance()
-        restoreTask = Task { @MainActor [weak self] in
-            await self?.session.restore()
-        }
-        // Do not leave an iOS 17 user at the launch screen indefinitely if a
-        // suspended restore task never resumes. A login screen is recoverable;
-        // an endless spinner is not.
-        restoreFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled, self?.session.state == .restoring else { return }
-            self?.session.abandonRestore()
-        }
     }
 
     func appBecameActive() {
@@ -229,6 +218,23 @@ private final class NativeAppContainerViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         applyAppearance()
+        beginRestoreAfterFirstPresentation()
+    }
+
+    private func beginRestoreAfterFirstPresentation() {
+        guard !hasStartedRestore else { return }
+        hasStartedRestore = true
+
+        // Do not start the first task from viewDidLoad on iOS 17.  On the
+        // affected physical device that task can remain deferred forever while
+        // the launch SwiftUI view is visible.  The credential/cache step is
+        // synchronous and immediately replaces the launch view; networking is
+        // then allowed to continue asynchronously.
+        let plan = session.beginRestore()
+        restoreTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.session.completeRestore(plan)
+        }
     }
 
     private func installRootView() {
