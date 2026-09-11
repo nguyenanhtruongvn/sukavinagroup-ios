@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import Combine
 import Security
 import UserNotifications
 import Network
@@ -80,6 +81,7 @@ enum APNsRegistration {
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var window: UIWindow?
     private let notificationRouter = APNsNotificationRouter()
+    private var appContainer: NativeAppContainerViewController?
 
     func application(
         _ application: UIApplication,
@@ -105,12 +107,16 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
-        window.rootViewController = UIHostingController(
-            rootView: SukavinaAppView().environmentObject(notificationRouter)
-        )
+        let appContainer = NativeAppContainerViewController(notificationRouter: notificationRouter)
+        window.rootViewController = appContainer
         window.makeKeyAndVisible()
         self.window = window
+        self.appContainer = appContainer
         return true
+    }
+
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        appContainer?.appBecameActive()
     }
 
     func userNotificationCenter(
@@ -149,6 +155,127 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
         ConnectionDiagnostics.record("APNs registration failed: \(error.localizedDescription)")
+    }
+}
+
+/// iOS 17's Swift runtime aborts while resolving the large conditional
+/// `SukavinaAppView.body` metadata emitted by Xcode 26.  Keep the app's
+/// lifecycle in UIKit and host one concrete SwiftUI screen at a time instead.
+/// The displayed screens remain the native SwiftUI application; this only
+/// removes the incompatible root metadata graph from the first layout pass.
+@available(iOS 17.0, *)
+@MainActor
+private final class NativeAppContainerViewController: UIViewController {
+    private let session = SessionStore()
+    private let notificationRouter: APNsNotificationRouter
+    private var stateObservation: AnyCancellable?
+    private var profileObservation: AnyCancellable?
+    private var errorObservation: AnyCancellable?
+    private var offlineNoticeObservation: AnyCancellable?
+    private var host: UIHostingController<AnyView>?
+    private let offlineNotice = UILabel()
+
+    init(notificationRouter: APNsNotificationRouter) {
+        self.notificationRouter = notificationRouter
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        installRootView()
+        stateObservation = session.$state.sink { [weak self] _ in
+            self?.installRootView()
+        }
+        profileObservation = session.$profile.sink { [weak self] _ in
+            guard self?.session.state == .signedIn else { return }
+            self?.installRootView()
+        }
+        errorObservation = session.$errorMessage.sink { [weak self] message in
+            self?.showErrorIfNeeded(message)
+        }
+        configureOfflineNotice()
+        offlineNoticeObservation = session.$isOfflineNoticeVisible.sink { [weak self] isVisible in
+            self?.offlineNotice.isHidden = !isVisible
+        }
+        Task { [weak self] in
+            await self?.session.restore()
+        }
+    }
+
+    func appBecameActive() {
+        session.appBecameActive()
+    }
+
+    private func installRootView() {
+        let rootView = screenForCurrentSession()
+        guard let host else {
+            let host = UIHostingController(rootView: rootView)
+            host.view.backgroundColor = .clear
+            addChild(host)
+            view.addSubview(host.view)
+            host.view.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                host.view.topAnchor.constraint(equalTo: view.topAnchor),
+                host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            ])
+            host.didMove(toParent: self)
+            self.host = host
+            return
+        }
+        host.rootView = rootView
+    }
+
+    private func screenForCurrentSession() -> AnyView {
+        switch session.state {
+        case .restoring:
+            return AnyView(NativeLaunchView())
+        case .signedOut:
+            return AnyView(AuthenticationView().environmentObject(session).environmentObject(notificationRouter))
+        case .signedIn:
+            if session.profile?.accountType == "CANTEEN" && session.profile?.employeeCode != "DEMO" {
+                return AnyView(CanteenScannerView().environmentObject(session).environmentObject(notificationRouter))
+            }
+            return AnyView(EmployeePortalView().environmentObject(session).environmentObject(notificationRouter))
+        }
+    }
+
+    private func configureOfflineNotice() {
+        offlineNotice.translatesAutoresizingMaskIntoConstraints = false
+        offlineNotice.text = "  Mất kết nối internet  "
+        offlineNotice.textColor = .white
+        offlineNotice.font = .systemFont(ofSize: 14, weight: .semibold)
+        offlineNotice.backgroundColor = UIColor(white: 0.11, alpha: 0.96)
+        offlineNotice.layer.cornerRadius = 18
+        offlineNotice.layer.masksToBounds = true
+        offlineNotice.isHidden = true
+        view.addSubview(offlineNotice)
+        NSLayoutConstraint.activate([
+            offlineNotice.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            offlineNotice.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            offlineNotice.heightAnchor.constraint(equalToConstant: 36)
+        ])
+    }
+
+    private func showErrorIfNeeded(_ message: String?) {
+        guard let message, presentedViewController == nil else { return }
+        let alert = UIAlertController(title: session.errorTitle, message: message, preferredStyle: .alert)
+        if session.errorOffersSettings {
+            alert.addAction(UIAlertAction(title: "Mở Cài đặt", style: .default) { _ in
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            })
+        }
+        alert.addAction(UIAlertAction(title: "Đã hiểu", style: .cancel) { [weak self] _ in
+            self?.session.dismissError()
+        })
+        present(alert, animated: true)
     }
 }
 
