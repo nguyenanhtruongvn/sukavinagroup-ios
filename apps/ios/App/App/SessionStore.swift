@@ -146,6 +146,11 @@ final class SessionStore: ObservableObject {
 
     func restore() async {
         startNetworkMonitoring()
+        guard UIApplication.shared.isProtectedDataAvailable else {
+            ConnectionDiagnostics.record("Protected data unavailable; showing sign-in")
+            state = .signedOut
+            return
+        }
         let attemptID = UUID()
         activeRestoreAttempt = attemptID
         // Security.framework can wait while protected data wakes. Keep it off

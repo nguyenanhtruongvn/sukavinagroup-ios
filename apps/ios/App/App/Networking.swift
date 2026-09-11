@@ -315,21 +315,16 @@ enum KeychainStore {
     private static let service = "net.sukavinagroup.user"
     private static let accessTokenAccount = "access-token"
     private static let refreshTokenAccount = "refresh-token"
-    private static let lock = NSLock()
 
     static func save(token: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        saveUnlocked(token, account: accessTokenAccount)
+        save(token, account: accessTokenAccount)
     }
 
     static func save(refreshToken: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        saveUnlocked(refreshToken, account: refreshTokenAccount)
+        save(refreshToken, account: refreshTokenAccount)
     }
 
-    private static func saveUnlocked(_ value: String, account: String) {
+    private static func save(_ value: String, account: String) {
         let data = Data(value.utf8)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -344,24 +339,23 @@ enum KeychainStore {
     }
 
     static func loadToken() -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return loadUnlocked(account: accessTokenAccount)
+        load(account: accessTokenAccount)
     }
 
     static func loadRefreshToken() -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return loadUnlocked(account: refreshTokenAccount)
+        load(account: refreshTokenAccount)
     }
 
-    private static func loadUnlocked(account: String) -> String? {
+    private static func load(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            // Token retrieval must never wait for a Keychain authentication
+            // dialog while the app is restoring its session.
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail
         ]
         var result: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
@@ -376,10 +370,8 @@ enum KeychainStore {
     /// Deletes only the signed-out session.  If a new sign-in writes a newer
     /// access token first, its credentials remain intact.
     static func clear(accessToken expectedAccessToken: String?) {
-        lock.lock()
-        defer { lock.unlock() }
         if let expectedAccessToken,
-           loadUnlocked(account: accessTokenAccount) != expectedAccessToken {
+           load(account: accessTokenAccount) != expectedAccessToken {
             return
         }
         let query: [String: Any] = [
