@@ -1,0 +1,67 @@
+name: Audit iOS 17 SwiftUI compatibility
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build the production source without signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcodebuild \
+            -project apps/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios17-link-audit" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            SWIFT_COMPILATION_MODE=incremental \
+            clean build
+
+      - name: Identify every source object that autolinks SwiftUICore
+        shell: bash
+        run: |
+          set -euo pipefail
+          audit_dir="$RUNNER_TEMP/ios17-link-audit"
+          object_dir="$audit_dir/Build/Intermediates.noindex/App.build/Release-iphoneos/App.build/Objects-normal/arm64"
+          app_binary="$audit_dir/Build/Products/Release-iphoneos/App.app/App"
+          autolink_extract="$(xcrun --find swift-autolink-extract)"
+          test -d "$object_dir"
+          test -f "$app_binary"
+
+          : > "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"
+          while IFS= read -r -d '' object_file; do
+            autolinks="$("$autolink_extract" "$object_file" 2>/dev/null || true)"
+            if printf '%s\n' "$autolinks" | grep -q 'SwiftUICore'; then
+              printf '%s\n%s\n\n' "$object_file" "$autolinks" | tee -a "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"
+            fi
+          done < <(find "$object_dir" -name '*.o' -print0)
+
+          echo '--- App load commands ---'
+          otool -L "$app_binary"
+          echo '--- SwiftUICore source objects ---'
+          if test -s "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"; then
+            cat "$RUNNER_TEMP/swiftuicore-autolink-sources.txt"
+          else
+            echo 'No App source object autolinks SwiftUICore.'
+          fi
+
+      - name: Upload link audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios17-swiftui-link-audit
+          path: ${{ runner.temp }}/swiftuicore-autolink-sources.txt
+          if-no-files-found: error
