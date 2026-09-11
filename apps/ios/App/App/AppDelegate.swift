@@ -203,7 +203,16 @@ private final class NativeAppContainerViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         configureLaunchView()
-        installRootView()
+        // Keep an authentication host ready behind the launch layer. When no
+        // saved session exists, dismissing loading therefore needs no SwiftUI
+        // host replacement and is immediate on iOS 17 and newer.
+        mountRootView(AnyView(
+            AuthenticationView()
+                .environmentObject(session)
+                .environmentObject(notificationRouter)
+        ))
+        renderedScreenKind = .signedOut
+        showLaunchView()
         // A state publication can arrive while UIKit is still finishing the
         // launch-view layout. Deferring host replacement to the next main
         // run-loop turn avoids leaving that launch view above the new host.
@@ -262,23 +271,23 @@ private final class NativeAppContainerViewController: UIViewController {
             showLaunchView()
             return
         }
-        hideLaunchView()
-        let rootView = screenForCurrentSession()
         // A UIHostingController can keep its first erased AnyView when its
         // root is reassigned during application launch.  Replace the concrete
         // host only when the destination screen changes; this is stable on
         // iOS 17 and iOS 18+ and leaves the in-screen navigation untouched.
         let nextKind = currentScreenKind
-        guard renderedScreenKind != nextKind else { return }
-        launchLogger.notice("Replacing host with \(description(of: session.state), privacy: .public)")
-        renderedScreenKind = nextKind
-        if let host {
-            host.willMove(toParent: nil)
-            host.view.removeFromSuperview()
-            host.removeFromParent()
-            self.host = nil
+        if renderedScreenKind != nextKind {
+            launchLogger.notice("Replacing host with \(self.description(of: self.session.state), privacy: .public)")
+            renderedScreenKind = nextKind
+            if let host {
+                host.willMove(toParent: nil)
+                host.view.removeFromSuperview()
+                host.removeFromParent()
+                self.host = nil
+            }
+            mountRootView(screenForCurrentSession())
         }
-        mountRootView(rootView)
+        hideLaunchView()
     }
 
     private func mountRootView(_ rootView: AnyView) {
