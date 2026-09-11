@@ -65,19 +65,20 @@ jobs:
           path: ${{ runner.temp }}/swiftuicore-autolink-sources.txt
           if-no-files-found: error
 
-  xcode15-ios17-build:
-    # macos-latest ships only Xcode 26.  macos-13 retains the Xcode 15.4
-    # toolchain required for this controlled iOS 17 comparison.
-    runs-on: macos-13
+  xcode16-ios17-build:
+    # macos-13 and Xcode 15.4 have been retired from GitHub-hosted runners.
+    # Keep this comparison on the oldest currently supported macOS image and
+    # its installed Xcode 16.4 toolchain, separate from the Xcode 26 audit.
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build the same native app with the iOS 17 toolchain
+      - name: Build the same native app with Xcode 16.4
         shell: bash
         run: |
           set -euo pipefail
-          sudo xcode-select --switch /Applications/Xcode_15.4.app/Contents/Developer
+          sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
           xcodebuild -version
           xcodebuild \
             -project apps/ios/App/App.xcodeproj \
@@ -85,14 +86,14 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath "$RUNNER_TEMP/ios17-xcode15" \
+            -derivedDataPath "$RUNNER_TEMP/ios17-xcode16" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             clean build
-          app_binary="$RUNNER_TEMP/ios17-xcode15/Build/Products/Release-iphoneos/App.app/App"
+          app_binary="$RUNNER_TEMP/ios17-xcode16/Build/Products/Release-iphoneos/App.app/App"
           test -f "$app_binary"
           if otool -L "$app_binary" | grep -q 'SwiftUICore.framework'; then
-            echo 'error: The Xcode 15.4 app still links SwiftUICore.'
+            echo 'error: The Xcode 16.4 app still links SwiftUICore.'
             exit 1
           fi
           otool -L "$app_binary"
