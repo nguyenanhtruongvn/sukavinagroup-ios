@@ -45,7 +45,6 @@ enum AttendanceMonthDisplayMode: String, CaseIterable, Identifiable {
         }
     }
 }
-
 enum AppTheme {
     static let red = Color(red: 0.91, green: 0.12, blue: 0.16)
     static let deepRed = Color(red: 0.45, green: 0.04, blue: 0.07)
