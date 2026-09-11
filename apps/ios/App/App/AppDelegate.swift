@@ -204,9 +204,16 @@ private final class NativeAppContainerViewController: UIViewController {
         view.backgroundColor = .systemBackground
         configureLaunchView()
         installRootView()
-        stateObservation = session.$state.sink { [weak self] _ in
-            self?.installRootView()
-        }
+        // A state publication can arrive while UIKit is still finishing the
+        // launch-view layout. Deferring host replacement to the next main
+        // run-loop turn avoids leaving that launch view above the new host.
+        stateObservation = session.$state
+            .receive(on: RunLoop.main)
+            .sink { [weak self] state in
+                guard let self else { return }
+                self.launchLogger.notice("Observed authentication state: \(self.description(of: state), privacy: .public)")
+                self.installRootView()
+            }
         profileObservation = session.$profile.sink { [weak self] _ in
             guard self?.session.state == .signedIn else { return }
             self?.installRootView()
@@ -251,6 +258,7 @@ private final class NativeAppContainerViewController: UIViewController {
 
     private func installRootView() {
         guard session.state != .restoring else {
+            launchLogger.notice("Rendering launch screen")
             showLaunchView()
             return
         }
@@ -262,6 +270,7 @@ private final class NativeAppContainerViewController: UIViewController {
         // iOS 17 and iOS 18+ and leaves the in-screen navigation untouched.
         let nextKind = currentScreenKind
         guard renderedScreenKind != nextKind else { return }
+        launchLogger.notice("Replacing host with \(description(of: session.state), privacy: .public)")
         renderedScreenKind = nextKind
         if let host {
             host.willMove(toParent: nil)
@@ -336,6 +345,14 @@ private final class NativeAppContainerViewController: UIViewController {
             return session.profile?.accountType == "CANTEEN" && session.profile?.employeeCode != "DEMO"
                 ? .canteen
                 : .employee
+        }
+    }
+
+    private func description(of state: SessionStore.State) -> String {
+        switch state {
+        case .restoring: return "restoring"
+        case .signedOut: return "signedOut"
+        case .signedIn: return "signedIn"
         }
     }
 
