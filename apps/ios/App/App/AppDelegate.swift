@@ -9,6 +9,7 @@ import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
+import os
 
 extension Notification.Name {
     static let sukavinaAPNsTokenUpdated = Notification.Name("net.sukavinagroup.apns-token-updated")
@@ -166,8 +167,16 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
 @available(iOS 17.0, *)
 @MainActor
 private final class NativeAppContainerViewController: UIViewController {
+    private enum ScreenKind: Equatable {
+        case restoring
+        case signedOut
+        case employee
+        case canteen
+    }
+
     private let session = SessionStore()
     private let notificationRouter: APNsNotificationRouter
+    private let launchLogger = Logger(subsystem: "net.sukavinagroup.user", category: "launch")
     private var stateObservation: AnyCancellable?
     private var profileObservation: AnyCancellable?
     private var errorObservation: AnyCancellable?
@@ -176,6 +185,7 @@ private final class NativeAppContainerViewController: UIViewController {
     private var restoreTask: Task<Void, Never>?
     private var hasStartedRestore = false
     private var host: UIHostingController<AnyView>?
+    private var iOS17ScreenKind: ScreenKind?
     private let offlineNotice = UILabel()
 
     init(notificationRouter: APNsNotificationRouter) {
@@ -209,6 +219,16 @@ private final class NativeAppContainerViewController: UIViewController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyAppearance() }
         applyAppearance()
+        // On the affected iOS 17 device, waiting for viewDidAppear left the
+        // initial host on NativeLaunchView. Queue the UIKit bootstrap on the
+        // next run-loop turn instead; iOS 18+ keeps its existing route.
+        if #available(iOS 18.0, *) {
+            // iOS 18+ starts from viewDidAppear below.
+        } else {
+            DispatchQueue.main.async { [weak self] in
+                self?.beginRestoreAfterFirstPresentation()
+            }
+        }
     }
 
     func appBecameActive() {
@@ -224,6 +244,7 @@ private final class NativeAppContainerViewController: UIViewController {
     private func beginRestoreAfterFirstPresentation() {
         guard !hasStartedRestore else { return }
         hasStartedRestore = true
+        launchLogger.notice("Beginning synchronous launch restoration")
 
         // Do not start the first task from viewDidLoad on iOS 17.  On the
         // affected physical device that task can remain deferred forever while
@@ -231,6 +252,7 @@ private final class NativeAppContainerViewController: UIViewController {
         // synchronous and immediately replaces the launch view; networking is
         // then allowed to continue asynchronously.
         let plan = session.beginRestore()
+        launchLogger.notice("Launch restoration state resolved")
         restoreTask = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.session.completeRestore(plan)
@@ -239,23 +261,57 @@ private final class NativeAppContainerViewController: UIViewController {
 
     private func installRootView() {
         let rootView = screenForCurrentSession()
-        guard let host else {
-            let host = UIHostingController(rootView: rootView)
-            host.view.backgroundColor = .clear
-            addChild(host)
-            view.addSubview(host.view)
-            host.view.translatesAutoresizingMaskIntoConstraints = false
-            NSLayoutConstraint.activate([
-                host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-                host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-                host.view.topAnchor.constraint(equalTo: view.topAnchor),
-                host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-            ])
-            host.didMove(toParent: self)
-            self.host = host
+        if #available(iOS 18.0, *) {
+            guard let host else {
+                mountRootView(rootView)
+                return
+            }
+            host.rootView = rootView
             return
         }
-        host.rootView = rootView
+
+        // iOS 17 can retain the initial AnyView after rootView assignment.
+        // Replace only the concrete host when its screen actually changes so
+        // the launch screen cannot remain above the authentication screen.
+        let nextKind = currentScreenKind
+        guard iOS17ScreenKind != nextKind else { return }
+        iOS17ScreenKind = nextKind
+        if let host {
+            host.willMove(toParent: nil)
+            host.view.removeFromSuperview()
+            host.removeFromParent()
+            self.host = nil
+        }
+        mountRootView(rootView)
+    }
+
+    private func mountRootView(_ rootView: AnyView) {
+        let host = UIHostingController(rootView: rootView)
+        host.view.backgroundColor = .clear
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        host.didMove(toParent: self)
+        self.host = host
+    }
+
+    private var currentScreenKind: ScreenKind {
+        switch session.state {
+        case .restoring:
+            return .restoring
+        case .signedOut:
+            return .signedOut
+        case .signedIn:
+            return session.profile?.accountType == "CANTEEN" && session.profile?.employeeCode != "DEMO"
+                ? .canteen
+                : .employee
+        }
     }
 
     private func screenForCurrentSession() -> AnyView {
