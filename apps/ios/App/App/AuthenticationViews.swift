@@ -260,12 +260,25 @@ struct LoginForm: View {
     @State private var password = ""
     @State private var showsForgotPassword = false
 
+    private var canSubmit: Bool {
+        !loginId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !password.isEmpty
+            && !session.isWorking
+    }
+
+    private func submitLogin() {
+        guard canSubmit else { return }
+        Task { _ = await session.signIn(loginId: loginId, password: password) }
+    }
+
     var body: some View {
         VStack(spacing: 16) {
             NativeField(title: "MSNV", text: $loginId, icon: "person.text.rectangle")
+                .submitLabel(.go)
             NativeSecureField(title: "Mật khẩu", text: $password)
+                .submitLabel(.go)
             Button {
-                Task { _ = await session.signIn(loginId: loginId, password: password) }
+                submitLogin()
             } label: {
                 HStack {
                     if session.isWorking { ProgressView().tint(.white) }
@@ -281,7 +294,7 @@ struct LoginForm: View {
             .foregroundColor(.white)
             .background(AppTheme.red)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .disabled(loginId.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty || session.isWorking)
+            .disabled(!canSubmit)
             .opacity(loginId.isEmpty || password.isEmpty ? 0.55 : 1)
 
             HStack {
@@ -322,6 +335,7 @@ struct LoginForm: View {
                 .disabled(session.isWorking)
             }
         }
+        .onSubmit(submitLogin)
         .sheet(isPresented: $showsForgotPassword) {
             ForgotPasswordView(initialEmployeeCode: loginId)
                 .environmentObject(session)
