@@ -20,9 +20,9 @@ final class SessionStore: ObservableObject {
         case signedIn
     }
 
-    // The launch host is UIKit, so this state can show a stable loading screen
-    // while Keychain is consulted without creating a SwiftUI launch deadlock.
-    @Published var state: State = .restoring
+    // Authentication is always a usable first screen. Session restoration is
+    // an enhancement, never a condition for rendering the application.
+    @Published var state: State = .signedOut
     @Published var profile: Profile?
     @Published var dashboard: Dashboard?
     @Published var errorMessage: String?
@@ -72,7 +72,6 @@ final class SessionStore: ObservableObject {
     private var apnsTokenObserver: NSObjectProtocol?
     private var meetingPushObserver: NSObjectProtocol?
     private var activeRestoreAttempt: UUID?
-    private var restoreDeadlineWorkItem: DispatchWorkItem?
     // Kept only for the current app session. Persisting this acknowledgement
     // made a valid APNs token silently disappear from the server after a token
     // cleanup or an account switch on the same iPhone.
@@ -145,11 +144,8 @@ final class SessionStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: cacheKey)
     }
 
-    /// Starts the launch restore without making the first screen depend on a
-    /// Swift Concurrency continuation.  On iOS 17 a blocked Security.framework
-    /// request can otherwise prevent the task-based timeout from resuming.
-    func beginRestore() {
-        guard state == .restoring, activeRestoreAttempt == nil else { return }
+    func restore() async {
+        guard activeRestoreAttempt == nil else { return }
         startNetworkMonitoring()
         guard UIApplication.shared.isProtectedDataAvailable else {
             ConnectionDiagnostics.record("Protected data unavailable; showing sign-in")
@@ -158,18 +154,8 @@ final class SessionStore: ObservableObject {
         }
         let attemptID = UUID()
         activeRestoreAttempt = attemptID
-        let deadline = DispatchWorkItem { [weak self] in
-            guard let self,
-                  self.activeRestoreAttempt == attemptID,
-                  self.state == .restoring else { return }
-            self.activeRestoreAttempt = nil
-            ConnectionDiagnostics.record("Session restoration timed out; showing sign-in")
-            self.state = .signedOut
-        }
-        restoreDeadlineWorkItem = deadline
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: deadline)
         // Security.framework can wait while protected data wakes. Keep it off
-        // the UI actor and never let it hold the launch screen indefinitely.
+        // the UI actor. The login screen remains usable while it is pending.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let accessToken = KeychainStore.loadToken()
             let refreshToken = KeychainStore.loadRefreshToken()
@@ -183,17 +169,9 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// Retained for the legacy SwiftUI root, which is not used by the UIKit
-    /// launch host but may still be used by development previews.
-    func restore() async {
-        beginRestore()
-    }
-
     private func completeRestore(accessToken savedToken: String?, refreshToken savedRefreshToken: String?, attemptID: UUID) {
         guard activeRestoreAttempt == attemptID else { return }
         activeRestoreAttempt = nil
-        restoreDeadlineWorkItem?.cancel()
-        restoreDeadlineWorkItem = nil
         guard savedToken != nil || savedRefreshToken != nil else {
             state = .signedOut
             return
@@ -255,8 +233,6 @@ final class SessionStore: ObservableObject {
     func abandonRestore() {
         guard state == .restoring else { return }
         activeRestoreAttempt = nil
-        restoreDeadlineWorkItem?.cancel()
-        restoreDeadlineWorkItem = nil
         state = .signedOut
     }
 

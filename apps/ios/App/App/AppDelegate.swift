@@ -182,6 +182,7 @@ private final class NativeAppContainerViewController: UIViewController {
     private var errorObservation: AnyCancellable?
     private var offlineNoticeObservation: AnyCancellable?
     private var appearanceObservation: AnyCancellable?
+    private var restoreTask: Task<Void, Never>?
     private var hasStartedRestore = false
     private var host: UIHostingController<AnyView>?
     private var renderedScreenKind: ScreenKind?
@@ -246,7 +247,9 @@ private final class NativeAppContainerViewController: UIViewController {
         guard !hasStartedRestore else { return }
         hasStartedRestore = true
         launchLogger.notice("Beginning nonblocking launch restoration")
-        session.beginRestore()
+        restoreTask = Task { @MainActor [weak self] in
+            await self?.session.restore()
+        }
     }
 
     private func installRootView() {
