@@ -8,8 +8,13 @@ import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
+import os
 
 private extension DateFormatter { static let meetingDay: DateFormatter = { let value = DateFormatter(); value.calendar = Calendar(identifier: .gregorian); value.locale = Locale(identifier: "en_US_POSIX"); value.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh"); value.dateFormat = "yyyy-MM-dd"; return value }() }
+private let sessionRestoreLogger = Logger(
+    subsystem: "net.sukavinagroup.user",
+    category: "session-restore"
+)
 
 @MainActor
 @available(iOS 17.0, *)
@@ -20,9 +25,9 @@ final class SessionStore: ObservableObject {
         case signedIn
     }
 
-    // Authentication is always a usable first screen. Session restoration is
-    // an enhancement, never a condition for rendering the application.
-    @Published var state: State = .signedOut
+    // UIKit presents this stable launch screen while credentials are resolved.
+    // The result, rather than a timer, decides which screen is shown next.
+    @Published var state: State = .restoring
     @Published var profile: Profile?
     @Published var dashboard: Dashboard?
     @Published var errorMessage: String?
@@ -144,10 +149,16 @@ final class SessionStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: cacheKey)
     }
 
-    func restore() async {
-        guard activeRestoreAttempt == nil else { return }
+    /// Starts restoration directly from the UIKit lifecycle. This deliberately
+    /// avoids a first Swift Concurrency task at launch on iOS 17, where that
+    /// task can be scheduled but never resume after dispatching its work.
+    func beginRestore() {
+        guard state == .restoring, activeRestoreAttempt == nil else { return }
+        sessionRestoreLogger.notice("Restore entered")
         startNetworkMonitoring()
+        sessionRestoreLogger.notice("Network monitor started")
         guard UIApplication.shared.isProtectedDataAvailable else {
+            sessionRestoreLogger.notice("Protected data unavailable")
             ConnectionDiagnostics.record("Protected data unavailable; showing sign-in")
             state = .signedOut
             return
@@ -155,10 +166,14 @@ final class SessionStore: ObservableObject {
         let attemptID = UUID()
         activeRestoreAttempt = attemptID
         // Security.framework can wait while protected data wakes. Keep it off
-        // the UI actor. The login screen remains usable while it is pending.
+        // the UI actor. The completion alone selects the next screen.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            sessionRestoreLogger.notice("Keychain read started")
             let accessToken = KeychainStore.loadToken()
             let refreshToken = KeychainStore.loadRefreshToken()
+            sessionRestoreLogger.notice(
+                "Keychain read completed: access=\(accessToken != nil, privacy: .public) refresh=\(refreshToken != nil, privacy: .public)"
+            )
             DispatchQueue.main.async { [weak self] in
                 self?.completeRestore(
                     accessToken: accessToken,
@@ -169,16 +184,22 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    func restore() async {
+        beginRestore()
+    }
+
     private func completeRestore(accessToken savedToken: String?, refreshToken savedRefreshToken: String?, attemptID: UUID) {
         guard activeRestoreAttempt == attemptID else { return }
         activeRestoreAttempt = nil
         guard savedToken != nil || savedRefreshToken != nil else {
+            sessionRestoreLogger.notice("Restore completed: no saved session")
             state = .signedOut
             return
         }
         token = savedToken
         profile = SessionCache.loadProfile()
         state = .signedIn
+        sessionRestoreLogger.notice("Restore completed: signed in from cached session")
         loadKnownArticles()
         Task { @MainActor [weak self] in
             await self?.hydrateRestoredSession(savedToken: savedToken)
@@ -602,6 +623,7 @@ final class SessionStore: ObservableObject {
     }
 
     func signOut() {
+        sessionRestoreLogger.notice("Sign-out requested")
         activeRestoreAttempt = nil
         let logoutToken = token
         let deviceToken = APNsRegistration.deviceToken
@@ -641,6 +663,7 @@ final class SessionStore: ObservableObject {
         // Move to the login UI before touching Security.framework.  On some
         // devices SecItemDelete can wait for the protected-data service.
         state = .signedOut
+        sessionRestoreLogger.notice("Sign-out completed: showing authentication")
         Task.detached(priority: .utility) {
             KeychainStore.clear(accessToken: logoutToken)
         }
