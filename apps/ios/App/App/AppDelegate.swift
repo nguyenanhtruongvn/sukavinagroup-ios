@@ -185,7 +185,7 @@ private final class NativeAppContainerViewController: UIViewController {
     private var restoreTask: Task<Void, Never>?
     private var hasStartedRestore = false
     private var host: UIHostingController<AnyView>?
-    private var iOS17ScreenKind: ScreenKind?
+    private var renderedScreenKind: ScreenKind?
     private let offlineNotice = UILabel()
 
     init(notificationRouter: APNsNotificationRouter) {
@@ -219,16 +219,10 @@ private final class NativeAppContainerViewController: UIViewController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyAppearance() }
         applyAppearance()
-        // On the affected iOS 17 device, waiting for viewDidAppear left the
-        // initial host on NativeLaunchView. Queue the UIKit bootstrap on the
-        // next run-loop turn instead; iOS 18+ keeps its existing route.
-        if #available(iOS 18.0, *) {
-            // iOS 18+ starts from viewDidAppear below.
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.beginRestoreAfterFirstPresentation()
-            }
-        }
+        // Resolve the first screen synchronously once UIKit has mounted the
+        // initial host.  Neither viewDidAppear nor a dispatched first task is
+        // allowed to gate the login screen on iOS 17 or iOS 18+.
+        beginRestoreAfterHostMount()
     }
 
     func appBecameActive() {
@@ -238,10 +232,9 @@ private final class NativeAppContainerViewController: UIViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         applyAppearance()
-        beginRestoreAfterFirstPresentation()
     }
 
-    private func beginRestoreAfterFirstPresentation() {
+    private func beginRestoreAfterHostMount() {
         guard !hasStartedRestore else { return }
         hasStartedRestore = true
         launchLogger.notice("Beginning synchronous launch restoration")
@@ -261,21 +254,13 @@ private final class NativeAppContainerViewController: UIViewController {
 
     private func installRootView() {
         let rootView = screenForCurrentSession()
-        if #available(iOS 18.0, *) {
-            guard let host else {
-                mountRootView(rootView)
-                return
-            }
-            host.rootView = rootView
-            return
-        }
-
-        // iOS 17 can retain the initial AnyView after rootView assignment.
-        // Replace only the concrete host when its screen actually changes so
-        // the launch screen cannot remain above the authentication screen.
+        // A UIHostingController can keep its first erased AnyView when its
+        // root is reassigned during application launch.  Replace the concrete
+        // host only when the destination screen changes; this is stable on
+        // iOS 17 and iOS 18+ and leaves the in-screen navigation untouched.
         let nextKind = currentScreenKind
-        guard iOS17ScreenKind != nextKind else { return }
-        iOS17ScreenKind = nextKind
+        guard renderedScreenKind != nextKind else { return }
+        renderedScreenKind = nextKind
         if let host {
             host.willMove(toParent: nil)
             host.view.removeFromSuperview()
