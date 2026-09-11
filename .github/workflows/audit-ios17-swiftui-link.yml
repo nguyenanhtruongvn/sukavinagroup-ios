@@ -28,7 +28,6 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/ios17-link-audit" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            SWIFT_COMPILATION_MODE=incremental \
             clean build
 
       - name: Identify every source object that autolinks SwiftUICore
@@ -92,8 +91,48 @@ jobs:
             clean build
           app_binary="$RUNNER_TEMP/ios17-xcode16/Build/Products/Release-iphoneos/App.app/App"
           test -f "$app_binary"
-          if otool -L "$app_binary" | grep -q 'SwiftUICore.framework'; then
-            echo 'error: The Xcode 16.4 app still links SwiftUICore.'
-            exit 1
-          fi
+          # A SwiftUICore load command is acceptable only when weak.  The
+          # target's build phase performs that assertion; retain the full
+          # Mach-O report here for the Xcode 16 vs Xcode 26 comparison.
           otool -L "$app_binary"
+          otool -l "$app_binary" | awk '
+            $1 == "cmd" && $2 == "LC_LOAD_WEAK_DYLIB" { weak = 1; next }
+            $1 == "cmd" { weak = 0 }
+            weak && $1 == "name" && $2 ~ /SwiftUICore\\.framework/ { print "SwiftUICore linkage: weak"; found = 1 }
+            END { if (!found) print "SwiftUICore linkage: absent" }
+          '
+
+  xcode26-implicit-modules-build:
+    # Isolate the only build flag that can change module metadata emission.
+    # Do not disable Swift autolinking: that made a previous archive invalid.
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build with Xcode 26 and implicit Swift modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          xcodebuild -version
+          xcodebuild \
+            -project apps/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios17-xcode26-implicit" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            SWIFT_ENABLE_EXPLICIT_MODULES=NO \
+            clean build
+          app_binary="$RUNNER_TEMP/ios17-xcode26-implicit/Build/Products/Release-iphoneos/App.app/App"
+          test -f "$app_binary"
+          otool -L "$app_binary"
+          otool -l "$app_binary" | awk '
+            $1 == "cmd" && $2 == "LC_LOAD_WEAK_DYLIB" { weak = 1; next }
+            $1 == "cmd" { weak = 0 }
+            weak && $1 == "name" && $2 ~ /SwiftUICore\\.framework/ { print "SwiftUICore linkage: weak"; found = 1 }
+            END { if (!found) print "SwiftUICore linkage: absent" }
+          '
