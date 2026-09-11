@@ -195,6 +195,14 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// Lets the native UIKit host recover from a restore task that never
+    /// resumes on an older OS. Credentials stay in Keychain so a subsequent
+    /// normal restore or sign-in can still use them.
+    func abandonRestore() {
+        guard state == .restoring else { return }
+        state = .signedOut
+    }
+
     func appBecameActive() {
         guard state == .signedIn else { return }
         foregroundRefreshTask?.cancel()

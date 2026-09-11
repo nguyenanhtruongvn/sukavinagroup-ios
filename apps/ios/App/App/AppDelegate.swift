@@ -172,6 +172,9 @@ private final class NativeAppContainerViewController: UIViewController {
     private var profileObservation: AnyCancellable?
     private var errorObservation: AnyCancellable?
     private var offlineNoticeObservation: AnyCancellable?
+    private var appearanceObservation: AnyCancellable?
+    private var restoreTask: Task<Void, Never>?
+    private var restoreFallbackTask: Task<Void, Never>?
     private var host: UIHostingController<AnyView>?
     private let offlineNotice = UILabel()
 
@@ -202,13 +205,30 @@ private final class NativeAppContainerViewController: UIViewController {
         offlineNoticeObservation = session.$isOfflineNoticeVisible.sink { [weak self] isVisible in
             self?.offlineNotice.isHidden = !isVisible
         }
-        Task { [weak self] in
+        appearanceObservation = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyAppearance() }
+        applyAppearance()
+        restoreTask = Task { @MainActor [weak self] in
             await self?.session.restore()
+        }
+        // Do not leave an iOS 17 user at the launch screen indefinitely if a
+        // suspended restore task never resumes. A login screen is recoverable;
+        // an endless spinner is not.
+        restoreFallbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled, self?.session.state == .restoring else { return }
+            self?.session.abandonRestore()
         }
     }
 
     func appBecameActive() {
         session.appBecameActive()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        applyAppearance()
     }
 
     private func installRootView() {
@@ -243,6 +263,18 @@ private final class NativeAppContainerViewController: UIViewController {
                 return AnyView(CanteenScannerView().environmentObject(session).environmentObject(notificationRouter))
             }
             return AnyView(EmployeePortalView().environmentObject(session).environmentObject(notificationRouter))
+        }
+    }
+
+    private func applyAppearance() {
+        let rawValue = UserDefaults.standard.string(forKey: "sukavina.appearanceMode")
+        switch AppAppearanceMode(rawValue: rawValue ?? AppAppearanceMode.system.rawValue) ?? .system {
+        case .system:
+            view.window?.overrideUserInterfaceStyle = .unspecified
+        case .light:
+            view.window?.overrideUserInterfaceStyle = .light
+        case .dark:
+            view.window?.overrideUserInterfaceStyle = .dark
         }
     }
 
