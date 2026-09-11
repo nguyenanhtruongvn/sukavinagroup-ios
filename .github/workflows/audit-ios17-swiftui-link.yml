@@ -64,3 +64,33 @@ jobs:
           name: ios17-swiftui-link-audit
           path: ${{ runner.temp }}/swiftuicore-autolink-sources.txt
           if-no-files-found: error
+
+  xcode15-ios17-build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build the same native app with the iOS 17 toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_15.4.app/Contents/Developer
+          xcodebuild -version
+          xcodebuild \
+            -project apps/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios17-xcode15" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            clean build
+          app_binary="$RUNNER_TEMP/ios17-xcode15/Build/Products/Release-iphoneos/App.app/App"
+          test -f "$app_binary"
+          if otool -L "$app_binary" | grep -q 'SwiftUICore.framework'; then
+            echo 'error: The Xcode 15.4 app still links SwiftUICore.'
+            exit 1
+          fi
+          otool -L "$app_binary"
