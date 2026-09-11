@@ -76,6 +76,22 @@ private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
     }
 }
 
+@available(iOS 17.0, *)
+private extension View {
+    @ViewBuilder
+    func adaptiveTabBarLabelVisibility(showsLabels: Bool) -> some View {
+        // On iOS 17, mutating UITabBar while SwiftUI is reconciling the
+        // TabView can re-enter the first layout pass and abort the process.
+        // The native iOS 17 tab bar already displays labels, so do not inject
+        // the UIKit bridge there. iOS 18+ retains the user preference.
+        if #available(iOS 18.0, *) {
+            self.background(TabBarLabelVisibilityUpdater(showsLabels: showsLabels))
+        } else {
+            self
+        }
+    }
+}
+
 enum MeetingPresentation {
     static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
     static var calendar: Calendar = {
@@ -1878,7 +1894,7 @@ struct EmployeePortalView: View {
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
-        .background(TabBarLabelVisibilityUpdater(showsLabels: showTabLabels))
+        .adaptiveTabBarLabelVisibility(showsLabels: showTabLabels)
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
         .onChange(of: selectedTab) { _, tab in
@@ -2597,7 +2613,7 @@ struct ModernAttendanceHistoryView: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .background(AttendanceScrollInsetNeutralizer())
+                    .adaptiveAttendanceScrollInsetNeutralization()
                     .ignoresSafeArea(.container, edges: .bottom)
                 }
             }

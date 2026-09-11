@@ -210,3 +210,18 @@ struct AttendanceScrollInsetNeutralizer: UIViewRepresentable {
 
     func updateUIView(_ uiView: AttendanceScrollInsetNeutralizingView, context: Context) {}
 }
+
+@available(iOS 17.0, *)
+extension View {
+    @ViewBuilder
+    func adaptiveAttendanceScrollInsetNeutralization() -> some View {
+        // This UIKit bridge edits scroll-view insets from layoutSubviews. Keep
+        // it off iOS 17, where that edit can recursively trigger SwiftUI's
+        // layout engine. iOS 18+ needs it for the tab-bar safe-area workaround.
+        if #available(iOS 18.0, *) {
+            self.background(AttendanceScrollInsetNeutralizer())
+        } else {
+            self
+        }
+    }
+}

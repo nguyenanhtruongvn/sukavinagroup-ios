@@ -105,12 +105,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
-        // Xcode 26 is required for App Store uploads, but its SwiftUI runtime
-        // metadata can reference symbols that iOS 17 does not provide. Do not
-        // instantiate the native SwiftUI tree on iOS 17: it crashes during the
-        // first layout pass before any app code can recover. The responsive
-        // authenticated portal keeps core employee workflows available there.
-        if #available(iOS 18.0, *) {
+        if #available(iOS 17.0, *) {
             window.rootViewController = UIHostingController(
                 rootView: SukavinaAppView().environmentObject(notificationRouter)
             )
@@ -161,10 +156,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     }
 }
 
-/// iOS 17 compatibility mode. The modern native experience remains the
-/// primary app on iOS 18 and later; iOS 17 uses the same responsive, secured
-/// employee portal so core workflows remain available without the Xcode 26
-/// SwiftUI runtime crash.
+/// iOS 15–16 compatibility mode. The modern native experience remains the
+/// primary app on current systems; older systems use the same responsive,
+/// secured employee portal so core workflows stay available instead of
+/// crashing on newer SwiftUI APIs.
 private final class LegacyPortalViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private let portalURL = URL(string: "https://sukavinagroup.net")
     private lazy var webView: WKWebView = {
