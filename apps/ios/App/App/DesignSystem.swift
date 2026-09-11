@@ -77,6 +77,60 @@ enum AppTheme {
     })
 }
 
+/// This UIKit bridge corrects the extra bottom inset introduced by the native
+/// paged attendance view on iOS 18 and later.  It must not be instantiated on
+/// iOS 17: mutating a hosting scroll view while SwiftUI is laying it out can
+/// cause a recursive layout pass there.
+@available(iOS 18.0, *)
+final class AttendanceScrollInsetNeutralizingView: UIView {
+    private weak var managedScrollView: UIScrollView?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        resolveAndApply()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        resolveAndApply()
+    }
+
+    private func resolveAndApply() {
+        if managedScrollView == nil {
+            var candidate = superview
+            while let view = candidate {
+                if let scrollView = view as? UIScrollView {
+                    managedScrollView = scrollView
+                    break
+                }
+                candidate = view.superview
+            }
+        }
+        guard let scrollView = managedScrollView else { return }
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.automaticallyAdjustsScrollIndicatorInsets = false
+        if scrollView.contentInset.bottom != 0 {
+            var inset = scrollView.contentInset
+            inset.bottom = 0
+            scrollView.contentInset = inset
+        }
+        if scrollView.verticalScrollIndicatorInsets.bottom != 0 {
+            var inset = scrollView.verticalScrollIndicatorInsets
+            inset.bottom = 0
+            scrollView.verticalScrollIndicatorInsets = inset
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+struct AttendanceScrollInsetNeutralizer: UIViewRepresentable {
+    func makeUIView(context: Context) -> AttendanceScrollInsetNeutralizingView {
+        AttendanceScrollInsetNeutralizingView(frame: .zero)
+    }
+
+    func updateUIView(_ uiView: AttendanceScrollInsetNeutralizingView, context: Context) {}
+}
+
 @available(iOS 17.0, *)
 struct PortalPageTitle: View {
     let text: String
