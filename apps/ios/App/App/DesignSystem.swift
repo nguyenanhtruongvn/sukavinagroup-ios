@@ -32,7 +32,6 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
         }
     }
 }
-
 enum AttendanceMonthDisplayMode: String, CaseIterable, Identifiable {
     case compact
     case full
@@ -163,65 +162,3 @@ extension View {
 
 }
 
-final class AttendanceScrollInsetNeutralizingView: UIView {
-    private weak var managedScrollView: UIScrollView?
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        resolveAndApply()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        resolveAndApply()
-    }
-
-    private func resolveAndApply() {
-        if managedScrollView == nil {
-            var candidate = superview
-            while let view = candidate {
-                if let scrollView = view as? UIScrollView {
-                    managedScrollView = scrollView
-                    break
-                }
-                candidate = view.superview
-            }
-        }
-        guard let scrollView = managedScrollView else { return }
-        scrollView.contentInsetAdjustmentBehavior = .never
-        scrollView.automaticallyAdjustsScrollIndicatorInsets = false
-        if scrollView.contentInset.bottom != 0 {
-            var inset = scrollView.contentInset
-            inset.bottom = 0
-            scrollView.contentInset = inset
-        }
-        if scrollView.verticalScrollIndicatorInsets.bottom != 0 {
-            var inset = scrollView.verticalScrollIndicatorInsets
-            inset.bottom = 0
-            scrollView.verticalScrollIndicatorInsets = inset
-        }
-    }
-}
-
-struct AttendanceScrollInsetNeutralizer: UIViewRepresentable {
-    func makeUIView(context: Context) -> AttendanceScrollInsetNeutralizingView {
-        AttendanceScrollInsetNeutralizingView(frame: .zero)
-    }
-
-    func updateUIView(_ uiView: AttendanceScrollInsetNeutralizingView, context: Context) {}
-}
-
-@available(iOS 17.0, *)
-extension View {
-    @ViewBuilder
-    func adaptiveAttendanceScrollInsetNeutralization() -> some View {
-        // This UIKit bridge edits scroll-view insets from layoutSubviews. Keep
-        // it off iOS 17, where that edit can recursively trigger SwiftUI's
-        // layout engine. iOS 18+ needs it for the tab-bar safe-area workaround.
-        if #available(iOS 18.0, *) {
-            self.background(AttendanceScrollInsetNeutralizer())
-        } else {
-            self
-        }
-    }
-}

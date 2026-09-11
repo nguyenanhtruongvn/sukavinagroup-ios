@@ -105,13 +105,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
         let window = UIWindow(frame: UIScreen.main.bounds)
-        if #available(iOS 17.0, *) {
-            window.rootViewController = UIHostingController(
-                rootView: SukavinaAppView().environmentObject(notificationRouter)
-            )
-        } else {
-            window.rootViewController = LegacyPortalViewController()
-        }
+        window.rootViewController = UIHostingController(
+            rootView: SukavinaAppView().environmentObject(notificationRouter)
+        )
         window.makeKeyAndVisible()
         self.window = window
         return true

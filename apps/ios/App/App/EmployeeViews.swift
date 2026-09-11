@@ -10,88 +10,6 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-/// Applies the label preference to the UIKit tab bar already on screen.
-/// This preserves the selected tab instead of recreating SwiftUI's TabView.
-private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
-    let showsLabels: Bool
-    private static let tabTitles = ["Trang chủ", "Đơn từ", "Phòng họp", "Thông báo", "Tài khoản"]
-
-    final class Coordinator {
-        weak var tabBar: UITabBar?
-        var showsLabels: Bool?
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.isUserInteractionEnabled = false
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        DispatchQueue.main.async {
-            guard let window = uiView.window, let tabBar = findTabBar(from: window) else { return }
-            // Changing UIKit tab-bar layout during every SwiftUI reconciliation
-            // re-enters layout on iOS 17 and can recurse until the app aborts.
-            // Only touch the bar when its actual label preference changes.
-            guard context.coordinator.tabBar !== tabBar || context.coordinator.showsLabels != showsLabels else { return }
-
-            context.coordinator.tabBar = tabBar
-            context.coordinator.showsLabels = showsLabels
-            for (index, item) in (tabBar.items ?? []).enumerated() {
-                guard Self.tabTitles.indices.contains(index) else { continue }
-                let title = Self.tabTitles[index]
-                item.title = showsLabels ? title : nil
-                item.accessibilityLabel = title
-                item.titlePositionAdjustment = .zero
-                item.imageInsets = showsLabels ? .zero : UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
-            }
-            tabBar.items?.forEach { $0.setTitleTextAttributes(nil, for: .normal) }
-        }
-    }
-
-    private func findTabBar(from window: UIWindow) -> UITabBar? {
-        if let root = window.rootViewController, let tabBar = findTabBar(in: root) { return tabBar }
-        return findTabBar(in: window)
-    }
-
-    private func findTabBar(in controller: UIViewController) -> UITabBar? {
-        if let tabController = controller as? UITabBarController { return tabController.tabBar }
-        for child in controller.children {
-            if let tabBar = findTabBar(in: child) { return tabBar }
-        }
-        if let presented = controller.presentedViewController { return findTabBar(in: presented) }
-        return nil
-    }
-
-    private func findTabBar(in view: UIView) -> UITabBar? {
-        if let tabBar = view as? UITabBar { return tabBar }
-        for child in view.subviews {
-            if let tabBar = findTabBar(in: child) { return tabBar }
-        }
-        return nil
-    }
-}
-
-@available(iOS 17.0, *)
-private extension View {
-    @ViewBuilder
-    func adaptiveTabBarLabelVisibility(showsLabels: Bool) -> some View {
-        // On iOS 17, mutating UITabBar while SwiftUI is reconciling the
-        // TabView can re-enter the first layout pass and abort the process.
-        // The native iOS 17 tab bar already displays labels, so do not inject
-        // the UIKit bridge there. iOS 18+ retains the user preference.
-        if #available(iOS 18.0, *) {
-            self.background(TabBarLabelVisibilityUpdater(showsLabels: showsLabels))
-        } else {
-            self
-        }
-    }
-}
-
 enum MeetingPresentation {
     static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
     static var calendar: Calendar = {
@@ -1865,12 +1783,14 @@ struct EmployeePortalView: View {
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
-
-
-
-
-
-
+    @ViewBuilder
+    private func portalTabLabel(_ title: String, systemImage: String) -> some View {
+        if showTabLabels {
+            Label(title, systemImage: systemImage)
+        } else {
+            Image(systemName: systemImage).accessibilityLabel(title)
+        }
+    }
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -1878,23 +1798,22 @@ struct EmployeePortalView: View {
                 requestInitialFilter = .pending
                 selectedTab = 1
             }
-                .tabItem { Label("Trang chủ", systemImage: "house.fill") }
+                .tabItem { portalTabLabel("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
-                .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
+                .tabItem { portalTabLabel("Đơn từ", systemImage: "doc.text.fill") }
             .tag(1)
             MeetingRoomsView()
-                .tabItem { Label("Phòng họp", systemImage: "building.2.fill") }
+                .tabItem { portalTabLabel("Phòng họp", systemImage: "building.2.fill") }
                 .tag(2)
             NotificationsView()
-                .tabItem { Label("Thông báo", systemImage: "bell.fill") }
+                .tabItem { portalTabLabel("Thông báo", systemImage: "bell.fill") }
                 .badge(session.notificationBadgeCount)
                 .tag(3)
             ProfileView()
-                .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
+                .tabItem { portalTabLabel("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
-        .adaptiveTabBarLabelVisibility(showsLabels: showTabLabels)
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
         .onChange(of: selectedTab) { _, tab in
@@ -2613,7 +2532,6 @@ struct ModernAttendanceHistoryView: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .adaptiveAttendanceScrollInsetNeutralization()
                     .ignoresSafeArea(.container, edges: .bottom)
                 }
             }
@@ -2680,7 +2598,6 @@ struct ModernAttendanceHistoryView: View {
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 112)
-            .background(AttendanceScrollInsetNeutralizer())
         }
         .hidesPortalBottomScrollEdgeEffect()
     }
