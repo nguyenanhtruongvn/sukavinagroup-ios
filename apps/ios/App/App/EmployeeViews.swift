@@ -202,10 +202,9 @@ private struct MeetingRoomsHeader: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Phòng họp")
-                .font(.system(size: 27, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(uiColor: .label))
+        VStack(alignment: .leading, spacing: 12) {
+            // Keep this tab aligned with the shared 30 pt page headers.
+            PortalPageTitle("Phòng họp")
 
             HStack(spacing: 10) {
                 Button {
@@ -215,7 +214,7 @@ private struct MeetingRoomsHeader: View {
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(isToday ? .white : Color(uiColor: .label))
                         .padding(.horizontal, 16)
-                        .frame(height: 40)
+                        .frame(height: 38)
                         .background(isToday ? Color.red : Color(uiColor: .systemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                         .overlay {
@@ -234,7 +233,7 @@ private struct MeetingRoomsHeader: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(isTomorrow ? .white : Color(uiColor: .label))
                         .padding(.horizontal, 16)
-                        .frame(height: 40)
+                        .frame(height: 38)
                         .background(isTomorrow ? Color.red : Color(uiColor: .systemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                         .overlay {
@@ -254,7 +253,7 @@ private struct MeetingRoomsHeader: View {
                     Image(systemName: "calendar")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(Color(uiColor: .label))
-                        .frame(width: 40, height: 40)
+                        .frame(width: 38, height: 38)
                         .background(Color(uiColor: .systemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
                         .overlay {

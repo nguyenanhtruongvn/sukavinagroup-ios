@@ -50,6 +50,19 @@ struct NotificationsView: View {
         }
         return EdgeInsets(top: 32, leading: 20, bottom: 2, trailing: 20)
     }
+
+    @ViewBuilder
+    private var legacyTopSafeAreaSpacer: some View {
+        if #unavailable(iOS 26.0) {
+            // With the navigation bar hidden, older List implementations may
+            // place a zero-margin first row under the status-area clipping
+            // boundary. This inset is relative to the real safe area, unlike
+            // a device-specific top padding.
+            Color.clear
+                .frame(height: 8)
+                .background(notificationPageBackground)
+        }
+    }
     var body: some View {
         NavigationStack {
             List {
@@ -158,6 +171,9 @@ struct NotificationsView: View {
             }
             .listStyle(.plain)
             .contentMargins(.top, 0, for: .scrollContent)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                legacyTopSafeAreaSpacer
+            }
             .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)
             .background(notificationPageBackground.ignoresSafeArea()).navigationTitle("")
