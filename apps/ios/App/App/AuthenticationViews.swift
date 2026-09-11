@@ -255,10 +255,17 @@ struct AuthenticationView: View {
 
 @available(iOS 17.0, *)
 struct LoginForm: View {
+    private enum LoginFocus: Hashable {
+        case identifier
+        case password
+    }
+
     @EnvironmentObject private var session: SessionStore
     @State private var loginId = ""
     @State private var password = ""
+    @State private var passwordVisible = false
     @State private var showsForgotPassword = false
+    @FocusState private var focusedField: LoginFocus?
 
     private var canSubmit: Bool {
         !loginId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -273,10 +280,42 @@ struct LoginForm: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            NativeField(title: "MSNV", text: $loginId, icon: "person.text.rectangle")
+            HStack(spacing: 12) {
+                Image(systemName: "person.text.rectangle").frame(width: 22).foregroundColor(AppTheme.muted)
+                TextField("MSNV", text: $loginId)
+                    .textContentType(.username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.next)
+                    .focused($focusedField, equals: .identifier)
+                    .onSubmit { focusedField = .password }
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 52)
+            .background(AppTheme.field)
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(AppTheme.fieldBorder, lineWidth: 1))
+
+            HStack(spacing: 12) {
+                Image(systemName: "lock").frame(width: 22).foregroundColor(AppTheme.muted)
+                Group {
+                    if passwordVisible { TextField("Mật khẩu", text: $password) }
+                    else { SecureField("Mật khẩu", text: $password) }
+                }
+                .textContentType(.password)
                 .submitLabel(.go)
-            NativeSecureField(title: "Mật khẩu", text: $password)
-                .submitLabel(.go)
+                .focused($focusedField, equals: .password)
+                .onSubmit(submitLogin)
+                Button { passwordVisible.toggle() } label: {
+                    Image(systemName: passwordVisible ? "eye.slash" : "eye")
+                }
+                .foregroundColor(AppTheme.muted)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 52)
+            .background(AppTheme.field)
+            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(AppTheme.fieldBorder, lineWidth: 1))
             Button {
                 submitLogin()
             } label: {
@@ -335,7 +374,6 @@ struct LoginForm: View {
                 .disabled(session.isWorking)
             }
         }
-        .onSubmit(submitLogin)
         .sheet(isPresented: $showsForgotPassword) {
             ForgotPasswordView(initialEmployeeCode: loginId)
                 .environmentObject(session)
