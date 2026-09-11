@@ -2854,6 +2854,9 @@ struct ModernAttendanceHistoryView: View {
             selectedDates[month] = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
                 ?? cached.days.last?.date
         }
+        // Historical months are served instantly from a recent disk snapshot.
+        // The current month is revalidated frequently because punches change it.
+        guard session.shouldRevalidateAttendanceMonth(month) else { return }
         guard let token = session.token else { return }
         do {
             let loaded = try await session.loadAttendanceMonth(month, token: token)

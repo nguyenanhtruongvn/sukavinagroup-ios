@@ -19,6 +19,15 @@ private let sessionRestoreLogger = Logger(
 @MainActor
 @available(iOS 17.0, *)
 final class SessionStore: ObservableObject {
+    private struct CachedDashboard: Codable {
+        let savedAt: Date
+        let value: Dashboard
+    }
+
+    private struct CachedAttendanceMonth: Codable {
+        let savedAt: Date
+        let value: AttendanceMonth
+    }
     enum State {
         case restoring
         case signedOut
@@ -62,6 +71,7 @@ final class SessionStore: ObservableObject {
     private var articleBadgeCount = 0
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
+    private let dashboardCachePrefix = "native-dashboard-cache-"
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
@@ -117,7 +127,20 @@ final class SessionStore: ObservableObject {
     func cachedAttendanceMonth(_ month: String) -> AttendanceMonth? {
         guard let cacheKey = attendanceMonthCacheKey(month),
               let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        if let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) {
+            return cached.value
+        }
+        // One-release migration path for the former unversioned cache.
         return try? JSONDecoder().decode(AttendanceMonth.self, from: data)
+    }
+
+    func shouldRevalidateAttendanceMonth(_ month: String) -> Bool {
+        guard let cacheKey = attendanceMonthCacheKey(month),
+              let data = UserDefaults.standard.data(forKey: cacheKey),
+              let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) else { return true }
+        let currentMonth = String(DateFormatter.meetingDay.string(from: Date()).prefix(7))
+        let ttl: TimeInterval = month == currentMonth ? 90 : 12 * 60 * 60
+        return Date().timeIntervalSince(cached.savedAt) >= ttl
     }
 
     func loadAttendanceMonth(_ month: String, token: String) async throws -> AttendanceMonth {
@@ -144,9 +167,24 @@ final class SessionStore: ObservableObject {
     private func saveAttendanceMonth(_ month: AttendanceMonth, for keyMonth: String) {
         guard let cacheKey = attendanceMonthCacheKey(keyMonth),
               let employeeCode = profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty,
-              let data = try? JSONEncoder().encode(month) else { return }
+              let data = try? JSONEncoder().encode(CachedAttendanceMonth(savedAt: Date(), value: month)) else { return }
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
         UserDefaults.standard.set(data, forKey: cacheKey)
+    }
+
+    private func restoreCachedDashboard() {
+        guard let employeeCode = profile?.employeeCode.nilIfEmpty,
+              let data = UserDefaults.standard.data(forKey: dashboardCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedDashboard.self, from: data),
+              Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
+        dashboard = cached.value
+    }
+
+    private func saveDashboardCache(_ value: Dashboard) {
+        let employeeCode = value.employeeCode.nilIfEmpty ?? profile?.employeeCode.nilIfEmpty
+        guard let employeeCode,
+              let data = try? JSONEncoder().encode(CachedDashboard(savedAt: Date(), value: value)) else { return }
+        UserDefaults.standard.set(data, forKey: dashboardCachePrefix + employeeCode)
     }
 
     /// Starts restoration directly from the UIKit lifecycle. This deliberately
@@ -198,6 +236,7 @@ final class SessionStore: ObservableObject {
         }
         token = savedToken
         profile = SessionCache.loadProfile()
+        restoreCachedDashboard()
         state = .signedIn
         sessionRestoreLogger.notice("Restore completed: signed in from cached session")
         loadKnownArticles()
@@ -531,6 +570,7 @@ final class SessionStore: ObservableObject {
             processNewAttendance(fresh)
             processNewArticles(fresh.contentItems)
             dashboard = fresh
+            saveDashboardCache(fresh)
             attendanceRevision &+= 1
             AttendanceWidgetBridge.update(from: fresh)
             if shouldRefreshRequestNotificationCount {

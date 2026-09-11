@@ -215,7 +215,7 @@ enum SessionCache {
     }
 }
 
-struct ContentItem: Decodable, Identifiable {
+struct ContentItem: Codable, Identifiable {
     let id: String
     let page: String
     let key: String
@@ -444,7 +444,7 @@ final class NotificationManager {
     }
 }
 
-struct Dashboard: Decodable {
+struct Dashboard: Codable {
     let employeeCode: String
     let fullName: String
     let role: String
@@ -458,7 +458,7 @@ struct Dashboard: Decodable {
     let contentItems: [ContentItem]
 }
 
-struct AttendanceRecord: Decodable, Identifiable {
+struct AttendanceRecord: Codable, Identifiable {
     let id: String
     let punchedAt: String
     let source: String
