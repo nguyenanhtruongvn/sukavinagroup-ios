@@ -2574,6 +2574,16 @@ struct ModernAttendanceHistoryView: View {
         attendanceMonthDisplayMode == AttendanceMonthDisplayMode.full.rawValue
     }
 
+    /// iOS 26's paged TabView retains a grid's old measured height when this
+    /// AppStorage value changes. Recreate only the affected pages on iOS 26+
+    /// so full cells cannot inherit compact-cell geometry and clip their times.
+    private var attendanceLayoutVersion: String {
+        if #available(iOS 26.0, *) {
+            return attendanceMonthDisplayMode
+        }
+        return "stable"
+    }
+
 
 
 
@@ -2607,6 +2617,12 @@ struct ModernAttendanceHistoryView: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
+                    .id("attendance-pages-\(attendanceLayoutVersion)")
+                    .transaction { transaction in
+                        // A simultaneous cell-height animation makes the
+                        // cached page briefly shorter than its full grid.
+                        transaction.animation = nil
+                    }
                     .background {
                         if #available(iOS 18.0, *) {
                             AttendanceScrollInsetNeutralizer()
@@ -2651,6 +2667,7 @@ struct ModernAttendanceHistoryView: View {
                 if let data {
                     preloadedSummaryCards(data)
                     preloadedCalendarCard(data, month: month)
+                        .id("attendance-calendar-\(month)-\(attendanceLayoutVersion)")
                     if !showsFullMonthCells, let day = selectedDay(in: data, month: month) {
                         preloadedDayDetail(day, data: data)
                     }
