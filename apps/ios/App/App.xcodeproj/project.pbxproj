@@ -65,7 +65,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"${CONFIGURATION}\" = \"Release\" ] && /usr/bin/otool -L \"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\" | /usr/bin/grep -q \"SwiftUICore.framework\"; then\n  echo \"error: App binary links SwiftUICore.framework, which cannot launch on iOS 17. Remove the linker flag or iOS 26-only SwiftUI API.\"\n  exit 1\nfi\n";
+			shellScript = "app_binary=\"${TARGET_BUILD_DIR}/${EXECUTABLE_PATH}\"\nif [ \"${CONFIGURATION}\" = \"Release\" ] && /usr/bin/otool -L \"${app_binary}\" | /usr/bin/grep -q \"SwiftUICore.framework\"; then\n  echo \"error: App binary links SwiftUICore.framework, which cannot launch on iOS 17.\"\n  echo \"SwiftUICore provenance follows; remove the reported iOS 26-only SwiftUI reference.\"\n  link_args=\"${TARGET_TEMP_DIR}/Objects-normal/${CURRENT_ARCH}/${EXECUTABLE_NAME}-linker-args.resp\"\n  if [ -r \"${link_args}\" ]; then\n    echo \"--- linker arguments containing SwiftUICore ---\"\n    /usr/bin/grep -n -C 2 \"SwiftUICore\" \"${link_args}\" || true\n  fi\n  link_file_list=\"${TARGET_TEMP_DIR}/Objects-normal/${CURRENT_ARCH}/${EXECUTABLE_NAME}.LinkFileList\"\n  swift_autolink=\"$(xcrun --find swift-autolink-extract 2>/dev/null || true)\"\n  if [ -n \"${swift_autolink}\" ] && [ -r \"${link_file_list}\" ]; then\n    while IFS= read -r object_file; do\n      if \"${swift_autolink}\" \"${object_file}\" 2>/dev/null | /usr/bin/grep -q \"SwiftUICore\"; then\n        echo \"SwiftUICore is automatically linked by: ${object_file}\"\n      fi\n    done < \"${link_file_list}\"\n  fi\n  exit 1\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

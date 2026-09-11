@@ -153,13 +153,12 @@ extension View {
 
     @ViewBuilder
     func adaptivePortalTabBarBackground() -> some View {
-        if #available(iOS 26.0, *) {
-            self.toolbarBackground(.hidden, for: .tabBar)
-        } else {
-            self
-                .toolbarBackground(.ultraThinMaterial, for: .tabBar)
-                .toolbarBackground(.visible, for: .tabBar)
-        }
+        // Keep the tab-bar backdrop in UIKit (AppDelegate).  Referencing the
+        // iOS 26 SwiftUI tab-bar appearance path makes Xcode 26 emit a strong
+        // SwiftUICore dependency, which causes a launch crash on iOS 17.
+        // Returning the view unchanged keeps the layout stable and lets the
+        // native UITabBarAppearance supply the same adaptive material surface.
+        self
     }
 
 }
