@@ -181,6 +181,8 @@ struct NotificationsView: View {
                 .refreshable { await reloadNotifications(refreshDashboard: true) }
                 .task {
                     hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? [])
+                    requestNotifications = session.cachedRequestNotifications()
+                    requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
                     await reloadNotifications()
                     await openPendingAPNsRouteIfNeeded()
                 }

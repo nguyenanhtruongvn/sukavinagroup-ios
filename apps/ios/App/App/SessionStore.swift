@@ -19,6 +19,11 @@ private let sessionRestoreLogger = Logger(
 @MainActor
 @available(iOS 17.0, *)
 final class SessionStore: ObservableObject {
+    private struct CachedValue<Value: Codable>: Codable {
+        let savedAt: Date
+        let value: Value
+    }
+
     private struct CachedDashboard: Codable {
         let savedAt: Date
         let value: Dashboard
@@ -78,6 +83,8 @@ final class SessionStore: ObservableObject {
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
     private let dashboardCachePrefix = "native-dashboard-cache-"
+    private let todayMenuCachePrefix = "native-today-menu-cache-"
+    private let requestNotificationsCachePrefix = "native-request-notifications-cache-"
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
@@ -193,6 +200,41 @@ final class SessionStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: dashboardCachePrefix + employeeCode)
     }
 
+    private var cacheEmployeeCode: String? {
+        profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty
+    }
+
+    private func restoreCachedTodayMenu() {
+        guard let employeeCode = cacheEmployeeCode,
+              let data = UserDefaults.standard.data(forKey: todayMenuCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedValue<TodayMenu>.self, from: data),
+              cached.value.date == DateFormatter.meetingDay.string(from: Date()),
+              Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
+        todayMenu = cached.value
+    }
+
+    private func saveTodayMenuCache(_ value: TodayMenu) {
+        guard let employeeCode = cacheEmployeeCode,
+              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: value)) else { return }
+        UserDefaults.standard.set(data, forKey: todayMenuCachePrefix + employeeCode)
+    }
+
+    func cachedRequestNotifications() -> [RequestNotification] {
+        guard let employeeCode = cacheEmployeeCode,
+              let data = UserDefaults.standard.data(forKey: requestNotificationsCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedValue<[RequestNotification]>.self, from: data),
+              Date().timeIntervalSince(cached.savedAt) < 7 * 24 * 60 * 60 else {
+            return mergedRequestNotifications([])
+        }
+        return mergedRequestNotifications(cached.value)
+    }
+
+    private func saveRequestNotificationsCache(_ values: [RequestNotification]) {
+        guard let employeeCode = cacheEmployeeCode,
+              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: values)) else { return }
+        UserDefaults.standard.set(data, forKey: requestNotificationsCachePrefix + employeeCode)
+    }
+
     /// Starts restoration directly from the UIKit lifecycle. This deliberately
     /// avoids a first Swift Concurrency task at launch on iOS 17, where that
     /// task can be scheduled but never resume after dispatching its work.
@@ -243,6 +285,7 @@ final class SessionStore: ObservableObject {
         token = savedToken
         profile = SessionCache.loadProfile()
         restoreCachedDashboard()
+        restoreCachedTodayMenu()
         state = .signedIn
         sessionRestoreLogger.notice("Restore completed: signed in from cached session")
         loadKnownArticles()
@@ -372,7 +415,9 @@ final class SessionStore: ObservableObject {
     func refreshTodayMenu() async {
         guard let token else { return }
         do {
-            todayMenu = try await APIClient.shared.request("me/menu", token: token)
+            let value: TodayMenu = try await APIClient.shared.request("me/menu", token: token)
+            todayMenu = value
+            saveTodayMenuCache(value)
         } catch is CancellationError {
             // An obsolete SwiftUI refresh was cancelled; no user-facing error.
             return
@@ -417,12 +462,14 @@ final class SessionStore: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            todayMenu = try await APIClient.shared.request(
+            let value: TodayMenu = try await APIClient.shared.request(
                 "me/menu/selection",
                 method: "PATCH",
                 token: token,
                 body: MealSelectionBody(choice: choice)
             )
+            todayMenu = value
+            saveTodayMenuCache(value)
         } catch {
             present(error)
         }
@@ -433,11 +480,13 @@ final class SessionStore: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            todayMenu = try await APIClient.shared.request(
+            let value: TodayMenu = try await APIClient.shared.request(
                 "me/menu/selection",
                 method: "DELETE",
                 token: token
             )
+            todayMenu = value
+            saveTodayMenuCache(value)
         } catch {
             present(error)
         }
@@ -448,11 +497,13 @@ final class SessionStore: ObservableObject {
         isWorking = true
         defer { isWorking = false }
         do {
-            todayMenu = try await APIClient.shared.request(
+            let value: TodayMenu = try await APIClient.shared.request(
                 "me/menu/selection/received",
                 method: "PATCH",
                 token: token
             )
+            todayMenu = value
+            saveTodayMenuCache(value)
         } catch {
             present(error)
         }
@@ -821,6 +872,7 @@ final class SessionStore: ObservableObject {
 
     func updateRequestUnreadCount(_ values: [RequestNotification]) {
         latestRequestNotifications = values
+        saveRequestNotificationsCache(values)
         requestUnreadCount = values.filter { !$0.read }.count
         let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
         let acknowledged = UserDefaults.standard.stringArray(forKey: acknowledgedNotificationBadgePrefix + employeeCode)

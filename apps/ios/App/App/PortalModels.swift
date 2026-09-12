@@ -250,7 +250,7 @@ struct ContentItem: Codable, Identifiable {
     }
 }
 
-struct MenuDay: Decodable {
+struct MenuDay: Codable {
     let dayIndex: Int
     let dayName: String
     let featured: String
@@ -263,7 +263,7 @@ struct MenuDay: Decodable {
     let overtime: String
 }
 
-struct TodayMenu: Decodable {
+struct TodayMenu: Codable {
     let date: String
     let day: MenuDay
     let selection: String?
@@ -273,7 +273,7 @@ struct TodayMenu: Decodable {
     let availableChoices: MealAvailability?
 }
 
-struct MealAvailability: Decodable {
+struct MealAvailability: Codable {
     let water: Bool
     let vegetarian: Bool
 }

@@ -2359,7 +2359,10 @@ struct DashboardView: View {
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
-            .task { await requestStore.load(session.token) }
+            .task {
+                requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
+                await requestStore.load(session.token)
+            }
             .task { await session.refreshTodayMenu() }
             // Realtime events and app activation keep the dashboard current.
             // Do not poll while the user scrolls: replacing card data during a

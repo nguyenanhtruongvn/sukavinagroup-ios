@@ -232,7 +232,14 @@ private final class NativeAppContainerViewController: UIViewController {
         }
         configureOfflineNotice()
         offlineNoticeObservation = session.$isOfflineNoticeVisible.sink { [weak self] isVisible in
-            self?.offlineNotice.isHidden = !isVisible
+            guard let self else { return }
+            self.offlineNotice.isHidden = !isVisible
+            if isVisible {
+                // Root SwiftUI hosts are replaced after session transitions.
+                // Keep this UIKit notice above the newly inserted host instead
+                // of letting it become visually hidden behind that host.
+                self.view.bringSubviewToFront(self.offlineNotice)
+            }
         }
         appearanceObservation = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
             .receive(on: RunLoop.main)
@@ -304,6 +311,9 @@ private final class NativeAppContainerViewController: UIViewController {
         ])
         host.didMove(toParent: self)
         self.host = host
+        if offlineNotice.superview != nil {
+            view.bringSubviewToFront(offlineNotice)
+        }
     }
 
     private func configureLaunchView() {

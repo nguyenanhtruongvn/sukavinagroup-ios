@@ -145,9 +145,36 @@ struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 @MainActor
 @available(iOS 17.0, *)
 final class EmployeeRequestStore: ObservableObject {
+    private struct CachedRequests: Codable {
+        let savedAt: Date
+        let requests: [EmployeeRequest]
+        let approvals: [EmployeeRequest]
+    }
+
     @Published private(set) var requests: [EmployeeRequest] = []
     @Published private(set) var approvals: [EmployeeRequest] = []
     @Published var message: String?
+    private let cachePrefix = "native-employee-requests-cache-"
+    private var cacheEmployeeCode: String?
+
+    /// Restore first so a previously loaded request list remains usable when
+    /// the network is unavailable. Data is namespaced to the signed-in person.
+    func restoreCache(employeeCode: String?) {
+        guard let employeeCode = employeeCode?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !employeeCode.isEmpty else { return }
+        cacheEmployeeCode = employeeCode
+        guard let data = UserDefaults.standard.data(forKey: cachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedRequests.self, from: data),
+              Date().timeIntervalSince(cached.savedAt) < 7 * 24 * 60 * 60 else { return }
+        requests = cached.requests
+        approvals = cached.approvals
+    }
+
+    private func saveCache() {
+        guard let employeeCode = cacheEmployeeCode,
+              let data = try? JSONEncoder().encode(CachedRequests(savedAt: Date(), requests: requests, approvals: approvals)) else { return }
+        UserDefaults.standard.set(data, forKey: cachePrefix + employeeCode)
+    }
 
     private func record(_ error: Error) {
         // SwiftUI cancels obsolete .task/.refreshable work when this view is
@@ -164,6 +191,7 @@ final class EmployeeRequestStore: ObservableObject {
             async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
             requests = try await mine
             approvals = try await assigned
+            saveCache()
         } catch { record(error) }
     }
 
@@ -287,7 +315,10 @@ struct RequestsView: View {
                     secondaryButton: .cancel(Text("Giữ lại"))
                 )
             }
-            .task { await store.load(session.token) }
+            .task {
+                store.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
+                await store.load(session.token)
+            }
             .refreshable { await store.load(session.token) }
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
