@@ -578,6 +578,10 @@ struct RequestComposer: View {
     }
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
+    /// `.decimalPad` follows the device locale, so Vietnamese keyboards enter `,`.
+    private func localizedDecimal(_ value: String) -> Double? {
+        Double(value.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+    }
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
     private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
     private var singleDayEventName: String { kind == .late ? "đi trễ" : "về sớm" }
@@ -738,7 +742,7 @@ struct RequestComposer: View {
         let dates = submissionDates
         return (kind == .business || cleanReason.count >= 10)
             && dates.to >= dates.from
-            && (kind != .business || (destination.count >= 2 && (transport != "personal_vehicle" || Double(distanceKm) ?? 0 > 0)))
+            && (kind != .business || (destination.count >= 2 && (transport != "personal_vehicle" || localizedDecimal(distanceKm) ?? 0 > 0)))
     }
 
     private func requestTimeRange(title: String, icon: String) -> some View {
@@ -1002,7 +1006,7 @@ struct RequestComposer: View {
             .safeAreaInset(edge: .bottom) {
                 Button {
                     let dates = submissionDates
-                    submit(kind, dates.from, dates.to, kind == .business ? "" : submissionReason, destination, transport, Double(distanceKm), Double(expense))
+                    submit(kind, dates.from, dates.to, kind == .business ? "" : submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
                     dismiss()
                 } label: {
                     HStack(spacing: 10) {
