@@ -635,7 +635,10 @@ private struct MeetingTimeline: View {
 
         return (
             CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
-            max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 24)
+            // Do not inflate short meetings for touch-target convenience:
+            // at 72px/hour, a 15-minute meeting is exactly 18px tall. The old
+            // 24px minimum visually extended a 09:04–09:19 booking to ~09:24.
+            max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 1)
         )
     }
 
