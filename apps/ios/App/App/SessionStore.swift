@@ -1139,9 +1139,15 @@ final class SessionStore: ObservableObject {
                 "me/meeting-rooms?date=\(day)",
                 token: token
             )
+            let visibleBookings = activeMeetingBookings(value.bookings)
             meetingRooms = applyMeetingRoomOrder(value.rooms)
-            meetingBookings = value.bookings
-            saveMeetingSchedule(value, for: day)
+            meetingBookings = visibleBookings
+            // Keep a terminal booking out of the offline cache too.  This is
+            // important when an end action succeeds just as a refresh occurs.
+            saveMeetingSchedule(
+                MeetingScheduleResponse(rooms: value.rooms, bookings: visibleBookings),
+                for: day
+            )
         } catch {
             ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
         }
@@ -1155,7 +1161,9 @@ final class SessionStore: ObservableObject {
         guard let employeeCode = meetingCacheEmployeeCode else { return }
         let rooms = SessionCache.loadMeetingRooms(employeeCode: employeeCode)
         let roomIDs = Set(rooms.map(\.id))
-        let bookings = SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
+        let bookings = activeMeetingBookings(
+            SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
+        )
         meetingRooms = applyMeetingRoomOrder(rooms)
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
@@ -1219,6 +1227,23 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    private func activeMeetingBookings(_ bookings: [MeetingBooking]) -> [MeetingBooking] {
+        // Older API versions may still return historical terminal records in a
+        // day schedule.  They must not keep a room occupied after “Kết thúc”.
+        let terminalStatuses: Set<String> = ["cancelled", "canceled", "ended", "completed"]
+        return bookings.filter { !terminalStatuses.contains($0.status.lowercased()) }
+    }
+
+    private func removeEndedMeetingFromCurrentSchedule(bookingID: String) {
+        guard meetingBookings.contains(where: { $0.id == bookingID }) else { return }
+        meetingBookings.removeAll { $0.id == bookingID }
+        let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
+        saveMeetingSchedule(
+            MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
+            for: day
+        )
+    }
+
     private func applyMeetingRoomOrder(_ rooms: [MeetingRoom]) -> [MeetingRoom] {
         guard let employeeCode = meetingCacheEmployeeCode else { return rooms }
         let savedOrder = SessionCache.loadMeetingRoomOrder(employeeCode: employeeCode)
@@ -1243,13 +1268,19 @@ final class SessionStore: ObservableObject {
     /// Live Activity controls always revalidate with the server; only the
     /// organiser may end or extend an active booking.
     func handleLiveActivityAction(bookingID: String, action: String) async {
-        guard let token, isNetworkAvailable else { return }
+        guard let token else {
+            errorMessage = "Phiên đăng nhập đã hết hạn. Vui lòng mở ứng dụng và đăng nhập lại."
+            return
+        }
         do {
             switch action {
             case "end":
                 let _: MeetingBooking = try await APIClient.shared.request(
                     "me/meeting-bookings/\(bookingID)/end", method: "POST", token: token
                 )
+                // Update this screen before the next server/event-stream refresh;
+                // otherwise a successfully ended meeting remains drawn as busy.
+                removeEndedMeetingFromCurrentSchedule(bookingID: bookingID)
                 if #available(iOS 17.0, *) { MeetingLiveActivityManager.end(bookingID: bookingID) }
             case "extend":
                 let _: MeetingBooking = try await APIClient.shared.request(
