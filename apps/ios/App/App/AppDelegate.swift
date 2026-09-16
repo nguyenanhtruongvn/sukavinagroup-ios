@@ -120,6 +120,27 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         appContainer?.appBecameActive()
     }
 
+    func application(
+        _ app: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        appContainer?.handleLiveActivityURL(url)
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        if #available(iOS 17.0, *) {
+            MeetingLiveActivityManager.start(from: userInfo)
+        }
+        publishMeetingChangeIfNeeded(userInfo)
+        completionHandler(.newData)
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
@@ -253,6 +274,15 @@ private final class NativeAppContainerViewController: UIViewController {
 
     func appBecameActive() {
         session.appBecameActive()
+    }
+
+    func handleLiveActivityURL(_ url: URL) {
+        guard url.scheme == "sukavina",
+              url.host == "meeting",
+              url.pathComponents.count == 3 else { return }
+        let bookingID = url.pathComponents[1]
+        let action = url.pathComponents[2]
+        Task { await session.handleLiveActivityAction(bookingID: bookingID, action: action) }
     }
 
     override func viewDidAppear(_ animated: Bool) {

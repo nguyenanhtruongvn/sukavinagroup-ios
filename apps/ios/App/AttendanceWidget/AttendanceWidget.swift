@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import WidgetKit
+import ActivityKit
 
 private enum WidgetStorage {
     private static let originalAppGroup = "group.net.sukavinagroup.user"
@@ -442,9 +443,85 @@ private struct SukavinaAttendanceWidget: Widget {
     }
 }
 
+@available(iOS 17.0, *)
+private struct MeetingLiveActivityWidget: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: MeetingLiveActivityAttributes.self) { context in
+            MeetingLiveActivityView(context: context)
+                .activityBackgroundTint(Color(red: 0.08, green: 0.09, blue: 0.12))
+                .activitySystemActionForegroundColor(.white)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Image(systemName: "building.2.fill").foregroundStyle(.red)
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(context.state.endsAt, style: .timer).monospacedDigit()
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    MeetingLiveActivityControls(context: context)
+                }
+            } compactLeading: {
+                Image(systemName: "building.2.fill").foregroundStyle(.red)
+            } compactTrailing: {
+                Text(context.state.endsAt, style: .timer).monospacedDigit()
+            } minimal: {
+                Image(systemName: "clock.fill").foregroundStyle(.red)
+            }
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingLiveActivityView: View {
+    let context: ActivityViewContext<MeetingLiveActivityAttributes>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "calendar.badge.clock").foregroundStyle(.red)
+                Text(context.attributes.title).font(.headline).lineLimit(1)
+                Spacer()
+                Text(context.state.endsAt, style: .timer).font(.headline.monospacedDigit())
+            }
+            Text("\(context.attributes.roomName) · Còn lại \(context.state.endsAt, style: .timer)")
+                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            ProgressView(timerInterval: context.attributes.startsAt...context.state.endsAt, countsDown: false)
+                .tint(.red)
+            MeetingLiveActivityControls(context: context)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingLiveActivityControls: View {
+    let context: ActivityViewContext<MeetingLiveActivityAttributes>
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Link(destination: actionURL("end")) {
+                Text("Kết thúc").font(.caption.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 9)
+                    .background(Color.red, in: Capsule()).foregroundStyle(.white)
+            }
+            Link(destination: actionURL("extend")) {
+                Text("Gia hạn +5 phút").font(.caption.weight(.bold)).frame(maxWidth: .infinity).padding(.vertical, 9)
+                    .background(Color.white.opacity(0.18), in: Capsule()).foregroundStyle(.primary)
+            }
+        }
+    }
+
+    private func actionURL(_ action: String) -> URL {
+        URL(string: "sukavina://meeting/\(context.attributes.bookingID)/\(action)")!
+    }
+}
+
 @main
 struct SukavinaAttendanceWidgetBundle: WidgetBundle {
     var body: some Widget {
         SukavinaAttendanceWidget()
+        if #available(iOS 17.0, *) {
+            MeetingLiveActivityWidget()
+        }
     }
 }

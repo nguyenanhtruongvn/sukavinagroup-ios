@@ -117,6 +117,10 @@ struct CreateMeetingBookingBody: Encodable {
     }
 }
 
+struct ExtendMeetingBookingBody: Encodable {
+    let minutes: Int
+}
+
 struct UserSummary: Codable {
     let employeeCode: String
     let name: String

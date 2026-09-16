@@ -1218,6 +1218,31 @@ final class SessionStore: ObservableObject {
             return error.localizedDescription
         }
     }
+
+    /// Live Activity controls always revalidate with the server; only the
+    /// organiser may end or extend an active booking.
+    func handleLiveActivityAction(bookingID: String, action: String) async {
+        guard let token, isNetworkAvailable else { return }
+        do {
+            switch action {
+            case "end":
+                let _: MeetingBooking = try await APIClient.shared.request(
+                    "me/meeting-bookings/\(bookingID)/end", method: "POST", token: token
+                )
+                if #available(iOS 17.0, *) { MeetingLiveActivityManager.end(bookingID: bookingID) }
+            case "extend":
+                let _: MeetingBooking = try await APIClient.shared.request(
+                    "me/meeting-bookings/\(bookingID)/extend", method: "POST", token: token,
+                    body: ExtendMeetingBookingBody(minutes: 5)
+                )
+            default:
+                return
+            }
+            await refreshMeetingSchedule(date: activeMeetingScheduleDate)
+        } catch {
+            present(error)
+        }
+    }
     /// Returns a server-facing failure message so the booking form can present
     /// a short, contextual notice instead of a global blocking alert.
     func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> String? {

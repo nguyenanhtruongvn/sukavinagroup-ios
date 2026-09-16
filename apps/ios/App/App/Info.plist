@@ -32,6 +32,19 @@
 	<string>Sukavina sử dụng Face ID để đăng nhập an toàn mà không cần nhập lại mật khẩu.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Sukavina sử dụng camera để tài khoản nhà ăn quét và xác nhận mã QR suất ăn.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array><string>sukavina</string></array>
+		</dict>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
