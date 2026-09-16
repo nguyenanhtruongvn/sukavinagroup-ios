@@ -21,6 +21,9 @@
 		D60000000000000000000001 /* MeetingLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */; };
 		D60000000000000000000002 /* MeetingLiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60000000000000000000102 /* MeetingLiveActivityManager.swift */; };
 		D60000000000000000000003 /* MeetingLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */; };
+		D70000000000000000000001 /* MeetingLiveActivityActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */; };
+		D70000000000000000000002 /* MeetingLiveActivityActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */; };
+		D70000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -86,6 +89,7 @@
 		D4000000000000000000010B /* AppPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreviews.swift; sourceTree = "<group>"; };
 		D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		D60000000000000000000102 /* MeetingLiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLiveActivityManager.swift; sourceTree = "<group>"; };
+		D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLiveActivityActionIntent.swift; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -156,6 +160,7 @@
 				D4000000000000000000010B /* AppPreviews.swift */,
 				D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */,
 				D60000000000000000000102 /* MeetingLiveActivityManager.swift */,
+				D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
 				504EC3131FED79650016851F /* Info.plist */,
@@ -279,6 +284,7 @@
 			files = (
 				B20000000000000000000012 /* Widget PrivacyInfo.xcprivacy in Resources */,
 				C30000000000000000000001 /* WidgetBackground.jpg in Resources */,
+				D70000000000000000000003 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -303,6 +309,7 @@
 				D4000000000000000000000B /* AppPreviews.swift in Sources */,
 				D60000000000000000000001 /* MeetingLiveActivityAttributes.swift in Sources */,
 				D60000000000000000000002 /* MeetingLiveActivityManager.swift in Sources */,
+				D70000000000000000000001 /* MeetingLiveActivityActionIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -312,6 +319,7 @@
 			files = (
 				A10000000000000000000001 /* AttendanceWidget.swift in Sources */,
 				D60000000000000000000003 /* MeetingLiveActivityAttributes.swift in Sources */,
+				D70000000000000000000002 /* MeetingLiveActivityActionIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
