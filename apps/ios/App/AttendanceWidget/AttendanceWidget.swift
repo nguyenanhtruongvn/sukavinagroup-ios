@@ -620,13 +620,11 @@ private struct SukavinaLiveActivityLogo: View {
     let size: CGFloat
 
     var body: some View {
-        Image("SukavinaLiveMark")
+        Image("LiveActivityLogo")
             .resizable()
             .renderingMode(.original)
             .scaledToFit()
             .frame(width: size, height: size)
-            .clipShape(Circle())
-            .overlay { Circle().stroke(Color.white.opacity(0.22), lineWidth: 0.75) }
     }
 }
 
