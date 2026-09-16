@@ -1291,9 +1291,17 @@ final class SessionStore: ObservableObject {
     /// Live Activity controls always revalidate with the server; only the
     /// organiser may end or extend an active booking.
     func handleLiveActivityAction(bookingID: String, action: String) async {
+        _ = await performMeetingControl(bookingID: bookingID, action: action, extensionMinutes: 5)
+    }
+
+    /// Shared by the Live Activity and the in-app ten-minute reminder.  The
+    /// endpoint remains unchanged for older clients; only the optional minute
+    /// choice is new UI state sent to the existing extend API.
+    func performMeetingControl(bookingID: String, action: String, extensionMinutes: Int = 5) async -> String? {
         guard let token else {
-            errorMessage = "Phiên đăng nhập đã hết hạn. Vui lòng mở ứng dụng và đăng nhập lại."
-            return
+            let message = "Phiên đăng nhập đã hết hạn. Vui lòng mở ứng dụng và đăng nhập lại."
+            errorMessage = message
+            return message
         }
         do {
             switch action {
@@ -1306,14 +1314,16 @@ final class SessionStore: ObservableObject {
             case "extend":
                 let _: MeetingBooking = try await APIClient.shared.request(
                     "me/meeting-bookings/\(bookingID)/extend", method: "POST", token: token,
-                    body: ExtendMeetingBookingBody(minutes: 5)
+                    body: ExtendMeetingBookingBody(minutes: extensionMinutes)
                 )
             default:
-                return
+                return nil
             }
             await refreshMeetingSchedule(date: activeMeetingScheduleDate)
+            return nil
         } catch {
             present(error)
+            return error.localizedDescription
         }
     }
     /// Returns a server-facing failure message so the booking form can present
