@@ -1,4 +1,5 @@
 import ActivityKit
+import Foundation
 
 /// Kept in both the app and WidgetKit extension targets.  The attributes are
 /// intentionally small so an APNs-triggered warning can be rendered reliably
