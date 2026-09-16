@@ -117,7 +117,7 @@ struct AdjustMeetingExtensionIntent: LiveActivityIntent {
 private enum MeetingLiveActivityAction {
     enum Action: Equatable { case end, extend(minutes: Int) }
 
-    private struct Response: Decodable {
+    struct Response: Decodable {
         let endsAt: String
     }
 
