@@ -463,11 +463,18 @@ private struct MeetingLiveActivityWidget: Widget {
                         .foregroundStyle(.white)
                 }
             } compactLeading: {
-                SukavinaLiveActivityLogo(size: 14)
+                // Compact Island: only the transparent brand mark on the left.
+                // System status items (clock, cellular and Wi-Fi) are outside
+                // this view and intentionally are not duplicated here.
+                SukavinaLiveActivityLogo(size: 16)
             } compactTrailing: {
+                // `.timer` is a short, live countdown (for example `8:28`),
+                // not the meeting's end clock time.
                 Text(context.state.endsAt, style: .timer)
                     .font(.caption2.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
             } minimal: {
                 SukavinaLiveActivityLogo(size: 12)
             }
