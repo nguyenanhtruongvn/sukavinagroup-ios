@@ -35,33 +35,85 @@ struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
     static var openAppWhenRun = false
 
     @Parameter(title: "Mã cuộc họp") var bookingID: String
+    @Parameter(title: "Số phút gia hạn") var minutes: Int
 
-    init(bookingID: String) {
+    init(bookingID: String, minutes: Int) {
         self.bookingID = bookingID
+        self.minutes = minutes
     }
 
     init() {
         bookingID = ""
+        minutes = 5
     }
 
     func perform() async throws -> some IntentResult {
-        let result = try await MeetingLiveActivityAction.request(bookingID: bookingID, action: .extend)
-        await MeetingLiveActivityAction.updateActivity(bookingID: bookingID, endsAt: result.endsAt, endNow: false)
+        let result = try await MeetingLiveActivityAction.request(
+            bookingID: bookingID,
+            action: .extend(minutes: minutes)
+        )
+        await MeetingLiveActivityAction.updateActivity(
+            bookingID: bookingID,
+            endsAt: result.endsAt,
+            endNow: false,
+            extensionMinutes: 0,
+            isChoosingExtension: false
+        )
         NotificationCenter.default.post(name: Notification.Name("net.sukavinagroup.meeting-changed"), object: nil)
         return .result()
     }
 }
 
 @available(iOS 17.0, *)
+struct StartMeetingExtensionIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Chọn thời gian gia hạn"
+    static var openAppWhenRun = false
+
+    @Parameter(title: "Mã cuộc họp") var bookingID: String
+
+    init(bookingID: String) { self.bookingID = bookingID }
+    init() { bookingID = "" }
+
+    func perform() async throws -> some IntentResult {
+        await MeetingLiveActivityAction.openExtensionChooser(bookingID: bookingID)
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
+struct AdjustMeetingExtensionIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Điều chỉnh gia hạn"
+    static var openAppWhenRun = false
+
+    @Parameter(title: "Mã cuộc họp") var bookingID: String
+    @Parameter(title: "Điều chỉnh") var delta: Int
+
+    init(bookingID: String, delta: Int) {
+        self.bookingID = bookingID
+        self.delta = delta
+    }
+
+    init() {
+        bookingID = ""
+        delta = 0
+    }
+
+    func perform() async throws -> some IntentResult {
+        await MeetingLiveActivityAction.adjustExtension(bookingID: bookingID, delta: delta)
+        return .result()
+    }
+}
+
+@available(iOS 17.0, *)
 private enum MeetingLiveActivityAction {
-    enum Action: Equatable { case end, extend }
+    enum Action: Equatable { case end, extend(minutes: Int) }
 
     private struct Response: Decodable {
         let endsAt: String
     }
 
     private struct ExtendBody: Encodable {
-        let minutes = 5
+        let minutes: Int
     }
 
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
@@ -70,17 +122,19 @@ private enum MeetingLiveActivityAction {
         guard !bookingID.isEmpty, let token = accessToken() else {
             throw MeetingLiveActivityActionError.noSession
         }
-        let path = action == .end
-            ? "me/meeting-bookings/\(bookingID)/end"
-            : "me/meeting-bookings/\(bookingID)/extend"
+        let path: String
+        switch action {
+        case .end: path = "me/meeting-bookings/\(bookingID)/end"
+        case .extend: path = "me/meeting-bookings/\(bookingID)/extend"
+        }
         var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if action == .extend {
+        if case let .extend(minutes) = action {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(ExtendBody())
+            request.httpBody = try JSONEncoder().encode(ExtendBody(minutes: minutes))
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw MeetingLiveActivityActionError.unavailable }
@@ -88,7 +142,13 @@ private enum MeetingLiveActivityAction {
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
-    static func updateActivity(bookingID: String, endsAt: String, endNow: Bool) async {
+    static func updateActivity(
+        bookingID: String,
+        endsAt: String,
+        endNow: Bool,
+        extensionMinutes: Int = 0,
+        isChoosingExtension: Bool = false
+    ) async {
         guard let endDate = meetingDate(endsAt) else { return }
         for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
             if endNow {
@@ -96,10 +156,37 @@ private enum MeetingLiveActivityAction {
             } else {
                 let state = MeetingLiveActivityAttributes.ContentState(
                     endsAt: endDate,
-                    extensionMinutes: activity.content.state.extensionMinutes + 5
+                    extensionMinutes: extensionMinutes,
+                    isChoosingExtension: isChoosingExtension
                 )
                 await activity.update(ActivityContent(state: state, staleDate: endDate))
             }
+        }
+    }
+
+    static func openExtensionChooser(bookingID: String) async {
+        for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
+            guard activity.attributes.maximumExtensionMinutes >= 5 else { continue }
+            let state = MeetingLiveActivityAttributes.ContentState(
+                endsAt: activity.content.state.endsAt,
+                extensionMinutes: 5,
+                isChoosingExtension: true
+            )
+            await activity.update(ActivityContent(state: state, staleDate: state.endsAt))
+        }
+    }
+
+    static func adjustExtension(bookingID: String, delta: Int) async {
+        for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
+            let maximum = activity.attributes.maximumExtensionMinutes
+            guard maximum >= 5 else { continue }
+            let selected = min(max(activity.content.state.extensionMinutes + delta, 5), maximum)
+            let state = MeetingLiveActivityAttributes.ContentState(
+                endsAt: activity.content.state.endsAt,
+                extensionMinutes: selected,
+                isChoosingExtension: true
+            )
+            await activity.update(ActivityContent(state: state, staleDate: state.endsAt))
         }
     }
 

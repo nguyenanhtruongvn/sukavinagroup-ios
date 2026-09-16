@@ -19,7 +19,11 @@ enum MeetingLiveActivityManager {
             maximumExtensionMinutes: Int(userInfo["maximum_extension_minutes"] as? String ?? "") ?? 0,
             extensionLimitReason: userInfo["extension_limit_reason"] as? String ?? ""
         )
-        let state = MeetingLiveActivityAttributes.ContentState(endsAt: endsAt, extensionMinutes: 0)
+        let state = MeetingLiveActivityAttributes.ContentState(
+            endsAt: endsAt,
+            extensionMinutes: 0,
+            isChoosingExtension: false
+        )
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
                 await activity.update(ActivityContent(state: state, staleDate: endsAt))

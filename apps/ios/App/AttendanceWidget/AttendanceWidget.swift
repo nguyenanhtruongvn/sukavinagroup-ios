@@ -501,24 +501,70 @@ private struct MeetingLiveActivityControls: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
     var body: some View {
+        if context.state.isChoosingExtension {
+            ExtensionConfirmationControls(context: context)
+        } else {
+            InitialMeetingControls(context: context)
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct InitialMeetingControls: View {
+    let context: ActivityViewContext<MeetingLiveActivityAttributes>
+
+    var body: some View {
         HStack(spacing: 10) {
             Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
                 Label("Kết thúc", systemImage: "stop.fill")
-                    .font(.caption.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .foregroundStyle(.white)
-                    .background(Color.red, in: Capsule())
+                    .liveActivityActionStyle(fill: .red, foreground: .white)
             }
-            Button(intent: ExtendMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
-                Label("Gia hạn +5 phút", systemImage: "plus.circle.fill")
-                    .font(.caption.weight(.bold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .foregroundStyle(.primary)
-                    .background(Color.white.opacity(0.16), in: Capsule())
+            if context.attributes.maximumExtensionMinutes >= 5 {
+                Button(intent: StartMeetingExtensionIntent(bookingID: context.attributes.bookingID)) {
+                    Label("Gia hạn", systemImage: "clock.badge.plus")
+                        .liveActivityActionStyle(fill: Color.white.opacity(0.16), foreground: .primary)
+                }
             }
         }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct ExtensionConfirmationControls: View {
+    let context: ActivityViewContext<MeetingLiveActivityAttributes>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Gia hạn thêm \(context.state.extensionMinutes) phút", systemImage: "clock.badge.plus")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.green)
+            HStack(spacing: 7) {
+                Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
+                    Text("Kết thúc").liveActivityActionStyle(fill: .red, foreground: .white, compact: true)
+                }
+                Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: -5)) {
+                    Text("− 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.16), foreground: .primary, compact: true)
+                }
+                Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: 5)) {
+                    Text("+ 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.16), foreground: .primary, compact: true)
+                }
+                Button(intent: ExtendMeetingLiveActivityIntent(bookingID: context.attributes.bookingID, minutes: context.state.extensionMinutes)) {
+                    Text("Xác nhận").liveActivityActionStyle(fill: .green, foreground: .white, compact: true)
+                }
+            }
+        }
+    }
+}
+
+private extension View {
+    func liveActivityActionStyle(fill: Color, foreground: Color, compact: Bool = false) -> some View {
+        font(compact ? .caption2.weight(.bold) : .caption.weight(.bold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, compact ? 9 : 10)
+            .foregroundStyle(foreground)
+            .background(fill, in: Capsule())
     }
 }
 
