@@ -464,7 +464,7 @@ private struct MeetingLiveActivityWidget: Widget {
                 // Compact Island: only the transparent brand mark on the left.
                 // System status items (clock, cellular and Wi-Fi) are outside
                 // this view and intentionally are not duplicated here.
-                SukavinaLiveActivityLogo(size: 16)
+                SukavinaLiveActivityLogo(size: 14)
             } compactTrailing: {
                 // `.timer` is a short, live countdown (for example `8:28`),
                 // not the meeting's end clock time.
@@ -549,7 +549,7 @@ private struct ExtensionConfirmationControls: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 7) {
             Label("Gia hạn thêm \(context.state.extensionMinutes) phút", systemImage: "clock.badge.plus")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.green)
@@ -557,25 +557,26 @@ private struct ExtensionConfirmationControls: View {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.86))
-                    .lineLimit(3)
+                    .lineLimit(2)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 7)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color(red: 0.50, green: 0.04, blue: 0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            HStack(spacing: 8) {
+            // Live Activities have a constrained lock-screen height. Keep all
+            // confirmation controls on one row so their labels are never
+            // clipped below the activity's bottom edge.
+            HStack(spacing: 6) {
+                Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
+                    Text("Kết thúc").liveActivityActionStyle(fill: .red, foreground: .white, compact: true)
+                }
+                .buttonStyle(.plain)
                 Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: -5)) {
                     Text("− 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.12), foreground: .white, compact: true)
                 }
                 .buttonStyle(.plain)
                 Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: 5)) {
                     Text("+ 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.12), foreground: .white, compact: true)
-                }
-                .buttonStyle(.plain)
-            }
-            HStack(spacing: 8) {
-                Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
-                    Text("Kết thúc").liveActivityActionStyle(fill: .red, foreground: .white, compact: true)
                 }
                 .buttonStyle(.plain)
                 Button(intent: ExtendMeetingLiveActivityIntent(bookingID: context.attributes.bookingID, minutes: context.state.extensionMinutes)) {
