@@ -456,7 +456,7 @@ private struct MeetingLiveActivityWidget: Widget {
                     Image(systemName: "building.2.fill").foregroundStyle(.red)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    MeetingLiveActivityCountdown(endsAt: context.state.endsAt)
+                    Text(context.state.endsAt, style: .timer).monospacedDigit()
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     MeetingLiveActivityControls(context: context)
@@ -464,7 +464,7 @@ private struct MeetingLiveActivityWidget: Widget {
             } compactLeading: {
                 Image(systemName: "building.2.fill").foregroundStyle(.red)
             } compactTrailing: {
-                MeetingLiveActivityCountdown(endsAt: context.state.endsAt)
+                Text(context.state.endsAt, style: .timer).monospacedDigit()
             } minimal: {
                 Image(systemName: "clock.fill").foregroundStyle(.red)
             }
@@ -482,41 +482,15 @@ private struct MeetingLiveActivityView: View {
                 Image(systemName: "calendar.badge.clock").foregroundStyle(.red)
                 Text(context.attributes.title).font(.headline).lineLimit(1)
                 Spacer()
-                MeetingLiveActivityCountdown(endsAt: context.state.endsAt)
-                    .font(.headline.monospacedDigit())
+                Text(context.state.endsAt, style: .timer).font(.headline.monospacedDigit())
             }
-            TimelineView(.periodic(from: .now, by: 1)) { timeline in
-                if timeline.date < context.state.endsAt {
-                    Text("\(context.attributes.roomName) · Còn lại \(context.state.endsAt, style: .relative)")
-                        .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
-                    ProgressView(timerInterval: context.attributes.startsAt...context.state.endsAt, countsDown: false)
-                        .tint(.red)
-                } else {
-                    Text("\(context.attributes.roomName) · Cuộc họp đã kết thúc")
-                        .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
+            Text("\(context.attributes.roomName) · Còn lại \(context.state.endsAt, style: .timer)")
+                .font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+            ProgressView(timerInterval: context.attributes.startsAt...context.state.endsAt, countsDown: false)
+                .tint(.red)
             MeetingLiveActivityControls(context: context)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
-    }
-}
-
-/// `Text(date, style: .timer)` starts counting upward after its date.  A
-/// bounded timer interval instead reaches zero and never suggests that a
-/// booking continues beyond its confirmed end time.
-@available(iOS 17.0, *)
-private struct MeetingLiveActivityCountdown: View {
-    let endsAt: Date
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { timeline in
-            if timeline.date < endsAt {
-                Text(timerInterval: timeline.date...endsAt, countsDown: true)
-            } else {
-                Text("Đã xong")
-            }
-        }
     }
 }
 
