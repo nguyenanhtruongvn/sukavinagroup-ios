@@ -10,15 +10,22 @@ struct MeetingLiveActivityAttributes: ActivityAttributes {
         let endsAt: Date
         let extensionMinutes: Int
         let isChoosingExtension: Bool
+        let extensionError: String?
 
-        init(endsAt: Date, extensionMinutes: Int, isChoosingExtension: Bool) {
+        init(
+            endsAt: Date,
+            extensionMinutes: Int,
+            isChoosingExtension: Bool,
+            extensionError: String? = nil
+        ) {
             self.endsAt = endsAt
             self.extensionMinutes = extensionMinutes
             self.isChoosingExtension = isChoosingExtension
+            self.extensionError = extensionError
         }
 
         private enum CodingKeys: String, CodingKey {
-            case endsAt, extensionMinutes, isChoosingExtension
+            case endsAt, extensionMinutes, isChoosingExtension, extensionError
         }
 
         // Activities started by an older app did not encode this flag.  Default
@@ -29,6 +36,7 @@ struct MeetingLiveActivityAttributes: ActivityAttributes {
             endsAt = try values.decode(Date.self, forKey: .endsAt)
             extensionMinutes = try values.decodeIfPresent(Int.self, forKey: .extensionMinutes) ?? 0
             isChoosingExtension = try values.decodeIfPresent(Bool.self, forKey: .isChoosingExtension) ?? false
+            extensionError = try values.decodeIfPresent(String.self, forKey: .extensionError)
         }
     }
 

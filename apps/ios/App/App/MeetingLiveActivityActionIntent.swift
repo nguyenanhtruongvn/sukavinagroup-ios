@@ -48,18 +48,27 @@ struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
     }
 
     func perform() async throws -> some IntentResult {
-        let result = try await MeetingLiveActivityAction.request(
-            bookingID: bookingID,
-            action: .extend(minutes: minutes)
-        )
-        await MeetingLiveActivityAction.updateActivity(
-            bookingID: bookingID,
-            endsAt: result.endsAt,
-            endNow: false,
-            extensionMinutes: 0,
-            isChoosingExtension: false
-        )
-        NotificationCenter.default.post(name: Notification.Name("net.sukavinagroup.meeting-changed"), object: nil)
+        do {
+            let result = try await MeetingLiveActivityAction.request(
+                bookingID: bookingID,
+                action: .extend(minutes: minutes)
+            )
+            await MeetingLiveActivityAction.updateActivity(
+                bookingID: bookingID,
+                endsAt: result.endsAt,
+                endNow: false,
+                extensionMinutes: 0,
+                isChoosingExtension: false
+            )
+            NotificationCenter.default.post(name: Notification.Name("net.sukavinagroup.meeting-changed"), object: nil)
+        } catch {
+            // Keep the selector visible so the organiser can reduce the
+            // requested time after learning about the next meeting.
+            await MeetingLiveActivityAction.showExtensionError(
+                bookingID: bookingID,
+                message: error.localizedDescription
+            )
+        }
         return .result()
     }
 }
@@ -116,6 +125,30 @@ private enum MeetingLiveActivityAction {
         let minutes: Int
     }
 
+    private struct ErrorPayload: Decodable {
+        let message: Message
+    }
+
+    private enum Message: Decodable {
+        case text(String), list([String])
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            if let text = try? container.decode(String.self) {
+                self = .text(text)
+            } else {
+                self = .list(try container.decode([String].self))
+            }
+        }
+
+        var text: String {
+            switch self {
+            case .text(let value): value
+            case .list(let values): values.joined(separator: " ")
+            }
+        }
+    }
+
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
 
     static func request(bookingID: String, action: Action) async throws -> Response {
@@ -138,7 +171,10 @@ private enum MeetingLiveActivityAction {
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw MeetingLiveActivityActionError.unavailable }
-        guard (200..<300).contains(http.statusCode) else { throw MeetingLiveActivityActionError.rejected }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = (try? JSONDecoder().decode(ErrorPayload.self, from: data))?.message.text
+            throw MeetingLiveActivityActionError.rejected(message)
+        }
         return try JSONDecoder().decode(Response.self, from: data)
     }
 
@@ -190,6 +226,22 @@ private enum MeetingLiveActivityAction {
         }
     }
 
+    static func showExtensionError(bookingID: String, message: String) async {
+        for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
+            let limitReason = activity.attributes.extensionLimitReason.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayMessage = limitReason.isEmpty || message.localizedCaseInsensitiveContains(limitReason)
+                ? message
+                : "\(message) \(limitReason)"
+            let state = MeetingLiveActivityAttributes.ContentState(
+                endsAt: activity.content.state.endsAt,
+                extensionMinutes: activity.content.state.extensionMinutes,
+                isChoosingExtension: true,
+                extensionError: displayMessage
+            )
+            await activity.update(ActivityContent(state: state, staleDate: state.endsAt))
+        }
+    }
+
     private static func accessToken() -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -214,13 +266,13 @@ private enum MeetingLiveActivityAction {
 
 @available(iOS 17.0, *)
 private enum MeetingLiveActivityActionError: LocalizedError {
-    case noSession, unavailable, rejected
+    case noSession, unavailable, rejected(String?)
 
     var errorDescription: String? {
         switch self {
         case .noSession: "Không có phiên đăng nhập hợp lệ."
         case .unavailable: "Không thể kết nối máy chủ."
-        case .rejected: "Không thể cập nhật cuộc họp."
+        case .rejected(let message): message ?? "Không thể gia hạn vì có cuộc họp kế tiếp hoặc lịch đã thay đổi."
         }
     }
 }
