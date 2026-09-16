@@ -547,6 +547,16 @@ private struct MeetingNotificationDetail: View {
                     }
                     .buttonStyle(.borderedProminent).tint(.green).disabled(isSubmitting)
                 } else {
+                    Button {
+                        // Keep the unavailable action visible so the organiser
+                        // understands why it cannot be used for this meeting.
+                    } label: {
+                        Label("Gia hạn không khả dụng", systemImage: "clock.badge.exclamationmark")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.secondary)
+                    .disabled(true)
                     Text("Không thể gia hạn vì cuộc họp tiếp theo cần thời gian chuẩn bị.")
                         .font(.caption.weight(.semibold)).foregroundStyle(.red)
                 }
