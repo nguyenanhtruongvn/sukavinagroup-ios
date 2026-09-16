@@ -1,7 +1,19 @@
 name: Publish iOS to TestFlight
 
+run-name: TestFlight ${{ inputs.marketing_version }} (${{ inputs.current_project_version }})
+
 on:
   workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: "MARKETING_VERSION - ví dụ: 1.0.0"
+        required: true
+        type: string
+
+      current_project_version:
+        description: "CURRENT_PROJECT_VERSION - ví dụ: 56"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -15,27 +27,75 @@ jobs:
     name: Archive and upload TestFlight build
     runs-on: macos-latest
     timeout-minutes: 45
+
     env:
-      MARKETING_VERSION: 1.0.0
+      MARKETING_VERSION: ${{ inputs.marketing_version }}
+      CURRENT_PROJECT_VERSION: ${{ inputs.current_project_version }}
+
       APP_BUNDLE_ID: net.sukavinagroup.user
       WIDGET_BUNDLE_ID: net.sukavinagroup.user.AttendanceWidget
       IOS_TEAM_ID: TZWRHJ9UYN
+
       IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
       IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
       IOS_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_APPSTORE_PROFILE_BASE64 }}
       IOS_WIDGET_APPSTORE_PROFILE_BASE64: ${{ secrets.IOS_WIDGET_APPSTORE_PROFILE_BASE64 }}
+
       APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
       APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
       APPSTORE_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_PRIVATE_KEY_BASE64 }}
 
     steps:
+      # ============================================================
+      # 1. CHECKOUT
+      # ============================================================
       - name: Checkout source
         uses: actions/checkout@v6
 
+      # ============================================================
+      # 2. VALIDATE MANUAL VERSION / BUILD INPUTS
+      # ============================================================
+      - name: Validate version inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "======================================"
+          echo "Sukavina TestFlight build"
+          echo "MARKETING_VERSION=$MARKETING_VERSION"
+          echo "CURRENT_PROJECT_VERSION=$CURRENT_PROJECT_VERSION"
+          echo "======================================"
+
+          # Cho phép:
+          # 1.0
+          # 1.0.0
+          # 1.0.17
+          if ! printf '%s\n' "$MARKETING_VERSION" \
+            | grep -Eq '^[0-9]+(\.[0-9]+){1,2}$'; then
+
+            echo "Invalid MARKETING_VERSION: $MARKETING_VERSION" >&2
+            echo "Examples: 1.0 or 1.0.0 or 1.0.17" >&2
+            exit 1
+          fi
+
+          # Giữ build number đơn giản dạng số nguyên:
+          # 55, 56, 57...
+          if ! printf '%s\n' "$CURRENT_PROJECT_VERSION" \
+            | grep -Eq '^[1-9][0-9]*$'; then
+
+            echo "Invalid CURRENT_PROJECT_VERSION: $CURRENT_PROJECT_VERSION" >&2
+            echo "Build number must be a positive integer, for example 56." >&2
+            exit 1
+          fi
+
+      # ============================================================
+      # 3. VALIDATE SECRETS
+      # ============================================================
       - name: Validate release secrets
         shell: bash
         run: |
           set -euo pipefail
+
           required=(
             IOS_DISTRIBUTION_CERTIFICATE_BASE64
             IOS_DISTRIBUTION_CERTIFICATE_PASSWORD
@@ -45,44 +105,114 @@ jobs:
             APPSTORE_KEY_ID
             APPSTORE_PRIVATE_KEY_BASE64
           )
+
           for name in "${required[@]}"; do
-            test -n "${!name:-}" || { echo "Missing repository secret: $name" >&2; exit 1; }
+            test -n "${!name:-}" || {
+              echo "Missing repository secret: $name" >&2
+              exit 1
+            }
           done
 
+      # ============================================================
+      # 4. CONFIGURE SIGNING
+      # ============================================================
       - name: Configure signing certificate and provisioning profiles
         id: signing
         shell: bash
         run: |
           set -euo pipefail
+
           TEMP_DIR="$RUNNER_TEMP/testflight-signing"
           KEYCHAIN_PATH="$RUNNER_TEMP/sukavina-testflight.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          mkdir -p "$TEMP_DIR" "$HOME/Library/MobileDevice/Provisioning Profiles"
 
-          echo "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" | base64 -D > "$TEMP_DIR/distribution.p12"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$TEMP_DIR/distribution.p12" -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          mkdir -p \
+            "$TEMP_DIR" \
+            "$HOME/Library/MobileDevice/Provisioning Profiles"
+
+          echo "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" \
+            | base64 -D \
+            > "$TEMP_DIR/distribution.p12"
+
+          security create-keychain \
+            -p "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security set-keychain-settings \
+            -lut 21600 \
+            "$KEYCHAIN_PATH"
+
+          security unlock-keychain \
+            -p "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          security import \
+            "$TEMP_DIR/distribution.p12" \
+            -P "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security list-keychain \
+            -d user \
+            -s "$KEYCHAIN_PATH" login.keychain-db
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
 
           install_profile() {
             local encoded="$1"
             local label="$2"
             local profile="$TEMP_DIR/${label}.mobileprovision"
             local plist="$TEMP_DIR/${label}.plist"
-            echo "$encoded" | base64 -D > "$profile"
-            security cms -D -i "$profile" > "$plist"
-            local uuid name
-            uuid=$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$plist")
-            name=$(/usr/libexec/PlistBuddy -c 'Print :Name' "$plist")
-            cp "$profile" "$HOME/Library/MobileDevice/Provisioning Profiles/${uuid}.mobileprovision"
+
+            echo "$encoded" \
+              | base64 -D \
+              > "$profile"
+
+            security cms \
+              -D \
+              -i "$profile" \
+              > "$plist"
+
+            local uuid
+            local name
+
+            uuid=$(
+              /usr/libexec/PlistBuddy \
+                -c 'Print :UUID' \
+                "$plist"
+            )
+
+            name=$(
+              /usr/libexec/PlistBuddy \
+                -c 'Print :Name' \
+                "$plist"
+            )
+
+            cp \
+              "$profile" \
+              "$HOME/Library/MobileDevice/Provisioning Profiles/${uuid}.mobileprovision"
+
             printf '%s' "$name"
           }
 
-          APP_PROFILE_NAME="$(install_profile "$IOS_APPSTORE_PROFILE_BASE64" app)"
-          WIDGET_PROFILE_NAME="$(install_profile "$IOS_WIDGET_APPSTORE_PROFILE_BASE64" widget)"
+          APP_PROFILE_NAME="$(
+            install_profile \
+              "$IOS_APPSTORE_PROFILE_BASE64" \
+              app
+          )"
+
+          WIDGET_PROFILE_NAME="$(
+            install_profile \
+              "$IOS_WIDGET_APPSTORE_PROFILE_BASE64" \
+              widget
+          )"
+
           {
             echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
             echo "TEMP_DIR=$TEMP_DIR"
@@ -90,14 +220,22 @@ jobs:
             echo "WIDGET_PROFILE_NAME=$WIDGET_PROFILE_NAME"
           } >> "$GITHUB_ENV"
 
+      # ============================================================
+      # 5. ARCHIVE
+      # ============================================================
       - name: Archive signed Release build
         shell: bash
         run: |
           set -euo pipefail
-          # GitHub run numbers are monotonic for this workflow. Re-run from a
-          # new dispatch instead of "Re-run jobs" after a successful upload.
-          BUILD_NUMBER="$GITHUB_RUN_NUMBER"
+
           ARCHIVE_PATH="$RUNNER_TEMP/Sukavina.xcarchive"
+
+          echo "======================================"
+          echo "Building TestFlight archive"
+          echo "Version : $MARKETING_VERSION"
+          echo "Build   : $CURRENT_PROJECT_VERSION"
+          echo "======================================"
+
           xcodebuild \
             -project apps/ios/App/App.xcodeproj \
             -scheme App \
@@ -109,52 +247,208 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
             MARKETING_VERSION="$MARKETING_VERSION" \
-            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION" \
             clean archive
-          test -d "$ARCHIVE_PATH"
-          echo "ARCHIVE_PATH=$ARCHIVE_PATH" >> "$GITHUB_ENV"
-          echo "BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
 
+          test -d "$ARCHIVE_PATH"
+
+          {
+            echo "ARCHIVE_PATH=$ARCHIVE_PATH"
+            echo "BUILD_NUMBER=$CURRENT_PROJECT_VERSION"
+          } >> "$GITHUB_ENV"
+
+      # ============================================================
+      # 6. VERIFY ACTUAL ARCHIVED VERSION / BUILD
+      # ============================================================
+      - name: Verify archived app metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$(
+            find \
+              "$ARCHIVE_PATH/Products/Applications" \
+              -maxdepth 1 \
+              -type d \
+              -name '*.app' \
+              -print \
+              -quit
+          )"
+
+          test -n "$APP_PATH"
+          test -d "$APP_PATH"
+          test -f "$APP_PATH/Info.plist"
+
+          BUILT_VERSION=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleShortVersionString' \
+              "$APP_PATH/Info.plist"
+          )
+
+          BUILT_BUILD=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleVersion' \
+              "$APP_PATH/Info.plist"
+          )
+
+          BUILT_BUNDLE_ID=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleIdentifier' \
+              "$APP_PATH/Info.plist"
+          )
+
+          echo "======================================"
+          echo "Archived application"
+          echo "Version   : $BUILT_VERSION"
+          echo "Build     : $BUILT_BUILD"
+          echo "Bundle ID : $BUILT_BUNDLE_ID"
+          echo "======================================"
+
+          if [ "$BUILT_VERSION" != "$MARKETING_VERSION" ]; then
+            echo "ERROR: MARKETING_VERSION mismatch." >&2
+            echo "Expected: $MARKETING_VERSION" >&2
+            echo "Built:    $BUILT_VERSION" >&2
+            exit 1
+          fi
+
+          if [ "$BUILT_BUILD" != "$CURRENT_PROJECT_VERSION" ]; then
+            echo "ERROR: CURRENT_PROJECT_VERSION mismatch." >&2
+            echo "Expected: $CURRENT_PROJECT_VERSION" >&2
+            echo "Built:    $BUILT_BUILD" >&2
+            exit 1
+          fi
+
+          if [ "$BUILT_BUNDLE_ID" != "$APP_BUNDLE_ID" ]; then
+            echo "ERROR: Bundle ID mismatch." >&2
+            echo "Expected: $APP_BUNDLE_ID" >&2
+            echo "Built:    $BUILT_BUNDLE_ID" >&2
+            exit 1
+          fi
+
+      # ============================================================
+      # 7. EXPORT IPA
+      # ============================================================
       - name: Export App Store IPA
         shell: bash
         run: |
           set -euo pipefail
+
           EXPORT_PATH="$RUNNER_TEMP/export"
           EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+
           mkdir -p "$EXPORT_PATH"
-          /usr/libexec/PlistBuddy -c 'Add :method string app-store-connect' "$EXPORT_OPTIONS"
-          /usr/libexec/PlistBuddy -c 'Add :signingStyle string manual' "$EXPORT_OPTIONS"
-          /usr/libexec/PlistBuddy -c 'Add :teamID string '"$IOS_TEAM_ID" "$EXPORT_OPTIONS"
-          /usr/libexec/PlistBuddy -c 'Add :provisioningProfiles dict' "$EXPORT_OPTIONS"
-          /usr/libexec/PlistBuddy -c 'Add :provisioningProfiles:'"$APP_BUNDLE_ID"' string '"$APP_PROFILE_NAME" "$EXPORT_OPTIONS"
-          /usr/libexec/PlistBuddy -c 'Add :provisioningProfiles:'"$WIDGET_BUNDLE_ID"' string '"$WIDGET_PROFILE_NAME" "$EXPORT_OPTIONS"
-          xcodebuild -exportArchive \
+
+          /usr/libexec/PlistBuddy \
+            -c 'Add :method string app-store-connect' \
+            "$EXPORT_OPTIONS"
+
+          /usr/libexec/PlistBuddy \
+            -c 'Add :signingStyle string manual' \
+            "$EXPORT_OPTIONS"
+
+          /usr/libexec/PlistBuddy \
+            -c 'Add :teamID string '"$IOS_TEAM_ID" \
+            "$EXPORT_OPTIONS"
+
+          /usr/libexec/PlistBuddy \
+            -c 'Add :provisioningProfiles dict' \
+            "$EXPORT_OPTIONS"
+
+          /usr/libexec/PlistBuddy \
+            -c 'Add :provisioningProfiles:'"$APP_BUNDLE_ID"' string '"$APP_PROFILE_NAME" \
+            "$EXPORT_OPTIONS"
+
+          /usr/libexec/PlistBuddy \
+            -c 'Add :provisioningProfiles:'"$WIDGET_BUNDLE_ID"' string '"$WIDGET_PROFILE_NAME" \
+            "$EXPORT_OPTIONS"
+
+          xcodebuild \
+            -exportArchive \
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$EXPORT_OPTIONS"
-          IPA_PATH="$(find "$EXPORT_PATH" -maxdepth 1 -type f -name '*.ipa' -print -quit)"
-          test -n "$IPA_PATH" && test -f "$IPA_PATH"
+
+          IPA_PATH="$(
+            find \
+              "$EXPORT_PATH" \
+              -maxdepth 1 \
+              -type f \
+              -name '*.ipa' \
+              -print \
+              -quit
+          )"
+
+          test -n "$IPA_PATH"
+          test -f "$IPA_PATH"
+
           echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
+          echo "Generated IPA:"
+          ls -lh "$IPA_PATH"
+
+      # ============================================================
+      # 8. UPLOAD TO APP STORE CONNECT / TESTFLIGHT
+      # ============================================================
       - name: Upload build to App Store Connect
         shell: bash
         run: |
           set -euo pipefail
+
           API_KEY_DIR="$HOME/.appstoreconnect/private_keys"
           API_KEY_PATH="$API_KEY_DIR/AuthKey_${APPSTORE_KEY_ID}.p8"
+
           mkdir -p "$API_KEY_DIR"
-          echo "$APPSTORE_PRIVATE_KEY_BASE64" | base64 -D > "$API_KEY_PATH"
+
+          echo "$APPSTORE_PRIVATE_KEY_BASE64" \
+            | base64 -D \
+            > "$API_KEY_PATH"
+
           chmod 600 "$API_KEY_PATH"
-          xcrun altool --upload-app \
+
+          echo "======================================"
+          echo "Uploading to TestFlight"
+          echo "Version : $MARKETING_VERSION"
+          echo "Build   : $CURRENT_PROJECT_VERSION"
+          echo "======================================"
+
+          xcrun altool \
+            --upload-app \
             --type ios \
             --file "$IPA_PATH" \
             --apiKey "$APPSTORE_KEY_ID" \
             --apiIssuer "$APPSTORE_ISSUER_ID"
 
+      # ============================================================
+      # 9. SUMMARY
+      # ============================================================
+      - name: Build summary
+        if: success()
+        shell: bash
+        run: |
+          {
+            echo "## Sukavina TestFlight Upload"
+            echo ""
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| MARKETING_VERSION | \`$MARKETING_VERSION\` |"
+            echo "| CURRENT_PROJECT_VERSION | \`$CURRENT_PROJECT_VERSION\` |"
+            echo "| Bundle ID | \`$APP_BUNDLE_ID\` |"
+            echo "| Result | ✅ Uploaded to App Store Connect |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ============================================================
+      # 10. CLEANUP
+      # ============================================================
       - name: Remove signing material
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
-          rm -rf "${TEMP_DIR:-}" "$HOME/.appstoreconnect/private_keys"
+
+          security delete-keychain \
+            "${KEYCHAIN_PATH:-}" \
+            2>/dev/null || true
+
+          rm -rf \
+            "${TEMP_DIR:-}" \
+            "$HOME/.appstoreconnect/private_keys"
