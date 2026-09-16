@@ -1483,9 +1483,9 @@ final class SessionStore: ObservableObject {
         if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }
         if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
         if event.contains("content_changed") { pendingRealtimeEvents.insert("content_changed") }
-        if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
         guard !pendingRealtimeEvents.isEmpty, realtimeRefreshTask == nil else { return }
         realtimeRefreshTask = Task { [weak self] in
+            guard let self else { return }
             // Spread a realtime burst over less than one second so hundreds
             // of devices do not refresh the API in the exact same millisecond.
             // A meeting end/extension must visibly update the active room
@@ -1495,7 +1495,7 @@ final class SessionStore: ObservableObject {
                 let delay = UInt64.random(in: 250_000_000...750_000_000)
                 try? await Task.sleep(nanoseconds: delay)
             }
-            guard let self, !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return }
             let events = self.pendingRealtimeEvents
             self.pendingRealtimeEvents.removeAll()
             self.realtimeRefreshTask = nil
