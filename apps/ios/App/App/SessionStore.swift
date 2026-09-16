@@ -1139,7 +1139,7 @@ final class SessionStore: ObservableObject {
                 "me/meeting-rooms?date=\(day)",
                 token: token
             )
-            meetingRooms = value.rooms
+            meetingRooms = applyMeetingRoomOrder(value.rooms)
             meetingBookings = value.bookings
             saveMeetingSchedule(value, for: day)
         } catch {
@@ -1156,7 +1156,7 @@ final class SessionStore: ObservableObject {
         let rooms = SessionCache.loadMeetingRooms(employeeCode: employeeCode)
         let roomIDs = Set(rooms.map(\.id))
         let bookings = SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
-        meetingRooms = rooms
+        meetingRooms = applyMeetingRoomOrder(rooms)
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
         meetingBookings = bookings.filter { roomIDs.contains($0.roomId) }
@@ -1217,6 +1217,27 @@ final class SessionStore: ObservableObject {
         } catch {
             return error.localizedDescription
         }
+    }
+
+    private func applyMeetingRoomOrder(_ rooms: [MeetingRoom]) -> [MeetingRoom] {
+        guard let employeeCode = meetingCacheEmployeeCode else { return rooms }
+        let savedOrder = SessionCache.loadMeetingRoomOrder(employeeCode: employeeCode)
+        guard !savedOrder.isEmpty else { return rooms }
+        let savedRanks = Dictionary(uniqueKeysWithValues: savedOrder.enumerated().map { ($0.element, $0.offset) })
+        let fallbackRanks = Dictionary(uniqueKeysWithValues: rooms.enumerated().map { ($0.element.id, $0.offset) })
+        return rooms.sorted {
+            let left = savedRanks[$0.id] ?? savedOrder.count + (fallbackRanks[$0.id] ?? 0)
+            let right = savedRanks[$1.id] ?? savedOrder.count + (fallbackRanks[$1.id] ?? 0)
+            return left < right
+        }
+    }
+
+    /// Personal display preference only; the server catalogue and legacy clients remain unchanged.
+    func reorderMeetingRooms(_ rooms: [MeetingRoom]) {
+        guard let employeeCode = meetingCacheEmployeeCode else { return }
+        let order = rooms.map(\.id)
+        SessionCache.saveMeetingRoomOrder(order, employeeCode: employeeCode)
+        meetingRooms = applyMeetingRoomOrder(meetingRooms)
     }
 
     /// Live Activity controls always revalidate with the server; only the

@@ -9,6 +9,7 @@ import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
+import UniformTypeIdentifiers
 
 /// The profile setting must update the already-created UIKit tab bar. SwiftUI
 /// does not reliably rebuild tab-item titles after initial presentation.  This
@@ -115,6 +116,7 @@ struct MeetingRoomsView: View {
     @State private var bookingRoom: MeetingRoom?
     @State private var scheduleRoom: MeetingRoom?
     @State private var showMine = false
+    @State private var draggingRoom: MeetingRoom?
 
     private var tomorrow: Date {
         MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: .now) ?? .now
@@ -147,6 +149,22 @@ struct MeetingRoomsView: View {
                                 day: day,
                                 onBook: { bookingRoom = room },
                                 onSchedule: { scheduleRoom = room }
+                            )
+                            // onDrag begins with the native long-press gesture, so a
+                            // normal tap on the card keeps opening that room's schedule.
+                            .opacity(draggingRoom?.id == room.id ? 0.72 : 1)
+                            .onDrag {
+                                draggingRoom = room
+                                return NSItemProvider(object: room.id as NSString)
+                            }
+                            .onDrop(
+                                of: [UTType.plainText.identifier],
+                                delegate: MeetingRoomOrderDropDelegate(
+                                    target: room,
+                                    rooms: session.meetingRooms,
+                                    draggingRoom: $draggingRoom,
+                                    saveOrder: { session.reorderMeetingRooms($0) }
+                                )
                             )
                         }
                     }
@@ -182,6 +200,40 @@ struct MeetingRoomsView: View {
                     .environmentObject(session)
             }
         }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingRoomOrderDropDelegate: DropDelegate {
+    let target: MeetingRoom
+    let rooms: [MeetingRoom]
+    @Binding var draggingRoom: MeetingRoom?
+    let saveOrder: ([MeetingRoom]) -> Void
+
+    func dropEntered(info: DropInfo) {
+        guard let draggingRoom,
+              draggingRoom.id != target.id,
+              let fromIndex = rooms.firstIndex(where: { $0.id == draggingRoom.id }),
+              let targetIndex = rooms.firstIndex(where: { $0.id == target.id })
+        else { return }
+
+        var reordered = rooms
+        reordered.move(
+            fromOffsets: IndexSet(integer: fromIndex),
+            toOffset: targetIndex > fromIndex ? targetIndex + 1 : targetIndex
+        )
+        withAnimation(.snappy) {
+            saveOrder(reordered)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingRoom = nil
+        return true
     }
 }
 
