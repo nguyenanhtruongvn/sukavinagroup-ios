@@ -1,8 +1,20 @@
 name: Build unsigned iOS IPA
 
+run-name: iOS ${{ inputs.marketing_version }} (${{ inputs.current_project_version }})
+
 on:
   workflow_dispatch:
     inputs:
+      marketing_version:
+        description: "MARKETING_VERSION - ví dụ: 1.0.1"
+        required: true
+        type: string
+
+      current_project_version:
+        description: "CURRENT_PROJECT_VERSION - ví dụ: 56"
+        required: true
+        type: string
+
       publish_to_sidestore:
         description: "Tạo Release và cập nhật source SideStore"
         required: true
@@ -16,23 +28,88 @@ jobs:
   build-unsigned-ipa:
     runs-on: macos-latest
     timeout-minutes: 30
+
     steps:
+      # ============================================================
+      # 1. CHECKOUT SOURCE
+      # ============================================================
       - name: Checkout source
         uses: actions/checkout@v6
 
+      # ============================================================
+      # 2. VALIDATE VERSION INPUTS
+      # ============================================================
+      - name: Validate version inputs
+        env:
+          MARKETING_VERSION_INPUT: ${{ inputs.marketing_version }}
+          CURRENT_PROJECT_VERSION_INPUT: ${{ inputs.current_project_version }}
+        run: |
+          set -euo pipefail
+
+          echo "======================================"
+          echo "Sukavina iOS build"
+          echo "MARKETING_VERSION=$MARKETING_VERSION_INPUT"
+          echo "CURRENT_PROJECT_VERSION=$CURRENT_PROJECT_VERSION_INPUT"
+          echo "======================================"
+
+          # Apple CFBundleShortVersionString:
+          # Major.Minor.Patch, ví dụ 1.0.1
+          if ! printf '%s\n' "$MARKETING_VERSION_INPUT" \
+            | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+
+            echo "Invalid MARKETING_VERSION: $MARKETING_VERSION_INPUT" >&2
+            echo "Required format: Major.Minor.Patch, for example 1.0.1" >&2
+            exit 1
+          fi
+
+          # Dùng build number nguyên tăng dần: 55, 56, 57...
+          if ! printf '%s\n' "$CURRENT_PROJECT_VERSION_INPUT" \
+            | grep -Eq '^[1-9][0-9]*$'; then
+
+            echo "Invalid CURRENT_PROJECT_VERSION: $CURRENT_PROJECT_VERSION_INPUT" >&2
+            echo "Build number must be a positive integer, for example 56." >&2
+            exit 1
+          fi
+
+      # ============================================================
+      # 3. VERIFY XCODE
+      # ============================================================
       - name: Verify App Store toolchain
         run: |
           set -euo pipefail
+
           XCODE_VERSION_FILE="$(mktemp)"
+
           xcodebuild -version > "$XCODE_VERSION_FILE"
           cat "$XCODE_VERSION_FILE"
-          XCODE_MAJOR="$(awk '/^Xcode / { split($2, version, "."); print version[1] }' "$XCODE_VERSION_FILE")"
+
+          XCODE_MAJOR="$(
+            awk '/^Xcode / {
+              split($2, version, ".");
+              print version[1]
+            }' "$XCODE_VERSION_FILE"
+          )"
+
           rm -f "$XCODE_VERSION_FILE"
+
+          echo "Detected Xcode major version: ${XCODE_MAJOR:-0}"
+
           test "${XCODE_MAJOR:-0}" -ge 26
 
+      # ============================================================
+      # 4. BUILD WITHOUT APPLE CODE SIGNING
+      # ============================================================
       - name: Build iOS app without code signing
+        env:
+          MARKETING_VERSION_INPUT: ${{ inputs.marketing_version }}
+          CURRENT_PROJECT_VERSION_INPUT: ${{ inputs.current_project_version }}
         run: |
           set -euo pipefail
+
+          echo "Building Sukavina:"
+          echo "Version : $MARKETING_VERSION_INPUT"
+          echo "Build   : $CURRENT_PROJECT_VERSION_INPUT"
+
           xcodebuild \
             -project apps/ios/App/App.xcodeproj \
             -scheme App \
@@ -40,88 +117,270 @@ jobs:
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -derivedDataPath build/DerivedData \
+            MARKETING_VERSION="$MARKETING_VERSION_INPUT" \
+            CURRENT_PROJECT_VERSION="$CURRENT_PROJECT_VERSION_INPUT" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY='' \
             clean build
 
+      # ============================================================
+      # 5. READ + VERIFY BUILT APP METADATA
+      # ============================================================
       - name: Read built app metadata
+        env:
+          EXPECTED_MARKETING_VERSION: ${{ inputs.marketing_version }}
+          EXPECTED_PROJECT_VERSION: ${{ inputs.current_project_version }}
         run: |
           set -euo pipefail
+
           APP_PATH='build/DerivedData/Build/Products/Release-iphoneos/App.app'
+          WIDGET_PATH="$APP_PATH/PlugIns/AttendanceWidget.appex"
+
           test -d "$APP_PATH"
-          APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP_PATH/Info.plist")
-          APP_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP_PATH/Info.plist")
-          APP_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")
+          test -f "$APP_PATH/Info.plist"
+
+          APP_VERSION=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleShortVersionString' \
+              "$APP_PATH/Info.plist"
+          )
+
+          APP_BUILD=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleVersion' \
+              "$APP_PATH/Info.plist"
+          )
+
+          APP_BUNDLE_ID=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :CFBundleIdentifier' \
+              "$APP_PATH/Info.plist"
+          )
+
           test -n "$APP_VERSION"
           test -n "$APP_BUILD"
-          test "$APP_BUNDLE_ID" = 'net.sukavinagroup.user'
+
+          echo "======================================"
+          echo "Built application metadata"
+          echo "Version   : $APP_VERSION"
+          echo "Build     : $APP_BUILD"
+          echo "Bundle ID : $APP_BUNDLE_ID"
+          echo "======================================"
+
+          # Bắt buộc build thực tế phải đúng với giá trị nhập tay
+          if [ "$APP_VERSION" != "$EXPECTED_MARKETING_VERSION" ]; then
+            echo "ERROR: MARKETING_VERSION mismatch." >&2
+            echo "Expected: $EXPECTED_MARKETING_VERSION" >&2
+            echo "Built:    $APP_VERSION" >&2
+            exit 1
+          fi
+
+          if [ "$APP_BUILD" != "$EXPECTED_PROJECT_VERSION" ]; then
+            echo "ERROR: CURRENT_PROJECT_VERSION mismatch." >&2
+            echo "Expected: $EXPECTED_PROJECT_VERSION" >&2
+            echo "Built:    $APP_BUILD" >&2
+            exit 1
+          fi
+
+          if [ "$APP_BUNDLE_ID" != 'net.sukavinagroup.user' ]; then
+            echo "ERROR: Unexpected application bundle ID." >&2
+            echo "Expected: net.sukavinagroup.user" >&2
+            echo "Built:    $APP_BUNDLE_ID" >&2
+            exit 1
+          fi
+
+          # Kiểm tra widget nếu có
+          if [ -d "$WIDGET_PATH" ]; then
+            WIDGET_VERSION=$(
+              /usr/libexec/PlistBuddy \
+                -c 'Print :CFBundleShortVersionString' \
+                "$WIDGET_PATH/Info.plist"
+            )
+
+            WIDGET_BUILD=$(
+              /usr/libexec/PlistBuddy \
+                -c 'Print :CFBundleVersion' \
+                "$WIDGET_PATH/Info.plist"
+            )
+
+            echo "Widget version: $WIDGET_VERSION"
+            echo "Widget build  : $WIDGET_BUILD"
+
+            if [ "$WIDGET_VERSION" != "$APP_VERSION" ]; then
+              echo "ERROR: Widget MARKETING_VERSION does not match app." >&2
+              exit 1
+            fi
+
+            if [ "$WIDGET_BUILD" != "$APP_BUILD" ]; then
+              echo "ERROR: Widget CURRENT_PROJECT_VERSION does not match app." >&2
+              exit 1
+            fi
+          fi
+
           {
             echo "APP_VERSION=$APP_VERSION"
             echo "APP_BUILD=$APP_BUILD"
             echo "APP_BUNDLE_ID=$APP_BUNDLE_ID"
           } >> "$GITHUB_ENV"
 
+      # ============================================================
+      # 6. EMBED CAPABILITIES FOR SIDESTORE RE-SIGNING
+      # ============================================================
       - name: Embed capabilities for SideStore re-signing
         run: |
           set -euo pipefail
+
           APP_PATH='build/DerivedData/Build/Products/Release-iphoneos/App.app'
           WIDGET_PATH="$APP_PATH/PlugIns/AttendanceWidget.appex"
+
+          test -d "$APP_PATH"
           test -d "$WIDGET_PATH"
+
           test -f "$APP_PATH/PrivacyInfo.xcprivacy"
           test -f "$WIDGET_PATH/PrivacyInfo.xcprivacy"
+
           plutil -lint "$APP_PATH/PrivacyInfo.xcprivacy"
           plutil -lint "$WIDGET_PATH/PrivacyInfo.xcprivacy"
-          APP_GROUP=$(/usr/libexec/PlistBuddy -c 'Print :ALTAppGroups:0' "$APP_PATH/Info.plist")
-          WIDGET_GROUP=$(/usr/libexec/PlistBuddy -c 'Print :ALTAppGroups:0' "$WIDGET_PATH/Info.plist")
+
+          APP_GROUP=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :ALTAppGroups:0' \
+              "$APP_PATH/Info.plist"
+          )
+
+          WIDGET_GROUP=$(
+            /usr/libexec/PlistBuddy \
+              -c 'Print :ALTAppGroups:0' \
+              "$WIDGET_PATH/Info.plist"
+          )
+
+          echo "App Group: $APP_GROUP"
+          echo "Widget Group: $WIDGET_GROUP"
+
           test "$APP_GROUP" = 'group.net.sukavinagroup.user'
           test "$WIDGET_GROUP" = "$APP_GROUP"
 
-          # SideStore discovers App Groups from the existing signatures before
-          # replacing them with the device's personal development certificate.
+          # SideStore discovers App Groups from the existing signatures
+          # before replacing them with the device's personal
+          # development certificate.
+
           /usr/bin/codesign \
             --force \
             --sign - \
             --timestamp=none \
             --generate-entitlement-der \
-            --entitlements apps/ios/App/AttendanceWidget/AttendanceWidget.entitlements \
+            --entitlements \
+              apps/ios/App/AttendanceWidget/AttendanceWidget.entitlements \
             "$WIDGET_PATH"
+
           /usr/bin/codesign \
             --force \
             --sign - \
             --timestamp=none \
             --generate-entitlement-der \
-            --entitlements apps/ios/App/App/App.entitlements \
+            --entitlements \
+              apps/ios/App/App/App.entitlements \
             "$APP_PATH"
 
-          /usr/bin/codesign --verify --deep --strict "$APP_PATH"
-          /usr/bin/codesign -d --entitlements :- "$APP_PATH" > build/app-entitlements.plist 2>/dev/null
-          /usr/bin/codesign -d --entitlements :- "$WIDGET_PATH" > build/widget-entitlements.plist 2>/dev/null
-          /usr/bin/grep -q 'group.net.sukavinagroup.user' build/app-entitlements.plist
-          /usr/bin/grep -q 'group.net.sukavinagroup.user' build/widget-entitlements.plist
+          /usr/bin/codesign \
+            --verify \
+            --deep \
+            --strict \
+            "$APP_PATH"
 
+          /usr/bin/codesign \
+            -d \
+            --entitlements :- \
+            "$APP_PATH" \
+            > build/app-entitlements.plist \
+            2>/dev/null
+
+          /usr/bin/codesign \
+            -d \
+            --entitlements :- \
+            "$WIDGET_PATH" \
+            > build/widget-entitlements.plist \
+            2>/dev/null
+
+          /usr/bin/grep \
+            -q 'group.net.sukavinagroup.user' \
+            build/app-entitlements.plist
+
+          /usr/bin/grep \
+            -q 'group.net.sukavinagroup.user' \
+            build/widget-entitlements.plist
+
+      # ============================================================
+      # 7. PACKAGE IPA
+      # ============================================================
       - name: Package unsigned IPA
         run: |
           set -euo pipefail
+
           APP_PATH='build/DerivedData/Build/Products/Release-iphoneos/App.app'
+
           test -d "$APP_PATH"
+
           rm -rf build/Payload
           mkdir -p build/Payload
-          cp -R "$APP_PATH" build/Payload/Sukavina.app
-          cd build
-          /usr/bin/zip -qry Sukavina.ipa Payload
-          shasum -a 256 Sukavina.ipa > Sukavina.ipa.sha256
 
+          cp -R \
+            "$APP_PATH" \
+            build/Payload/Sukavina.app
+
+          cd build
+
+          /usr/bin/zip \
+            -qry \
+            Sukavina.ipa \
+            Payload
+
+          shasum \
+            -a 256 \
+            Sukavina.ipa \
+            > Sukavina.ipa.sha256
+
+          echo "======================================"
+          echo "IPA generated successfully"
+          echo "Version : $APP_VERSION"
+          echo "Build   : $APP_BUILD"
+          echo "======================================"
+
+          ls -lh Sukavina.ipa
+          cat Sukavina.ipa.sha256
+
+      # ============================================================
+      # 8. UPLOAD GITHUB ACTIONS ARTIFACT
+      # ============================================================
       - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v6
         with:
-          name: Sukavina
+          name: Sukavina-${{ inputs.marketing_version }}-${{ inputs.current_project_version }}
           path: |
             build/Sukavina.ipa
             build/Sukavina.ipa.sha256
           if-no-files-found: error
           retention-days: 14
 
+      # ============================================================
+      # 9. VALIDATE SIDESTORE TOKEN
+      # ============================================================
+      - name: Validate SideStore token
+        if: ${{ inputs.publish_to_sidestore }}
+        env:
+          GH_TOKEN: ${{ secrets.SIDESTORE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          test -n "${GH_TOKEN:-}" || {
+            echo "Missing SIDESTORE_REPO_TOKEN repository secret." >&2
+            exit 1
+          }
+
+      # ============================================================
+      # 10. CHECKOUT SIDESTORE SOURCE
+      # ============================================================
       - name: Checkout SideStore source
         if: ${{ inputs.publish_to_sidestore }}
         uses: actions/checkout@v6
@@ -130,6 +389,9 @@ jobs:
           token: ${{ secrets.SIDESTORE_REPO_TOKEN }}
           path: sidestore-source
 
+      # ============================================================
+      # 11. PUBLISH IPA TO SIDESTORE
+      # ============================================================
       - name: Publish IPA to SideStore
         if: ${{ inputs.publish_to_sidestore }}
         env:
@@ -137,74 +399,232 @@ jobs:
           SIDESTORE_REPO: nguyenanhtruongvn/sukavina-sidestore
         run: |
           set -euo pipefail
+
           test -n "${GH_TOKEN:-}" || {
-            echo 'Missing SIDESTORE_REPO_TOKEN repository secret.' >&2
+            echo "Missing SIDESTORE_REPO_TOKEN repository secret." >&2
             exit 1
           }
 
           TAG="v${APP_VERSION}"
+
           IPA_PATH="$GITHUB_WORKSPACE/build/Sukavina.ipa"
+
           DOWNLOAD_URL="https://github.com/${SIDESTORE_REPO}/releases/download/${TAG}/Sukavina.ipa"
 
-          if gh release view "$TAG" --repo "$SIDESTORE_REPO" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$IPA_PATH" --repo "$SIDESTORE_REPO" --clobber
-            gh release edit "$TAG" --repo "$SIDESTORE_REPO" \
+          echo "======================================"
+          echo "Publishing SideStore release"
+          echo "Version      : $APP_VERSION"
+          echo "Build        : $APP_BUILD"
+          echo "Tag          : $TAG"
+          echo "Download URL : $DOWNLOAD_URL"
+          echo "======================================"
+
+          # --------------------------------------------------------
+          # GitHub Release
+          # --------------------------------------------------------
+          if gh release view \
+            "$TAG" \
+            --repo "$SIDESTORE_REPO" \
+            >/dev/null 2>&1; then
+
+            echo "Release $TAG already exists. Replacing IPA..."
+
+            gh release upload \
+              "$TAG" \
+              "$IPA_PATH" \
+              --repo "$SIDESTORE_REPO" \
+              --clobber
+
+            gh release edit \
+              "$TAG" \
+              --repo "$SIDESTORE_REPO" \
               --title "Sukavina ${APP_VERSION}" \
               --notes "Sukavina ${APP_VERSION}, build ${APP_BUILD}."
+
           else
-            gh release create "$TAG" "$IPA_PATH" --repo "$SIDESTORE_REPO" \
+
+            echo "Creating new release $TAG..."
+
+            gh release create \
+              "$TAG" \
+              "$IPA_PATH" \
+              --repo "$SIDESTORE_REPO" \
               --title "Sukavina ${APP_VERSION}" \
               --notes "Sukavina ${APP_VERSION}, build ${APP_BUILD}."
+
           fi
 
-          cp "$GITHUB_WORKSPACE/apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" \
+          # --------------------------------------------------------
+          # Copy app icon
+          # --------------------------------------------------------
+          cp \
+            "$GITHUB_WORKSPACE/apps/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png" \
             sidestore-source/icon.png
-          export DOWNLOAD_URL IPA_PATH
+
+          # --------------------------------------------------------
+          # Update SideStore apps.json
+          # --------------------------------------------------------
+          export DOWNLOAD_URL
+          export IPA_PATH
+
           python3 - <<'PY'
           import datetime
           import json
           import os
           from pathlib import Path
 
-          source_path = Path('sidestore-source/apps.json')
-          source = json.loads(source_path.read_text(encoding='utf-8'))
+
+          source_path = Path("sidestore-source/apps.json")
+
+          if not source_path.exists():
+              raise SystemExit(
+                  f"SideStore source not found: {source_path}"
+              )
+
+
+          source = json.loads(
+              source_path.read_text(encoding="utf-8")
+          )
+
+
           version = {
-              'version': os.environ['APP_VERSION'],
-              'date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-              'localizedDescription': f"Sukavina {os.environ['APP_VERSION']}, build {os.environ['APP_BUILD']}.",
-              'downloadURL': os.environ['DOWNLOAD_URL'],
-              'size': Path(os.environ['IPA_PATH']).stat().st_size,
-              'minOSVersion': '14.0',
+              "version": os.environ["APP_VERSION"],
+              "date": datetime.datetime.now(
+                  datetime.timezone.utc
+              ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "localizedDescription": (
+                  f"Sukavina {os.environ['APP_VERSION']}, "
+                  f"build {os.environ['APP_BUILD']}."
+              ),
+              "downloadURL": os.environ["DOWNLOAD_URL"],
+              "size": Path(
+                  os.environ["IPA_PATH"]
+              ).stat().st_size,
+              "minOSVersion": "14.0",
           }
-          bundle_id = os.environ['APP_BUNDLE_ID']
-          app = next((item for item in source['apps'] if item.get('bundleIdentifier') == bundle_id), None)
+
+
+          bundle_id = os.environ["APP_BUNDLE_ID"]
+
+
+          app = next(
+              (
+                  item
+                  for item in source.get("apps", [])
+                  if item.get("bundleIdentifier") == bundle_id
+              ),
+              None,
+          )
+
+
           if app is None:
               app = {
-                  'name': 'Sukavina',
-                  'bundleIdentifier': bundle_id,
-                  'developerName': 'Sukavina',
-                  'subtitle': 'Cổng thông tin nội bộ Sukavina',
-                  'localizedDescription': 'Ứng dụng nội bộ dành cho nhân viên Sukavina.',
-                  'iconURL': 'https://raw.githubusercontent.com/nguyenanhtruongvn/sukavina-sidestore/main/icon.png',
-                  'tintColor': 'D91F2B',
-                  'permissions': [
-                      {'type': 'network', 'usageDescription': 'Kết nối an toàn tới hệ thống nội bộ Sukavina.'},
-                      {'type': 'faceid', 'usageDescription': 'Đăng nhập an toàn bằng Face ID hoặc Touch ID khi người dùng bật tính năng.'},
+                  "name": "Sukavina",
+                  "bundleIdentifier": bundle_id,
+                  "developerName": "Sukavina",
+                  "subtitle": "Cổng thông tin nội bộ Sukavina",
+                  "localizedDescription": (
+                      "Ứng dụng nội bộ dành cho nhân viên Sukavina."
+                  ),
+                  "iconURL": (
+                      "https://raw.githubusercontent.com/"
+                      "nguyenanhtruongvn/"
+                      "sukavina-sidestore/"
+                      "main/icon.png"
+                  ),
+                  "tintColor": "D91F2B",
+                  "permissions": [
+                      {
+                          "type": "network",
+                          "usageDescription": (
+                              "Kết nối an toàn tới hệ thống "
+                              "nội bộ Sukavina."
+                          ),
+                      },
+                      {
+                          "type": "faceid",
+                          "usageDescription": (
+                              "Đăng nhập an toàn bằng Face ID "
+                              "hoặc Touch ID khi người dùng "
+                              "bật tính năng."
+                          ),
+                      },
                   ],
-                  'versions': [],
+                  "versions": [],
               }
-              source['apps'].append(app)
-          app['versions'] = [version] + [
-              item for item in app['versions'] if item.get('version') != version['version']
+
+              source.setdefault("apps", []).append(app)
+
+
+          # Với cùng MARKETING_VERSION:
+          # build mới sẽ thay build cũ trong source.
+          old_versions = app.get("versions", [])
+
+          app["versions"] = [version] + [
+              item
+              for item in old_versions
+              if item.get("version") != version["version"]
           ][:2]
-          source_path.write_text(json.dumps(source, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+          source_path.write_text(
+              json.dumps(
+                  source,
+                  ensure_ascii=False,
+                  indent=2,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
           PY
 
+          # --------------------------------------------------------
+          # Commit SideStore source
+          # --------------------------------------------------------
           cd sidestore-source
-          git config user.name 'Sukavina Release Bot'
-          git config user.email 'actions@users.noreply.github.com'
-          git add apps.json icon.png
+
+          git config \
+            user.name \
+            'Sukavina Release Bot'
+
+          git config \
+            user.email \
+            'actions@users.noreply.github.com'
+
+          git add \
+            apps.json \
+            icon.png
+
           if ! git diff --cached --quiet; then
-            git commit -m "release: Sukavina ${APP_VERSION}"
-            git push origin main
+
+            git commit \
+              -m "release: Sukavina ${APP_VERSION} (${APP_BUILD})"
+
+            git push \
+              origin \
+              main
+
+          else
+
+            echo "No SideStore source changes to commit."
+
           fi
+
+      # ============================================================
+      # 12. FINAL SUMMARY
+      # ============================================================
+      - name: Build summary
+        run: |
+          {
+            echo "## Sukavina iOS Build"
+            echo ""
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| MARKETING_VERSION | \`${APP_VERSION}\` |"
+            echo "| CURRENT_PROJECT_VERSION | \`${APP_BUILD}\` |"
+            echo "| Bundle ID | \`${APP_BUNDLE_ID}\` |"
+            echo "| SideStore publish | \`${{ inputs.publish_to_sidestore }}\` |"
+            echo ""
+            echo "Artifact:"
+            echo "\`Sukavina-${APP_VERSION}-${APP_BUILD}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
