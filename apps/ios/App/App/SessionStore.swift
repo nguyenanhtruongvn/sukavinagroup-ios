@@ -1139,15 +1139,9 @@ final class SessionStore: ObservableObject {
                 "me/meeting-rooms?date=\(day)",
                 token: token
             )
-            let visibleBookings = activeMeetingBookings(value.bookings)
             meetingRooms = applyMeetingRoomOrder(value.rooms)
-            meetingBookings = visibleBookings
-            // Keep a terminal booking out of the offline cache too.  This is
-            // important when an end action succeeds just as a refresh occurs.
-            saveMeetingSchedule(
-                MeetingScheduleResponse(rooms: value.rooms, bookings: visibleBookings),
-                for: day
-            )
+            meetingBookings = value.bookings
+            saveMeetingSchedule(value, for: day)
         } catch {
             ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
         }
@@ -1161,9 +1155,7 @@ final class SessionStore: ObservableObject {
         guard let employeeCode = meetingCacheEmployeeCode else { return }
         let rooms = SessionCache.loadMeetingRooms(employeeCode: employeeCode)
         let roomIDs = Set(rooms.map(\.id))
-        let bookings = activeMeetingBookings(
-            SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
-        )
+        let bookings = SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
         meetingRooms = applyMeetingRoomOrder(rooms)
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
@@ -1227,16 +1219,11 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private func activeMeetingBookings(_ bookings: [MeetingBooking]) -> [MeetingBooking] {
-        // Older API versions may still return historical terminal records in a
-        // day schedule.  They must not keep a room occupied after “Kết thúc”.
-        let terminalStatuses: Set<String> = ["cancelled", "canceled", "ended", "completed"]
-        return bookings.filter { !terminalStatuses.contains($0.status.lowercased()) }
-    }
-
-    private func removeEndedMeetingFromCurrentSchedule(bookingID: String) {
-        guard meetingBookings.contains(where: { $0.id == bookingID }) else { return }
-        meetingBookings.removeAll { $0.id == bookingID }
+    private func replaceEndedMeetingInCurrentSchedule(_ endedBooking: MeetingBooking) {
+        guard let index = meetingBookings.firstIndex(where: { $0.id == endedBooking.id }) else { return }
+        // Match Android: retain the booking in the day timeline, but draw it
+        // only up to the exact endsAt returned by the server's /end endpoint.
+        meetingBookings[index] = endedBooking
         let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
         saveMeetingSchedule(
             MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
@@ -1275,12 +1262,10 @@ final class SessionStore: ObservableObject {
         do {
             switch action {
             case "end":
-                let _: MeetingBooking = try await APIClient.shared.request(
+                let ended: MeetingBooking = try await APIClient.shared.request(
                     "me/meeting-bookings/\(bookingID)/end", method: "POST", token: token
                 )
-                // Update this screen before the next server/event-stream refresh;
-                // otherwise a successfully ended meeting remains drawn as busy.
-                removeEndedMeetingFromCurrentSchedule(bookingID: bookingID)
+                replaceEndedMeetingInCurrentSchedule(ended)
                 if #available(iOS 17.0, *) { MeetingLiveActivityManager.end(bookingID: bookingID) }
             case "extend":
                 let _: MeetingBooking = try await APIClient.shared.request(
