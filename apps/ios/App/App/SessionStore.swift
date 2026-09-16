@@ -13,9 +13,10 @@ import os
 /// Darwin notifications cross the app/WidgetKit process boundary.  The normal
 /// NotificationCenter notification is intentionally kept as well for APNs and
 /// in-app controls.
-private let meetingLiveActivityStateChanged = CFNotificationName(
+private let meetingLiveActivityStateChangedString =
     "net.sukavinagroup.meeting-live-activity-state-changed" as CFString
-)
+private let meetingLiveActivityStateChanged =
+    CFNotificationName(rawValue: meetingLiveActivityStateChangedString)
 
 private func receiveMeetingLiveActivityStateChanged(
     _ center: CFNotificationCenter?,
@@ -112,7 +113,7 @@ final class SessionStore: ObservableObject {
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
-    private var activeMeetingScheduleDate = Date()
+    fileprivate var activeMeetingScheduleDate = Date()
     private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
@@ -153,7 +154,7 @@ final class SessionStore: ObservableObject {
             CFNotificationCenterGetDarwinNotifyCenter(),
             Unmanaged.passUnretained(self).toOpaque(),
             receiveMeetingLiveActivityStateChanged,
-            meetingLiveActivityStateChanged,
+            meetingLiveActivityStateChangedString,
             nil,
             .deliverImmediately
         )
