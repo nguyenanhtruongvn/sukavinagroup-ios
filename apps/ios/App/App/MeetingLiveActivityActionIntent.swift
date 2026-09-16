@@ -158,7 +158,11 @@ private enum MeetingLiveActivityAction {
     }
 
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
-    private static let appGroup = "group.net.sukavinagroup.user"
+    private static var appGroup: String {
+        let original = "group.net.sukavinagroup.user"
+        let groups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
+        return groups?.first(where: { $0.contains(original) }) ?? original
+    }
     private static let endedMeetingKey = "meeting-live-activity-ended-booking"
 
     static func request(bookingID: String, action: Action) async throws -> Response {
@@ -213,7 +217,12 @@ private enum MeetingLiveActivityAction {
     static func saveEndedMeeting(bookingID: String, endsAt: String) {
         let result = EndedMeeting(bookingID: bookingID, endsAt: endsAt)
         guard let data = try? JSONEncoder().encode(result) else { return }
-        UserDefaults(suiteName: appGroup)?.set(data, forKey: endedMeetingKey)
+        let defaults = UserDefaults(suiteName: appGroup)
+        defaults?.set(data, forKey: endedMeetingKey)
+        // Flush before sending the cross-process notification; otherwise an
+        // already-open room schedule can receive the signal before the shared
+        // value is visible to it.
+        defaults?.synchronize()
     }
 
     /// Widget/AppIntent code runs in a different process from the app.  A

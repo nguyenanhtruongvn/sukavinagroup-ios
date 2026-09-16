@@ -448,9 +448,7 @@ private struct MeetingLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MeetingLiveActivityAttributes.self) { context in
             MeetingLiveActivityView(context: context)
-                // A deep navy surface keeps contrast on the Lock Screen without
-                // turning the activity into the previous flat black rectangle.
-                .activityBackgroundTint(Color(red: 0.075, green: 0.105, blue: 0.17))
+                .activityBackgroundTint(.black)
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
@@ -502,20 +500,11 @@ private struct MeetingLiveActivityView: View {
             MeetingLiveActivityTimeline(context: context)
             MeetingLiveActivityControls(context: context)
         }
-        .padding(14)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .background {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.12, green: 0.16, blue: 0.25), Color(red: 0.055, green: 0.07, blue: 0.12)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                }
+                .fill(.black)
         }
     }
 }
@@ -543,11 +532,13 @@ private struct InitialMeetingControls: View {
                 Label("Kết thúc", systemImage: "stop.fill")
                     .liveActivityActionStyle(fill: Color(red: 0.93, green: 0.17, blue: 0.23), foreground: .white)
             }
+            .buttonStyle(.plain)
             if context.attributes.maximumExtensionMinutes >= 5 {
                 Button(intent: StartMeetingExtensionIntent(bookingID: context.attributes.bookingID)) {
                     Label("Gia hạn", systemImage: "clock.badge.plus")
                         .liveActivityActionStyle(fill: Color(red: 0.10, green: 0.39, blue: 0.64), foreground: .white)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -576,17 +567,21 @@ private struct ExtensionConfirmationControls: View {
                 Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: -5)) {
                     Text("− 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.12), foreground: .white, compact: true)
                 }
+                .buttonStyle(.plain)
                 Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: 5)) {
                     Text("+ 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.12), foreground: .white, compact: true)
                 }
+                .buttonStyle(.plain)
             }
             HStack(spacing: 8) {
                 Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
                     Text("Kết thúc").liveActivityActionStyle(fill: .red, foreground: .white, compact: true)
                 }
+                .buttonStyle(.plain)
                 Button(intent: ExtendMeetingLiveActivityIntent(bookingID: context.attributes.bookingID, minutes: context.state.extensionMinutes)) {
                     Text("Xác nhận").liveActivityActionStyle(fill: Color(red: 0.10, green: 0.68, blue: 0.40), foreground: .white, compact: true)
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -600,7 +595,7 @@ private extension View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, compact ? 9 : 10)
             .foregroundStyle(foreground)
-            .background(fill, in: Capsule())
+            .background(fill, in: RoundedRectangle(cornerRadius: compact ? 10 : 12, style: .continuous))
     }
 }
 

@@ -29,7 +29,7 @@ private func receiveMeetingLiveActivityStateChanged(
     let session = Unmanaged<SessionStore>.fromOpaque(observer).takeUnretainedValue()
     Task { @MainActor [weak session] in
         guard let session else { return }
-        await session.refreshMeetingSchedule(date: session.activeMeetingScheduleDate)
+        await session.applyLiveActivityMeetingChangeImmediately()
     }
 }
 
@@ -108,7 +108,14 @@ final class SessionStore: ObservableObject {
     private let dashboardCachePrefix = "native-dashboard-cache-"
     private let todayMenuCachePrefix = "native-today-menu-cache-"
     private let requestNotificationsCachePrefix = "native-request-notifications-cache-"
-    private let meetingLiveActivityAppGroup = "group.net.sukavinagroup.user"
+    /// Re-signed/TestFlight builds can receive a rewritten App Group.  Resolve
+    /// it exactly as the widget bridge does so the app and AppIntent extension
+    /// read the same end-time payload.
+    private var meetingLiveActivityAppGroup: String {
+        let original = "group.net.sukavinagroup.user"
+        let groups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
+        return groups?.first(where: { $0.contains(original) }) ?? original
+    }
     private let endedMeetingLiveActivityKey = "meeting-live-activity-ended-booking"
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
@@ -1268,6 +1275,20 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// The Live Activity intent is hosted outside the app process.  First
+    /// redraw the currently visible schedule from its server-confirmed shared
+    /// value, then revalidate in the background.  This avoids a visible delay
+    /// while the schedule endpoint or real-time stream catches up.
+    fileprivate func applyLiveActivityMeetingChangeImmediately() async {
+        applyEndedMeetingLiveActivityResultIfAvailable()
+        let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
+        saveMeetingSchedule(
+            MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
+            for: day
+        )
+        await refreshMeetingSchedule(date: activeMeetingScheduleDate)
+    }
+
     private struct EndedMeetingLiveActivityResult: Codable {
         let bookingID: String
         let endsAt: String
@@ -1467,8 +1488,13 @@ final class SessionStore: ObservableObject {
         realtimeRefreshTask = Task { [weak self] in
             // Spread a realtime burst over less than one second so hundreds
             // of devices do not refresh the API in the exact same millisecond.
-            let delay = UInt64.random(in: 250_000_000...750_000_000)
-            try? await Task.sleep(nanoseconds: delay)
+            // A meeting end/extension must visibly update the active room
+            // schedule immediately. Other event bursts retain jitter so they
+            // do not make all devices refresh at the same instant.
+            if !self.pendingRealtimeEvents.contains("meeting_changed") {
+                let delay = UInt64.random(in: 250_000_000...750_000_000)
+                try? await Task.sleep(nanoseconds: delay)
+            }
             guard let self, !Task.isCancelled else { return }
             let events = self.pendingRealtimeEvents
             self.pendingRealtimeEvents.removeAll()
