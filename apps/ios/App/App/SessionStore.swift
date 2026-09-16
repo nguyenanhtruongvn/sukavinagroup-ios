@@ -85,6 +85,8 @@ final class SessionStore: ObservableObject {
     private let dashboardCachePrefix = "native-dashboard-cache-"
     private let todayMenuCachePrefix = "native-today-menu-cache-"
     private let requestNotificationsCachePrefix = "native-request-notifications-cache-"
+    private let meetingLiveActivityAppGroup = "group.net.sukavinagroup.user"
+    private let endedMeetingLiveActivityKey = "meeting-live-activity-ended-booking"
     private var eventStreamTask: Task<Void, Never>?
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
@@ -1141,7 +1143,11 @@ final class SessionStore: ObservableObject {
             )
             meetingRooms = applyMeetingRoomOrder(value.rooms)
             meetingBookings = value.bookings
-            saveMeetingSchedule(value, for: day)
+            applyEndedMeetingLiveActivityResultIfAvailable()
+            saveMeetingSchedule(
+                MeetingScheduleResponse(rooms: value.rooms, bookings: meetingBookings),
+                for: day
+            )
         } catch {
             ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
         }
@@ -1160,6 +1166,7 @@ final class SessionStore: ObservableObject {
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
         meetingBookings = bookings.filter { roomIDs.contains($0.roomId) }
+        applyEndedMeetingLiveActivityResultIfAvailable()
     }
 
     private func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, for day: String) {
@@ -1217,6 +1224,35 @@ final class SessionStore: ObservableObject {
         } catch {
             return error.localizedDescription
         }
+    }
+
+    private struct EndedMeetingLiveActivityResult: Decodable {
+        let bookingID: String
+        let endsAt: String
+    }
+
+    /// A LiveActivityIntent runs without presenting the app UI.  It writes the
+    /// server-confirmed end time into the shared App Group so the existing
+    /// schedule can redraw at that exact time as soon as it is active.
+    private func applyEndedMeetingLiveActivityResultIfAvailable() {
+        guard let defaults = UserDefaults(suiteName: meetingLiveActivityAppGroup),
+              let data = defaults.data(forKey: endedMeetingLiveActivityKey),
+              let result = try? JSONDecoder().decode(EndedMeetingLiveActivityResult.self, from: data),
+              let index = meetingBookings.firstIndex(where: { $0.id == result.bookingID })
+        else { return }
+        let booking = meetingBookings[index]
+        meetingBookings[index] = MeetingBooking(
+            id: booking.id,
+            roomId: booking.roomId,
+            startsAt: booking.startsAt,
+            endsAt: result.endsAt,
+            title: booking.title,
+            attendeeCount: booking.attendeeCount,
+            status: booking.status,
+            isMine: booking.isMine,
+            isOwner: booking.isOwner
+        )
+        defaults.removeObject(forKey: endedMeetingLiveActivityKey)
     }
 
     private func replaceEndedMeetingInCurrentSchedule(_ endedBooking: MeetingBooking) {

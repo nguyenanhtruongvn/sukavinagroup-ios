@@ -453,7 +453,7 @@ private struct MeetingLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    SukavinaLiveActivityLogo(size: 26)
+                    SukavinaLiveActivityLogo(size: 24)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .timer).monospacedDigit()
@@ -462,11 +462,11 @@ private struct MeetingLiveActivityWidget: Widget {
                     MeetingLiveActivityControls(context: context)
                 }
             } compactLeading: {
-                SukavinaLiveActivityLogo(size: 18)
+                SukavinaLiveActivityLogo(size: 16)
             } compactTrailing: {
                 Text(context.state.endsAt, style: .timer).monospacedDigit()
             } minimal: {
-                Image(systemName: "clock.fill").foregroundStyle(.red)
+                SukavinaLiveActivityLogo(size: 14)
             }
         }
     }
@@ -477,22 +477,23 @@ private struct MeetingLiveActivityView: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                SukavinaLiveActivityLogo(size: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(context.attributes.title).font(.headline.weight(.bold)).lineLimit(1)
-                    Text(context.attributes.roomName).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                SukavinaLiveActivityLogo(size: 28)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(context.attributes.title).font(.subheadline.weight(.bold)).lineLimit(1)
+                    Text(context.attributes.roomName).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
-                Text(context.state.endsAt, style: .timer)
-                    .font(.headline.monospacedDigit())
+                Text(context.state.endsAt, style: .time)
+                    .font(.subheadline.weight(.bold).monospacedDigit())
                     .foregroundStyle(.red)
             }
             MeetingLiveActivityTimeline(context: context)
             MeetingLiveActivityControls(context: context)
         }
-        .padding(16)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
     }
 }
 
@@ -522,7 +523,7 @@ private struct InitialMeetingControls: View {
             if context.attributes.maximumExtensionMinutes >= 5 {
                 Button(intent: StartMeetingExtensionIntent(bookingID: context.attributes.bookingID)) {
                     Label("Gia hạn", systemImage: "clock.badge.plus")
-                        .liveActivityActionStyle(fill: Color.white.opacity(0.16), foreground: .primary)
+                        .liveActivityActionStyle(fill: Color.white.opacity(0.08), foreground: .primary, outlined: true)
                 }
             }
         }
@@ -553,10 +554,10 @@ private struct ExtensionConfirmationControls: View {
                     Text("Kết thúc").liveActivityActionStyle(fill: .red, foreground: .white, compact: true)
                 }
                 Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: -5)) {
-                    Text("− 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.16), foreground: .primary, compact: true)
+                    Text("− 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.08), foreground: .primary, compact: true, outlined: true)
                 }
                 Button(intent: AdjustMeetingExtensionIntent(bookingID: context.attributes.bookingID, delta: 5)) {
-                    Text("+ 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.16), foreground: .primary, compact: true)
+                    Text("+ 5 phút").liveActivityActionStyle(fill: Color.white.opacity(0.08), foreground: .primary, compact: true, outlined: true)
                 }
                 Button(intent: ExtendMeetingLiveActivityIntent(bookingID: context.attributes.bookingID, minutes: context.state.extensionMinutes)) {
                     Text("Xác nhận").liveActivityActionStyle(fill: .green, foreground: .white, compact: true)
@@ -567,14 +568,20 @@ private struct ExtensionConfirmationControls: View {
 }
 
 private extension View {
-    func liveActivityActionStyle(fill: Color, foreground: Color, compact: Bool = false) -> some View {
+    func liveActivityActionStyle(fill: Color, foreground: Color, compact: Bool = false, outlined: Bool = false) -> some View {
         font(compact ? .caption2.weight(.bold) : .caption.weight(.bold))
             .lineLimit(1)
             .minimumScaleFactor(0.75)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, compact ? 9 : 10)
+            .padding(.vertical, compact ? 8 : 9)
             .foregroundStyle(foreground)
-            .background(fill, in: Capsule())
+            .background(fill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                if outlined {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.24), lineWidth: 0.5)
+                }
+            }
     }
 }
 
@@ -588,15 +595,11 @@ private struct MeetingLiveActivityTimeline: View {
                 .tint(.red)
                 .scaleEffect(x: 1, y: 1.45, anchor: .center)
                 .padding(.vertical, 3)
-            HStack {
-                Text("Bắt đầu \(context.attributes.startsAt, style: .time)")
-                Spacer()
-                Text("Còn \(context.state.endsAt, style: .timer)")
-                    .foregroundStyle(.red)
-                    .monospacedDigit()
-            }
+            Text("Còn \(context.state.endsAt, style: .timer)")
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .foregroundStyle(.red)
+                .monospacedDigit()
             .font(.caption2.weight(.medium))
-            .foregroundStyle(.secondary)
         }
     }
 }
@@ -605,12 +608,10 @@ private struct SukavinaLiveActivityLogo: View {
     let size: CGFloat
 
     var body: some View {
-        Image("LoginBrand")
+        Image("SukavinaLiveMark")
             .resizable()
             .scaledToFit()
-            .padding(size * 0.10)
             .frame(width: size, height: size)
-            .background(Color.white.opacity(0.94), in: Circle())
             .clipShape(Circle())
     }
 }

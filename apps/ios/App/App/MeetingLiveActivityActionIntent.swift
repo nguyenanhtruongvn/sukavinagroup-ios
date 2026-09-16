@@ -23,6 +23,7 @@ struct EndMeetingLiveActivityIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         let result = try await MeetingLiveActivityAction.request(bookingID: bookingID, action: .end)
+        MeetingLiveActivityAction.saveEndedMeeting(bookingID: bookingID, endsAt: result.endsAt)
         await MeetingLiveActivityAction.updateActivity(bookingID: bookingID, endsAt: result.endsAt, endNow: true)
         NotificationCenter.default.post(name: Notification.Name("net.sukavinagroup.meeting-changed"), object: nil)
         return .result()
@@ -121,6 +122,11 @@ private enum MeetingLiveActivityAction {
         let endsAt: String
     }
 
+    private struct EndedMeeting: Codable {
+        let bookingID: String
+        let endsAt: String
+    }
+
     private struct ExtendBody: Encodable {
         let minutes: Int
     }
@@ -150,6 +156,8 @@ private enum MeetingLiveActivityAction {
     }
 
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static let appGroup = "group.net.sukavinagroup.user"
+    private static let endedMeetingKey = "meeting-live-activity-ended-booking"
 
     static func request(bookingID: String, action: Action) async throws -> Response {
         guard !bookingID.isEmpty, let token = accessToken() else {
@@ -198,6 +206,12 @@ private enum MeetingLiveActivityAction {
                 await activity.update(ActivityContent(state: state, staleDate: endDate))
             }
         }
+    }
+
+    static func saveEndedMeeting(bookingID: String, endsAt: String) {
+        let result = EndedMeeting(bookingID: bookingID, endsAt: endsAt)
+        guard let data = try? JSONEncoder().encode(result) else { return }
+        UserDefaults(suiteName: appGroup)?.set(data, forKey: endedMeetingKey)
     }
 
     static func openExtensionChooser(bookingID: String) async {
