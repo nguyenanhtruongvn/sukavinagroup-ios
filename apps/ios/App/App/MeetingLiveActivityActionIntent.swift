@@ -25,6 +25,7 @@ struct EndMeetingLiveActivityIntent: LiveActivityIntent {
         let result = try await MeetingLiveActivityAction.request(bookingID: bookingID, action: .end)
         MeetingLiveActivityAction.saveEndedMeeting(bookingID: bookingID, endsAt: result.endsAt)
         await MeetingLiveActivityAction.updateActivity(bookingID: bookingID, endsAt: result.endsAt, endNow: true)
+        MeetingLiveActivityAction.notifyAppOfMeetingStateChange()
         NotificationCenter.default.post(name: Notification.Name("net.sukavinagroup.meeting-changed"), object: nil)
         return .result()
     }
@@ -61,6 +62,7 @@ struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
                 extensionMinutes: 0,
                 isChoosingExtension: false
             )
+            MeetingLiveActivityAction.notifyAppOfMeetingStateChange()
             NotificationCenter.default.post(name: Notification.Name("net.sukavinagroup.meeting-changed"), object: nil)
         } catch {
             // Keep the selector visible so the organiser can reduce the
@@ -212,6 +214,23 @@ private enum MeetingLiveActivityAction {
         let result = EndedMeeting(bookingID: bookingID, endsAt: endsAt)
         guard let data = try? JSONEncoder().encode(result) else { return }
         UserDefaults(suiteName: appGroup)?.set(data, forKey: endedMeetingKey)
+    }
+
+    /// Widget/AppIntent code runs in a different process from the app.  A
+    /// Darwin notification makes an already-open timeline re-read the shared
+    /// server-confirmed end time immediately; the App Group value remains the
+    /// fallback for older app builds and when the app is not running.
+    static func notifyAppOfMeetingStateChange() {
+        let notification = CFNotificationName(
+            "net.sukavinagroup.meeting-live-activity-state-changed" as CFString
+        )
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            notification,
+            nil,
+            nil,
+            true
+        )
     }
 
     static func openExtensionChooser(bookingID: String) async {

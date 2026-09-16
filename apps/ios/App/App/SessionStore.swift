@@ -10,6 +10,28 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import os
 
+/// Darwin notifications cross the app/WidgetKit process boundary.  The normal
+/// NotificationCenter notification is intentionally kept as well for APNs and
+/// in-app controls.
+private let meetingLiveActivityStateChanged = CFNotificationName(
+    "net.sukavinagroup.meeting-live-activity-state-changed" as CFString
+)
+
+private func receiveMeetingLiveActivityStateChanged(
+    _ center: CFNotificationCenter?,
+    observer: UnsafeMutableRawPointer?,
+    name: CFNotificationName?,
+    object: UnsafeRawPointer?,
+    userInfo: CFDictionary?
+) {
+    guard let observer else { return }
+    let session = Unmanaged<SessionStore>.fromOpaque(observer).takeUnretainedValue()
+    Task { @MainActor [weak session] in
+        guard let session else { return }
+        await session.refreshMeetingSchedule(date: session.activeMeetingScheduleDate)
+    }
+}
+
 private extension DateFormatter { static let meetingDay: DateFormatter = { let value = DateFormatter(); value.calendar = Calendar(identifier: .gregorian); value.locale = Locale(identifier: "en_US_POSIX"); value.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh"); value.dateFormat = "yyyy-MM-dd"; return value }() }
 private let sessionRestoreLogger = Logger(
     subsystem: "net.sukavinagroup.user",
@@ -127,6 +149,14 @@ final class SessionStore: ObservableObject {
                 await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
             }
         }
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque(),
+            receiveMeetingLiveActivityStateChanged,
+            meetingLiveActivityStateChanged,
+            nil,
+            .deliverImmediately
+        )
     }
 
     deinit {
@@ -137,6 +167,12 @@ final class SessionStore: ObservableObject {
         if let meetingPushObserver {
             NotificationCenter.default.removeObserver(meetingPushObserver)
         }
+        CFNotificationCenterRemoveObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque(),
+            meetingLiveActivityStateChanged,
+            nil
+        )
     }
 
     func cachedAttendanceMonth(_ month: String) -> AttendanceMonth? {
@@ -1141,9 +1177,14 @@ final class SessionStore: ObservableObject {
                 "me/meeting-rooms?date=\(day)",
                 token: token
             )
+            let pendingEndedMeeting = pendingEndedMeetingLiveActivityResult()
             meetingRooms = applyMeetingRoomOrder(value.rooms)
             meetingBookings = value.bookings
             applyEndedMeetingLiveActivityResultIfAvailable()
+            if let pendingEndedMeeting,
+               serverHasConfirmed(pendingEndedMeeting, in: value.bookings) {
+                clearPendingEndedMeetingLiveActivityResult()
+            }
             saveMeetingSchedule(
                 MeetingScheduleResponse(rooms: value.rooms, bookings: meetingBookings),
                 for: day
@@ -1226,18 +1267,39 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private struct EndedMeetingLiveActivityResult: Decodable {
+    private struct EndedMeetingLiveActivityResult: Codable {
         let bookingID: String
         let endsAt: String
+    }
+
+    private func pendingEndedMeetingLiveActivityResult() -> EndedMeetingLiveActivityResult? {
+        guard let defaults = UserDefaults(suiteName: meetingLiveActivityAppGroup),
+              let data = defaults.data(forKey: endedMeetingLiveActivityKey) else { return nil }
+        return try? JSONDecoder().decode(EndedMeetingLiveActivityResult.self, from: data)
+    }
+
+    private func savePendingEndedMeetingLiveActivityResult(_ booking: MeetingBooking) {
+        let result = EndedMeetingLiveActivityResult(bookingID: booking.id, endsAt: booking.endsAt)
+        guard let data = try? JSONEncoder().encode(result) else { return }
+        UserDefaults(suiteName: meetingLiveActivityAppGroup)?.set(data, forKey: endedMeetingLiveActivityKey)
+    }
+
+    private func clearPendingEndedMeetingLiveActivityResult() {
+        UserDefaults(suiteName: meetingLiveActivityAppGroup)?.removeObject(forKey: endedMeetingLiveActivityKey)
+    }
+
+    private func serverHasConfirmed(_ result: EndedMeetingLiveActivityResult, in bookings: [MeetingBooking]) -> Bool {
+        guard let serverEnd = bookings.first(where: { $0.id == result.bookingID })?.endsAt,
+              let expected = MeetingPresentation.date(from: result.endsAt),
+              let received = MeetingPresentation.date(from: serverEnd) else { return false }
+        return abs(expected.timeIntervalSince(received)) < 1
     }
 
     /// A LiveActivityIntent runs without presenting the app UI.  It writes the
     /// server-confirmed end time into the shared App Group so the existing
     /// schedule can redraw at that exact time as soon as it is active.
     private func applyEndedMeetingLiveActivityResultIfAvailable() {
-        guard let defaults = UserDefaults(suiteName: meetingLiveActivityAppGroup),
-              let data = defaults.data(forKey: endedMeetingLiveActivityKey),
-              let result = try? JSONDecoder().decode(EndedMeetingLiveActivityResult.self, from: data),
+        guard let result = pendingEndedMeetingLiveActivityResult(),
               let index = meetingBookings.firstIndex(where: { $0.id == result.bookingID })
         else { return }
         let booking = meetingBookings[index]
@@ -1252,7 +1314,6 @@ final class SessionStore: ObservableObject {
             isMine: booking.isMine,
             isOwner: booking.isOwner
         )
-        defaults.removeObject(forKey: endedMeetingLiveActivityKey)
     }
 
     private func replaceEndedMeetingInCurrentSchedule(_ endedBooking: MeetingBooking) {
@@ -1309,6 +1370,10 @@ final class SessionStore: ObservableObject {
                 let ended: MeetingBooking = try await APIClient.shared.request(
                     "me/meeting-bookings/\(bookingID)/end", method: "POST", token: token
                 )
+                // Keep the server-confirmed result until the schedule endpoint
+                // echoes it.  This prevents a briefly stale schedule response
+                // from putting the original end time back on the timeline.
+                savePendingEndedMeetingLiveActivityResult(ended)
                 replaceEndedMeetingInCurrentSchedule(ended)
                 if #available(iOS 17.0, *) { MeetingLiveActivityManager.end(bookingID: bookingID) }
             case "extend":
