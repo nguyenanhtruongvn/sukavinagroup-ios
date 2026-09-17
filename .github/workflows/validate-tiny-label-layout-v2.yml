@@ -1,0 +1,27 @@
+name: Validate tiny label layout v2
+
+on:
+  push:
+    branches:
+      - chatgpt/tiny-label-layout-v2
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+      - name: Static source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="apps/ios/App/App/EmployeeViews.swift"
+          grep -q "private struct MeetingTinyLabelsOverlay" "$FILE"
+          grep -q "private var tinyLabelPlacements" "$FILE"
+          grep -q "case left, right" "$FILE"
+          grep -q "Path { path in" "$FILE"
+          grep -q "max(CGFloat(visibleEnd - visibleStart) / 60 \* hourHeight, 1)" "$FILE"
+          ! grep -q "tinyLane: item.sourceIndex % 3" "$FILE"
+          echo "Static meeting timeline checks passed"
