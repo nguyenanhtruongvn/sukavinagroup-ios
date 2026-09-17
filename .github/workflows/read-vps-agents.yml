@@ -1,4 +1,4 @@
-name: Read VPS AGENTS
+name: Prepare secure VPS AGENTS reader
 
 on:
   push:
@@ -9,18 +9,22 @@ permissions:
   contents: read
 
 jobs:
-  read-agents:
+  prepare-reader:
     runs-on: self-hosted
     timeout-minutes: 5
     steps:
-      - name: Read AGENTS.md
+      - name: Generate one-time runner key
         shell: bash
         run: |
           set -euo pipefail
-          TARGET=/root/sukavina/AGENTS.md
-          if sudo -n test -f "$TARGET"; then
-            sudo -n cat "$TARGET"
-          else
-            echo "AGENTS_REQUIRES_SUDO_PASSWORD_OR_FILE_NOT_FOUND"
-            exit 3
-          fi
+          KEY_DIR="$HOME/.chatgpt-agent-read"
+          mkdir -p "$KEY_DIR"
+          chmod 700 "$KEY_DIR"
+          rm -f "$KEY_DIR/private.pem" "$KEY_DIR/public.pem"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$KEY_DIR/private.pem" >/dev/null 2>&1
+          chmod 600 "$KEY_DIR/private.pem"
+          openssl pkey -in "$KEY_DIR/private.pem" -pubout -out "$KEY_DIR/public.pem" >/dev/null 2>&1
+          echo 'CHATGPT_RUNNER_PUBLIC_KEY_BEGIN'
+          base64 -w0 "$KEY_DIR/public.pem"
+          echo
+          echo 'CHATGPT_RUNNER_PUBLIC_KEY_END'
