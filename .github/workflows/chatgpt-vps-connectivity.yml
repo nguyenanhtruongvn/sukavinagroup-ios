@@ -1,0 +1,27 @@
+name: ChatGPT VPS connectivity verify
+
+on:
+  push:
+    branches:
+      - chatgpt/vps-connectivity-verify
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - name: Verify runner and VPS health
+        shell: bash
+        run: |
+          set -u
+          echo "HOSTNAME=$(hostname)"
+          echo "USER=$(whoami)"
+          echo "UID_GID=$(id -u):$(id -g)"
+          echo "UPTIME=$(uptime -p 2>/dev/null || true)"
+          echo "SSH=$(systemctl is-active ssh 2>/dev/null || true)"
+          echo "NGINX=$(systemctl is-active nginx 2>/dev/null || true)"
+          echo "DOCKER=$(systemctl is-active docker 2>/dev/null || true)"
+          echo "ROOT_FS=$(df -P / | awk 'NR==2 {print $5}')"
