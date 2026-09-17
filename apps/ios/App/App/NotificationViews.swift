@@ -401,6 +401,7 @@ private struct MeetingNotificationDetail: View {
     @State private var actionError: String?
 
     private var accent: Color {
+        if isEndingSoonReminder { return AppTheme.red }
         if notification.type == "meeting_reminder" { return .orange }
         if notification.type == "meeting_cancelled" { return .gray }
         return .blue
@@ -419,21 +420,37 @@ private struct MeetingNotificationDetail: View {
     private var isEndingSoonReminder: Bool {
         notification.type == "meeting_ending_soon" || notification.title.hasPrefix("Còn 10 phút")
     }
-    private var endDate: Date? { details.flatMap { ISO8601DateFormatter().date(from: $0.endsAt) } }
+    private var endDate: Date? { details.flatMap { MeetingPresentation.date(from: $0.endsAt) } }
     private var meetingEnded: Bool { endDate.map { $0 <= Date() } ?? false }
     private var isOrganizer: Bool {
         guard let details, let employeeCode = session.profile?.employeeCode else { return false }
         return details.employee.employeeCode.caseInsensitiveCompare(employeeCode) == .orderedSame
     }
-    private var maximumExtensionMinutes: Int {
-        guard let details, let endDate else { return 0 }
-        let nextStart = session.meetingBookings
+    private var nextBooking: MeetingBooking? {
+        guard let details, let endDate else { return nil }
+        return session.meetingBookings
             .filter { $0.roomId == details.roomId && $0.id != details.id }
-            .compactMap { ISO8601DateFormatter().date(from: $0.startsAt) }
-            .filter { $0 > endDate }
-            .min()
-        guard let nextStart else { return 120 }
-        return max(0, Int(nextStart.timeIntervalSince(endDate) / 60) - 5)
+            .filter { booking in
+                guard let start = MeetingPresentation.date(from: booking.startsAt) else { return false }
+                return start > endDate
+            }
+            .sorted { left, right in
+                (MeetingPresentation.date(from: left.startsAt) ?? .distantFuture)
+                    < (MeetingPresentation.date(from: right.startsAt) ?? .distantFuture)
+            }
+            .first
+    }
+    private var maximumExtensionMinutes: Int {
+        guard let endDate else { return 0 }
+        guard let nextStart = nextBooking.flatMap({ MeetingPresentation.date(from: $0.startsAt) }) else { return 120 }
+        return min(120, max(0, Int(nextStart.timeIntervalSince(endDate) / 60) - 5))
+    }
+    private var extensionBlockMessage: String {
+        guard let nextBooking else {
+            return "Không thể gia hạn vì lịch phòng đang được cập nhật."
+        }
+        let title = nextBooking.title.isEmpty ? "cuộc họp tiếp theo" : "“\(nextBooking.title)”"
+        return "Không thể gia hạn vì \(details?.room.name ?? "phòng họp") có \(title) lúc \(MeetingPresentation.time(nextBooking.startsAt))."
     }
 
     var body: some View {
@@ -499,7 +516,12 @@ private struct MeetingNotificationDetail: View {
             .task(id: notification.requestId) {
                 guard let id = notification.requestId else { return }
                 isLoading = true
-                details = await session.meetingBookingDetails(id: id)
+                if let loadedDetails = await session.meetingBookingDetails(id: id) {
+                    details = loadedDetails
+                    if let meetingDate = MeetingPresentation.date(from: loadedDetails.startsAt) {
+                        await session.refreshMeetingSchedule(date: meetingDate)
+                    }
+                }
                 isLoading = false
             }
         }
@@ -557,7 +579,7 @@ private struct MeetingNotificationDetail: View {
                     .buttonStyle(.bordered)
                     .tint(.secondary)
                     .disabled(true)
-                    Text("Không thể gia hạn vì cuộc họp tiếp theo cần thời gian chuẩn bị.")
+                    Text(extensionBlockMessage)
                         .font(.caption.weight(.semibold)).foregroundStyle(.red)
                 }
                 Button(role: .destructive) {
@@ -583,7 +605,12 @@ private struct MeetingNotificationDetail: View {
             extensionMinutes: extensionMinutes
         )
         if actionError == nil {
-            self.details = await session.meetingBookingDetails(id: details.id)
+            if let refreshedDetails = await session.meetingBookingDetails(id: details.id) {
+                self.details = refreshedDetails
+                if let meetingDate = MeetingPresentation.date(from: refreshedDetails.startsAt) {
+                    await session.refreshMeetingSchedule(date: meetingDate)
+                }
+            }
         }
         isSubmitting = false
     }
