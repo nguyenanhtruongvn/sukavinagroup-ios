@@ -121,6 +121,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
             // Covers activities that expired while iOS had suspended or
             // terminated the app-side timer.
             MeetingLiveActivityExpiry.removeExpiredActivities()
+            MeetingLiveActivityManager.restorePushTokenObservers()
         }
         appContainer?.appBecameActive()
     }

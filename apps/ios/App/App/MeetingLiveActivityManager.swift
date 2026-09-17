@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import Security
 
 @available(iOS 17.0, *)
 enum MeetingLiveActivityManager {
@@ -27,11 +28,19 @@ enum MeetingLiveActivityManager {
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
                 await activity.update(ActivityContent(state: state, staleDate: endsAt))
+                MeetingLiveActivityPushRegistration.observe(activity)
                 MeetingLiveActivityExpiry.schedule(bookingID: bookingID, endsAt: endsAt)
                 return
             }
             do {
-                _ = try Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: endsAt), pushType: nil)
+                // A device-specific ActivityKit token lets the server end the
+                // activity even while this app process is suspended or killed.
+                let activity = try Activity.request(
+                    attributes: attributes,
+                    content: ActivityContent(state: state, staleDate: endsAt),
+                    pushType: .token
+                )
+                MeetingLiveActivityPushRegistration.observe(activity)
                 MeetingLiveActivityExpiry.schedule(bookingID: bookingID, endsAt: endsAt)
             } catch {
                 ConnectionDiagnostics.record("Meeting Live Activity failed: \(error.localizedDescription)")
@@ -47,6 +56,12 @@ enum MeetingLiveActivityManager {
         }
     }
 
+    static func restorePushTokenObservers() {
+        for activity in Activity<MeetingLiveActivityAttributes>.activities {
+            MeetingLiveActivityPushRegistration.observe(activity)
+        }
+    }
+
     private static func date(_ value: String?) -> Date? {
         guard let value else { return nil }
         let fractional = ISO8601DateFormatter()
@@ -57,5 +72,60 @@ enum MeetingLiveActivityManager {
     private static func nonEmpty(_ value: String?) -> String? {
         guard let value, !value.isEmpty else { return nil }
         return value
+    }
+}
+
+/// ActivityKit tokens are distinct from ordinary APNs device tokens and are
+/// scoped to one Live Activity.  The stream can provide a rotated token, so it
+/// remains observed for the lifetime of each active activity.
+@available(iOS 17.0, *)
+private enum MeetingLiveActivityPushRegistration {
+    private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+
+    static func observe(_ activity: Activity<MeetingLiveActivityAttributes>) {
+        Task {
+            for await token in activity.pushTokenUpdates {
+                await upload(token: token, bookingID: activity.attributes.bookingID)
+            }
+        }
+    }
+
+    private static func upload(token: Data, bookingID: String) async {
+        guard !bookingID.isEmpty, let accessToken = accessToken() else { return }
+        let tokenValue = token.map { String(format: "%02x", $0) }.joined()
+        guard !tokenValue.isEmpty else { return }
+
+        var request = URLRequest(
+            url: URL(string: "me/meeting-bookings/\(bookingID)/live-activity-token", relativeTo: baseURL)!
+        )
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["token": tokenValue])
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                ConnectionDiagnostics.record("Live Activity push token upload was rejected")
+                return
+            }
+        } catch {
+            ConnectionDiagnostics.record("Live Activity push token upload failed: \(error.localizedDescription)")
+        }
+    }
+
+    private static func accessToken() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "net.sukavinagroup.user",
+            kSecAttrAccount as String: "access-token",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 }
