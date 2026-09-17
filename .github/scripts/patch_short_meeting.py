@@ -1,0 +1,145 @@
+from pathlib import Path
+
+path = Path("apps/ios/App/App/EmployeeViews.swift")
+text = path.read_text(encoding="utf-8")
+
+old_call = """MeetingTimelineBlock(
+                                booking: booking,
+                                style: style,
+                                density: MeetingTimelineDensity(height: position.height)
+                            )"""
+new_call = """MeetingTimelineBlock(
+                                booking: booking,
+                                style: style,
+                                density: MeetingTimelineDensity(height: position.height),
+                                tinyLane: item.sourceIndex % 3
+                            )"""
+if old_call not in text:
+    raise SystemExit("MeetingTimelineBlock call pattern not found")
+text = text.replace(old_call, new_call, 1)
+
+start_marker = """@available(iOS 17.0, *)
+private struct MeetingTimelineBlock: View {"""
+end_marker = """\n\n\n@available(iOS 17.0, *)\nstruct MeetingBookingDetailSheet: View {"""
+start = text.find(start_marker)
+end = text.find(end_marker, start)
+if start == -1 or end == -1:
+    raise SystemExit("MeetingTimelineBlock section markers not found")
+
+replacement = r'''@available(iOS 17.0, *)
+private struct MeetingTimelineBlock: View {
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let density: MeetingTimelineDensity
+    let tinyLane: Int
+
+    var body: some View {
+        switch density {
+        case .tiny:
+            ZStack(alignment: .topLeading) {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(style.accent)
+                        .frame(width: 4)
+
+                    Rectangle()
+                        .fill(style.fill.opacity(0.78))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    Rectangle()
+                        .stroke(style.accent.opacity(0.32), lineWidth: 0.7)
+                }
+            }
+            .overlay(alignment: tinyLabelAlignment) {
+                MeetingTinyLabel(
+                    booking: booking,
+                    style: style,
+                    compactLane: tinyLane
+                )
+                .offset(x: tinyLabelXOffset, y: -7)
+            }
+
+        case .compact, .full:
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(style.accent)
+                    .frame(width: 4)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                        .font(.caption.bold())
+                        .lineLimit(1)
+
+                    if density == .full {
+                        Text(MeetingPresentation.range(booking))
+                            .font(.caption2.monospacedDigit())
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(style.foreground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(style.fill)
+            .overlay { Rectangle().stroke(style.accent.opacity(0.30), lineWidth: 1) }
+        }
+    }
+
+    private var tinyLabelAlignment: Alignment {
+        switch tinyLane {
+        case 1: return .top
+        case 2: return .topTrailing
+        default: return .topLeading
+        }
+    }
+
+    private var tinyLabelXOffset: CGFloat {
+        switch tinyLane {
+        case 1: return 0
+        case 2: return -8
+        default: return 8
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTinyLabel: View {
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let compactLane: Int
+
+    private var maxLabelWidth: CGFloat {
+        compactLane == 1 ? 128 : 118
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                .font(.system(size: 10, weight: .bold))
+                .lineLimit(1)
+
+            Text(MeetingPresentation.range(booking))
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(style.foreground.opacity(0.72))
+                .lineLimit(1)
+        }
+        .foregroundStyle(style.foreground)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .frame(maxWidth: maxLabelWidth)
+        .background(style.fill.opacity(0.98), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(style.accent.opacity(0.34), lineWidth: 0.7)
+        }
+        .shadow(color: .black.opacity(0.07), radius: 2.5, y: 1)
+        .allowsHitTesting(false)
+    }
+}'''
+
+text = text[:start] + replacement + text[end:]
+path.write_text(text, encoding="utf-8")
