@@ -1321,28 +1321,36 @@ final class SessionStore: ObservableObject {
     /// server-confirmed end time into the shared App Group so the existing
     /// schedule can redraw at that exact time as soon as it is active.
     private func applyEndedMeetingLiveActivityResultIfAvailable() {
-        guard let result = pendingEndedMeetingLiveActivityResult(),
-              let index = meetingBookings.firstIndex(where: { $0.id == result.bookingID })
-        else { return }
-        let booking = meetingBookings[index]
-        meetingBookings[index] = MeetingBooking(
-            id: booking.id,
-            roomId: booking.roomId,
-            startsAt: booking.startsAt,
-            endsAt: result.endsAt,
-            title: booking.title,
-            attendeeCount: booking.attendeeCount,
-            status: booking.status,
-            isMine: booking.isMine,
-            isOwner: booking.isOwner
-        )
+        guard let result = pendingEndedMeetingLiveActivityResult() else { return }
+        var updated = meetingBookings
+        var didUpdate = false
+        for index in updated.indices where updated[index].id == result.bookingID {
+            let booking = updated[index]
+            updated[index] = MeetingBooking(
+                id: booking.id,
+                roomId: booking.roomId,
+                startsAt: booking.startsAt,
+                endsAt: result.endsAt,
+                title: booking.title,
+                attendeeCount: booking.attendeeCount,
+                status: booking.status,
+                isMine: booking.isMine,
+                isOwner: booking.isOwner
+            )
+            didUpdate = true
+        }
+        if didUpdate { meetingBookings = updated }
     }
 
     private func replaceEndedMeetingInCurrentSchedule(_ endedBooking: MeetingBooking) {
-        guard let index = meetingBookings.firstIndex(where: { $0.id == endedBooking.id }) else { return }
+        guard meetingBookings.contains(where: { $0.id == endedBooking.id }) else { return }
         // Match Android: retain the booking in the day timeline, but draw it
         // only up to the exact endsAt returned by the server's /end endpoint.
-        meetingBookings[index] = endedBooking
+        var updated = meetingBookings
+        for index in updated.indices where updated[index].id == endedBooking.id {
+            updated[index] = endedBooking
+        }
+        meetingBookings = updated
         let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
         saveMeetingSchedule(
             MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),

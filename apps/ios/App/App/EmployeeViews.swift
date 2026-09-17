@@ -575,6 +575,19 @@ private struct MeetingTimelineBookingStyle {
 }
 
 @available(iOS 17.0, *)
+private struct TimelineBookingItem: Identifiable {
+    let sourceIndex: Int
+    let booking: MeetingBooking
+
+    var id: String {
+        if booking.id.isEmpty {
+            return "private|\(sourceIndex)|\(booking.roomId)|\(booking.startsAt)|\(booking.endsAt)"
+        }
+        return "booking|\(booking.id)|\(booking.startsAt)|\(booking.endsAt)"
+    }
+}
+
+@available(iOS 17.0, *)
 private struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
     let date: Date
@@ -610,11 +623,9 @@ private struct MeetingTimeline: View {
                     }
                 }
 
-                // Private bookings deliberately have an empty server id.  Do
-                // not use that id for SwiftUI identity: several private
-                // bookings would otherwise share "" and only one time block
-                // is rendered in another employee's room timeline.
-                ForEach(Array(bookings.enumerated()), id: \.offset) { index, booking in
+                ForEach(timelineBookings) { item in
+                    let index = item.sourceIndex
+                    let booking = item.booking
                     if let position = bookingPosition(booking) {
                         let style = bookingStyle(at: index)
                         Button { onSelect(booking) } label: {
@@ -629,12 +640,9 @@ private struct MeetingTimeline: View {
                         .accessibilityLabel(booking.id.isEmpty
                             ? "Khung giờ đã được đặt"
                             : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title)")
-                        .frame(
-                            maxWidth: .infinity,
-                            minHeight: position.height,
-                            maxHeight: position.height,
-                            alignment: .topLeading
-                        )
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .frame(height: position.height, alignment: .topLeading)
+                        .clipped()
                         .offset(y: position.top)
                     }
                 }
@@ -660,6 +668,19 @@ private struct MeetingTimeline: View {
                 alignment: .topLeading
             )
             .clipped()
+        }
+    }
+
+    private var timelineBookings: [TimelineBookingItem] {
+        var seenServerBookingIDs = Set<String>()
+        return bookings.enumerated().compactMap { index, booking in
+            // The schedule endpoint can briefly contain a cached and a fresh
+            // representation of one server booking. Render it once; private
+            // blocks intentionally have no server id and remain distinct.
+            if !booking.id.isEmpty, !seenServerBookingIDs.insert(booking.id).inserted {
+                return nil
+            }
+            return TimelineBookingItem(sourceIndex: index, booking: booking)
         }
     }
 
