@@ -1,0 +1,44 @@
+name: VPS connectivity check
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/vps-connectivity-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostics:
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - name: Basic VPS diagnostics
+        shell: bash
+        run: |
+          set -u
+          echo "=== identity ==="
+          hostname
+          whoami
+          id
+          echo
+          echo "=== system ==="
+          uname -a
+          uptime
+          echo
+          echo "=== network listeners ==="
+          ss -lnt 2>/dev/null | head -n 80 || true
+          echo
+          echo "=== service snapshots ==="
+          systemctl is-active ssh 2>/dev/null || true
+          systemctl is-active nginx 2>/dev/null || true
+          systemctl is-active docker 2>/dev/null || true
+          echo
+          echo "=== containers ==="
+          docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}' 2>/dev/null || true
+          echo
+          echo "=== disk ==="
+          df -h / 2>/dev/null || true
