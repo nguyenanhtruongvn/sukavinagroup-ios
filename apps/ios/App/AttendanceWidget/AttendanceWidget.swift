@@ -51,10 +51,23 @@ private enum WidgetStorage {
                 return load()
             }
             let records = payload.attendanceRecords.sorted { $0.punchedAt < $1.punchedAt }
-            let state = State(
-                checkIn: records.first?.punchedAt,
-                checkOut: records.count > 1 ? records.last?.punchedAt : nil
-            )
+            let state: State
+            if payload.attendanceClassification != nil {
+                // The API classifies one-punch days against the employee shift.
+                // Use those server-confirmed values so a lone afternoon punch is
+                // not incorrectly displayed as a check-in by the widget.
+                state = State(
+                    checkIn: payload.attendanceCheckIn,
+                    checkOut: payload.attendanceCheckOut
+                )
+            } else {
+                // Backward compatibility with older API responses that only
+                // returned the raw attendance record list.
+                state = State(
+                    checkIn: records.first?.punchedAt,
+                    checkOut: records.count > 1 ? records.last?.punchedAt : nil
+                )
+            }
             if let encoded = try? JSONEncoder().encode(state) {
                 defaults?.set(encoded, forKey: stateKey)
                 defaults?.synchronize()
@@ -71,6 +84,9 @@ private enum WidgetStorage {
 
     private struct AttendancePayload: Decodable {
         let attendanceRecords: [AttendanceRecord]
+        let attendanceCheckIn: String?
+        let attendanceCheckOut: String?
+        let attendanceClassification: String?
     }
 
     private struct AttendanceRecord: Decodable {
