@@ -117,6 +117,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        if #available(iOS 17.0, *) {
+            // Covers activities that expired while iOS had suspended or
+            // terminated the app-side timer.
+            MeetingLiveActivityExpiry.removeExpiredActivities()
+        }
         appContainer?.appBecameActive()
     }
 

@@ -27,10 +27,12 @@ enum MeetingLiveActivityManager {
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
                 await activity.update(ActivityContent(state: state, staleDate: endsAt))
+                MeetingLiveActivityExpiry.schedule(bookingID: bookingID, endsAt: endsAt)
                 return
             }
             do {
                 _ = try Activity.request(attributes: attributes, content: ActivityContent(state: state, staleDate: endsAt), pushType: nil)
+                MeetingLiveActivityExpiry.schedule(bookingID: bookingID, endsAt: endsAt)
             } catch {
                 ConnectionDiagnostics.record("Meeting Live Activity failed: \(error.localizedDescription)")
             }

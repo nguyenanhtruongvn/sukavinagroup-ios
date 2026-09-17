@@ -210,6 +210,7 @@ private enum MeetingLiveActivityAction {
                     isChoosingExtension: isChoosingExtension
                 )
                 await activity.update(ActivityContent(state: state, staleDate: endDate))
+                MeetingLiveActivityExpiry.schedule(bookingID: bookingID, endsAt: endDate)
             }
         }
     }
@@ -303,6 +304,38 @@ private enum MeetingLiveActivityAction {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+}
+
+/// `staleDate` only tells the system that content is stale; it does not end an
+/// activity.  Schedule a best-effort close while the host process remains
+/// alive, then validate the activity's *current* end time before closing so an
+/// earlier timer cannot end a meeting that was subsequently extended.
+@available(iOS 17.0, *)
+enum MeetingLiveActivityExpiry {
+    static func schedule(bookingID: String, endsAt: Date) {
+        let delay = max(0, endsAt.timeIntervalSinceNow)
+        Task {
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
+            await endIfExpired(bookingID: bookingID)
+        }
+    }
+
+    static func removeExpiredActivities() {
+        Task { await endIfExpired() }
+    }
+
+    private static func endIfExpired(bookingID: String? = nil) async {
+        let now = Date()
+        for activity in Activity<MeetingLiveActivityAttributes>.activities {
+            guard bookingID == nil || activity.attributes.bookingID == bookingID,
+                  activity.content.state.endsAt <= now else {
+                continue
+            }
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
     }
 }
 
