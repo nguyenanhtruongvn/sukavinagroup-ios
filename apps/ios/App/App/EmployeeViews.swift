@@ -112,6 +112,7 @@ enum MeetingPresentation {
 @available(iOS 17.0, *)
 struct MeetingRoomsView: View {
     @EnvironmentObject private var session: SessionStore
+    let isActive: Bool
     @State private var day = Date()
     @State private var bookingRoom: MeetingRoom?
     @State private var scheduleRoom: MeetingRoom?
@@ -178,7 +179,8 @@ struct MeetingRoomsView: View {
                 )
             }
             .navigationBarTitleDisplayMode(.inline)
-            .task {
+            .task(id: isActive) {
+                guard isActive else { return }
                 await session.refreshMeetingSchedule(date: day)
             }
             .onChange(of: day) { _, date in
@@ -1952,7 +1954,7 @@ struct EmployeePortalView: View {
             RequestsView(initialFilter: requestInitialFilter)
                 .tabItem { portalTabLabel("Đơn từ", systemImage: "doc.text.fill") }
             .tag(1)
-            MeetingRoomsView()
+            MeetingRoomsView(isActive: selectedTab == 2)
                 .tabItem { portalTabLabel("Phòng họp", systemImage: "building.2.fill") }
                 .tag(2)
             NotificationsView()

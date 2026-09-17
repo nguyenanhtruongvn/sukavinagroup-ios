@@ -1187,8 +1187,9 @@ final class SessionStore: ObservableObject {
             )
             let pendingEndedMeeting = pendingEndedMeetingLiveActivityResult()
             meetingRooms = applyMeetingRoomOrder(value.rooms)
-            meetingBookings = value.bookings
+            meetingBookings = normalizedMeetingBookings(value.bookings)
             applyEndedMeetingLiveActivityResultIfAvailable()
+            meetingBookings = normalizedMeetingBookings(meetingBookings)
             if let pendingEndedMeeting,
                serverHasConfirmed(pendingEndedMeeting, in: value.bookings) {
                 clearPendingEndedMeetingLiveActivityResult()
@@ -1214,7 +1215,7 @@ final class SessionStore: ObservableObject {
         meetingRooms = applyMeetingRoomOrder(rooms)
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
-        meetingBookings = bookings.filter { roomIDs.contains($0.roomId) }
+        meetingBookings = normalizedMeetingBookings(bookings.filter { roomIDs.contains($0.roomId) })
         applyEndedMeetingLiveActivityResultIfAvailable()
     }
 
@@ -1339,7 +1340,7 @@ final class SessionStore: ObservableObject {
             )
             didUpdate = true
         }
-        if didUpdate { meetingBookings = updated }
+        if didUpdate { meetingBookings = normalizedMeetingBookings(updated) }
     }
 
     private func replaceEndedMeetingInCurrentSchedule(_ endedBooking: MeetingBooking) {
@@ -1350,12 +1351,27 @@ final class SessionStore: ObservableObject {
         for index in updated.indices where updated[index].id == endedBooking.id {
             updated[index] = endedBooking
         }
-        meetingBookings = updated
+        meetingBookings = normalizedMeetingBookings(updated)
         let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
         saveMeetingSchedule(
             MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
             for: day
         )
+    }
+
+    private func normalizedMeetingBookings(_ bookings: [MeetingBooking]) -> [MeetingBooking] {
+        let identified = bookings.filter { !$0.id.isEmpty }
+        return bookings.filter { booking in
+            guard booking.id.isEmpty,
+                  let anonymousStart = MeetingPresentation.date(from: booking.startsAt)
+            else { return true }
+            return !identified.contains { known in
+                guard known.roomId == booking.roomId,
+                      let knownStart = MeetingPresentation.date(from: known.startsAt)
+                else { return false }
+                return abs(knownStart.timeIntervalSince(anonymousStart)) < 1
+            }
+        }
     }
 
     private func applyMeetingRoomOrder(_ rooms: [MeetingRoom]) -> [MeetingRoom] {
