@@ -622,6 +622,30 @@ private struct TimelineBookingItem: Identifiable {
 }
 
 @available(iOS 17.0, *)
+private enum MeetingTinyLabelSide: Equatable {
+    case left, right
+}
+
+@available(iOS 17.0, *)
+private enum MeetingTinyLabelMetrics {
+    static let height: CGFloat = 24
+    static let spacing: CGFloat = 4
+    static let verticalInset: CGFloat = 3
+    static let horizontalInset: CGFloat = 14
+    static let columnGap: CGFloat = 16
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTinyLabelPlacement: Identifiable {
+    let id: String
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let side: MeetingTinyLabelSide
+    let eventCenterY: CGFloat
+    var labelTop: CGFloat
+}
+
+@available(iOS 17.0, *)
 private struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
     let date: Date
@@ -629,6 +653,10 @@ private struct MeetingTimeline: View {
     private let firstHour = 6
     private let lastHour = 23
     private let hourHeight: CGFloat = 72
+
+    private var timelineHeight: CGFloat {
+        hourHeight * CGFloat(lastHour - firstHour + 1)
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
@@ -657,6 +685,8 @@ private struct MeetingTimeline: View {
                     }
                 }
 
+                // The booking rail is the source of truth for time. Even a
+                // very short meeting keeps its exact start/end pixel height.
                 ForEach(timelineBookings) { item in
                     let index = item.sourceIndex
                     let booking = item.booking
@@ -666,8 +696,7 @@ private struct MeetingTimeline: View {
                             MeetingTimelineBlock(
                                 booking: booking,
                                 style: style,
-                                density: MeetingTimelineDensity(height: position.height),
-                                tinyLane: item.sourceIndex % 3
+                                density: MeetingTimelineDensity(height: position.height)
                             )
                         }
                         .buttonStyle(.plain)
@@ -677,17 +706,26 @@ private struct MeetingTimeline: View {
                             : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title)")
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .frame(height: position.height, alignment: .topLeading)
-                        // A tiny booking keeps its exact time-height; its
-                        // readable capsule label may float above that rail.
                         .offset(y: position.top)
+                        .zIndex(1)
                     }
                 }
+
+                // Tiny labels are laid out independently from their exact-time
+                // rails. Two columns plus collision resolution keep adjacent
+                // 5–15 minute meetings readable without inflating duration.
+                MeetingTinyLabelsOverlay(placements: tinyLabelPlacements)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: timelineHeight)
+                    .allowsHitTesting(false)
+                    .zIndex(2)
 
                 if let currentOffset {
                     Rectangle()
                         .fill(.red)
                         .frame(height: 2)
                         .offset(y: currentOffset)
+                        .zIndex(3)
 
                     Text(MeetingPresentation.clock.string(from: Date()))
                         .font(.caption2.bold().monospacedDigit())
@@ -696,11 +734,12 @@ private struct MeetingTimeline: View {
                         .padding(.vertical, 4)
                         .background(.red)
                         .offset(y: currentOffset - 13)
+                        .zIndex(4)
                 }
             }
             .frame(
                 maxWidth: .infinity,
-                minHeight: hourHeight * CGFloat(lastHour - firstHour + 1),
+                minHeight: timelineHeight,
                 alignment: .topLeading
             )
             .clipped()
@@ -718,6 +757,99 @@ private struct MeetingTimeline: View {
             }
             return TimelineBookingItem(sourceIndex: index, booking: booking)
         }
+    }
+
+    private var tinyLabelPlacements: [MeetingTinyLabelPlacement] {
+        let entries: [(item: TimelineBookingItem, top: CGFloat, height: CGFloat)] = timelineBookings.compactMap { item in
+            guard let position = bookingPosition(item.booking) else { return nil }
+            guard case .tiny = MeetingTimelineDensity(height: position.height) else { return nil }
+            return (item: item, top: position.top, height: position.height)
+        }
+        .sorted { lhs, rhs in
+            if lhs.top == rhs.top {
+                return lhs.item.sourceIndex < rhs.item.sourceIndex
+            }
+            return lhs.top < rhs.top
+        }
+
+        let labelHeight = MeetingTinyLabelMetrics.height
+        let spacing = MeetingTinyLabelMetrics.spacing
+        let inset = MeetingTinyLabelMetrics.verticalInset
+        let latestTop = max(inset, timelineHeight - inset - labelHeight)
+        var leftNext = inset
+        var rightNext = inset
+        var placements: [MeetingTinyLabelPlacement] = []
+        placements.reserveCapacity(entries.count)
+
+        for (order, entry) in entries.enumerated() {
+            let eventCenter = entry.top + entry.height / 2
+            let desiredTop = min(
+                max(eventCenter - labelHeight / 2, inset),
+                latestTop
+            )
+            let leftTop = max(desiredTop, leftNext)
+            let rightTop = max(desiredTop, rightNext)
+            let leftCost = leftTop - desiredTop
+            let rightCost = rightTop - desiredTop
+            let preferred: MeetingTinyLabelSide = order.isMultiple(of: 2) ? .left : .right
+
+            let side: MeetingTinyLabelSide
+            if abs(leftCost - rightCost) < 0.5 {
+                side = preferred
+            } else {
+                side = leftCost < rightCost ? .left : .right
+            }
+
+            let labelTop = side == .left ? leftTop : rightTop
+            if side == .left {
+                leftNext = labelTop + labelHeight + spacing
+            } else {
+                rightNext = labelTop + labelHeight + spacing
+            }
+
+            placements.append(
+                MeetingTinyLabelPlacement(
+                    id: entry.item.id,
+                    booking: entry.item.booking,
+                    style: bookingStyle(at: entry.item.sourceIndex),
+                    side: side,
+                    eventCenterY: eventCenter,
+                    labelTop: labelTop
+                )
+            )
+        }
+
+        return keepPlacementsInsideTimeline(placements)
+    }
+
+    private func keepPlacementsInsideTimeline(
+        _ placements: [MeetingTinyLabelPlacement]
+    ) -> [MeetingTinyLabelPlacement] {
+        var result = placements
+        let labelHeight = MeetingTinyLabelMetrics.height
+        let inset = MeetingTinyLabelMetrics.verticalInset
+        let maxBottom = timelineHeight - inset
+
+        for side in [MeetingTinyLabelSide.left, .right] {
+            let indices = result.indices.filter { result[$0].side == side }
+            guard let firstIndex = indices.first, let lastIndex = indices.last else { continue }
+
+            let overflow = result[lastIndex].labelTop + labelHeight - maxBottom
+            if overflow > 0 {
+                for index in indices {
+                    result[index].labelTop -= overflow
+                }
+            }
+
+            let underflow = inset - result[firstIndex].labelTop
+            if underflow > 0 {
+                for index in indices {
+                    result[index].labelTop += underflow
+                }
+            }
+        }
+
+        return result
     }
 
     private var currentOffset: CGFloat? {
@@ -745,8 +877,7 @@ private struct MeetingTimeline: View {
         return (
             CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
             // Do not inflate short meetings for touch-target convenience:
-            // at 72px/hour, a 15-minute meeting is exactly 18px tall. The old
-            // 24px minimum visually extended a 09:04–09:19 booking to ~09:24.
+            // at 72px/hour, a 15-minute meeting is exactly 18px tall.
             max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 1)
         )
     }
@@ -769,33 +900,22 @@ private struct MeetingTimelineBlock: View {
     let booking: MeetingBooking
     let style: MeetingTimelineBookingStyle
     let density: MeetingTimelineDensity
-    let tinyLane: Int
 
     var body: some View {
         switch density {
         case .tiny:
-            ZStack(alignment: .topLeading) {
-                HStack(spacing: 0) {
-                    Rectangle()
-                        .fill(style.accent)
-                        .frame(width: 4)
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(style.accent)
+                    .frame(width: 4)
 
-                    Rectangle()
-                        .fill(style.fill.opacity(0.78))
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay {
-                    Rectangle()
-                        .stroke(style.accent.opacity(0.32), lineWidth: 0.7)
-                }
+                Rectangle()
+                    .fill(style.fill.opacity(0.78))
             }
-            .overlay(alignment: tinyLabelAlignment) {
-                MeetingTinyLabel(
-                    booking: booking,
-                    style: style,
-                    compactLane: tinyLane
-                )
-                .offset(x: tinyLabelXOffset, y: -7)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                Rectangle()
+                    .stroke(style.accent.opacity(0.32), lineWidth: 0.7)
             }
 
         case .compact, .full:
@@ -826,20 +946,61 @@ private struct MeetingTimelineBlock: View {
             .overlay { Rectangle().stroke(style.accent.opacity(0.30), lineWidth: 1) }
         }
     }
+}
 
-    private var tinyLabelAlignment: Alignment {
-        switch tinyLane {
-        case 1: return .top
-        case 2: return .topTrailing
-        default: return .topLeading
-        }
-    }
+@available(iOS 17.0, *)
+private struct MeetingTinyLabelsOverlay: View {
+    let placements: [MeetingTinyLabelPlacement]
 
-    private var tinyLabelXOffset: CGFloat {
-        switch tinyLane {
-        case 1: return 0
-        case 2: return -8
-        default: return 8
+    var body: some View {
+        GeometryReader { proxy in
+            let usableWidth = max(
+                120,
+                proxy.size.width
+                    - MeetingTinyLabelMetrics.horizontalInset * 2
+                    - MeetingTinyLabelMetrics.columnGap
+            )
+            let labelWidth = min(138, usableWidth / 2)
+
+            ZStack(alignment: .topLeading) {
+                ForEach(placements) { placement in
+                    let labelX = placement.side == .left
+                        ? MeetingTinyLabelMetrics.horizontalInset
+                        : max(
+                            MeetingTinyLabelMetrics.horizontalInset,
+                            proxy.size.width
+                                - MeetingTinyLabelMetrics.horizontalInset
+                                - labelWidth
+                        )
+                    let connectorX = max(5, labelX - 8)
+                    let anchorY = min(
+                        max(placement.eventCenterY, 3),
+                        max(3, proxy.size.height - 3)
+                    )
+                    let labelCenterY = placement.labelTop + MeetingTinyLabelMetrics.height / 2
+
+                    Path { path in
+                        path.move(to: CGPoint(x: connectorX, y: anchorY))
+                        path.addLine(to: CGPoint(x: labelX, y: labelCenterY))
+                    }
+                    .stroke(
+                        placement.style.accent.opacity(0.78),
+                        style: StrokeStyle(lineWidth: 1, lineCap: .round)
+                    )
+
+                    Circle()
+                        .fill(placement.style.accent)
+                        .frame(width: 5, height: 5)
+                        .position(x: connectorX, y: anchorY)
+
+                    MeetingTinyLabel(
+                        booking: placement.booking,
+                        style: placement.style,
+                        width: labelWidth
+                    )
+                    .offset(x: labelX, y: placement.labelTop)
+                }
+            }
         }
     }
 }
@@ -848,34 +1009,33 @@ private struct MeetingTimelineBlock: View {
 private struct MeetingTinyLabel: View {
     let booking: MeetingBooking
     let style: MeetingTimelineBookingStyle
-    let compactLane: Int
-
-    private var maxLabelWidth: CGFloat {
-        compactLane == 1 ? 128 : 118
-    }
+    let width: CGFloat
 
     var body: some View {
         HStack(spacing: 5) {
             Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
                 .font(.system(size: 10, weight: .bold))
                 .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 2)
 
             Text(MeetingPresentation.range(booking))
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.system(size: 8.5, weight: .medium, design: .monospaced))
                 .foregroundStyle(style.foreground.opacity(0.72))
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
         }
         .foregroundStyle(style.foreground)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
-        .frame(maxWidth: maxLabelWidth)
+        .padding(.horizontal, 8)
+        .frame(width: width, height: MeetingTinyLabelMetrics.height, alignment: .leading)
         .background(style.fill.opacity(0.98), in: Capsule())
         .overlay {
             Capsule()
                 .stroke(style.accent.opacity(0.34), lineWidth: 0.7)
         }
         .shadow(color: .black.opacity(0.07), radius: 2.5, y: 1)
-        .allowsHitTesting(false)
     }
 }
 
