@@ -456,16 +456,11 @@ private struct MeetingLiveActivityWidget: Widget {
                     SukavinaLiveActivityLogo(size: 18)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(spacing: 1) {
-                        Text(context.attributes.title)
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        Text(context.attributes.roomName)
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.62))
-                            .lineLimit(1)
-                    }
+                    Text("\(context.attributes.title) · \(context.attributes.roomName)")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .time)
@@ -493,39 +488,37 @@ private struct MeetingLiveActivityWidget: Widget {
             .contentMargins(.horizontal, 2, for: .compactLeading)
             .contentMargins(.horizontal, 2, for: .compactTrailing)
             .contentMargins(.all, 2, for: .minimal)
-            .contentMargins(.horizontal, 8, for: .expanded)
+            .contentMargins(.horizontal, 12, for: .expanded)
         }
     }
 }
 
-/// The expanded Island has less vertical room than the Lock Screen activity.
-/// Keep its timeline deliberately compact and hide ProgressView's generated
-/// clock label so it cannot add a second, competing time row.
+/// Keep expanded Island content to one bottom row.  The system clips content
+/// that grows vertically into the strongly rounded lower edge.
 @available(iOS 17.0, *)
 private struct MeetingDynamicIslandTimeline: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
     var body: some View {
-        VStack(spacing: 4) {
+        HStack(spacing: 8) {
             ProgressView(
                 timerInterval: context.attributes.startsAt...context.state.endsAt,
                 countsDown: false
             )
             .labelsHidden()
             .tint(.red)
-            .scaleEffect(x: 1, y: 1.15, anchor: .center)
+            .frame(maxWidth: .infinity)
 
-            HStack(spacing: 4) {
-                Text("Còn")
-                    .foregroundStyle(.white.opacity(0.62))
+            HStack(spacing: 3) {
+                Text("Còn").foregroundStyle(.white.opacity(0.62))
                 Text(context.state.endsAt, style: .timer)
                     .foregroundStyle(.red)
                     .monospacedDigit()
             }
             .font(.caption2.weight(.semibold))
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.top, 2)
+        .padding(.horizontal, 4)
     }
 }
 
