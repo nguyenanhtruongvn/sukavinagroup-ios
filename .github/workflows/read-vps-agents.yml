@@ -1,0 +1,32 @@
+name: Read VPS AGENTS
+
+on:
+  push:
+    branches:
+      - chatgpt/read-vps-agents
+
+permissions:
+  contents: read
+
+jobs:
+  read-agents:
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - name: Read AGENTS.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET=/root/sukavina/AGENTS.md
+          if [ ! -f "$TARGET" ]; then
+            echo "AGENTS_NOT_FOUND"
+            exit 2
+          fi
+          if [ -r "$TARGET" ]; then
+            cat "$TARGET"
+          elif sudo -n test -r "$TARGET"; then
+            sudo -n cat "$TARGET"
+          else
+            echo "AGENTS_PERMISSION_DENIED"
+            exit 3
+          fi
