@@ -666,7 +666,8 @@ private struct MeetingTimeline: View {
                             MeetingTimelineBlock(
                                 booking: booking,
                                 style: style,
-                                density: MeetingTimelineDensity(height: position.height)
+                                density: MeetingTimelineDensity(height: position.height),
+                                tinyLane: item.sourceIndex % 3
                             )
                         }
                         .buttonStyle(.plain)
@@ -768,24 +769,34 @@ private struct MeetingTimelineBlock: View {
     let booking: MeetingBooking
     let style: MeetingTimelineBookingStyle
     let density: MeetingTimelineDensity
+    let tinyLane: Int
 
     var body: some View {
         switch density {
         case .tiny:
-            HStack(spacing: 7) {
-                Rectangle()
-                    .fill(style.accent)
-                    .frame(width: 4)
-                Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
-                    .font(.caption2.weight(.semibold))
-                    .lineLimit(1)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(style.fill.opacity(0.98), in: Capsule())
-                    .overlay { Capsule().stroke(style.accent.opacity(0.28), lineWidth: 0.5) }
+            ZStack(alignment: .topLeading) {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(style.accent)
+                        .frame(width: 4)
+
+                    Rectangle()
+                        .fill(style.fill.opacity(0.78))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay {
+                    Rectangle()
+                        .stroke(style.accent.opacity(0.32), lineWidth: 0.7)
+                }
             }
-            .foregroundStyle(style.foreground)
-            .offset(y: -5)
+            .overlay(alignment: tinyLabelAlignment) {
+                MeetingTinyLabel(
+                    booking: booking,
+                    style: style,
+                    compactLane: tinyLane
+                )
+                .offset(x: tinyLabelXOffset, y: -7)
+            }
 
         case .compact, .full:
             HStack(spacing: 8) {
@@ -814,6 +825,57 @@ private struct MeetingTimelineBlock: View {
             .background(style.fill)
             .overlay { Rectangle().stroke(style.accent.opacity(0.30), lineWidth: 1) }
         }
+    }
+
+    private var tinyLabelAlignment: Alignment {
+        switch tinyLane {
+        case 1: return .top
+        case 2: return .topTrailing
+        default: return .topLeading
+        }
+    }
+
+    private var tinyLabelXOffset: CGFloat {
+        switch tinyLane {
+        case 1: return 0
+        case 2: return -8
+        default: return 8
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTinyLabel: View {
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let compactLane: Int
+
+    private var maxLabelWidth: CGFloat {
+        compactLane == 1 ? 128 : 118
+    }
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                .font(.system(size: 10, weight: .bold))
+                .lineLimit(1)
+
+            Text(MeetingPresentation.range(booking))
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(style.foreground.opacity(0.72))
+                .lineLimit(1)
+        }
+        .foregroundStyle(style.foreground)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .frame(maxWidth: maxLabelWidth)
+        .background(style.fill.opacity(0.98), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(style.accent.opacity(0.34), lineWidth: 0.7)
+        }
+        .shadow(color: .black.opacity(0.07), radius: 2.5, y: 1)
+        .allowsHitTesting(false)
     }
 }
 
