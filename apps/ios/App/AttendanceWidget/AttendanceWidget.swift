@@ -453,29 +453,32 @@ private struct MeetingLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    SukavinaLiveActivityLogo(size: 22)
+                    SukavinaLiveActivityLogo(size: 18)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .timer)
-                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.white)
+                        .lineLimit(1)
                 }
             } compactLeading: {
-                // Compact Island: only the transparent brand mark on the left.
-                // System status items (clock, cellular and Wi-Fi) are outside
-                // this view and intentionally are not duplicated here.
-                SukavinaLiveActivityLogo(size: 14)
+                // Keep the compact presentation inside the system-owned
+                // status-bar space: a small mark plus the live countdown.
+                SukavinaLiveActivityLogo(size: 11)
             } compactTrailing: {
-                // `.timer` is a short, live countdown (for example `8:28`),
-                // not the meeting's end clock time.
                 Text(context.state.endsAt, style: .timer)
-                    .font(.caption2.weight(.semibold).monospacedDigit())
+                    .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(.white)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.75)
+                    .frame(width: 31, alignment: .trailing)
             } minimal: {
-                SukavinaLiveActivityLogo(size: 12)
+                SukavinaLiveActivityLogo(size: 10)
             }
+            .contentMargins(.horizontal, 2, for: .compactLeading)
+            .contentMargins(.horizontal, 2, for: .compactTrailing)
+            .contentMargins(.all, 2, for: .minimal)
+            .contentMargins(.horizontal, 8, for: .expanded)
         }
     }
 }
@@ -628,6 +631,7 @@ private struct SukavinaLiveActivityLogo: View {
             .renderingMode(.original)
             .scaledToFit()
             .frame(width: size, height: size)
+            .fixedSize()
     }
 }
 
