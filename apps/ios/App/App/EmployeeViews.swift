@@ -598,6 +598,17 @@ private struct MeetingTimelineBookingStyle {
 }
 
 @available(iOS 17.0, *)
+private enum MeetingTimelineDensity {
+    case full, compact, tiny
+
+    init(height: CGFloat) {
+        if height >= 44 { self = .full }
+        else if height >= 24 { self = .compact }
+        else { self = .tiny }
+    }
+}
+
+@available(iOS 17.0, *)
 private struct TimelineBookingItem: Identifiable {
     let sourceIndex: Int
     let booking: MeetingBooking
@@ -655,7 +666,7 @@ private struct MeetingTimeline: View {
                             MeetingTimelineBlock(
                                 booking: booking,
                                 style: style,
-                                showsTime: position.height >= 38
+                                density: MeetingTimelineDensity(height: position.height)
                             )
                         }
                         .buttonStyle(.plain)
@@ -665,7 +676,8 @@ private struct MeetingTimeline: View {
                             : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title)")
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .frame(height: position.height, alignment: .topLeading)
-                        .clipped()
+                        // A tiny booking keeps its exact time-height; its
+                        // readable capsule label may float above that rail.
                         .offset(y: position.top)
                     }
                 }
@@ -755,36 +767,52 @@ private struct MeetingTimeline: View {
 private struct MeetingTimelineBlock: View {
     let booking: MeetingBooking
     let style: MeetingTimelineBookingStyle
-    let showsTime: Bool
+    let density: MeetingTimelineDensity
 
     var body: some View {
-        HStack(spacing: 8) {
-            Rectangle()
-                .fill(style.accent)
-                .frame(width: 4)
-
-            VStack(alignment: .leading, spacing: 2) {
+        switch density {
+        case .tiny:
+            HStack(spacing: 7) {
+                Rectangle()
+                    .fill(style.accent)
+                    .frame(width: 4)
                 Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
-                    .font(.caption.bold())
+                    .font(.caption2.weight(.semibold))
                     .lineLimit(1)
-
-                if showsTime {
-                    Text(MeetingPresentation.range(booking))
-                        .font(.caption2.monospacedDigit())
-                        .lineLimit(1)
-                }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(style.fill.opacity(0.98), in: Capsule())
+                    .overlay { Capsule().stroke(style.accent.opacity(0.28), lineWidth: 0.5) }
             }
-            .padding(.horizontal, 4)
-            .padding(.vertical, 4)
+            .foregroundStyle(style.foreground)
+            .offset(y: -5)
 
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(style.foreground)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(style.fill)
-        .overlay {
-            Rectangle()
-                .stroke(style.accent.opacity(0.30), lineWidth: 1)
+        case .compact, .full:
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(style.accent)
+                    .frame(width: 4)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                        .font(.caption.bold())
+                        .lineLimit(1)
+
+                    if density == .full {
+                        Text(MeetingPresentation.range(booking))
+                            .font(.caption2.monospacedDigit())
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(style.foreground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(style.fill)
+            .overlay { Rectangle().stroke(style.accent.opacity(0.30), lineWidth: 1) }
         }
     }
 }
