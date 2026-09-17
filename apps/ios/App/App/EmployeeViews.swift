@@ -3126,7 +3126,7 @@ struct ModernAttendanceHistoryView: View {
         // A cached or older API response can still carry `present` alongside
         // one punch. Attendance completeness takes precedence for workdays.
         let exemptStatuses: Set<String> = ["leave", "weekend", "overtime", "upcoming", "not-started", "absent"]
-        if !serverStatuses.isDisjoint(with: exemptStatuses) { return serverStatuses }
+        if serverStatuses.contains(where: { exemptStatuses.contains($0) }) { return serverStatuses }
         if day.checkIn == nil, day.checkOut != nil { return ["missing_checkin"] }
         if day.checkIn != nil, day.checkOut == nil { return ["missing_checkout"] }
         if day.classification == "ambiguous" { return ["incomplete"] }
