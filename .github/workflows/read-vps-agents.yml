@@ -18,15 +18,9 @@ jobs:
         run: |
           set -euo pipefail
           TARGET=/root/sukavina/AGENTS.md
-          if [ ! -f "$TARGET" ]; then
-            echo "AGENTS_NOT_FOUND"
-            exit 2
-          fi
-          if [ -r "$TARGET" ]; then
-            cat "$TARGET"
-          elif sudo -n test -r "$TARGET"; then
+          if sudo -n test -f "$TARGET"; then
             sudo -n cat "$TARGET"
           else
-            echo "AGENTS_PERMISSION_DENIED"
+            echo "AGENTS_REQUIRES_SUDO_PASSWORD_OR_FILE_NOT_FOUND"
             exit 3
           fi
