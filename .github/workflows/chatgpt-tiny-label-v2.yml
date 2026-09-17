@@ -1,0 +1,482 @@
+name: ChatGPT tiny meeting label layout v2
+
+on:
+  push:
+    branches:
+      - chatgpt/tiny-label-layout-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/tiny-label-layout-v2
+          fetch-depth: 0
+
+      - name: Patch tiny meeting label layout
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/ios/App/App/EmployeeViews.swift')
+          text = path.read_text(encoding='utf-8')
+
+          start_marker = '@available(iOS 17.0, *)\nprivate struct MeetingTimeline: View {'
+          end_marker = '\n\n\n@available(iOS 17.0, *)\nstruct MeetingBookingDetailSheet: View {'
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start == -1 or end == -1:
+              raise SystemExit('Meeting timeline section markers not found')
+
+          replacement = r'''@available(iOS 17.0, *)
+private enum MeetingTinyLabelSide: Equatable {
+    case left, right
+}
+
+@available(iOS 17.0, *)
+private enum MeetingTinyLabelMetrics {
+    static let height: CGFloat = 24
+    static let spacing: CGFloat = 4
+    static let verticalInset: CGFloat = 3
+    static let horizontalInset: CGFloat = 14
+    static let columnGap: CGFloat = 16
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTinyLabelPlacement: Identifiable {
+    let id: String
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let side: MeetingTinyLabelSide
+    let eventCenterY: CGFloat
+    var labelTop: CGFloat
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTimeline: View {
+    let bookings: [MeetingBooking]
+    let date: Date
+    let onSelect: (MeetingBooking) -> Void
+    private let firstHour = 6
+    private let lastHour = 23
+    private let hourHeight: CGFloat = 72
+
+    private var timelineHeight: CGFloat {
+        hourHeight * CGFloat(lastHour - firstHour + 1)
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                ForEach(Array(firstHour...lastHour), id: \.self) { hour in
+                    Text(String(format: "%02d:00", hour))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 56, height: hourHeight, alignment: .topTrailing)
+                        .padding(.trailing, 8)
+                        .id(hour)
+                }
+            }
+
+            ZStack(alignment: .topLeading) {
+                VStack(spacing: 0) {
+                    ForEach(Array(firstHour...lastHour), id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.045))
+                            .frame(height: hourHeight)
+                            .overlay(alignment: .bottom) {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.14))
+                                    .frame(height: 1)
+                            }
+                    }
+                }
+
+                // The booking rail is the source of truth for time. Even a
+                // very short meeting keeps its exact start/end pixel height.
+                ForEach(timelineBookings) { item in
+                    let index = item.sourceIndex
+                    let booking = item.booking
+                    if let position = bookingPosition(booking) {
+                        let style = bookingStyle(at: index)
+                        Button { onSelect(booking) } label: {
+                            MeetingTimelineBlock(
+                                booking: booking,
+                                style: style,
+                                density: MeetingTimelineDensity(height: position.height)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(booking.id.isEmpty)
+                        .accessibilityLabel(booking.id.isEmpty
+                            ? "Khung giờ đã được đặt"
+                            : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title)")
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .frame(height: position.height, alignment: .topLeading)
+                        .offset(y: position.top)
+                        .zIndex(1)
+                    }
+                }
+
+                // Tiny labels are laid out independently from their exact-time
+                // rails. Two columns plus collision resolution keep adjacent
+                // 5–15 minute meetings readable without inflating duration.
+                MeetingTinyLabelsOverlay(placements: tinyLabelPlacements)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: timelineHeight)
+                    .allowsHitTesting(false)
+                    .zIndex(2)
+
+                if let currentOffset {
+                    Rectangle()
+                        .fill(.red)
+                        .frame(height: 2)
+                        .offset(y: currentOffset)
+                        .zIndex(3)
+
+                    Text(MeetingPresentation.clock.string(from: Date()))
+                        .font(.caption2.bold().monospacedDigit())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(.red)
+                        .offset(y: currentOffset - 13)
+                        .zIndex(4)
+                }
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: timelineHeight,
+                alignment: .topLeading
+            )
+            .clipped()
+        }
+    }
+
+    private var timelineBookings: [TimelineBookingItem] {
+        var seenServerBookingIDs = Set<String>()
+        return bookings.enumerated().compactMap { index, booking in
+            // The schedule endpoint can briefly contain a cached and a fresh
+            // representation of one server booking. Render it once; private
+            // blocks intentionally have no server id and remain distinct.
+            if !booking.id.isEmpty, !seenServerBookingIDs.insert(booking.id).inserted {
+                return nil
+            }
+            return TimelineBookingItem(sourceIndex: index, booking: booking)
+        }
+    }
+
+    private var tinyLabelPlacements: [MeetingTinyLabelPlacement] {
+        let entries: [(item: TimelineBookingItem, top: CGFloat, height: CGFloat)] = timelineBookings.compactMap { item in
+            guard let position = bookingPosition(item.booking) else { return nil }
+            guard case .tiny = MeetingTimelineDensity(height: position.height) else { return nil }
+            return (item: item, top: position.top, height: position.height)
+        }
+        .sorted { lhs, rhs in
+            if lhs.top == rhs.top {
+                return lhs.item.sourceIndex < rhs.item.sourceIndex
+            }
+            return lhs.top < rhs.top
+        }
+
+        let labelHeight = MeetingTinyLabelMetrics.height
+        let spacing = MeetingTinyLabelMetrics.spacing
+        let inset = MeetingTinyLabelMetrics.verticalInset
+        let latestTop = max(inset, timelineHeight - inset - labelHeight)
+        var leftNext = inset
+        var rightNext = inset
+        var placements: [MeetingTinyLabelPlacement] = []
+        placements.reserveCapacity(entries.count)
+
+        for (order, entry) in entries.enumerated() {
+            let eventCenter = entry.top + entry.height / 2
+            let desiredTop = min(
+                max(eventCenter - labelHeight / 2, inset),
+                latestTop
+            )
+            let leftTop = max(desiredTop, leftNext)
+            let rightTop = max(desiredTop, rightNext)
+            let leftCost = leftTop - desiredTop
+            let rightCost = rightTop - desiredTop
+            let preferred: MeetingTinyLabelSide = order.isMultiple(of: 2) ? .left : .right
+
+            let side: MeetingTinyLabelSide
+            if abs(leftCost - rightCost) < 0.5 {
+                side = preferred
+            } else {
+                side = leftCost < rightCost ? .left : .right
+            }
+
+            let labelTop = side == .left ? leftTop : rightTop
+            if side == .left {
+                leftNext = labelTop + labelHeight + spacing
+            } else {
+                rightNext = labelTop + labelHeight + spacing
+            }
+
+            placements.append(
+                MeetingTinyLabelPlacement(
+                    id: entry.item.id,
+                    booking: entry.item.booking,
+                    style: bookingStyle(at: entry.item.sourceIndex),
+                    side: side,
+                    eventCenterY: eventCenter,
+                    labelTop: labelTop
+                )
+            )
+        }
+
+        return keepPlacementsInsideTimeline(placements)
+    }
+
+    private func keepPlacementsInsideTimeline(
+        _ placements: [MeetingTinyLabelPlacement]
+    ) -> [MeetingTinyLabelPlacement] {
+        var result = placements
+        let labelHeight = MeetingTinyLabelMetrics.height
+        let inset = MeetingTinyLabelMetrics.verticalInset
+        let maxBottom = timelineHeight - inset
+
+        for side in [MeetingTinyLabelSide.left, .right] {
+            let indices = result.indices.filter { result[$0].side == side }
+            guard let firstIndex = indices.first, let lastIndex = indices.last else { continue }
+
+            let overflow = result[lastIndex].labelTop + labelHeight - maxBottom
+            if overflow > 0 {
+                for index in indices {
+                    result[index].labelTop -= overflow
+                }
+            }
+
+            let underflow = inset - result[firstIndex].labelTop
+            if underflow > 0 {
+                for index in indices {
+                    result[index].labelTop += underflow
+                }
+            }
+        }
+
+        return result
+    }
+
+    private var currentOffset: CGFloat? {
+        guard MeetingPresentation.calendar.isDateInToday(date) else { return nil }
+        let now = Date()
+        let hour = MeetingPresentation.calendar.component(.hour, from: now)
+        guard hour >= firstHour && hour <= lastHour else { return nil }
+        let minute = MeetingPresentation.calendar.component(.minute, from: now)
+        return CGFloat(hour - firstHour) * hourHeight + CGFloat(minute) / 60 * hourHeight
+    }
+
+    private func bookingPosition(_ booking: MeetingBooking) -> (top: CGFloat, height: CGFloat)? {
+        guard let start = MeetingPresentation.date(from: booking.startsAt),
+              let end = MeetingPresentation.date(from: booking.endsAt) else { return nil }
+
+        let startMinute = MeetingPresentation.calendar.component(.hour, from: start) * 60
+            + MeetingPresentation.calendar.component(.minute, from: start)
+        let endMinute = MeetingPresentation.calendar.component(.hour, from: end) * 60
+            + MeetingPresentation.calendar.component(.minute, from: end)
+        let visibleStart = max(startMinute, firstHour * 60)
+        let visibleEnd = min(endMinute, (lastHour + 1) * 60)
+
+        guard visibleEnd > visibleStart else { return nil }
+
+        return (
+            CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
+            // Do not inflate short meetings for touch-target convenience:
+            // at 72px/hour, a 15-minute meeting is exactly 18px tall.
+            max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 1)
+        )
+    }
+
+    private func bookingStyle(at index: Int) -> MeetingTimelineBookingStyle {
+        let palette: [MeetingTimelineBookingStyle] = [
+            .init(fill: Color(red: 0.98, green: 0.82, blue: 0.80), accent: Color(red: 0.83, green: 0.22, blue: 0.18), foreground: Color(red: 0.39, green: 0.08, blue: 0.06)),
+            .init(fill: Color(red: 0.82, green: 0.86, blue: 1.00), accent: Color(red: 0.19, green: 0.34, blue: 0.82), foreground: Color(red: 0.06, green: 0.14, blue: 0.42)),
+            .init(fill: Color(red: 0.79, green: 0.94, blue: 0.86), accent: Color(red: 0.05, green: 0.53, blue: 0.31), foreground: Color(red: 0.02, green: 0.29, blue: 0.15)),
+            .init(fill: Color(red: 1.00, green: 0.90, blue: 0.68), accent: Color(red: 0.80, green: 0.40, blue: 0.03), foreground: Color(red: 0.39, green: 0.18, blue: 0.01)),
+            .init(fill: Color(red: 0.91, green: 0.82, blue: 0.99), accent: Color(red: 0.48, green: 0.21, blue: 0.74), foreground: Color(red: 0.24, green: 0.08, blue: 0.40)),
+            .init(fill: Color(red: 0.77, green: 0.92, blue: 0.96), accent: Color(red: 0.03, green: 0.48, blue: 0.64), foreground: Color(red: 0.02, green: 0.24, blue: 0.34))
+        ]
+        return palette[index % palette.count]
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTimelineBlock: View {
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let density: MeetingTimelineDensity
+
+    var body: some View {
+        switch density {
+        case .tiny:
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(style.accent)
+                    .frame(width: 4)
+
+                Rectangle()
+                    .fill(style.fill.opacity(0.78))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay {
+                Rectangle()
+                    .stroke(style.accent.opacity(0.32), lineWidth: 0.7)
+            }
+
+        case .compact, .full:
+            HStack(spacing: 8) {
+                Rectangle()
+                    .fill(style.accent)
+                    .frame(width: 4)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                        .font(.caption.bold())
+                        .lineLimit(1)
+
+                    if density == .full {
+                        Text(MeetingPresentation.range(booking))
+                            .font(.caption2.monospacedDigit())
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(style.foreground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(style.fill)
+            .overlay { Rectangle().stroke(style.accent.opacity(0.30), lineWidth: 1) }
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTinyLabelsOverlay: View {
+    let placements: [MeetingTinyLabelPlacement]
+
+    var body: some View {
+        GeometryReader { proxy in
+            let usableWidth = max(
+                120,
+                proxy.size.width
+                    - MeetingTinyLabelMetrics.horizontalInset * 2
+                    - MeetingTinyLabelMetrics.columnGap
+            )
+            let labelWidth = min(138, usableWidth / 2)
+
+            ZStack(alignment: .topLeading) {
+                ForEach(placements) { placement in
+                    let labelX = placement.side == .left
+                        ? MeetingTinyLabelMetrics.horizontalInset
+                        : max(
+                            MeetingTinyLabelMetrics.horizontalInset,
+                            proxy.size.width
+                                - MeetingTinyLabelMetrics.horizontalInset
+                                - labelWidth
+                        )
+                    let connectorX = max(5, labelX - 8)
+                    let anchorY = min(
+                        max(placement.eventCenterY, 3),
+                        max(3, proxy.size.height - 3)
+                    )
+                    let labelCenterY = placement.labelTop + MeetingTinyLabelMetrics.height / 2
+
+                    Path { path in
+                        path.move(to: CGPoint(x: connectorX, y: anchorY))
+                        path.addLine(to: CGPoint(x: labelX, y: labelCenterY))
+                    }
+                    .stroke(
+                        placement.style.accent.opacity(0.78),
+                        style: StrokeStyle(lineWidth: 1, lineCap: .round)
+                    )
+
+                    Circle()
+                        .fill(placement.style.accent)
+                        .frame(width: 5, height: 5)
+                        .position(x: connectorX, y: anchorY)
+
+                    MeetingTinyLabel(
+                        booking: placement.booking,
+                        style: placement.style,
+                        width: labelWidth
+                    )
+                    .offset(x: labelX, y: placement.labelTop)
+                }
+            }
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTinyLabel: View {
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let width: CGFloat
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+                .font(.system(size: 10, weight: .bold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 2)
+
+            Text(MeetingPresentation.range(booking))
+                .font(.system(size: 8.5, weight: .medium, design: .monospaced))
+                .foregroundStyle(style.foreground.opacity(0.72))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+        }
+        .foregroundStyle(style.foreground)
+        .padding(.horizontal, 8)
+        .frame(width: width, height: MeetingTinyLabelMetrics.height, alignment: .leading)
+        .background(style.fill.opacity(0.98), in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(style.accent.opacity(0.34), lineWidth: 0.7)
+        }
+        .shadow(color: .black.opacity(0.07), radius: 2.5, y: 1)
+    }
+}'''
+
+          text = text[:start] + replacement + text[end:]
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Verify patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'MeetingTinyLabelsOverlay' apps/ios/App/App/EmployeeViews.swift
+          grep -q 'keepPlacementsInsideTimeline' apps/ios/App/App/EmployeeViews.swift
+          if grep -q 'tinyLane:' apps/ios/App/App/EmployeeViews.swift; then
+            echo 'Old tinyLane layout still present' >&2
+            exit 1
+          fi
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/ios/App/App/EmployeeViews.swift
+          git commit -m 'Lay out short meeting labels without collisions'
+          git push origin HEAD:chatgpt/tiny-label-layout-v2
