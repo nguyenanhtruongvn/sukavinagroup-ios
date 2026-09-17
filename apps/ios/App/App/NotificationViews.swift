@@ -471,7 +471,16 @@ private struct MeetingNotificationDetail: View {
                         }
                         Text(title.isEmpty ? "Cuộc họp" : title)
                             .font(.system(size: 27, weight: .bold, design: .rounded))
-                        Label(notification.type == "meeting_reminder" ? "Hãy chuẩn bị tham gia đúng giờ" : notification.type == "meeting_cancelled" ? "Lịch họp này đã được hủy" : "Bạn được mời tham dự cuộc họp", systemImage: "person.2.fill")
+                        Label(
+                            notification.type == "meeting_reminder"
+                                ? "Hãy chuẩn bị tham gia đúng giờ"
+                                : notification.type == "meeting_cancelled"
+                                    ? "Lịch họp này đã được hủy"
+                                    : isOrganizer
+                                        ? "Bạn là người tổ chức cuộc họp"
+                                        : "Bạn được mời tham dự cuộc họp",
+                            systemImage: isOrganizer ? "person.badge.key.fill" : "person.2.fill"
+                        )
                             .font(.subheadline.weight(.semibold)).foregroundStyle(accent)
                     }
                     .padding(20).frame(maxWidth: .infinity, alignment: .leading)
@@ -598,7 +607,9 @@ private struct MeetingNotificationDetail: View {
 
     @MainActor
     private func submit(_ details: MeetingBookingDetails, action: String) async {
+        guard !isSubmitting else { return }
         isSubmitting = true
+        defer { isSubmitting = false }
         actionError = await session.performMeetingControl(
             bookingID: details.id,
             action: action,
@@ -612,7 +623,6 @@ private struct MeetingNotificationDetail: View {
                 }
             }
         }
-        isSubmitting = false
     }
 }
 
