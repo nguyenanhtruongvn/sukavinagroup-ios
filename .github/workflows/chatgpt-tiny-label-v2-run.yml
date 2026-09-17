@@ -1,0 +1,35 @@
+name: ChatGPT tiny meeting labels v2
+
+on:
+  push:
+    branches:
+      - chatgpt/tiny-label-layout-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/tiny-label-layout-v2
+          fetch-depth: 0
+
+      - name: Patch EmployeeViews.swift
+        run: python3 .github/scripts/patch_tiny_label_v2.py
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'No changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/ios/App/App/EmployeeViews.swift
+          git commit -m 'Lay out short meeting labels without collisions'
+          git push origin HEAD:chatgpt/tiny-label-layout-v2
