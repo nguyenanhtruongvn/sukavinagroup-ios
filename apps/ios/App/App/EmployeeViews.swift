@@ -134,6 +134,16 @@ struct MeetingRoomsView: View {
         }
     }
 
+    private func refreshForCalendarChange() {
+        let today = MeetingPresentation.calendar.startOfDay(for: .now)
+        let selectedDay = MeetingPresentation.calendar.startOfDay(for: day)
+        if selectedDay < today {
+            day = .now
+        } else if isActive {
+            Task { await session.refreshMeetingSchedule(date: day) }
+        }
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -187,7 +197,7 @@ struct MeetingRoomsView: View {
             .onChange(of: day) { _, date in
                 Task { await session.refreshMeetingSchedule(date: date) }
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSCalendar.dayChangedNotification)) { _ in
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSCalendarDayChanged)) { _ in
                 refreshForCalendarChange()
             }
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
@@ -237,16 +247,6 @@ private struct MeetingRoomOrderDropDelegate: DropDelegate {
         )
         withAnimation(.snappy) {
             saveOrder(reordered)
-        }
-    }
-
-    private func refreshForCalendarChange() {
-        let today = MeetingPresentation.calendar.startOfDay(for: .now)
-        let selectedDay = MeetingPresentation.calendar.startOfDay(for: day)
-        if selectedDay < today {
-            day = .now
-        } else if isActive {
-            Task { await session.refreshMeetingSchedule(date: day) }
         }
     }
 
