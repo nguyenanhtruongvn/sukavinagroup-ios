@@ -694,6 +694,30 @@ private struct MeetingTinyLabelPlacement: Identifiable {
 }
 
 @available(iOS 17.0, *)
+private enum MeetingTinyLabelSide: Equatable {
+    case left, right
+}
+
+@available(iOS 17.0, *)
+private enum MeetingTinyLabelMetrics {
+    static let height: CGFloat = 24
+    static let spacing: CGFloat = 4
+    static let verticalInset: CGFloat = 3
+    static let horizontalInset: CGFloat = 14
+    static let columnGap: CGFloat = 16
+}
+
+@available(iOS 17.0, *)
+private struct MeetingTinyLabelPlacement: Identifiable {
+    let id: String
+    let booking: MeetingBooking
+    let style: MeetingTimelineBookingStyle
+    let side: MeetingTinyLabelSide
+    let eventCenterY: CGFloat
+    var labelTop: CGFloat
+}
+
+@available(iOS 17.0, *)
 private struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
     let date: Date
