@@ -112,6 +112,7 @@ enum MeetingPresentation {
 @available(iOS 17.0, *)
 struct MeetingRoomsView: View {
     @EnvironmentObject private var session: SessionStore
+    @Environment(\.scenePhase) private var scenePhase
     let isActive: Bool
     @State private var day = Date()
     @State private var bookingRoom: MeetingRoom?
@@ -186,6 +187,16 @@ struct MeetingRoomsView: View {
             .onChange(of: day) { _, date in
                 Task { await session.refreshMeetingSchedule(date: date) }
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSCalendar.dayChangedNotification)) { _ in
+                refreshForCalendarChange()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+                refreshForCalendarChange()
+            }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                refreshForCalendarChange()
+            }
             .refreshable {
                 await session.refreshMeetingSchedule(date: day)
             }
@@ -226,6 +237,16 @@ private struct MeetingRoomOrderDropDelegate: DropDelegate {
         )
         withAnimation(.snappy) {
             saveOrder(reordered)
+        }
+    }
+
+    private func refreshForCalendarChange() {
+        let today = MeetingPresentation.calendar.startOfDay(for: .now)
+        let selectedDay = MeetingPresentation.calendar.startOfDay(for: day)
+        if selectedDay < today {
+            day = .now
+        } else if isActive {
+            Task { await session.refreshMeetingSchedule(date: day) }
         }
     }
 
