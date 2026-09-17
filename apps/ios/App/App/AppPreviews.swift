@@ -29,6 +29,7 @@ struct SukavinaPreviewContainer: View {
                 employeeCode: "SKV-001", fullName: "Nguyễn Văn A", role: "Nhân sự vận hành",
                 remainingLeaveDays: 8, attendanceStatus: "Đã ghi nhận", payrollStatus: "Đã cập nhật",
                 name: "Nguyễn Văn A", workStartTime: "07:30", workEndTime: "16:30",
+                attendanceCheckIn: nil, attendanceCheckOut: nil, attendanceClassification: "missing",
                 attendanceRecords: [], contentItems: []
             )
         }

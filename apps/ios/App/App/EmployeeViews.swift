@@ -2638,8 +2638,8 @@ struct DashboardView: View {
 
 
     private var checkInTime: String {
-        guard let record = session.dashboard?.attendanceRecords?.last else { return "--:--" }
-        return attendanceTime(record.punchedAt)
+        guard let value = session.dashboard?.attendanceCheckIn else { return "--:--" }
+        return attendanceTime(value)
     }
 
 
@@ -2650,9 +2650,8 @@ struct DashboardView: View {
 
 
     private var checkOutTime: String {
-        guard let records = session.dashboard?.attendanceRecords, records.count > 1,
-              let record = records.first else { return "--:--" }
-        return attendanceTime(record.punchedAt)
+        guard let value = session.dashboard?.attendanceCheckOut else { return "--:--" }
+        return attendanceTime(value)
     }
 }
 

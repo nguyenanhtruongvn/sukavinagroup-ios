@@ -676,7 +676,7 @@ struct RequestComposer: View {
         formatter.dateFormat = format
         return formatter.string(from: date)
     }
-    @ViewBuilder private func attendanceTimeCard(title: String, value: String?, selection: Binding<Date>) -> some View {
+    @ViewBuilder private func attendanceTimeCard(title: String, value: String?, missingPrompt: String, selection: Binding<Date>) -> some View {
         let compact = dynamicTypeSize <= .large
         VStack(alignment: .leading, spacing: compact ? 4 : 6) {
             Text(title).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
@@ -685,7 +685,7 @@ struct RequestComposer: View {
                 .monospacedDigit()
                 .foregroundStyle(value == nil ? AppTheme.red : .green)
             if value == nil {
-                DatePicker("Nhập giờ", selection: selection, displayedComponents: .hourAndMinute)
+                DatePicker(missingPrompt, selection: selection, displayedComponents: .hourAndMinute)
                     .labelsHidden()
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
@@ -797,13 +797,13 @@ struct RequestComposer: View {
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(spacing: 10) {
-                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, selection: $from)
-                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, selection: $to)
+                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: $from)
+                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: $to)
                                     }
                                 } else {
                                     HStack(spacing: 10) {
-                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, selection: $from)
-                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, selection: $to)
+                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: $from)
+                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: $to)
                                     }
                                 }
                             } else {
@@ -819,6 +819,19 @@ struct RequestComposer: View {
                                     }
                                 }
                                 Text("Chưa có dữ liệu: nhập cả giờ vào và giờ ra để gửi yêu cầu bổ sung.").foregroundStyle(AppTheme.muted)
+                            }
+                            if attendanceDay?.classification == "checkout_only" {
+                                Text("Đã nhận diện lượt chấm công buổi chiều. Chỉ cần bổ sung giờ vào.")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(AppTheme.red)
+                            } else if attendanceDay?.classification == "checkin_only" {
+                                Text("Đã nhận diện lượt chấm công buổi sáng. Chỉ cần bổ sung giờ ra.")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(AppTheme.red)
+                            } else if attendanceDay?.classification == "ambiguous" {
+                                Text("Lượt chấm công ở giữa ca; hãy xác nhận lại giờ vào và giờ ra trước khi gửi.")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(.orange)
                             }
                             Text("Giờ thiếu chỉ được cập nhật sau khi đơn được duyệt.").font(.footnote).foregroundStyle(AppTheme.muted)
                         }

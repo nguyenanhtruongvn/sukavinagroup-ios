@@ -700,7 +700,11 @@ final class SessionStore: ObservableObject {
            let newest = records.filter({ !known.contains($0.id) }).max(by: { $0.punchedAt < $1.punchedAt }) {
             let ordered = records.sorted { $0.punchedAt < $1.punchedAt }
             let position = (ordered.firstIndex(where: { $0.id == newest.id }) ?? 0) + 1
-            let isCheckIn = position % 2 == 1
+            // A lone afternoon biometric punch is a checkout, not a first
+            // check-in.  The API classifies this from the assigned shift.
+            let isCheckIn = fresh.attendanceClassification == "checkout_only"
+                ? false
+                : position % 2 == 1
             let date = ISO8601DateFormatter().date(from: newest.punchedAt) ?? Date()
             if !localAttendanceNotifications.contains(where: { $0.id == "local-attendance-\(newest.id)" }) {
                 localAttendanceNotifications.insert(RequestNotification(

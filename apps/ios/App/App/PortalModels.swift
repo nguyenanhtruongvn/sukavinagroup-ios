@@ -471,6 +471,9 @@ struct Dashboard: Codable {
     let name: String
     let workStartTime: String?
     let workEndTime: String?
+    let attendanceCheckIn: String?
+    let attendanceCheckOut: String?
+    let attendanceClassification: String?
     let attendanceRecords: [AttendanceRecord]?
     let contentItems: [ContentItem]
 }
@@ -505,10 +508,9 @@ enum AttendanceWidgetBridge {
     }
 
     static func update(from dashboard: Dashboard) {
-        let records = (dashboard.attendanceRecords ?? []).sorted { $0.punchedAt < $1.punchedAt }
         let state = State(
-            checkIn: records.first?.punchedAt,
-            checkOut: records.count > 1 ? records.last?.punchedAt : nil
+            checkIn: dashboard.attendanceCheckIn,
+            checkOut: dashboard.attendanceCheckOut
         )
         guard let data = try? JSONEncoder().encode(state) else { return }
         let defaults = UserDefaults(suiteName: appGroup)
@@ -554,6 +556,7 @@ struct AttendanceDay: Codable, Identifiable {
     let date: String
     let checkIn: String?
     let checkOut: String?
+    let classification: String?
     let punchCount: Int
     let status: String?
     let statuses: [String]?
