@@ -599,18 +599,19 @@ private struct ExtensionConfirmationControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Label("Gia hạn thêm \(context.state.extensionMinutes) phút", systemImage: "clock.badge.plus")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.green)
-            if let error = context.state.extensionError, !error.isEmpty {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.86))
-                    .lineLimit(2)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 7)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(red: 0.50, green: 0.04, blue: 0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            HStack(spacing: 8) {
+                Label("Gia hạn thêm \(context.state.extensionMinutes) phút", systemImage: "clock.badge.plus")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.green)
+                    .lineLimit(1)
+                Spacer(minLength: 4)
+                if let error = context.state.extensionError, !error.isEmpty {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
             }
             // Live Activities have a constrained lock-screen height. Keep all
             // confirmation controls on one row so their labels are never

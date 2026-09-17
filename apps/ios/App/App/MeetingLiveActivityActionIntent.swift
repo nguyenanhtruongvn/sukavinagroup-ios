@@ -259,11 +259,30 @@ private enum MeetingLiveActivityAction {
         for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
             let maximum = activity.attributes.maximumExtensionMinutes
             guard maximum >= 5 else { continue }
-            let selected = min(max(activity.content.state.extensionMinutes + delta, 5), maximum)
+            let proposed = activity.content.state.extensionMinutes + delta
+            let selected = min(max(proposed, 5), maximum)
+            // The server supplied this ceiling when the warning was created.
+            // Give immediate feedback at the +5 tap instead of waiting for the
+            // confirmation request that would be rejected for the same reason.
+            let extensionError: String?
+            if delta > 0, proposed > maximum {
+                let reason = activity.attributes.extensionLimitReason
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                extensionError = reason.isEmpty
+                    ? "Đã đạt giới hạn gia hạn"
+                    : reason.replacingOccurrences(
+                        of: "cuộc họp tiếp theo lúc ",
+                        with: "Họp sau ",
+                        options: [.caseInsensitive]
+                    )
+            } else {
+                extensionError = nil
+            }
             let state = MeetingLiveActivityAttributes.ContentState(
                 endsAt: activity.content.state.endsAt,
                 extensionMinutes: selected,
-                isChoosingExtension: true
+                isChoosingExtension: true,
+                extensionError: extensionError
             )
             await activity.update(ActivityContent(state: state, staleDate: state.endsAt))
         }
