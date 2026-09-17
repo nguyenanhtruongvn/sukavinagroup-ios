@@ -3122,7 +3122,15 @@ struct ModernAttendanceHistoryView: View {
         formatter.dateFormat = "'Tháng' M / yyyy"; return formatter.string(from: date)
     }
     private func dayStatuses(_ day: AttendanceDay) -> [String] {
-        day.statuses ?? day.status.map { [$0] } ?? []
+        let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
+        // A cached or older API response can still carry `present` alongside
+        // one punch. Attendance completeness takes precedence for workdays.
+        let exemptStatuses: Set<String> = ["leave", "weekend", "overtime", "upcoming", "not-started", "absent"]
+        if !serverStatuses.isDisjoint(with: exemptStatuses) { return serverStatuses }
+        if day.checkIn == nil, day.checkOut != nil { return ["missing_checkin"] }
+        if day.checkIn != nil, day.checkOut == nil { return ["missing_checkout"] }
+        if day.classification == "ambiguous" { return ["incomplete"] }
+        return serverStatuses
     }
     @ViewBuilder private func dayBackground(_ day: AttendanceDay) -> some View {
         let statuses = dayStatuses(day)
@@ -3138,6 +3146,7 @@ struct ModernAttendanceHistoryView: View {
     private func dayColor(_ status: String?) -> Color {
         switch status {
         case "present": return .green.opacity(0.32)
+        case "missing_checkin", "missing_checkout", "incomplete": return .orange.opacity(0.34)
         case "late": return .orange.opacity(0.34)
         case "early": return EmployeeRequestKind.early.color.opacity(0.36)
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
@@ -3153,6 +3162,9 @@ struct ModernAttendanceHistoryView: View {
     private func statusTitle(_ status: String?) -> String {
         switch status {
         case "present": return "Đủ công"
+        case "missing_checkin": return "Thiếu giờ vào"
+        case "missing_checkout": return "Thiếu giờ ra"
+        case "incomplete": return "Thiếu chấm công"
         case "late": return "Đi trễ"
         case "early": return "Về sớm"
         case "leave": return "Nghỉ phép"
