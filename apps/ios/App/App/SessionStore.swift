@@ -276,8 +276,9 @@ final class SessionStore: ObservableObject {
     }
 
     private func saveRequestNotificationsCache(_ values: [RequestNotification]) {
+        let inboxValues = values.filter { !isAttendanceNotificationType($0.type) }
         guard let employeeCode = cacheEmployeeCode,
-              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: values)) else { return }
+              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: inboxValues)) else { return }
         UserDefaults.standard.set(data, forKey: requestNotificationsCachePrefix + employeeCode)
     }
 
@@ -692,43 +693,27 @@ final class SessionStore: ObservableObject {
         let employeeCode = fresh.employeeCode.isEmpty ? (profile?.employeeCode ?? "") : fresh.employeeCode
         let key = knownAttendancePrefix + employeeCode
         let defaults = UserDefaults.standard
-        loadLocalAttendanceNotifications(employeeCode)
-        let hasBaseline = defaults.object(forKey: key) != nil
-        let known = Set(defaults.stringArray(forKey: key) ?? [])
         let records = fresh.attendanceRecords ?? []
-        if hasBaseline,
-           let newest = records.filter({ !known.contains($0.id) }).max(by: { $0.punchedAt < $1.punchedAt }) {
-            let ordered = records.sorted { $0.punchedAt < $1.punchedAt }
-            let position = (ordered.firstIndex(where: { $0.id == newest.id }) ?? 0) + 1
-            // A lone afternoon biometric punch is a checkout, not a first
-            // check-in.  The API classifies this from the assigned shift.
-            let isCheckIn = fresh.attendanceClassification == "checkout_only"
-                ? false
-                : position % 2 == 1
-            let date = ISO8601DateFormatter().date(from: newest.punchedAt) ?? Date()
-            if !localAttendanceNotifications.contains(where: { $0.id == "local-attendance-\(newest.id)" }) {
-                localAttendanceNotifications.insert(RequestNotification(
-                    id: "local-attendance-\(newest.id)",
-                    type: isCheckIn ? "attendance_check_in" : "attendance_check_out",
-                    title: isCheckIn ? "Đã chấm công vào" : "Đã chấm công ra",
-                    message: "Hệ thống đã ghi nhận \(isCheckIn ? "giờ vào" : "giờ ra") lúc \(attendanceNotificationTime(newest.punchedAt)).",
-                    requestId: nil,
-                    read: false,
-                    createdAt: date
-                ), at: 0)
-                persistLocalAttendanceNotifications(employeeCode)
-            }
-            // Attendance events already arrive as APNs alerts from the server.
-            // Keep the in-app fallback above, but do not show a second local
-            // banner when the dashboard refreshes after the user opens it.
+
+        // Attendance alerts are delivered by APNs and must stay outside the
+        // in-app Notifications inbox. Remove the legacy local inbox bridge so
+        // upgraded installs do not keep showing old attendance rows.
+        localAttendanceNotifications = []
+        if !employeeCode.isEmpty {
+            defaults.removeObject(forKey: localAttendanceNotificationsPrefix + employeeCode)
         }
         defaults.set(records.map(\.id), forKey: key)
     }
 
+    func isAttendanceNotificationType(_ type: String) -> Bool {
+        type == "attendance_check_in" || type == "attendance_check_out"
+    }
+
     func mergedRequestNotifications(_ server: [RequestNotification]) -> [RequestNotification] {
-        (localAttendanceNotifications.filter { local in
-            !server.contains { $0.type == local.type && $0.message == local.message }
-        } + server).sorted { $0.createdAt > $1.createdAt }
+        clearLocalAttendanceNotifications()
+        return server
+            .filter { !isAttendanceNotificationType($0.type) }
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     func isLocalAttendanceNotification(_ item: RequestNotification) -> Bool { item.id.hasPrefix("local-attendance-") }
@@ -921,13 +906,14 @@ final class SessionStore: ObservableObject {
     }
 
     func updateRequestUnreadCount(_ values: [RequestNotification]) {
-        latestRequestNotifications = values
-        saveRequestNotificationsCache(values)
-        requestUnreadCount = values.filter { !$0.read }.count
+        let inboxValues = mergedRequestNotifications(values)
+        latestRequestNotifications = inboxValues
+        saveRequestNotificationsCache(inboxValues)
+        requestUnreadCount = inboxValues.filter { !$0.read }.count
         let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
         let acknowledged = UserDefaults.standard.stringArray(forKey: acknowledgedNotificationBadgePrefix + employeeCode)
         let acknowledgedAt = UserDefaults.standard.object(forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode) as? Date
-        let requestBadgeCount = values.filter { notification in
+        let requestBadgeCount = inboxValues.filter { notification in
             guard !notification.read else { return false }
             if acknowledged?.contains(notification.id) == true { return false }
             return acknowledgedAt == nil || notification.createdAt > acknowledgedAt!
