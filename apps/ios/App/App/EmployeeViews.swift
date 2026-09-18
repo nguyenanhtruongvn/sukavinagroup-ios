@@ -808,8 +808,8 @@ private struct MeetingTimeline: View {
                     } else if canUse(alternateLane) {
                         laneIndex = alternateLane
                     } else {
-                        let preferredBottom = laneBottoms[preferredLane] ?? -.greatestFiniteMagnitude
-                        let alternateBottom = laneBottoms[alternateLane] ?? -.greatestFiniteMagnitude
+                        let preferredBottom = laneBottoms[preferredLane] ?? -CGFloat.greatestFiniteMagnitude
+                        let alternateBottom = laneBottoms[alternateLane] ?? -CGFloat.greatestFiniteMagnitude
                         laneIndex = preferredBottom <= alternateBottom ? preferredLane : alternateLane
                     }
 
