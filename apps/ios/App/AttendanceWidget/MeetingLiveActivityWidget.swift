@@ -6,21 +6,28 @@ import WidgetKit
 struct MeetingLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MeetingLiveActivityAttributes.self) { context in
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.75))
-                        .frame(width: 8, height: 8)
-                    Text(context.attributes.title)
-                        .font(.headline)
-                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.3.fill")
+                        .foregroundStyle(.green)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(context.attributes.title)
+                            .font(.headline)
+                            .lineLimit(1)
+
+                        Text(context.attributes.roomName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
                     Spacer()
+
                     Text(context.state.endsAt, style: .timer)
                         .font(.caption.monospacedDigit())
                 }
-                Text(context.attributes.roomName)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+
                 ProgressView(value: progress(context))
                     .tint(.green)
             }
@@ -32,30 +39,37 @@ struct MeetingLiveActivityWidget: Widget {
                     Image(systemName: "person.3.fill")
                         .foregroundStyle(.green)
                 }
+
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(spacing: 3) {
+                    VStack(spacing: 2) {
                         Text(context.attributes.title)
                             .font(.headline)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+
                         Text(context.attributes.roomName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
+
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .timer)
                         .font(.caption.monospacedDigit())
                 }
+
                 DynamicIslandExpandedRegion(.bottom) {
                     ProgressView(value: progress(context))
                         .tint(.green)
                 }
             } compactLeading: {
                 Image(systemName: "person.3.fill")
+                    .font(.caption)
             } compactTrailing: {
                 Text(context.state.endsAt, style: .timer)
                     .font(.caption2.monospacedDigit())
+                    .minimumScaleFactor(0.7)
             } minimal: {
                 Image(systemName: "calendar")
             }
