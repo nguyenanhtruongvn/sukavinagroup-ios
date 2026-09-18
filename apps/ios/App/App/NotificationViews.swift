@@ -33,7 +33,10 @@ struct NotificationsView: View {
     @State private var hiddenArticleIDs = Set<String>()
     @State private var isReloadingNotifications = false
     private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
-    private var totalUnread: Int { session.unreadCount + requestNotifications.filter { !$0.read }.count }
+    private var inboxRequestNotifications: [RequestNotification] {
+        requestNotifications.filter { !session.isAttendanceNotificationType($0.type) }
+    }
+    private var totalUnread: Int { session.unreadCount + inboxRequestNotifications.filter { !$0.read }.count }
     private var notificationCornerRadius: CGFloat {
         if #available(iOS 26.0, *) { return 20 }
         return 0
@@ -73,11 +76,11 @@ struct NotificationsView: View {
                     HStack {
                         Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
                         Spacer()
-                        if !requestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
+                        if !inboxRequestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
                     }
                     .listRowBackground(notificationPageBackground)
                     .listRowSeparator(.hidden)
-                    ForEach(requestNotifications) { item in
+                    ForEach(inboxRequestNotifications) { item in
                         Button { Task { await open(item) } } label: {
                           HStack(alignment: .top, spacing: 14) {
                             Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -157,7 +160,7 @@ struct NotificationsView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(notificationRowInsets)
                     }
-                    if items.isEmpty && requestNotifications.isEmpty {
+                    if items.isEmpty && inboxRequestNotifications.isEmpty {
                         ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
                             .listRowBackground(notificationPageBackground)
                             .listRowSeparator(.hidden)
@@ -272,6 +275,10 @@ struct NotificationsView: View {
 
     private func openPendingAPNsRouteIfNeeded() async {
         guard let route = notificationRouter.pendingRoute, session.token != nil else { return }
+        if session.isAttendanceNotificationType(route.type) {
+            notificationRouter.consume(route)
+            return
+        }
         if requestNotifications.isEmpty { await reloadNotifications() }
         guard let item = requestNotifications.first(where: {
             guard $0.type == route.type else { return false }
