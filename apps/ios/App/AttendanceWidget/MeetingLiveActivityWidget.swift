@@ -6,70 +6,66 @@ import WidgetKit
 struct MeetingLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MeetingLiveActivityAttributes.self) { context in
-            lockScreenView(context)
-                .activityBackgroundTint(.black.opacity(0.08))
-                .activitySystemActionForegroundColor(.primary)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.75))
+                        .frame(width: 8, height: 8)
+                    Text(context.attributes.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Spacer()
+                    Text(context.state.endsAt, style: .timer)
+                        .font(.caption.monospacedDigit())
+                }
+                Text(context.attributes.roomName)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                ProgressView(value: progress(context))
+                    .tint(.green)
+            }
+            .padding(14)
+            .activityBackgroundTint(Color.green.opacity(0.14))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Label("Họp", systemImage: "person.3.fill")
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(remaining(context.state.endsAt))
-                        .font(.caption.monospacedDigit())
+                    Image(systemName: "person.3.fill")
+                        .foregroundStyle(.green)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 3) {
                         Text(context.attributes.title)
                             .font(.headline)
                             .lineLimit(1)
                         Text(context.attributes.roomName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(context.state.endsAt, style: .timer)
+                        .font(.caption.monospacedDigit())
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     ProgressView(value: progress(context))
                         .tint(.green)
                 }
             } compactLeading: {
-                Image(systemName: "calendar")
+                Image(systemName: "person.3.fill")
             } compactTrailing: {
-                Text(remaining(context.state.endsAt))
-                    .font(.caption2)
+                Text(context.state.endsAt, style: .timer)
+                    .font(.caption2.monospacedDigit())
             } minimal: {
                 Image(systemName: "calendar")
             }
         }
     }
 
-    private func lockScreenView(_ context: ActivityViewContext<MeetingLiveActivityAttributes>) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "calendar.badge.clock")
-                Text(context.attributes.title)
-                    .bold()
-                Spacer()
-                Text(remaining(context.state.endsAt))
-            }
-            Text(context.attributes.roomName)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            ProgressView(value: progress(context))
-                .tint(.green)
-        }
-        .padding()
-    }
-
     private func progress(_ context: ActivityViewContext<MeetingLiveActivityAttributes>) -> Double {
-        let total = context.attributes.startsAt.distance(to: context.attributes.endsAt)
-        guard total > 0 else { return 0 }
-        let done = context.attributes.startsAt.distance(to: Date())
-        return min(max(done / total, 0), 1)
-    }
-
-    private func remaining(_ date: Date) -> String {
-        let minutes = max(0, Int(date.timeIntervalSinceNow / 60))
-        return "\(minutes)p"
+        let total = context.attributes.startsAt.distance(to: context.state.endsAt)
+        guard total > 0 else { return 1 }
+        let elapsed = context.attributes.startsAt.distance(to: Date())
+        return min(max(elapsed / total, 0), 1)
     }
 }
