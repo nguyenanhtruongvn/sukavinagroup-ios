@@ -593,19 +593,25 @@ private struct MeetingRoomScheduleSheet: View {
 @available(iOS 17.0, *)
 private struct MeetingTimelineBookingStyle {
     let fill: Color
-    let accent: Color
+    let border: Color
     let foreground: Color
+    let meta: Color
+    let line: Color
 }
 
 @available(iOS 17.0, *)
-private enum MeetingTimelineDensity {
-    case full, compact, tiny
+private enum MeetingScheduleLabelLane: Equatable {
+    case center, left, right
+}
 
-    init(height: CGFloat) {
-        if height >= 44 { self = .full }
-        else if height >= 24 { self = .compact }
-        else { self = .tiny }
-    }
+@available(iOS 17.0, *)
+private enum MeetingScheduleLabelMetrics {
+    static let height: CGFloat = 36
+    static let spacing: CGFloat = 8
+    static let verticalInset: CGFloat = 4
+    static let horizontalInset: CGFloat = 16
+    static let laneGap: CGFloat = 22
+    static let cornerRadius: CGFloat = 5
 }
 
 @available(iOS 17.0, *)
@@ -622,26 +628,21 @@ private struct TimelineBookingItem: Identifiable {
 }
 
 @available(iOS 17.0, *)
-private enum MeetingTinyLabelSide: Equatable {
-    case left, right
+private struct MeetingScheduleLabelCandidate {
+    let item: TimelineBookingItem
+    let startY: CGFloat
+    let endY: CGFloat
+    let idealTop: CGFloat
 }
 
 @available(iOS 17.0, *)
-private enum MeetingTinyLabelMetrics {
-    static let height: CGFloat = 24
-    static let spacing: CGFloat = 4
-    static let verticalInset: CGFloat = 3
-    static let horizontalInset: CGFloat = 14
-    static let columnGap: CGFloat = 16
-}
-
-@available(iOS 17.0, *)
-private struct MeetingTinyLabelPlacement: Identifiable {
+private struct MeetingScheduleLabelPlacement: Identifiable {
     let id: String
     let booking: MeetingBooking
     let style: MeetingTimelineBookingStyle
-    let side: MeetingTinyLabelSide
-    let eventCenterY: CGFloat
+    let lane: MeetingScheduleLabelLane
+    let startY: CGFloat
+    let endY: CGFloat
     var labelTop: CGFloat
 }
 
@@ -650,6 +651,7 @@ private struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
     let date: Date
     let onSelect: (MeetingBooking) -> Void
+
     private let firstHour = 6
     private let lastHour = 23
     private let hourHeight: CGFloat = 72
@@ -675,57 +677,30 @@ private struct MeetingTimeline: View {
                 VStack(spacing: 0) {
                     ForEach(Array(firstHour...lastHour), id: \.self) { _ in
                         Rectangle()
-                            .fill(Color.secondary.opacity(0.045))
+                            .fill(Color.secondary.opacity(0.035))
                             .frame(height: hourHeight)
                             .overlay(alignment: .bottom) {
                                 Rectangle()
-                                    .fill(Color.secondary.opacity(0.14))
+                                    .fill(Color.secondary.opacity(0.12))
                                     .frame(height: 1)
                             }
                     }
                 }
 
-                // The booking rail is the source of truth for time. Even a
-                // very short meeting keeps its exact start/end pixel height.
-                ForEach(timelineBookings) { item in
-                    let index = item.sourceIndex
-                    let booking = item.booking
-                    if let position = bookingPosition(booking) {
-                        let style = bookingStyle(at: index)
-                        Button { onSelect(booking) } label: {
-                            MeetingTimelineBlock(
-                                booking: booking,
-                                style: style,
-                                density: MeetingTimelineDensity(height: position.height)
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(booking.id.isEmpty)
-                        .accessibilityLabel(booking.id.isEmpty
-                            ? "Khung giờ đã được đặt"
-                            : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title)")
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .frame(height: position.height, alignment: .topLeading)
-                        .offset(y: position.top)
-                        .zIndex(1)
-                    }
-                }
-
-                // Tiny labels are laid out independently from their exact-time
-                // rails. Two columns plus collision resolution keep adjacent
-                // 5–15 minute meetings readable without inflating duration.
-                MeetingTinyLabelsOverlay(placements: tinyLabelPlacements)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: timelineHeight)
-                    .allowsHitTesting(false)
-                    .zIndex(2)
+                MeetingScheduleLabelsOverlay(
+                    placements: labelPlacements,
+                    onSelect: onSelect
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: timelineHeight)
+                .zIndex(2)
 
                 if let currentOffset {
                     Rectangle()
                         .fill(.red)
                         .frame(height: 2)
                         .offset(y: currentOffset)
-                        .zIndex(3)
+                        .zIndex(4)
 
                     Text(MeetingPresentation.clock.string(from: Date()))
                         .font(.caption2.bold().monospacedDigit())
@@ -734,7 +709,7 @@ private struct MeetingTimeline: View {
                         .padding(.vertical, 4)
                         .background(.red)
                         .offset(y: currentOffset - 13)
-                        .zIndex(4)
+                        .zIndex(5)
                 }
             }
             .frame(
@@ -749,9 +724,6 @@ private struct MeetingTimeline: View {
     private var timelineBookings: [TimelineBookingItem] {
         var seenServerBookingIDs = Set<String>()
         return bookings.enumerated().compactMap { index, booking in
-            // The schedule endpoint can briefly contain a cached and a fresh
-            // representation of one server booking. Render it once; private
-            // blocks intentionally have no server id and remain distinct.
             if !booking.id.isEmpty, !seenServerBookingIDs.insert(booking.id).inserted {
                 return nil
             }
@@ -759,85 +731,144 @@ private struct MeetingTimeline: View {
         }
     }
 
-    private var tinyLabelPlacements: [MeetingTinyLabelPlacement] {
-        let entries: [(item: TimelineBookingItem, top: CGFloat, height: CGFloat)] = timelineBookings.compactMap { item in
-            guard let position = bookingPosition(item.booking) else { return nil }
-            guard case .tiny = MeetingTimelineDensity(height: position.height) else { return nil }
-            return (item: item, top: position.top, height: position.height)
-        }
-        .sorted { lhs, rhs in
-            if lhs.top == rhs.top {
-                return lhs.item.sourceIndex < rhs.item.sourceIndex
-            }
-            return lhs.top < rhs.top
-        }
-
-        let labelHeight = MeetingTinyLabelMetrics.height
-        let spacing = MeetingTinyLabelMetrics.spacing
-        let inset = MeetingTinyLabelMetrics.verticalInset
+    private var labelPlacements: [MeetingScheduleLabelPlacement] {
+        let labelHeight = MeetingScheduleLabelMetrics.height
+        let spacing = MeetingScheduleLabelMetrics.spacing
+        let inset = MeetingScheduleLabelMetrics.verticalInset
         let latestTop = max(inset, timelineHeight - inset - labelHeight)
-        var leftNext = inset
-        var rightNext = inset
-        var placements: [MeetingTinyLabelPlacement] = []
-        placements.reserveCapacity(entries.count)
 
-        for (order, entry) in entries.enumerated() {
-            let eventCenter = entry.top + entry.height / 2
-            let desiredTop = min(
+        let candidates: [MeetingScheduleLabelCandidate] = timelineBookings.compactMap { item in
+            guard let position = bookingPosition(item.booking) else { return nil }
+            let startY = position.top
+            let endY = position.top + position.height
+            let eventCenter = (startY + endY) / 2
+            let idealTop = min(
                 max(eventCenter - labelHeight / 2, inset),
                 latestTop
             )
-            let leftTop = max(desiredTop, leftNext)
-            let rightTop = max(desiredTop, rightNext)
-            let leftCost = leftTop - desiredTop
-            let rightCost = rightTop - desiredTop
-            let preferred: MeetingTinyLabelSide = order.isMultiple(of: 2) ? .left : .right
-
-            let side: MeetingTinyLabelSide
-            if abs(leftCost - rightCost) < 0.5 {
-                side = preferred
-            } else {
-                side = leftCost < rightCost ? .left : .right
-            }
-
-            let labelTop = side == .left ? leftTop : rightTop
-            if side == .left {
-                leftNext = labelTop + labelHeight + spacing
-            } else {
-                rightNext = labelTop + labelHeight + spacing
-            }
-
-            placements.append(
-                MeetingTinyLabelPlacement(
-                    id: entry.item.id,
-                    booking: entry.item.booking,
-                    style: bookingStyle(at: entry.item.sourceIndex),
-                    side: side,
-                    eventCenterY: eventCenter,
-                    labelTop: labelTop
-                )
+            return MeetingScheduleLabelCandidate(
+                item: item,
+                startY: startY,
+                endY: endY,
+                idealTop: idealTop
             )
+        }
+        .sorted {
+            if $0.idealTop == $1.idealTop {
+                return $0.item.sourceIndex < $1.item.sourceIndex
+            }
+            return $0.idealTop < $1.idealTop
+        }
+
+        var placements: [MeetingScheduleLabelPlacement] = []
+        var groupStart = 0
+
+        while groupStart < candidates.count {
+            var groupEnd = groupStart + 1
+            var groupBottom = candidates[groupStart].idealTop + labelHeight
+
+            while groupEnd < candidates.count,
+                  candidates[groupEnd].idealTop < groupBottom + spacing {
+                groupBottom = max(
+                    groupBottom,
+                    candidates[groupEnd].idealTop + labelHeight
+                )
+                groupEnd += 1
+            }
+
+            let group = Array(candidates[groupStart..<groupEnd])
+
+            if group.count == 1, let candidate = group.first {
+                placements.append(
+                    MeetingScheduleLabelPlacement(
+                        id: candidate.item.id,
+                        booking: candidate.item.booking,
+                        style: bookingStyle(for: candidate.item.booking),
+                        lane: .center,
+                        startY: candidate.startY,
+                        endY: candidate.endY,
+                        labelTop: candidate.idealTop
+                    )
+                )
+            } else {
+                var laneBottoms: [CGFloat?] = [nil, nil]
+
+                for (order, candidate) in group.enumerated() {
+                    let preferredLane = order.isMultiple(of: 2) ? 0 : 1
+                    let alternateLane = 1 - preferredLane
+
+                    func canUse(_ laneIndex: Int) -> Bool {
+                        guard let bottom = laneBottoms[laneIndex] else { return true }
+                        return candidate.idealTop >= bottom + spacing
+                    }
+
+                    let laneIndex: Int
+                    if canUse(preferredLane) {
+                        laneIndex = preferredLane
+                    } else if canUse(alternateLane) {
+                        laneIndex = alternateLane
+                    } else {
+                        let preferredBottom = laneBottoms[preferredLane] ?? -.greatestFiniteMagnitude
+                        let alternateBottom = laneBottoms[alternateLane] ?? -.greatestFiniteMagnitude
+                        laneIndex = preferredBottom <= alternateBottom ? preferredLane : alternateLane
+                    }
+
+                    let minimumTop = laneBottoms[laneIndex].map { $0 + spacing } ?? inset
+                    let labelTop = max(candidate.idealTop, minimumTop)
+                    let lane: MeetingScheduleLabelLane = laneIndex == 0 ? .left : .right
+
+                    placements.append(
+                        MeetingScheduleLabelPlacement(
+                            id: candidate.item.id,
+                            booking: candidate.item.booking,
+                            style: bookingStyle(for: candidate.item.booking),
+                            lane: lane,
+                            startY: candidate.startY,
+                            endY: candidate.endY,
+                            labelTop: labelTop
+                        )
+                    )
+                    laneBottoms[laneIndex] = labelTop + labelHeight
+                }
+            }
+
+            groupStart = groupEnd
         }
 
         return keepPlacementsInsideTimeline(placements)
     }
 
     private func keepPlacementsInsideTimeline(
-        _ placements: [MeetingTinyLabelPlacement]
-    ) -> [MeetingTinyLabelPlacement] {
+        _ placements: [MeetingScheduleLabelPlacement]
+    ) -> [MeetingScheduleLabelPlacement] {
         var result = placements
-        let labelHeight = MeetingTinyLabelMetrics.height
-        let inset = MeetingTinyLabelMetrics.verticalInset
-        let maxBottom = timelineHeight - inset
+        let labelHeight = MeetingScheduleLabelMetrics.height
+        let spacing = MeetingScheduleLabelMetrics.spacing
+        let inset = MeetingScheduleLabelMetrics.verticalInset
+        let maximumBottom = timelineHeight - inset
 
-        for side in [MeetingTinyLabelSide.left, .right] {
-            let indices = result.indices.filter { result[$0].side == side }
+        for lane in [MeetingScheduleLabelLane.left, .right] {
+            let indices = result.indices
+                .filter { result[$0].lane == lane }
+                .sorted { result[$0].labelTop < result[$1].labelTop }
+
             guard let firstIndex = indices.first, let lastIndex = indices.last else { continue }
 
-            let overflow = result[lastIndex].labelTop + labelHeight - maxBottom
+            let overflow = result[lastIndex].labelTop + labelHeight - maximumBottom
             if overflow > 0 {
                 for index in indices {
                     result[index].labelTop -= overflow
+                }
+            }
+
+            if indices.count > 1 {
+                for position in stride(from: indices.count - 2, through: 0, by: -1) {
+                    let index = indices[position]
+                    let nextIndex = indices[position + 1]
+                    let latestWithoutOverlap = result[nextIndex].labelTop - labelHeight - spacing
+                    if result[index].labelTop > latestWithoutOverlap {
+                        result[index].labelTop = latestWithoutOverlap
+                    }
                 }
             }
 
@@ -876,166 +907,308 @@ private struct MeetingTimeline: View {
 
         return (
             CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
-            // Do not inflate short meetings for touch-target convenience:
-            // at 72px/hour, a 15-minute meeting is exactly 18px tall.
             max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 1)
         )
     }
 
-    private func bookingStyle(at index: Int) -> MeetingTimelineBookingStyle {
-        let palette: [MeetingTimelineBookingStyle] = [
-            .init(fill: Color(red: 0.98, green: 0.82, blue: 0.80), accent: Color(red: 0.83, green: 0.22, blue: 0.18), foreground: Color(red: 0.39, green: 0.08, blue: 0.06)),
-            .init(fill: Color(red: 0.82, green: 0.86, blue: 1.00), accent: Color(red: 0.19, green: 0.34, blue: 0.82), foreground: Color(red: 0.06, green: 0.14, blue: 0.42)),
-            .init(fill: Color(red: 0.79, green: 0.94, blue: 0.86), accent: Color(red: 0.05, green: 0.53, blue: 0.31), foreground: Color(red: 0.02, green: 0.29, blue: 0.15)),
-            .init(fill: Color(red: 1.00, green: 0.90, blue: 0.68), accent: Color(red: 0.80, green: 0.40, blue: 0.03), foreground: Color(red: 0.39, green: 0.18, blue: 0.01)),
-            .init(fill: Color(red: 0.91, green: 0.82, blue: 0.99), accent: Color(red: 0.48, green: 0.21, blue: 0.74), foreground: Color(red: 0.24, green: 0.08, blue: 0.40)),
-            .init(fill: Color(red: 0.77, green: 0.92, blue: 0.96), accent: Color(red: 0.03, green: 0.48, blue: 0.64), foreground: Color(red: 0.02, green: 0.24, blue: 0.34))
-        ]
-        return palette[index % palette.count]
-    }
-}
-
-@available(iOS 17.0, *)
-private struct MeetingTimelineBlock: View {
-    let booking: MeetingBooking
-    let style: MeetingTimelineBookingStyle
-    let density: MeetingTimelineDensity
-
-    var body: some View {
-        switch density {
-        case .tiny:
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(style.accent)
-                    .frame(width: 4)
-
-                Rectangle()
-                    .fill(style.fill.opacity(0.78))
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay {
-                Rectangle()
-                    .stroke(style.accent.opacity(0.32), lineWidth: 0.7)
-            }
-
-        case .compact, .full:
-            HStack(spacing: 8) {
-                Rectangle()
-                    .fill(style.accent)
-                    .frame(width: 4)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
-                        .font(.caption.bold())
-                        .lineLimit(1)
-
-                    if density == .full {
-                        Text(MeetingPresentation.range(booking))
-                            .font(.caption2.monospacedDigit())
-                            .lineLimit(1)
-                    }
-                }
-                .padding(.horizontal, 4)
-                .padding(.vertical, 4)
-
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(style.foreground)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .background(style.fill)
-            .overlay { Rectangle().stroke(style.accent.opacity(0.30), lineWidth: 1) }
+    private func bookingStyle(for booking: MeetingBooking) -> MeetingTimelineBookingStyle {
+        if booking.isOwner == true {
+            return MeetingTimelineBookingStyle(
+                fill: Color(red: 236.0 / 255.0, green: 248.0 / 255.0, blue: 240.0 / 255.0),
+                border: Color(red: 169.0 / 255.0, green: 217.0 / 255.0, blue: 184.0 / 255.0),
+                foreground: Color(red: 35.0 / 255.0, green: 85.0 / 255.0, blue: 58.0 / 255.0),
+                meta: Color(red: 93.0 / 255.0, green: 124.0 / 255.0, blue: 105.0 / 255.0),
+                line: Color(red: 181.0 / 255.0, green: 220.0 / 255.0, blue: 193.0 / 255.0)
+            )
         }
+
+        if booking.isMine == true {
+            return MeetingTimelineBookingStyle(
+                fill: Color(red: 242.0 / 255.0, green: 246.0 / 255.0, blue: 255.0 / 255.0),
+                border: Color(red: 183.0 / 255.0, green: 200.0 / 255.0, blue: 238.0 / 255.0),
+                foreground: Color(red: 38.0 / 255.0, green: 61.0 / 255.0, blue: 104.0 / 255.0),
+                meta: Color(red: 100.0 / 255.0, green: 125.0 / 255.0, blue: 168.0 / 255.0),
+                line: Color(red: 185.0 / 255.0, green: 199.0 / 255.0, blue: 228.0 / 255.0)
+            )
+        }
+
+        return MeetingTimelineBookingStyle(
+            fill: Color(red: 244.0 / 255.0, green: 245.0 / 255.0, blue: 247.0 / 255.0),
+            border: Color(red: 213.0 / 255.0, green: 217.0 / 255.0, blue: 224.0 / 255.0),
+            foreground: Color(red: 82.0 / 255.0, green: 91.0 / 255.0, blue: 103.0 / 255.0),
+            meta: Color(red: 133.0 / 255.0, green: 141.0 / 255.0, blue: 152.0 / 255.0),
+            line: Color(red: 201.0 / 255.0, green: 206.0 / 255.0, blue: 214.0 / 255.0)
+        )
     }
 }
 
 @available(iOS 17.0, *)
-private struct MeetingTinyLabelsOverlay: View {
-    let placements: [MeetingTinyLabelPlacement]
+private struct MeetingScheduleLabelsOverlay: View {
+    let placements: [MeetingScheduleLabelPlacement]
+    let onSelect: (MeetingBooking) -> Void
 
     var body: some View {
         GeometryReader { proxy in
-            let usableWidth = max(
-                120,
-                proxy.size.width
-                    - MeetingTinyLabelMetrics.horizontalInset * 2
-                    - MeetingTinyLabelMetrics.columnGap
+            let width = proxy.size.width
+            let horizontalInset = MeetingScheduleLabelMetrics.horizontalInset
+            let laneGap = MeetingScheduleLabelMetrics.laneGap
+            let fullAvailableWidth = max(1, width - horizontalInset * 2)
+            let centeredWidth = min(
+                max(180, width - 48),
+                fullAvailableWidth
             )
-            let labelWidth = min(138, usableWidth / 2)
+            let laneWidth = max(
+                1,
+                (width - horizontalInset * 2 - laneGap) / 2
+            )
 
             ZStack(alignment: .topLeading) {
                 ForEach(placements) { placement in
-                    let labelX = placement.side == .left
-                        ? MeetingTinyLabelMetrics.horizontalInset
-                        : max(
-                            MeetingTinyLabelMetrics.horizontalInset,
-                            proxy.size.width
-                                - MeetingTinyLabelMetrics.horizontalInset
-                                - labelWidth
-                        )
-                    let connectorX = max(5, labelX - 8)
-                    let anchorY = min(
-                        max(placement.eventCenterY, 3),
-                        max(3, proxy.size.height - 3)
+                    let geometry = labelGeometry(
+                        placement: placement,
+                        width: width,
+                        centeredWidth: centeredWidth,
+                        laneWidth: laneWidth
                     )
-                    let labelCenterY = placement.labelTop + MeetingTinyLabelMetrics.height / 2
+                    MeetingScheduleConnector(
+                        placement: placement,
+                        geometry: geometry,
+                        totalWidth: width
+                    )
+                    .allowsHitTesting(false)
+                }
 
-                    Path { path in
-                        path.move(to: CGPoint(x: connectorX, y: anchorY))
-                        path.addLine(to: CGPoint(x: labelX, y: labelCenterY))
-                    }
-                    .stroke(
-                        placement.style.accent.opacity(0.78),
-                        style: StrokeStyle(lineWidth: 1, lineCap: .round)
+                ForEach(placements) { placement in
+                    let geometry = labelGeometry(
+                        placement: placement,
+                        width: width,
+                        centeredWidth: centeredWidth,
+                        laneWidth: laneWidth
                     )
 
-                    Circle()
-                        .fill(placement.style.accent)
-                        .frame(width: 5, height: 5)
-                        .position(x: connectorX, y: anchorY)
-
-                    MeetingTinyLabel(
+                    MeetingScheduleLabel(
                         booking: placement.booking,
                         style: placement.style,
-                        width: labelWidth
+                        width: geometry.width
                     )
-                    .offset(x: labelX, y: placement.labelTop)
+                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .onTapGesture {
+                        guard !placement.booking.id.isEmpty else { return }
+                        onSelect(placement.booking)
+                    }
+                    .accessibilityLabel(
+                        placement.booking.id.isEmpty
+                            ? "Khung giờ đã được đặt"
+                            : "Xem chi tiết cuộc họp \(placement.booking.title.isEmpty ? "đã có lịch" : placement.booking.title)"
+                    )
+                    .offset(x: geometry.left, y: placement.labelTop)
                 }
             }
+        }
+    }
+
+    private func labelGeometry(
+        placement: MeetingScheduleLabelPlacement,
+        width: CGFloat,
+        centeredWidth: CGFloat,
+        laneWidth: CGFloat
+    ) -> (left: CGFloat, width: CGFloat) {
+        switch placement.lane {
+        case .center:
+            return ((width - centeredWidth) / 2, centeredWidth)
+        case .left:
+            return (MeetingScheduleLabelMetrics.horizontalInset, laneWidth)
+        case .right:
+            return (
+                width - MeetingScheduleLabelMetrics.horizontalInset - laneWidth,
+                laneWidth
+            )
         }
     }
 }
 
 @available(iOS 17.0, *)
-private struct MeetingTinyLabel: View {
+private struct MeetingScheduleConnector: View {
+    let placement: MeetingScheduleLabelPlacement
+    let geometry: (left: CGFloat, width: CGFloat)
+    let totalWidth: CGFloat
+
+    var body: some View {
+        let labelRight = geometry.left + geometry.width
+        let labelCenterY = placement.labelTop + MeetingScheduleLabelMetrics.height / 2
+        let leftRailX: CGFloat = 4
+        let rightRailX = max(4, totalWidth - 4)
+        let centerLeftRailX = totalWidth / 2 - 4
+        let centerRightRailX = totalWidth / 2 + 4
+
+        let startAnchorX: CGFloat = {
+            switch placement.lane {
+            case .center, .left: return leftRailX
+            case .right: return centerRightRailX
+            }
+        }()
+
+        let endAnchorX: CGFloat = {
+            switch placement.lane {
+            case .center, .right: return rightRailX
+            case .left: return centerLeftRailX
+            }
+        }()
+
+        ZStack(alignment: .topLeading) {
+            startConnectorPath(
+                anchorX: startAnchorX,
+                anchorY: placement.startY,
+                labelX: geometry.left,
+                labelY: labelCenterY
+            )
+            .stroke(
+                placement.style.line.opacity(0.72),
+                style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round)
+            )
+
+            endConnectorPath(
+                labelX: labelRight,
+                labelY: labelCenterY,
+                anchorX: endAnchorX,
+                anchorY: placement.endY
+            )
+            .stroke(
+                placement.style.line.opacity(0.72),
+                style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round)
+            )
+
+            Circle()
+                .fill(placement.style.line.opacity(0.88))
+                .frame(
+                    width: startAnchorX == leftRailX ? 4 : 3.4,
+                    height: startAnchorX == leftRailX ? 4 : 3.4
+                )
+                .position(x: startAnchorX, y: placement.startY)
+
+            Circle()
+                .fill(placement.style.line.opacity(0.88))
+                .frame(
+                    width: endAnchorX == rightRailX ? 4 : 3.4,
+                    height: endAnchorX == rightRailX ? 4 : 3.4
+                )
+                .position(x: endAnchorX, y: placement.endY)
+        }
+    }
+
+    private func startConnectorPath(
+        anchorX: CGFloat,
+        anchorY: CGFloat,
+        labelX: CGFloat,
+        labelY: CGFloat
+    ) -> Path {
+        let deltaX = labelX - anchorX
+        let deltaY = labelY - anchorY
+        let radius = min(
+            MeetingScheduleLabelMetrics.cornerRadius,
+            abs(deltaX),
+            abs(deltaY)
+        )
+        let verticalDirection: CGFloat = deltaY > 0 ? 1 : deltaY < 0 ? -1 : 0
+        let horizontalDirection: CGFloat = deltaX > 0 ? 1 : deltaX < 0 ? -1 : 0
+
+        return Path { path in
+            path.move(to: CGPoint(x: anchorX, y: anchorY))
+            if radius > 0 {
+                path.addLine(
+                    to: CGPoint(
+                        x: anchorX,
+                        y: labelY - verticalDirection * radius
+                    )
+                )
+                path.addQuadCurve(
+                    to: CGPoint(
+                        x: anchorX + horizontalDirection * radius,
+                        y: labelY
+                    ),
+                    control: CGPoint(x: anchorX, y: labelY)
+                )
+            }
+            path.addLine(to: CGPoint(x: labelX, y: labelY))
+        }
+    }
+
+    private func endConnectorPath(
+        labelX: CGFloat,
+        labelY: CGFloat,
+        anchorX: CGFloat,
+        anchorY: CGFloat
+    ) -> Path {
+        let deltaX = anchorX - labelX
+        let deltaY = anchorY - labelY
+        let radius = min(
+            MeetingScheduleLabelMetrics.cornerRadius,
+            abs(deltaX),
+            abs(deltaY)
+        )
+        let horizontalDirection: CGFloat = deltaX > 0 ? 1 : deltaX < 0 ? -1 : 0
+        let verticalDirection: CGFloat = deltaY > 0 ? 1 : deltaY < 0 ? -1 : 0
+
+        return Path { path in
+            path.move(to: CGPoint(x: labelX, y: labelY))
+            if radius > 0 {
+                path.addLine(
+                    to: CGPoint(
+                        x: anchorX - horizontalDirection * radius,
+                        y: labelY
+                    )
+                )
+                path.addQuadCurve(
+                    to: CGPoint(
+                        x: anchorX,
+                        y: labelY + verticalDirection * radius
+                    ),
+                    control: CGPoint(x: anchorX, y: labelY)
+                )
+            }
+            path.addLine(to: CGPoint(x: anchorX, y: anchorY))
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct MeetingScheduleLabel: View {
     let booking: MeetingBooking
     let style: MeetingTimelineBookingStyle
     let width: CGFloat
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 7) {
             Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(style.foreground)
                 .lineLimit(1)
                 .truncationMode(.tail)
 
             Spacer(minLength: 2)
 
             Text(MeetingPresentation.range(booking))
-                .font(.system(size: 8.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(style.foreground.opacity(0.72))
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(style.meta)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .layoutPriority(1)
         }
-        .foregroundStyle(style.foreground)
-        .padding(.horizontal, 8)
-        .frame(width: width, height: MeetingTinyLabelMetrics.height, alignment: .leading)
-        .background(style.fill.opacity(0.98), in: Capsule())
+        .padding(.horizontal, 11)
+        .frame(
+            width: width,
+            height: MeetingScheduleLabelMetrics.height,
+            alignment: .leading
+        )
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(style.fill)
+        )
         .overlay {
-            Capsule()
-                .stroke(style.accent.opacity(0.34), lineWidth: 0.7)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(style.border.opacity(0.96), lineWidth: 0.8)
         }
-        .shadow(color: .black.opacity(0.07), radius: 2.5, y: 1)
+        .shadow(color: .black.opacity(0.035), radius: 1.5, y: 0.5)
     }
 }
 
