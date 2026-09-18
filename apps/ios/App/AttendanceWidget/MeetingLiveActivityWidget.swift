@@ -8,24 +8,28 @@ struct MeetingLiveActivityWidget: Widget {
         ActivityConfiguration(for: MeetingLiveActivityAttributes.self) { context in
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Image(systemName: "person.3.fill")
+                    Image(systemName: "video.fill")
                         .foregroundStyle(.green)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(context.attributes.title)
                             .font(.headline)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
 
                         Text(context.attributes.roomName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                     }
 
-                    Spacer()
+                    Spacer(minLength: 4)
 
                     Text(context.state.endsAt, style: .timer)
                         .font(.caption.monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                 }
 
                 ProgressView(value: progress(context))
@@ -36,7 +40,7 @@ struct MeetingLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Image(systemName: "person.3.fill")
+                    Image(systemName: "video.fill")
                         .foregroundStyle(.green)
                 }
 
@@ -45,18 +49,21 @@ struct MeetingLiveActivityWidget: Widget {
                         Text(context.attributes.title)
                             .font(.headline)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.8)
+                            .minimumScaleFactor(0.65)
 
                         Text(context.attributes.roomName)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.65)
                     }
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .timer)
                         .font(.caption.monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
@@ -64,14 +71,15 @@ struct MeetingLiveActivityWidget: Widget {
                         .tint(.green)
                 }
             } compactLeading: {
-                Image(systemName: "person.3.fill")
-                    .font(.caption)
+                Image(systemName: "video.fill")
+                    .font(.caption2)
             } compactTrailing: {
                 Text(context.state.endsAt, style: .timer)
-                    .font(.caption2.monospacedDigit())
-                    .minimumScaleFactor(0.7)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.45)
             } minimal: {
-                Image(systemName: "calendar")
+                Image(systemName: "video.fill")
             }
         }
     }
