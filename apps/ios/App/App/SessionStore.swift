@@ -820,6 +820,11 @@ final class SessionStore: ObservableObject {
     private func applySession(_ response: LoginResponse) {
         token = response.accessToken
         KeychainStore.save(token: response.accessToken)
+        if #available(iOS 17.2, *) {
+            // Fresh sign-in is the first point at which the start token can
+            // be authenticated and retained by the server.
+            MeetingLiveActivityStartRegistration.observe()
+        }
         if !response.refreshToken.isEmpty {
             KeychainStore.save(refreshToken: response.refreshToken)
         }

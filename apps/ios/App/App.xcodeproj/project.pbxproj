@@ -20,6 +20,7 @@
 		D4000000000000000000000B /* AppPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000000000000000000010B /* AppPreviews.swift */; };
 		D60000000000000000000001 /* MeetingLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */; };
 		D60000000000000000000002 /* MeetingLiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60000000000000000000102 /* MeetingLiveActivityManager.swift */; };
+		D80000000000000000000001 /* MeetingLiveActivityStartRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80000000000000000000101 /* MeetingLiveActivityStartRegistration.swift */; };
 		D60000000000000000000003 /* MeetingLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */; };
 		D70000000000000000000001 /* MeetingLiveActivityActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */; };
 		D70000000000000000000002 /* MeetingLiveActivityActionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */; };
@@ -89,6 +90,7 @@
 		D4000000000000000000010B /* AppPreviews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppPreviews.swift; sourceTree = "<group>"; };
 		D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLiveActivityAttributes.swift; sourceTree = "<group>"; };
 		D60000000000000000000102 /* MeetingLiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLiveActivityManager.swift; sourceTree = "<group>"; };
+		D80000000000000000000101 /* MeetingLiveActivityStartRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLiveActivityStartRegistration.swift; sourceTree = "<group>"; };
 		D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingLiveActivityActionIntent.swift; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -160,6 +162,7 @@
 				D4000000000000000000010B /* AppPreviews.swift */,
 				D60000000000000000000101 /* MeetingLiveActivityAttributes.swift */,
 				D60000000000000000000102 /* MeetingLiveActivityManager.swift */,
+				D80000000000000000000101 /* MeetingLiveActivityStartRegistration.swift */,
 				D70000000000000000000101 /* MeetingLiveActivityActionIntent.swift */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -309,6 +312,7 @@
 				D4000000000000000000000B /* AppPreviews.swift in Sources */,
 				D60000000000000000000001 /* MeetingLiveActivityAttributes.swift in Sources */,
 				D60000000000000000000002 /* MeetingLiveActivityManager.swift in Sources */,
+				D80000000000000000000001 /* MeetingLiveActivityStartRegistration.swift in Sources */,
 				D70000000000000000000001 /* MeetingLiveActivityActionIntent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

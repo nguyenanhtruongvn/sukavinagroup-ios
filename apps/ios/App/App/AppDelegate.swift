@@ -126,6 +126,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
             MeetingLiveActivityExpiry.removeExpiredActivities()
             MeetingLiveActivityManager.restorePushTokenObservers()
         }
+        if #available(iOS 17.2, *) {
+            MeetingLiveActivityStartRegistration.observe()
+        }
         appContainer?.appBecameActive()
     }
 

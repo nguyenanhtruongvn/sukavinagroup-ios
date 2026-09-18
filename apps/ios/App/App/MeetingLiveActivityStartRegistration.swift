@@ -1,13 +1,20 @@
 import ActivityKit
 import Foundation
-import Security
 
-@available(iOS 17.0, *)
+/// Registers the device-scoped token that lets the server start a new Live
+/// Activity while the app is suspended. This is deliberately separate from
+/// an activity's push token, which can only update or end an existing one.
+@available(iOS 17.2, *)
 enum MeetingLiveActivityStartRegistration {
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static var observationTask: Task<Void, Never>?
 
     static func observe() {
-        Task {
+        // Do not consume the initial token stream before a user has signed
+        // in: Apple may not emit the current token a second time.
+        guard KeychainStore.loadToken() != nil, observationTask == nil else { return }
+
+        observationTask = Task {
             for await token in Activity<MeetingLiveActivityAttributes>.pushToStartTokenUpdates {
                 await upload(token: token)
             }
@@ -15,12 +22,12 @@ enum MeetingLiveActivityStartRegistration {
     }
 
     private static func upload(token: Data) async {
-        guard let accessToken = accessToken() else { return }
+        guard let accessToken = KeychainStore.loadToken() else {
+            ConnectionDiagnostics.record("Live Activity start token skipped: no access token")
+            return
+        }
 
-        let tokenValue = token.map {
-            String(format: "%02x", $0)
-        }.joined()
-
+        let tokenValue = token.map { String(format: "%02x", $0) }.joined()
         guard !tokenValue.isEmpty else { return }
 
         var request = URLRequest(
@@ -34,29 +41,14 @@ enum MeetingLiveActivityStartRegistration {
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else {
-                ConnectionDiagnostics.record("Live Activity start token upload rejected")
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                ConnectionDiagnostics.record("Live Activity start token upload was rejected")
                 return
             }
+            ConnectionDiagnostics.record("Live Activity start token registered")
         } catch {
             ConnectionDiagnostics.record("Live Activity start token upload failed: \(error.localizedDescription)")
         }
     }
 
-    private static func accessToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "net.sukavinagroup.user",
-            kSecAttrAccount as String: "access-token",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
-        ]
-
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
-    }
 }
