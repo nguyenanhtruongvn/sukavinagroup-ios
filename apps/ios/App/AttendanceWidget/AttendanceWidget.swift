@@ -470,49 +470,49 @@ private struct MeetingLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Use WidgetKit's canonical expanded regions. This is more
-                // resilient than placing the whole design in one bottom region,
-                // which can leave the Island visibly expanded but with no
-                // rendered content on some iOS/device combinations.
-                DynamicIslandExpandedRegion(.leading) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(accent.opacity(0.22))
-                        Image(systemName: "person.3.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(accent)
-                    }
-                    .frame(width: 28, height: 28)
-                }
+                // Keep all primary content in the safe center region below the
+                // TrueDepth hardware. Leading/trailing expanded regions sit in
+                // the upper curved corners and were visibly clipping both the
+                // icon and countdown on the real device.
+                DynamicIslandExpandedRegion(.center, priority: 2) {
+                    HStack(spacing: 7) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(accent.opacity(0.22))
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(accent)
+                        }
+                        .frame(width: 26, height: 26)
+                        .fixedSize()
 
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.endsAt, style: .timer)
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(accent)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .frame(minWidth: 44, idealWidth: 48, maxWidth: 52, alignment: .trailing)
-                }
-
-                DynamicIslandExpandedRegion(.center) {
-                    Text("\(context.attributes.title) · \(context.attributes.roomName)")
-                        .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.88))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.66)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                }
-
-                DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 8) {
-                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
+                        Text("\(context.attributes.title) · \(context.attributes.roomName)")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.90))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.62)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text(context.state.endsAt, style: .timer)
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(accent)
                             .lineLimit(1)
-                            .frame(width: 42, alignment: .leading)
+                            .minimumScaleFactor(0.72)
+                            .frame(width: 42, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(maxWidth: .infinity)
+                }
+
+                DynamicIslandExpandedRegion(.bottom, priority: 1) {
+                    HStack(spacing: 8) {
+                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                            .frame(width: 40, alignment: .leading)
 
                         ProgressView(
                             timerInterval: context.attributes.startsAt...context.state.endsAt,
@@ -523,36 +523,35 @@ private struct MeetingLiveActivityWidget: Widget {
                         .tint(accent)
                         .frame(maxWidth: .infinity)
                     }
-                    .padding(.leading, 18)
-                    .padding(.trailing, 14)
+                    .padding(.horizontal, 14)
                     .padding(.top, 2)
                 }
             } compactLeading: {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(accent)
-                    .frame(width: 10, height: 12)
+                    .frame(width: 8, height: 10)
             } compactTrailing: {
                 // A small explicit width is more reliable than fixedSize() in
                 // WidgetKit's compact trailing region: it prevents the timer
                 // from collapsing to a clipped sliver while still keeping the
                 // Island close to its minimum usable width.
                 Text(context.state.endsAt, style: .timer)
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(accent)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                    .frame(width: 34, alignment: .trailing)
+                    .minimumScaleFactor(0.76)
+                    .frame(width: 30, alignment: .trailing)
             } minimal: {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accent)
             }
-            .contentMargins(.horizontal, 14, for: .expanded)
-            .contentMargins(.vertical, 4, for: .expanded)
-            .contentMargins(.leading, 1, for: .compactLeading)
-            .contentMargins(.trailing, 1, for: .compactTrailing)
+            .contentMargins(.horizontal, 4, for: .expanded)
+            .contentMargins(.vertical, 3, for: .expanded)
+            .contentMargins(.leading, 0, for: .compactLeading)
+            .contentMargins(.trailing, 0, for: .compactTrailing)
             .keylineTint(accent.opacity(0.9))
         }
     }
