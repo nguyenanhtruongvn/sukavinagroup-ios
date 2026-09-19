@@ -272,6 +272,9 @@ private final class NativeAppContainerViewController: UIViewController {
                 // current Push-to-Start token as soon as the authenticated
                 // Keychain session exists.
                 if state == .signedIn {
+                    if #available(iOS 17.0, *) {
+                        MeetingLiveActivityManager.restorePushTokenObservers()
+                    }
                     if #available(iOS 17.2, *) {
                         MeetingLiveActivityStartRegistration.observe()
                     }
