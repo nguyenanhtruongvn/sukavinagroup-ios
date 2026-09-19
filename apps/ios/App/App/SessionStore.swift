@@ -880,6 +880,7 @@ final class SessionStore: ObservableObject {
         token = nil
         profile = nil
         dashboard = nil
+        todayMenu = nil
         meetingRooms = []
         meetingBookings = []
         meetingInvitees = []
