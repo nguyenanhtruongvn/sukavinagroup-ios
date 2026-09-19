@@ -1228,13 +1228,28 @@ struct MeetingBookingDetailSheet: View {
     @State private var isCancelling = false
     @State private var showCancelConfirmation = false
     @State private var cancelError: String?
+    @State private var extensionMinutes = 5
+    @State private var isSubmittingControl = false
+    @State private var controlAction: String?
+    @State private var controlError: String?
 
     // Role color is shared with Android: organiser green, invitee blue.
     private var accent: Color { booking.isOwner == true ? Color(red: 0.13, green: 0.71, blue: 0.45) : .blue }
     private var roleTitle: String { booking.isOwner == true ? "Bạn là người tổ chức" : "Bạn được mời tham dự" }
     private var roleIcon: String { booking.isOwner == true ? "person.badge.key.fill" : "person.2.badge.gearshape.fill" }
+
+    // Read the live schedule copy first so an end/extension redraws this sheet
+    // immediately after the mutation endpoint responds.
+    private var currentBooking: MeetingBooking {
+        session.meetingBookings.first(where: { $0.id == booking.id }) ?? booking
+    }
+    private var startDate: Date? { MeetingPresentation.date(from: currentBooking.startsAt) }
+    private var endDate: Date? { MeetingPresentation.date(from: currentBooking.endsAt) }
+    private var meetingStarted: Bool { startDate.map { $0 <= Date() } ?? false }
+    private var meetingEnded: Bool { endDate.map { $0 <= Date() } ?? false }
+
     private var dateTitle: String {
-        guard let start = MeetingPresentation.date(from: booking.startsAt) else { return "Chưa xác định" }
+        guard let start = startDate else { return "Chưa xác định" }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "vi_VN")
         formatter.timeZone = MeetingPresentation.timezone
@@ -1242,16 +1257,49 @@ struct MeetingBookingDetailSheet: View {
         return formatter.string(from: start).capitalized
     }
     private var durationTitle: String {
-        guard let start = MeetingPresentation.date(from: booking.startsAt), let end = MeetingPresentation.date(from: booking.endsAt) else { return "—" }
+        guard let start = startDate, let end = endDate else { return "—" }
         let minutes = max(0, Int(end.timeIntervalSince(start) / 60))
         return minutes >= 60 ? "\(minutes / 60) giờ\(minutes % 60 == 0 ? "" : " \(minutes % 60) phút")" : "\(minutes) phút"
     }
     private var displayedRoom: MeetingRoom { details?.room ?? room }
     private var canCancel: Bool {
         guard booking.isOwner == true,
-              booking.status == "confirmed",
-              let start = MeetingPresentation.date(from: booking.startsAt) else { return false }
+              currentBooking.status == "confirmed",
+              let start = startDate else { return false }
         return start > Date()
+    }
+    private var canShowMeetingControls: Bool {
+        booking.isOwner == true &&
+            currentBooking.status == "confirmed" &&
+            meetingStarted
+    }
+    private var nextBooking: MeetingBooking? {
+        guard let endDate else { return nil }
+        return session.meetingBookings
+            .filter { $0.roomId == currentBooking.roomId && $0.id != currentBooking.id }
+            .filter { candidate in
+                guard let start = MeetingPresentation.date(from: candidate.startsAt) else { return false }
+                return start > endDate
+            }
+            .sorted { left, right in
+                (MeetingPresentation.date(from: left.startsAt) ?? .distantFuture)
+                    < (MeetingPresentation.date(from: right.startsAt) ?? .distantFuture)
+            }
+            .first
+    }
+    private var maximumExtensionMinutes: Int {
+        guard let endDate else { return 0 }
+        guard let nextStart = nextBooking.flatMap({ MeetingPresentation.date(from: $0.startsAt) }) else {
+            return 120
+        }
+        return min(120, max(0, Int(nextStart.timeIntervalSince(endDate) / 60) - 5))
+    }
+    private var extensionBlockMessage: String {
+        guard let nextBooking else {
+            return "Không thể gia hạn vì lịch phòng đang được cập nhật."
+        }
+        let title = nextBooking.title.isEmpty ? "cuộc họp tiếp theo" : "“\(nextBooking.title)”"
+        return "Không thể gia hạn vì \(displayedRoom.name) có \(title) lúc \(MeetingPresentation.time(nextBooking.startsAt))."
     }
 
     var body: some View {
@@ -1265,12 +1313,12 @@ struct MeetingBookingDetailSheet: View {
                                 .frame(width: 54, height: 54).background(accent.gradient)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             Spacer()
-                            Label(booking.status == "confirmed" ? "Đã xác nhận" : booking.status, systemImage: "checkmark.seal.fill")
+                            Label(currentBooking.status == "confirmed" ? "Đã xác nhận" : currentBooking.status, systemImage: "checkmark.seal.fill")
                                 .font(.caption.weight(.bold)).foregroundStyle(accent)
                                 .padding(.horizontal, 10).padding(.vertical, 7)
                                 .background(accent.opacity(0.12)).clipShape(Capsule())
                         }
-                        Text(booking.title.isEmpty ? "Cuộc họp" : booking.title)
+                        Text(currentBooking.title.isEmpty ? "Cuộc họp" : currentBooking.title)
                             .font(.system(size: 27, weight: .bold, design: .rounded))
                         Label(roleTitle, systemImage: roleIcon)
                             .font(.subheadline.weight(.semibold)).foregroundStyle(accent)
@@ -1280,11 +1328,11 @@ struct MeetingBookingDetailSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
 
                     detailCard(title: "Thời gian", icon: "clock.fill") {
-                        Text(MeetingPresentation.range(booking)).font(.title3.weight(.bold).monospacedDigit())
+                        Text(MeetingPresentation.range(currentBooking)).font(.title3.weight(.bold).monospacedDigit())
                         Text(dateTitle).font(.subheadline).foregroundStyle(.secondary)
                         HStack(spacing: 8) {
                             detailPill(durationTitle, icon: "timer")
-                            detailPill("\(booking.attendeeCount) người", icon: "person.2.fill")
+                            detailPill("\(currentBooking.attendeeCount) người", icon: "person.2.fill")
                         }
                     }
                     detailCard(title: "Địa điểm", icon: "building.2.fill") {
@@ -1321,6 +1369,10 @@ struct MeetingBookingDetailSheet: View {
                             Text("Đang tải thông tin người tham gia…").font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    if canShowMeetingControls {
+                        meetingControlCard
+                    }
+
                     if canCancel {
                         Button(role: .destructive) {
                             showCancelConfirmation = true
@@ -1368,6 +1420,122 @@ struct MeetingBookingDetailSheet: View {
                 Text(cancelError ?? "")
             }
         }
+    }
+
+    @ViewBuilder
+    private var meetingControlCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Label(
+                meetingEnded ? "Cuộc họp đã kết thúc" : "Điều khiển cuộc họp",
+                systemImage: meetingEnded ? "checkmark.circle.fill" : "slider.horizontal.3"
+            )
+            .font(.headline.weight(.bold))
+            .foregroundStyle(.green)
+
+            if meetingEnded {
+                Text("Cuộc họp đã kết thúc. Bạn không thể gia hạn hoặc kết thúc lại.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                if let controlError {
+                    Text(controlError)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                if maximumExtensionMinutes >= 5 {
+                    Text("Gia hạn thêm \(extensionMinutes) phút")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(.green)
+
+                    HStack(spacing: 10) {
+                        Button("− 5 phút") {
+                            extensionMinutes = max(5, extensionMinutes - 5)
+                            controlError = nil
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isSubmittingControl)
+
+                        Button("+ 5 phút") {
+                            extensionMinutes = min(maximumExtensionMinutes, extensionMinutes + 5)
+                            controlError = nil
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isSubmittingControl || extensionMinutes >= maximumExtensionMinutes)
+                    }
+
+                    Button {
+                        Task { await submitMeetingControl("extend") }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSubmittingControl && controlAction == "extend" {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "checkmark")
+                            }
+                            Text(isSubmittingControl && controlAction == "extend" ? "Đang gia hạn…" : "Xác nhận gia hạn")
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(isSubmittingControl)
+                } else {
+                    Label("Gia hạn không khả dụng", systemImage: "clock.badge.exclamationmark")
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
+                        .foregroundStyle(.secondary)
+
+                    Text(extensionBlockMessage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
+
+                Button(role: .destructive) {
+                    Task { await submitMeetingControl("end") }
+                } label: {
+                    HStack(spacing: 8) {
+                        if isSubmittingControl && controlAction == "end" {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "stop.fill")
+                        }
+                        Text(isSubmittingControl && controlAction == "end" ? "Đang kết thúc…" : "Kết thúc cuộc họp")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSubmittingControl)
+            }
+        }
+        .padding(18)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    @MainActor
+    private func submitMeetingControl(_ action: String) async {
+        guard !isSubmittingControl else { return }
+        isSubmittingControl = true
+        controlAction = action
+        controlError = nil
+
+        let error = await session.performMeetingControl(
+            bookingID: currentBooking.id,
+            action: action,
+            extensionMinutes: extensionMinutes
+        )
+
+        controlError = error
+        if error == nil {
+            extensionMinutes = 5
+        }
+        controlAction = nil
+        isSubmittingControl = false
     }
 
     private func detailCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
