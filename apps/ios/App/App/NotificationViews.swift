@@ -408,7 +408,10 @@ private struct MeetingNotificationDetail: View {
     @State private var actionError: String?
 
     private var accent: Color {
-        if isEndingSoonReminder { return AppTheme.red }
+        // The ten-minute warning is sent to the meeting organiser. Use green
+        // consistently so ownership is immediately recognizable and matches
+        // the meeting timeline semantics.
+        if isEndingSoonReminder { return .green }
         if notification.type == "meeting_reminder" { return .orange }
         if notification.type == "meeting_cancelled" { return .gray }
         return .blue
@@ -471,7 +474,15 @@ private struct MeetingNotificationDetail: View {
                                 .frame(width: 56, height: 56).background(accent.gradient)
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             Spacer()
-                            Text(notification.type == "meeting_reminder" ? "Sắp bắt đầu" : notification.type == "meeting_cancelled" ? "Đã hủy" : "Lời mời")
+                            Text(
+                                isEndingSoonReminder
+                                    ? "Sắp kết thúc"
+                                    : notification.type == "meeting_reminder"
+                                        ? "Sắp bắt đầu"
+                                        : notification.type == "meeting_cancelled"
+                                            ? "Đã hủy"
+                                            : "Lời mời"
+                            )
                                 .font(.caption.weight(.bold)).foregroundStyle(accent)
                                 .padding(.horizontal, 10).padding(.vertical, 7)
                                 .background(accent.opacity(0.12)).clipShape(Capsule())
@@ -510,7 +521,13 @@ private struct MeetingNotificationDetail: View {
                     }
 
                     notificationCard(title: "Trạng thái thông báo", icon: "bell.badge.fill") {
-                        Text(notification.type == "meeting_reminder" ? "Đây là lời nhắc trước giờ họp." : "Lời mời đã được gửi đến bạn.")
+                        Text(
+                            isEndingSoonReminder
+                                ? "Cuộc họp bạn tổ chức còn khoảng 10 phút."
+                                : notification.type == "meeting_reminder"
+                                    ? "Đây là lời nhắc trước giờ họp."
+                                    : "Lời mời đã được gửi đến bạn."
+                        )
                             .font(.subheadline).foregroundStyle(.secondary)
                         Label("Nhận lúc \(deliveryDate)", systemImage: "clock.arrow.circlepath")
                             .font(.caption.weight(.medium)).foregroundStyle(.secondary)
@@ -558,7 +575,7 @@ private struct MeetingNotificationDetail: View {
         VStack(alignment: .leading, spacing: 14) {
             Label(meetingEnded ? "Cuộc họp đã kết thúc" : "Điều khiển cuộc họp", systemImage: meetingEnded ? "checkmark.circle.fill" : "slider.horizontal.3")
                 .font(.headline.weight(.bold))
-                .foregroundStyle(meetingEnded ? .green : AppTheme.red)
+                .foregroundStyle(meetingEnded ? .green : accent)
             if meetingEnded {
                 Text("Cuộc họp đã kết thúc. Bạn không thể gia hạn hoặc kết thúc lại.")
                     .font(.subheadline).foregroundStyle(.secondary)
