@@ -483,7 +483,6 @@ private struct MeetingLiveActivityWidget: Widget {
                             .foregroundStyle(accent)
                     }
                     .frame(width: 28, height: 28)
-                    .padding(.leading, 8)
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
@@ -492,9 +491,8 @@ private struct MeetingLiveActivityWidget: Widget {
                         .monospacedDigit()
                         .foregroundStyle(accent)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                        .frame(width: 42, alignment: .trailing)
-                        .padding(.trailing, 8)
+                        .minimumScaleFactor(0.72)
+                        .frame(minWidth: 44, idealWidth: 48, maxWidth: 52, alignment: .trailing)
                 }
 
                 DynamicIslandExpandedRegion(.center) {
@@ -502,9 +500,9 @@ private struct MeetingLiveActivityWidget: Widget {
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
-                        .minimumScaleFactor(0.62)
+                        .minimumScaleFactor(0.66)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 3)
+                        .padding(.horizontal, 4)
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
@@ -525,36 +523,36 @@ private struct MeetingLiveActivityWidget: Widget {
                         .tint(accent)
                         .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 1)
+                    .padding(.leading, 18)
+                    .padding(.trailing, 14)
+                    .padding(.top, 2)
                 }
             } compactLeading: {
-                // Keep only the essential glyph on the left so the compact
-                // island stays as close as possible to the system minimum.
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accent)
-                    .frame(width: 8, height: 10)
+                    .frame(width: 10, height: 12)
             } compactTrailing: {
-                // Show the complete live countdown but let the text use only
-                // its intrinsic width. Avoid fixed frames/padding that make the
-                // compact island look much longer than the actual content.
+                // A small explicit width is more reliable than fixedSize() in
+                // WidgetKit's compact trailing region: it prevents the timer
+                // from collapsing to a clipped sliver while still keeping the
+                // Island close to its minimum usable width.
                 Text(context.state.endsAt, style: .timer)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(accent)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.70)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .minimumScaleFactor(0.78)
+                    .frame(width: 34, alignment: .trailing)
             } minimal: {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accent)
             }
-            .contentMargins(.horizontal, 12, for: .expanded)
-            .contentMargins(.vertical, 3, for: .expanded)
-            .contentMargins(.horizontal, 0, for: .compactLeading)
-            .contentMargins(.horizontal, 0, for: .compactTrailing)
+            .contentMargins(.horizontal, 14, for: .expanded)
+            .contentMargins(.vertical, 4, for: .expanded)
+            .contentMargins(.leading, 1, for: .compactLeading)
+            .contentMargins(.trailing, 1, for: .compactTrailing)
             .keylineTint(accent.opacity(0.9))
         }
     }
