@@ -466,7 +466,7 @@ struct RequestsView: View {
             }
         }
         .hidesPortalBottomScrollEdgeEffect()
-        .refreshable { await store.load(session.token) }
+        .refreshable { await store.load(session.token, force: true) }
     }
 }
 
