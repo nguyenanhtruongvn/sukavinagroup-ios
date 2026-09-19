@@ -461,6 +461,8 @@ private struct SukavinaAttendanceWidget: Widget {
 
 @available(iOS 17.0, *)
 private struct MeetingLiveActivityWidget: Widget {
+    private let accent = Color(red: 1.0, green: 0.25, blue: 0.25)
+
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MeetingLiveActivityAttributes.self) { context in
             MeetingLiveActivityView(context: context)
@@ -468,74 +470,114 @@ private struct MeetingLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    SukavinaLiveActivityLogo(size: 18)
+                // Keep the complete primary row in the center region. WidgetKit
+                // places this region below the TrueDepth camera, so the row gets
+                // real horizontal room instead of shrinking three separate
+                // leading/center/trailing views into tiny labels.
+                DynamicIslandExpandedRegion(.center, priority: 2) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                .fill(accent.opacity(0.22))
+
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundStyle(accent)
+                        }
+                        .frame(width: 40, height: 40)
+                        .fixedSize()
+
+                        HStack(spacing: 6) {
+                            Text(context.attributes.title)
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                                .layoutPriority(2)
+
+                            Text("·")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.48))
+
+                            Text(context.attributes.roomName)
+                                .font(.system(size: 15, weight: .medium, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.68)
+                                .layoutPriority(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text(context.state.endsAt, style: .timer)
+                            .font(.system(size: 21, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .layoutPriority(4)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                DynamicIslandExpandedRegion(.center) {
-                    Text("\(context.attributes.title) · \(context.attributes.roomName)")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
+                .contentMargins(.horizontal, 0)
+                .contentMargins(.vertical, 2)
+
+                DynamicIslandExpandedRegion(.bottom, priority: 1) {
+                    HStack(spacing: 12) {
+                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                            .frame(width: 52, alignment: .leading)
+
+                        ProgressView(
+                            timerInterval: context.attributes.startsAt...context.state.endsAt,
+                            countsDown: false
+                        )
+                        .progressViewStyle(.linear)
+                        .labelsHidden()
+                        .tint(accent)
+                        .frame(maxWidth: .infinity)
+                        .scaleEffect(x: 1, y: 1.18, anchor: .center)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.endsAt, style: .time)
-                        .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(.red)
-                        .lineLimit(1)
-                }
-                DynamicIslandExpandedRegion(.bottom) {
-                    MeetingDynamicIslandTimeline(context: context)
-                }
+                .contentMargins(.horizontal, 0)
+                .contentMargins(.top, 2)
+                .contentMargins(.bottom, 0)
             } compactLeading: {
-                // Keep the compact presentation inside the system-owned
-                // status-bar space: a small mark plus the live countdown.
-                SukavinaLiveActivityLogo(size: 11)
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(accent)
             } compactTrailing: {
                 Text(context.state.endsAt, style: .timer)
-                    .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(.white)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(accent)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .frame(width: 31, alignment: .trailing)
+                    .minimumScaleFactor(0.62)
+                    .frame(minWidth: 34, alignment: .trailing)
             } minimal: {
-                SukavinaLiveActivityLogo(size: 10)
+                Image(systemName: "person.3.fill")
+                    .font(.caption2.bold())
+                    .foregroundStyle(accent)
             }
             .contentMargins(.horizontal, 2, for: .compactLeading)
             .contentMargins(.horizontal, 2, for: .compactTrailing)
             .contentMargins(.all, 2, for: .minimal)
-            .contentMargins(.horizontal, 12, for: .expanded)
+            .contentMargins(.horizontal, 14, for: .expanded)
+            .contentMargins(.vertical, 8, for: .expanded)
+            .keylineTint(accent.opacity(0.9))
         }
     }
-}
 
-/// Keep expanded Island content to one bottom row.  The system clips content
-/// that grows vertically into the strongly rounded lower edge.
-@available(iOS 17.0, *)
-private struct MeetingDynamicIslandTimeline: View {
-    let context: ActivityViewContext<MeetingLiveActivityAttributes>
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ProgressView(
-                timerInterval: context.attributes.startsAt...context.state.endsAt,
-                countsDown: false
-            )
-            .labelsHidden()
-            .tint(.red)
-            .frame(maxWidth: .infinity)
-
-            HStack(spacing: 3) {
-                Text("Còn").foregroundStyle(.white.opacity(0.62))
-                Text(context.state.endsAt, style: .timer)
-                    .foregroundStyle(.red)
-                    .monospacedDigit()
-            }
-            .font(.caption2.weight(.semibold))
-            .fixedSize(horizontal: true, vertical: false)
-        }
-        .padding(.horizontal, 4)
-    }
+    private static let clockFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
 }
 
 @available(iOS 17.0, *)
