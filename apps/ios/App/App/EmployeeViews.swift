@@ -2756,7 +2756,7 @@ struct TodayMenuView: View {
             .task {
                 await session.refreshTodayMenu()
             }
-            .refreshable { await session.refreshTodayMenu() }
+            .refreshable { await session.refreshTodayMenu(force: true) }
             .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
@@ -3073,12 +3073,12 @@ struct DashboardView: View {
             }
             .task(id: session.requestRevision) {
                 guard session.requestRevision > 0 else { return }
-                await requestStore.load(session.token)
+                await requestStore.load(session.token, force: true)
             }
             .refreshable {
                 await session.refreshDashboard()
-                await requestStore.load(session.token)
-                await session.refreshTodayMenu()
+                await requestStore.load(session.token, force: true)
+                await session.refreshTodayMenu(force: true)
             }
             .sheet(isPresented: $showTodayMenu) {
                 TodayMenuView()
