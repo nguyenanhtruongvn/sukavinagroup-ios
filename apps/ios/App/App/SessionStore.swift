@@ -509,6 +509,7 @@ final class SessionStore: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 // Keep a restored menu visible if revalidation is temporarily
                 // unavailable instead of replacing useful cached UI with an alert.
                 if self.todayMenu == nil {
@@ -857,6 +858,7 @@ final class SessionStore: ObservableObject {
             defaults.removeObject(forKey: localAttendanceNotificationsPrefix + employeeCode)
             defaults.removeObject(forKey: acknowledgedNotificationBadgePrefix + employeeCode)
             defaults.removeObject(forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
+            defaults.removeObject(forKey: todayMenuCachePrefix + employeeCode)
         }
         meetingDetailsRefreshTasks.values.forEach { $0.cancel() }
         meetingDetailsRefreshTasks.removeAll()
@@ -1393,6 +1395,7 @@ final class SessionStore: ObservableObject {
             } catch is CancellationError {
                 return nil
             } catch {
+                guard !Task.isCancelled else { return nil }
                 // Existing RAM data is still useful when a revalidation fails.
                 if !staleInvitees.isEmpty {
                     ConnectionDiagnostics.record(
