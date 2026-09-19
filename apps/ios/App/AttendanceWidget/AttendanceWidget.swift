@@ -530,12 +530,10 @@ private struct MeetingLiveActivityWidget: Widget {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(accent)
-                    .frame(width: 8, height: 10)
+                    .frame(width: 10, height: 10, alignment: .center)
+                    .padding(.leading, 2)
             } compactTrailing: {
-                // A small explicit width is more reliable than fixedSize() in
-                // WidgetKit's compact trailing region: it prevents the timer
-                // from collapsing to a clipped sliver while still keeping the
-                // Island close to its minimum usable width.
+                // Keep the countdown complete while avoiding unnecessary width.
                 Text(context.state.endsAt, style: .timer)
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
@@ -550,7 +548,7 @@ private struct MeetingLiveActivityWidget: Widget {
             }
             .contentMargins(.horizontal, 4, for: .expanded)
             .contentMargins(.vertical, 3, for: .expanded)
-            .contentMargins(.leading, 0, for: .compactLeading)
+            .contentMargins(.leading, 3, for: .compactLeading)
             .contentMargins(.trailing, 0, for: .compactTrailing)
             .keylineTint(accent.opacity(0.9))
         }
