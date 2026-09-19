@@ -4,6 +4,8 @@ import WidgetKit
 
 @available(iOS 17.0, *)
 struct MeetingLiveActivityWidget: Widget {
+    private let accent = Color(red: 1.0, green: 0.25, blue: 0.25)
+
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MeetingLiveActivityAttributes.self) { context in
             VStack(alignment: .leading, spacing: 12) {
@@ -41,89 +43,88 @@ struct MeetingLiveActivityWidget: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.red.opacity(0.16))
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(accent.opacity(0.18))
 
                         Image(systemName: "person.3.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.red)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundStyle(accent)
                     }
-                    .frame(width: 34, height: 34)
+                    .frame(width: 40, height: 40)
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .timer)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 21, weight: .bold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(.red)
+                        .foregroundStyle(accent)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.65)
-                        .frame(minWidth: 48, alignment: .trailing)
+                        .minimumScaleFactor(0.58)
+                        .frame(minWidth: 58, alignment: .trailing)
                 }
 
-                // Keep descriptive text below the TrueDepth camera area.
-                // This gives long Vietnamese room names enough horizontal room
-                // and prevents the title, room and countdown from colliding.
-                DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 5) {
-                            Text(context.attributes.title)
-                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                                .layoutPriority(2)
+                // Put the meeting identity on the same visual row as the icon
+                // and countdown. The centre region is the safe system-managed
+                // area below the TrueDepth hardware on Dynamic Island devices.
+                DynamicIslandExpandedRegion(.center) {
+                    HStack(spacing: 6) {
+                        Text(context.attributes.title)
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.68)
+                            .layoutPriority(2)
 
-                            Text("·")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.48))
+                        Text("·")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.48))
 
-                            Text(context.attributes.roomName)
-                                .font(.system(size: 13, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.68))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
-                                .layoutPriority(1)
-
-                            Spacer(minLength: 0)
-                        }
-
-                        HStack(spacing: 10) {
-                            Text(context.attributes.startsAt, style: .time)
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(.red)
-                                .lineLimit(1)
-                                .frame(width: 46, alignment: .leading)
-
-                            ProgressView(
-                                timerInterval: progressInterval(context),
-                                countsDown: false
-                            )
-                            .progressViewStyle(.linear)
-                            .labelsHidden()
-                            .tint(.red)
-                            .scaleEffect(x: 1, y: 0.72, anchor: .center)
-                        }
+                        Text(context.attributes.roomName)
+                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.72))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.64)
+                            .layoutPriority(1)
                     }
-                    .padding(.top, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack(spacing: 12) {
+                        Text(context.attributes.startsAt, style: .time)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                            .frame(width: 52, alignment: .leading)
+
+                        ProgressView(
+                            timerInterval: progressInterval(context),
+                            countsDown: false
+                        )
+                        .progressViewStyle(.linear)
+                        .labelsHidden()
+                        .tint(accent)
+                        .scaleEffect(x: 1, y: 1.18, anchor: .center)
+                    }
+                    .padding(.top, 5)
                 }
             } compactLeading: {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.red)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(accent)
             } compactTrailing: {
                 Text(context.state.endsAt, style: .timer)
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(accent)
                     .lineLimit(1)
                     .minimumScaleFactor(0.55)
             } minimal: {
                 Image(systemName: "person.3.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.red)
+                    .font(.caption2.bold())
+                    .foregroundStyle(accent)
             }
-            .keylineTint(.red.opacity(0.8))
+            .keylineTint(accent.opacity(0.9))
         }
     }
 
