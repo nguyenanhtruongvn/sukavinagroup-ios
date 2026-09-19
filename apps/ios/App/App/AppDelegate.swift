@@ -116,6 +116,18 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         window.makeKeyAndVisible()
         self.window = window
         self.appContainer = appContainer
+
+        // Start ActivityKit observers as early as possible. A push-to-start
+        // event may wake the process in the background without ever calling
+        // applicationDidBecomeActive, so waiting for the active lifecycle
+        // would miss the remotely started activity's update token.
+        if #available(iOS 17.0, *) {
+            MeetingLiveActivityManager.restorePushTokenObservers()
+        }
+        if #available(iOS 17.2, *) {
+            MeetingLiveActivityStartRegistration.observe()
+        }
+
         return true
     }
 
