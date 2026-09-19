@@ -259,18 +259,61 @@ struct NotificationsView: View {
             await reloadNotifications()
             return
         }
-        guard let token = session.token else { return }
-        let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications/\(item.id)/read", method: "PATCH", token: token)
-        if item.type.hasPrefix("meeting_") || item.title.hasPrefix("Còn 10 phút") {
+
+        let isMeetingNotification = item.type.hasPrefix("meeting_") || item.title.hasPrefix("Còn 10 phút")
+
+        // Meeting notifications should open immediately. Previously the sheet
+        // waited for the read PATCH round-trip before appearing, which made a
+        // cached notification still feel slow.
+        if isMeetingNotification {
             meetingNotification = item
-        } else {
-            await requestStore.load(token)
-            if let id = item.requestId {
-                if item.type == "request_pending", let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) { reviewing = request }
-                else { viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id }) }
+            markReadOptimistically(item)
+
+            Task {
+                guard let token = session.token else { return }
+                let _: UpdateCount? = try? await APIClient.shared.request(
+                    "me/requests/notifications/\(item.id)/read",
+                    method: "PATCH",
+                    token: token
+                )
+                await reloadNotifications()
+            }
+            return
+        }
+
+        guard let token = session.token else { return }
+        let _: UpdateCount? = try? await APIClient.shared.request(
+            "me/requests/notifications/\(item.id)/read",
+            method: "PATCH",
+            token: token
+        )
+        await requestStore.load(token)
+        if let id = item.requestId {
+            if item.type == "request_pending",
+               let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) {
+                reviewing = request
+            } else {
+                viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id })
             }
         }
         await reloadNotifications()
+    }
+
+    private func markReadOptimistically(_ item: RequestNotification) {
+        guard !item.read else { return }
+        requestNotifications = requestNotifications.map { current in
+            guard current.id == item.id else { return current }
+            return RequestNotification(
+                id: current.id,
+                type: current.type,
+                title: current.title,
+                message: current.message,
+                requestId: current.requestId,
+                read: true,
+                createdAt: current.createdAt
+            )
+        }
+        session.updateRequestUnreadCount(requestNotifications)
     }
 
     private func openPendingAPNsRouteIfNeeded() async {
@@ -575,11 +618,20 @@ private struct MeetingNotificationDetail: View {
             .toolbar { Button("Đóng") { dismiss() } }
             .task(id: notification.requestId) {
                 guard let id = notification.requestId else { return }
-                isLoading = true
+
+                // Stale-while-revalidate: render the RAM cache synchronously,
+                // then refresh only when its short TTL has expired.
+                if let cached = session.cachedMeetingBookingDetails(id: id) {
+                    details = cached
+                }
+                isLoading = details == nil
+
                 if let loadedDetails = await session.meetingBookingDetails(id: id) {
                     details = loadedDetails
                     if let meetingDate = MeetingPresentation.date(from: loadedDetails.startsAt) {
-                        await session.refreshMeetingSchedule(date: meetingDate)
+                        Task {
+                            await session.refreshMeetingSchedule(date: meetingDate)
+                        }
                     }
                 }
                 isLoading = false
