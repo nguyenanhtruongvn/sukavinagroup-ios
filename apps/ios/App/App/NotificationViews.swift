@@ -430,7 +430,16 @@ private struct MeetingNotificationDetail: View {
     private var isEndingSoonReminder: Bool {
         notification.type == "meeting_ending_soon" || notification.title.hasPrefix("Còn 10 phút")
     }
-    private var endDate: Date? { details.flatMap { MeetingPresentation.date(from: $0.endsAt) } }
+    private var currentScheduleBooking: MeetingBooking? {
+        guard let id = details?.id else { return nil }
+        return session.meetingBookings.first(where: { $0.id == id })
+    }
+    private var effectiveEndsAt: String? {
+        currentScheduleBooking?.endsAt ?? details?.endsAt
+    }
+    private var endDate: Date? {
+        effectiveEndsAt.flatMap { MeetingPresentation.date(from: $0) }
+    }
     private var meetingEnded: Bool { endDate.map { $0 <= Date() } ?? false }
     private var isOrganizer: Bool {
         guard let details, let employeeCode = session.profile?.employeeCode else { return false }
@@ -508,7 +517,24 @@ private struct MeetingNotificationDetail: View {
                     notificationCard(title: "Thông tin cuộc họp", icon: "calendar") {
                         if let details {
                             Label(details.room.name, systemImage: "building.2.fill").font(.headline)
-                            Label(MeetingPresentation.range(MeetingBooking(id: details.id, roomId: details.roomId, startsAt: details.startsAt, endsAt: details.endsAt, title: details.title, attendeeCount: details.attendeeCount, status: details.status, isMine: true, isOwner: false)), systemImage: "clock.fill").font(.subheadline).foregroundStyle(.secondary)
+                            Label(
+                                MeetingPresentation.range(
+                                    MeetingBooking(
+                                        id: details.id,
+                                        roomId: details.roomId,
+                                        startsAt: details.startsAt,
+                                        endsAt: effectiveEndsAt ?? details.endsAt,
+                                        title: details.title,
+                                        attendeeCount: details.attendeeCount,
+                                        status: currentScheduleBooking?.status ?? details.status,
+                                        isMine: true,
+                                        isOwner: isOrganizer
+                                    )
+                                ),
+                                systemImage: "clock.fill"
+                            )
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                             if !details.room.location.isEmpty { Label(details.room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
                             Label("Người tổ chức: \(details.employee.fullName)", systemImage: "person.crop.circle").font(.subheadline).foregroundStyle(.secondary)
                             if !details.participants.isEmpty { Text("Người tham gia: \(details.participants.map { $0.employee.fullName }.joined(separator: ", "))").font(.subheadline).foregroundStyle(.secondary) }
@@ -633,20 +659,18 @@ private struct MeetingNotificationDetail: View {
     private func submit(_ details: MeetingBookingDetails, action: String) async {
         guard !isSubmitting else { return }
         isSubmitting = true
-        defer { isSubmitting = false }
+        actionError = nil
+
         actionError = await session.performMeetingControl(
             bookingID: details.id,
             action: action,
             extensionMinutes: extensionMinutes
         )
+
         if actionError == nil {
-            if let refreshedDetails = await session.meetingBookingDetails(id: details.id) {
-                self.details = refreshedDetails
-                if let meetingDate = MeetingPresentation.date(from: refreshedDetails.startsAt) {
-                    await session.refreshMeetingSchedule(date: meetingDate)
-                }
-            }
+            extensionMinutes = 5
         }
+        isSubmitting = false
     }
 }
 
