@@ -476,52 +476,54 @@ private struct MeetingLiveActivityWidget: Widget {
                 // rendered content on some iOS/device combinations.
                 DynamicIslandExpandedRegion(.leading) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .fill(accent.opacity(0.22))
                         Image(systemName: "person.3.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(accent)
                     }
-                    .frame(width: 32, height: 32)
+                    .frame(width: 28, height: 28)
+                    .padding(.leading, 8)
                 }
 
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .timer)
-                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(accent)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                        .padding(.trailing, 10)
                 }
 
                 DynamicIslandExpandedRegion(.center) {
-                    HStack(spacing: 5) {
+                    (
                         Text(context.attributes.title)
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-
-                        Text("·")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.46))
-
+                        +
+                        Text(" · ")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.42))
+                        +
                         Text(context.attributes.roomName)
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.70))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.68)
-                    }
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.68))
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.66)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         Text(context.attributes.startsAt, style: .time)
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(accent)
                             .lineLimit(1)
-                            .frame(width: 46, alignment: .leading)
+                            .frame(width: 42, alignment: .leading)
 
                         ProgressView(
                             timerInterval: context.attributes.startsAt...context.state.endsAt,
@@ -532,22 +534,27 @@ private struct MeetingLiveActivityWidget: Widget {
                         .tint(accent)
                         .frame(maxWidth: .infinity)
                     }
-                    .padding(.top, 2)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 1)
                 }
             } compactLeading: {
+                // Keep the compact island at the system minimum width: a tiny
+                // meeting glyph on the leading side and no trailing text.
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accent)
+                    .frame(width: 10, height: 10)
             } compactTrailing: {
-                Text(context.state.endsAt, style: .timer)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(accent)
-                    .lineLimit(1)
+                EmptyView()
             } minimal: {
                 Image(systemName: "person.3.fill")
-                    .font(.caption2.bold())
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accent)
             }
+            .contentMargins(.horizontal, 12, for: .expanded)
+            .contentMargins(.vertical, 3, for: .expanded)
+            .contentMargins(.horizontal, 0, for: .compactLeading)
+            .contentMargins(.horizontal, 0, for: .compactTrailing)
             .keylineTint(accent.opacity(0.9))
         }
     }
