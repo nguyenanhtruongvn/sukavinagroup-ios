@@ -470,82 +470,80 @@ private struct MeetingLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Keep the complete primary row in the center region. WidgetKit
-                // places this region below the TrueDepth camera, so the row gets
-                // real horizontal room instead of shrinking three separate
-                // leading/center/trailing views into tiny labels.
-                DynamicIslandExpandedRegion(.center, priority: 2) {
-                    HStack(spacing: 10) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .fill(accent.opacity(0.22))
+                // Expanded Island: keep the entire design in one full-width
+                // bottom region. Splitting icon/title/timer across
+                // leading/center/trailing makes WidgetKit squeeze each region
+                // around the TrueDepth camera and was the reason the device UI
+                // looked tiny and misaligned.
+                DynamicIslandExpandedRegion(.bottom, priority: 1) {
+                    VStack(spacing: 7) {
+                        HStack(spacing: 9) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(accent.opacity(0.22))
 
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundStyle(accent)
-                        }
-                        .frame(width: 40, height: 40)
-                        .fixedSize()
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundStyle(accent)
+                            }
+                            .frame(width: 32, height: 32)
+                            .fixedSize()
 
-                        HStack(spacing: 6) {
-                            Text(context.attributes.title)
+                            HStack(spacing: 5) {
+                                Text(context.attributes.title)
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.72)
+                                    .layoutPriority(2)
+
+                                Text("·")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.46))
+
+                                Text(context.attributes.roomName)
+                                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.70))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.68)
+                                    .layoutPriority(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text(context.state.endsAt, style: .timer)
                                 .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
+                                .monospacedDigit()
+                                .foregroundStyle(accent)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
-                                .layoutPriority(2)
-
-                            Text("·")
-                                .font(.system(size: 15, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.48))
-
-                            Text(context.attributes.roomName)
-                                .font(.system(size: 15, weight: .medium, design: .rounded))
-                                .foregroundStyle(.white.opacity(0.72))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.68)
-                                .layoutPriority(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .layoutPriority(4)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
-                        Text(context.state.endsAt, style: .timer)
-                            .font(.system(size: 21, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(accent)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .layoutPriority(4)
+                        HStack(spacing: 10) {
+                            Text(Self.clockFormatter.string(from: context.attributes.startsAt))
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(accent)
+                                .lineLimit(1)
+                                .frame(width: 46, alignment: .leading)
+
+                            ProgressView(
+                                timerInterval: context.attributes.startsAt...context.state.endsAt,
+                                countsDown: false
+                            )
+                            .progressViewStyle(.linear)
+                            .labelsHidden()
+                            .tint(accent)
+                            .frame(maxWidth: .infinity)
+                            .scaleEffect(x: 1, y: 0.92, anchor: .center)
+                        }
                     }
                     .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 2)
                 }
                 .contentMargins(.horizontal, 0)
-                .contentMargins(.vertical, 2)
-
-                DynamicIslandExpandedRegion(.bottom, priority: 1) {
-                    HStack(spacing: 12) {
-                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(accent)
-                            .lineLimit(1)
-                            .frame(width: 52, alignment: .leading)
-
-                        ProgressView(
-                            timerInterval: context.attributes.startsAt...context.state.endsAt,
-                            countsDown: false
-                        )
-                        .progressViewStyle(.linear)
-                        .labelsHidden()
-                        .tint(accent)
-                        .frame(maxWidth: .infinity)
-                        .scaleEffect(x: 1, y: 1.18, anchor: .center)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .contentMargins(.horizontal, 0)
-                .contentMargins(.top, 2)
-                .contentMargins(.bottom, 0)
+                .contentMargins(.vertical, 0)
             } compactLeading: {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 11, weight: .bold))
@@ -565,8 +563,8 @@ private struct MeetingLiveActivityWidget: Widget {
             .contentMargins(.horizontal, 2, for: .compactLeading)
             .contentMargins(.horizontal, 2, for: .compactTrailing)
             .contentMargins(.all, 2, for: .minimal)
-            .contentMargins(.horizontal, 14, for: .expanded)
-            .contentMargins(.vertical, 8, for: .expanded)
+            .contentMargins(.horizontal, 10, for: .expanded)
+            .contentMargins(.vertical, 4, for: .expanded)
             .keylineTint(accent.opacity(0.9))
         }
     }
