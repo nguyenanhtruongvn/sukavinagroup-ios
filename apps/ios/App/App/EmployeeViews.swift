@@ -915,31 +915,34 @@ private struct MeetingTimeline: View {
 
     private func bookingStyle(for booking: MeetingBooking) -> MeetingTimelineBookingStyle {
         if booking.isOwner == true {
+            // Organiser: richer green pastel, still soft on a light schedule.
             return MeetingTimelineBookingStyle(
-                fill: Color(red: 236.0 / 255.0, green: 248.0 / 255.0, blue: 240.0 / 255.0),
-                border: Color(red: 169.0 / 255.0, green: 217.0 / 255.0, blue: 184.0 / 255.0),
-                foreground: Color(red: 35.0 / 255.0, green: 85.0 / 255.0, blue: 58.0 / 255.0),
-                meta: Color(red: 93.0 / 255.0, green: 124.0 / 255.0, blue: 105.0 / 255.0),
-                line: Color(red: 181.0 / 255.0, green: 220.0 / 255.0, blue: 193.0 / 255.0)
+                fill: Color(red: 220.0 / 255.0, green: 239.0 / 255.0, blue: 226.0 / 255.0),
+                border: Color(red: 143.0 / 255.0, green: 198.0 / 255.0, blue: 160.0 / 255.0),
+                foreground: Color(red: 46.0 / 255.0, green: 106.0 / 255.0, blue: 67.0 / 255.0),
+                meta: Color(red: 92.0 / 255.0, green: 127.0 / 255.0, blue: 104.0 / 255.0),
+                line: Color(red: 166.0 / 255.0, green: 207.0 / 255.0, blue: 178.0 / 255.0)
             )
         }
 
         if booking.isMine == true {
+            // Invitee: calm blue pastel, distinct from organiser green.
             return MeetingTimelineBookingStyle(
-                fill: Color(red: 242.0 / 255.0, green: 246.0 / 255.0, blue: 255.0 / 255.0),
-                border: Color(red: 183.0 / 255.0, green: 200.0 / 255.0, blue: 238.0 / 255.0),
-                foreground: Color(red: 38.0 / 255.0, green: 61.0 / 255.0, blue: 104.0 / 255.0),
-                meta: Color(red: 100.0 / 255.0, green: 125.0 / 255.0, blue: 168.0 / 255.0),
-                line: Color(red: 185.0 / 255.0, green: 199.0 / 255.0, blue: 228.0 / 255.0)
+                fill: Color(red: 220.0 / 255.0, green: 233.0 / 255.0, blue: 250.0 / 255.0),
+                border: Color(red: 142.0 / 255.0, green: 180.0 / 255.0, blue: 232.0 / 255.0),
+                foreground: Color(red: 49.0 / 255.0, green: 92.0 / 255.0, blue: 145.0 / 255.0),
+                meta: Color(red: 96.0 / 255.0, green: 126.0 / 255.0, blue: 167.0 / 255.0),
+                line: Color(red: 168.0 / 255.0, green: 195.0 / 255.0, blue: 232.0 / 255.0)
             )
         }
 
+        // Unrelated: neutral grey pastel, readable but intentionally quieter.
         return MeetingTimelineBookingStyle(
-            fill: Color(red: 244.0 / 255.0, green: 245.0 / 255.0, blue: 247.0 / 255.0),
-            border: Color(red: 213.0 / 255.0, green: 217.0 / 255.0, blue: 224.0 / 255.0),
-            foreground: Color(red: 82.0 / 255.0, green: 91.0 / 255.0, blue: 103.0 / 255.0),
-            meta: Color(red: 133.0 / 255.0, green: 141.0 / 255.0, blue: 152.0 / 255.0),
-            line: Color(red: 201.0 / 255.0, green: 206.0 / 255.0, blue: 214.0 / 255.0)
+            fill: Color(red: 229.0 / 255.0, green: 231.0 / 255.0, blue: 235.0 / 255.0),
+            border: Color(red: 184.0 / 255.0, green: 190.0 / 255.0, blue: 199.0 / 255.0),
+            foreground: Color(red: 89.0 / 255.0, green: 97.0 / 255.0, blue: 109.0 / 255.0),
+            meta: Color(red: 119.0 / 255.0, green: 127.0 / 255.0, blue: 137.0 / 255.0),
+            line: Color(red: 195.0 / 255.0, green: 200.0 / 255.0, blue: 207.0 / 255.0)
         )
     }
 }
