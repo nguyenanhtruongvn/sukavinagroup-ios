@@ -156,6 +156,9 @@ final class EmployeeRequestStore: ObservableObject {
     @Published var message: String?
     private let cachePrefix = "native-employee-requests-cache-"
     private var cacheEmployeeCode: String?
+    private var lastLoadedAt: Date?
+    private var loadTask: Task<Void, Never>?
+    private let refreshTTL: TimeInterval = 60
 
     /// Restore first so a previously loaded request list remains usable when
     /// the network is unavailable. Data is namespaced to the signed-in person.
@@ -168,6 +171,7 @@ final class EmployeeRequestStore: ObservableObject {
               Date().timeIntervalSince(cached.savedAt) < 7 * 24 * 60 * 60 else { return }
         requests = cached.requests
         approvals = cached.approvals
+        lastLoadedAt = cached.savedAt
     }
 
     private func saveCache() {
@@ -184,37 +188,117 @@ final class EmployeeRequestStore: ObservableObject {
         message = error.localizedDescription
     }
 
-    func load(_ token: String?) async {
+    func load(_ token: String?, force: Bool = false) async {
         guard let token else { return }
-        do {
-            async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
-            async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
-            requests = try await mine
-            approvals = try await assigned
-            saveCache()
-        } catch { record(error) }
+
+        if !force,
+           let lastLoadedAt,
+           Date().timeIntervalSince(lastLoadedAt) < refreshTTL,
+           (!requests.isEmpty || !approvals.isEmpty) {
+            return
+        }
+
+        if let existing = loadTask {
+            await existing.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
+                async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
+                self.requests = try await mine
+                self.approvals = try await assigned
+                self.lastLoadedAt = Date()
+                self.saveCache()
+            } catch {
+                self.record(error)
+            }
+        }
+
+        loadTask = task
+        await task.value
+        loadTask = nil
     }
 
     func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil) async -> Bool {
         guard let token else { return false }
         do {
-            let _: EmployeeRequest = try await APIClient.shared.request("me/requests", method: "POST", token: token, body: RequestBody(kind: kind.rawValue, startsAt: from, endsAt: to, reason: reason, businessDestination: destination, businessTransport: transport, businessDistanceKm: distanceKm, businessExpense: expense))
-            await load(token); return true
-        } catch { record(error); return false }
+            let created: EmployeeRequest = try await APIClient.shared.request(
+                "me/requests",
+                method: "POST",
+                token: token,
+                body: RequestBody(
+                    kind: kind.rawValue,
+                    startsAt: from,
+                    endsAt: to,
+                    reason: reason,
+                    businessDestination: destination,
+                    businessTransport: transport,
+                    businessDistanceKm: distanceKm,
+                    businessExpense: expense
+                )
+            )
+            requests.removeAll { $0.id == created.id }
+            requests.insert(created, at: 0)
+            lastLoadedAt = Date()
+            saveCache()
+            Task { [weak self] in await self?.load(token, force: true) }
+            return true
+        } catch {
+            record(error)
+            return false
+        }
     }
 
     func cancel(token: String?, id: String) async {
         guard let token else { return }
-        do { let _: EmployeeRequest = try await APIClient.shared.request("me/requests/\(id)", method: "DELETE", token: token); await load(token) }
-        catch { record(error) }
+        do {
+            let cancelled: EmployeeRequest = try await APIClient.shared.request(
+                "me/requests/\(id)",
+                method: "DELETE",
+                token: token
+            )
+            if let index = requests.firstIndex(where: { $0.id == id }) {
+                requests[index] = cancelled
+            } else {
+                requests.insert(cancelled, at: 0)
+            }
+            approvals.removeAll { $0.id == id }
+            lastLoadedAt = Date()
+            saveCache()
+            Task { [weak self] in await self?.load(token, force: true) }
+        } catch {
+            record(error)
+        }
     }
 
     func decide(token: String?, id: String, approved: Bool, note: String) async -> Bool {
         guard let token else { return false }
         do {
-            let _: EmployeeRequest = try await APIClient.shared.request("me/requests/\(id)/decision", method: "PATCH", token: token, body: RequestDecisionBody(status: approved ? "approved" : "rejected", note: note.isEmpty ? nil : note))
-            await load(token); return true
-        } catch { record(error); return false }
+            let decided: EmployeeRequest = try await APIClient.shared.request(
+                "me/requests/\(id)/decision",
+                method: "PATCH",
+                token: token,
+                body: RequestDecisionBody(
+                    status: approved ? "approved" : "rejected",
+                    note: note.isEmpty ? nil : note
+                )
+            )
+            if let index = approvals.firstIndex(where: { $0.id == id }) {
+                approvals[index] = decided
+            } else {
+                approvals.insert(decided, at: 0)
+            }
+            lastLoadedAt = Date()
+            saveCache()
+            Task { [weak self] in await self?.load(token, force: true) }
+            return true
+        } catch {
+            record(error)
+            return false
+        }
     }
 }
 
@@ -319,7 +403,7 @@ struct RequestsView: View {
                 store.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
                 await store.load(session.token)
             }
-            .refreshable { await store.load(session.token) }
+            .refreshable { await store.load(session.token, force: true) }
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
     }
@@ -998,8 +1082,8 @@ struct RequestComposer: View {
                 guard kind == .attendance, let token = session.token else { return }
                 let month = attendanceDateKey(attendanceDate, format: "yyyy-MM")
                 let selectedKey = attendanceDateKey(attendanceDate, format: "yyyy-MM-dd")
-                attendanceDay = nil
-                if let data = try? await APIClient.shared.request("me/attendance?month=" + month, token: token) as AttendanceMonth {
+
+                func apply(_ data: AttendanceMonth) {
                     attendanceDay = data.days.first { $0.date == selectedKey }
                     let scheduleStart = attendanceDay?.startTime ?? data.startTime
                     let scheduleEnd = attendanceDay?.endTime ?? data.endTime
@@ -1007,6 +1091,17 @@ struct RequestComposer: View {
                         ?? scheduledAttendanceTime(scheduleStart, on: attendanceDate, fallbackHour: 7, fallbackMinute: 30)
                     to = attendanceDay?.checkOut.flatMap { ISO8601DateFormatter().date(from: $0) }
                         ?? scheduledAttendanceTime(scheduleEnd, on: attendanceDate, fallbackHour: 16, fallbackMinute: 30)
+                }
+
+                if let cached = session.cachedAttendanceMonth(month) {
+                    apply(cached)
+                } else {
+                    attendanceDay = nil
+                }
+
+                guard session.shouldRevalidateAttendanceMonth(month) else { return }
+                if let refreshed = try? await session.loadAttendanceMonth(month, token: token) {
+                    apply(refreshed)
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
