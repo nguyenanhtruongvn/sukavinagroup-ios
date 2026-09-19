@@ -470,71 +470,75 @@ private struct MeetingLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Put the whole primary row in the safe center area below the
-                // TrueDepth hardware. On the real device the expanded
-                // leading/trailing regions sit too close to the curved upper
-                // corners, which clipped the icon/timer and wasted width.
-                DynamicIslandExpandedRegion(.center) {
-                    HStack(spacing: 8) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(accent.opacity(0.22))
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(accent)
-                        }
-                        .frame(width: 28, height: 28)
-                        .fixedSize()
-
-                        Text("\(context.attributes.title) · \(context.attributes.roomName)")
-                            .font(.system(size: 12, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.92))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.64)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .layoutPriority(1)
-
-                        Text(context.state.endsAt, style: .timer)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(accent)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.78)
-                            .frame(width: 44, alignment: .trailing)
-                            .layoutPriority(2)
-                    }
-                    .frame(maxWidth: .infinity)
+                // Reserve the upper regions only to make WidgetKit allocate a
+                // stable expanded layout. All visible meeting UI lives in the
+                // full-width bottom region, safely below the TrueDepth hardware
+                // and away from both curved outer edges.
+                DynamicIslandExpandedRegion(.leading) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
                 }
-                .contentMargins(.leading, 10)
-                .contentMargins(.trailing, 10)
-                .contentMargins(.top, 2)
-                .contentMargins(.bottom, 1)
+
+                DynamicIslandExpandedRegion(.trailing) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                }
 
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 10) {
-                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(accent)
-                            .lineLimit(1)
-                            .frame(width: 42, alignment: .leading)
+                    VStack(spacing: 7) {
+                        HStack(spacing: 8) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(accent.opacity(0.22))
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(accent)
+                            }
+                            .frame(width: 26, height: 26)
+                            .fixedSize()
 
-                        ProgressView(
-                            timerInterval: context.attributes.startsAt...context.state.endsAt,
-                            countsDown: false
-                        )
-                        .progressViewStyle(.linear)
-                        .labelsHidden()
-                        .tint(accent)
-                        .frame(maxWidth: .infinity)
-                        .scaleEffect(x: 1, y: 1.05, anchor: .center)
+                            Text("\(context.attributes.title) · \(context.attributes.roomName)")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white.opacity(0.92))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.65)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .layoutPriority(1)
+
+                            Text(context.state.endsAt, style: .timer)
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(accent)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
+                                .frame(width: 46, alignment: .trailing)
+                                .layoutPriority(2)
+                        }
+
+                        HStack(spacing: 8) {
+                            Text(Self.clockFormatter.string(from: context.attributes.startsAt))
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(accent)
+                                .lineLimit(1)
+                                .frame(width: 40, alignment: .leading)
+
+                            ProgressView(
+                                timerInterval: context.attributes.startsAt...context.state.endsAt,
+                                countsDown: false
+                            )
+                            .progressViewStyle(.linear)
+                            .labelsHidden()
+                            .tint(accent)
+                            .frame(maxWidth: .infinity)
+                        }
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: 270)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 1)
+                    .padding(.bottom, 4)
                 }
-                .contentMargins(.leading, 12)
-                .contentMargins(.trailing, 12)
-                .contentMargins(.top, 4)
-                .contentMargins(.bottom, 5)
             } compactLeading: {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 8, weight: .bold))
