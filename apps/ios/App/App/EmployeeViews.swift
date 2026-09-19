@@ -1396,7 +1396,12 @@ struct MeetingBookingDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Đóng") { dismiss() } }
             .task(id: booking.id) {
-                details = await session.meetingBookingDetails(id: booking.id)
+                if let cached = session.cachedMeetingBookingDetails(id: booking.id) {
+                    details = cached
+                }
+                if let loaded = await session.meetingBookingDetails(id: booking.id) {
+                    details = loaded
+                }
             }
             .alert("Hủy lịch họp?", isPresented: $showCancelConfirmation) {
                 Button("Không", role: .cancel) {}
