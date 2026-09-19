@@ -26,6 +26,19 @@ enum MeetingLiveActivityManager {
             extensionMinutes: 0,
             isChoosingExtension: false
         )
+
+        // iOS 17.2+ receives the same warning through ActivityKit
+        // Push-to-Start. Creating another Activity from the ordinary APNs
+        // reminder races that remote start and produces two lock-screen cards
+        // for the same booking. On these systems the ordinary notification is
+        // data/UI refresh only; ActivityKit owns creation.
+        if #available(iOS 17.2, *) {
+            Task {
+                await removeDuplicateActivities(for: bookingID)
+            }
+            return
+        }
+
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
                 await activity.update(ActivityContent(state: state, staleDate: endsAt))
@@ -58,6 +71,10 @@ enum MeetingLiveActivityManager {
     }
 
     static func restorePushTokenObservers() {
+        Task {
+            await removeAllDuplicateActivities()
+        }
+
         for activity in Activity<MeetingLiveActivityAttributes>.activities {
             MeetingLiveActivityPushRegistration.observe(activity)
         }
@@ -69,12 +86,40 @@ enum MeetingLiveActivityManager {
         guard activityUpdatesTask == nil else { return }
         activityUpdatesTask = Task {
             for await activity in Activity<MeetingLiveActivityAttributes>.activityUpdates {
+                await removeDuplicateActivities(
+                    for: activity.attributes.bookingID,
+                    keeping: activity.id
+                )
                 MeetingLiveActivityPushRegistration.observe(activity)
                 MeetingLiveActivityExpiry.schedule(
                     bookingID: activity.attributes.bookingID,
                     endsAt: activity.content.state.endsAt
                 )
             }
+        }
+    }
+
+    private static func removeAllDuplicateActivities() async {
+        let activities = Activity<MeetingLiveActivityAttributes>.activities
+        let grouped = Dictionary(grouping: activities) { $0.attributes.bookingID }
+        for (bookingID, matches) in grouped where matches.count > 1 {
+            let keepID = matches.first?.id
+            await removeDuplicateActivities(for: bookingID, keeping: keepID)
+        }
+    }
+
+    private static func removeDuplicateActivities(
+        for bookingID: String,
+        keeping keepID: String? = nil
+    ) async {
+        let matches = Activity<MeetingLiveActivityAttributes>.activities.filter {
+            $0.attributes.bookingID == bookingID
+        }
+        guard matches.count > 1 else { return }
+
+        let canonicalID = keepID ?? matches.first?.id
+        for activity in matches where activity.id != canonicalID {
+            await activity.end(nil, dismissalPolicy: .immediate)
         }
     }
 
