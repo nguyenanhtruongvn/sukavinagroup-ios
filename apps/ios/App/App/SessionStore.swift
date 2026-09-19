@@ -168,6 +168,8 @@ final class SessionStore: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.meetingDetailsRefreshTasks.values.forEach { $0.cancel() }
+                self.meetingDetailsRefreshTasks.removeAll()
                 self.meetingDetailsCache.removeAll()
                 await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
             }
