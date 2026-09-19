@@ -158,6 +158,7 @@ final class EmployeeRequestStore: ObservableObject {
     private var cacheEmployeeCode: String?
     private var lastLoadedAt: Date?
     private var loadTask: Task<Void, Never>?
+    private var loadTaskID: UUID?
     private let refreshTTL: TimeInterval = 60
 
     /// Restore first so a previously loaded request list remains usable when
@@ -202,28 +203,41 @@ final class EmployeeRequestStore: ObservableObject {
             return
         }
 
+        let taskID = UUID()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
                 async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
-                self.requests = try await mine
-                self.approvals = try await assigned
+                let loadedRequests = try await mine
+                let loadedApprovals = try await assigned
+                guard !Task.isCancelled else { return }
+                self.requests = loadedRequests
+                self.approvals = loadedApprovals
                 self.lastLoadedAt = Date()
                 self.saveCache()
+            } catch is CancellationError {
+                return
             } catch {
                 self.record(error)
             }
         }
 
         loadTask = task
+        loadTaskID = taskID
         await task.value
-        loadTask = nil
+        if loadTaskID == taskID {
+            loadTask = nil
+            loadTaskID = nil
+        }
     }
 
     func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil) async -> Bool {
         guard let token else { return false }
         do {
+            loadTask?.cancel()
+            loadTask = nil
+            loadTaskID = nil
             let created: EmployeeRequest = try await APIClient.shared.request(
                 "me/requests",
                 method: "POST",
@@ -254,6 +268,9 @@ final class EmployeeRequestStore: ObservableObject {
     func cancel(token: String?, id: String) async {
         guard let token else { return }
         do {
+            loadTask?.cancel()
+            loadTask = nil
+            loadTaskID = nil
             let cancelled: EmployeeRequest = try await APIClient.shared.request(
                 "me/requests/\(id)",
                 method: "DELETE",
@@ -276,6 +293,9 @@ final class EmployeeRequestStore: ObservableObject {
     func decide(token: String?, id: String, approved: Bool, note: String) async -> Bool {
         guard let token else { return false }
         do {
+            loadTask?.cancel()
+            loadTask = nil
+            loadTaskID = nil
             let decided: EmployeeRequest = try await APIClient.shared.request(
                 "me/requests/\(id)/decision",
                 method: "PATCH",
