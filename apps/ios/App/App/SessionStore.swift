@@ -502,6 +502,7 @@ final class SessionStore: ObservableObject {
             guard let self else { return }
             do {
                 let value: TodayMenu = try await APIClient.shared.request("me/menu", token: token)
+                guard !Task.isCancelled else { return }
                 self.todayMenu = value
                 self.todayMenuLoadedAt = Date()
                 self.saveTodayMenuCache(value)
@@ -558,6 +559,8 @@ final class SessionStore: ObservableObject {
 
     func selectMeal(_ choice: String) async {
         guard let token else { return }
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
         isWorking = true
         defer { isWorking = false }
         do {
@@ -577,6 +580,8 @@ final class SessionStore: ObservableObject {
 
     func cancelMealSelection() async {
         guard let token else { return }
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
         isWorking = true
         defer { isWorking = false }
         do {
@@ -595,6 +600,8 @@ final class SessionStore: ObservableObject {
 
     func receiveMealSelection() async {
         guard let token else { return }
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
         isWorking = true
         defer { isWorking = false }
         do {
