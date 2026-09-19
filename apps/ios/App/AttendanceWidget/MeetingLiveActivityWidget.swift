@@ -101,6 +101,7 @@ struct MeetingLiveActivityWidget: Widget {
                                 countsDown: false
                             )
                             .progressViewStyle(.linear)
+                            .labelsHidden()
                             .tint(.red)
                             .scaleEffect(x: 1, y: 0.72, anchor: .center)
                         }
