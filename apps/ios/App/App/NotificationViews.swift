@@ -405,6 +405,7 @@ private struct MeetingNotificationDetail: View {
     @State private var isLoading = false
     @State private var extensionMinutes = 5
     @State private var isSubmitting = false
+    @State private var submittingAction: String?
     @State private var actionError: String?
 
     private var accent: Color {
@@ -623,8 +624,15 @@ private struct MeetingNotificationDetail: View {
                     Button {
                         Task { await submit(details, action: "extend") }
                     } label: {
-                        Label("Xác nhận gia hạn", systemImage: "checkmark")
-                            .frame(maxWidth: .infinity)
+                        HStack(spacing: 8) {
+                            if isSubmitting && submittingAction == "extend" {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "checkmark")
+                            }
+                            Text(isSubmitting && submittingAction == "extend" ? "Đang gia hạn…" : "Xác nhận gia hạn")
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent).tint(.green).disabled(isSubmitting)
                 } else {
@@ -644,8 +652,15 @@ private struct MeetingNotificationDetail: View {
                 Button(role: .destructive) {
                     Task { await submit(details, action: "end") }
                 } label: {
-                    Label("Kết thúc cuộc họp", systemImage: "stop.fill")
-                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 8) {
+                        if isSubmitting && submittingAction == "end" {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "stop.fill")
+                        }
+                        Text(isSubmitting && submittingAction == "end" ? "Đang kết thúc…" : "Kết thúc cuộc họp")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent).disabled(isSubmitting)
             }
@@ -659,6 +674,7 @@ private struct MeetingNotificationDetail: View {
     private func submit(_ details: MeetingBookingDetails, action: String) async {
         guard !isSubmitting else { return }
         isSubmitting = true
+        submittingAction = action
         actionError = nil
 
         actionError = await session.performMeetingControl(
@@ -670,6 +686,7 @@ private struct MeetingNotificationDetail: View {
         if actionError == nil {
             extensionMinutes = 5
         }
+        submittingAction = nil
         isSubmitting = false
     }
 }
