@@ -11,10 +11,11 @@ enum MeetingLiveActivityStartRegistration {
     private static var observationTask: Task<Void, Never>?
 
     static func observe() {
-        // Retry a token that was issued while the API was unavailable or the
-        // user was signed out. The backend upsert makes this safe on every
-        // foreground activation and also remaps the device after account switch.
-        retryCachedTokenIfPossible()
+        // ActivityKit exposes the token that is valid *right now*. Upload it
+        // immediately instead of relying only on the updates sequence: the
+        // sequence isn't required to re-emit an already-issued token after a
+        // login, app update, or a previous failed upload.
+        syncCurrentTokenIfAvailable()
 
         guard observationTask == nil else { return }
         observationTask = Task {
@@ -28,6 +29,20 @@ enum MeetingLiveActivityStartRegistration {
                 await upload(tokenValue: tokenValue)
             }
         }
+    }
+
+    private static func syncCurrentTokenIfAvailable() {
+        if let token = Activity<MeetingLiveActivityAttributes>.pushToStartToken {
+            let tokenValue = token.map { String(format: "%02x", $0) }.joined()
+            guard !tokenValue.isEmpty else { return }
+            UserDefaults.standard.set(tokenValue, forKey: cachedTokenKey)
+            Task {
+                await upload(tokenValue: tokenValue)
+            }
+            return
+        }
+
+        retryCachedTokenIfPossible()
     }
 
     private static func retryCachedTokenIfPossible() {
