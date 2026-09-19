@@ -287,7 +287,7 @@ struct NotificationsView: View {
             method: "PATCH",
             token: token
         )
-        await requestStore.load(token)
+        await requestStore.load(token, force: true)
         if let id = item.requestId {
             if item.type == "request_pending",
                let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) {
