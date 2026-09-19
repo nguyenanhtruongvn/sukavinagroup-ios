@@ -529,17 +529,26 @@ private struct MeetingLiveActivityWidget: Widget {
                     .padding(.top, 1)
                 }
             } compactLeading: {
-                // Keep the compact island at the system minimum width: a tiny
-                // meeting glyph on the leading side and no trailing text.
+                // Keep only the essential glyph on the left so the compact
+                // island stays as close as possible to the system minimum.
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(accent)
-                    .frame(width: 10, height: 10)
+                    .frame(width: 8, height: 10)
             } compactTrailing: {
-                EmptyView()
+                // Show the complete live countdown but let the text use only
+                // its intrinsic width. Avoid fixed frames/padding that make the
+                // compact island look much longer than the actual content.
+                Text(context.state.endsAt, style: .timer)
+                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(accent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+                    .fixedSize(horizontal: true, vertical: false)
             } minimal: {
                 Image(systemName: "person.3.fill")
-                    .font(.system(size: 9, weight: .bold))
+                    .font(.system(size: 8, weight: .bold))
                     .foregroundStyle(accent)
             }
             .contentMargins(.horizontal, 12, for: .expanded)
