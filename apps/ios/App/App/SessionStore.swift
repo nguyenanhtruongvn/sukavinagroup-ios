@@ -1363,7 +1363,6 @@ final class SessionStore: ObservableObject {
         guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
 
         if !force,
-           !meetingInvitees.isEmpty,
            let meetingInviteesLoadedAt,
            Date().timeIntervalSince(meetingInviteesLoadedAt) < meetingInviteesCacheTTL {
             return nil
