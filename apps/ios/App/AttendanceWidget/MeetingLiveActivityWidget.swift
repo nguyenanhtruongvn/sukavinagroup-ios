@@ -41,73 +41,72 @@ struct MeetingLiveActivityWidget: Widget {
             .activityBackgroundTint(Color.green.opacity(0.14))
         } dynamicIsland: { context in
             DynamicIsland {
-                DynamicIslandExpandedRegion(.leading) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .fill(accent.opacity(0.18))
-
-                        Image(systemName: "person.3.fill")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundStyle(accent)
-                    }
-                    .frame(width: 40, height: 40)
-                }
-
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.endsAt, style: .timer)
-                        .font(.system(size: 21, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(accent)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.58)
-                        .frame(minWidth: 58, alignment: .trailing)
-                }
-
-                // Put the meeting identity on the same visual row as the icon
-                // and countdown. The centre region is the safe system-managed
-                // area below the TrueDepth hardware on Dynamic Island devices.
-                DynamicIslandExpandedRegion(.center) {
-                    HStack(spacing: 6) {
-                        Text(context.attributes.title)
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.68)
-                            .layoutPriority(2)
-
-                        Text("·")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.48))
-
-                        Text(context.attributes.roomName)
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.64)
-                            .layoutPriority(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
+                // The expanded presentation is intentionally one full-width
+                // composition below the TrueDepth hardware. That lets the
+                // visual hierarchy match the requested two-row design without
+                // the system splitting title/location into a separate row.
                 DynamicIslandExpandedRegion(.bottom) {
-                    HStack(spacing: 12) {
-                        Text(context.attributes.startsAt, style: .time)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(accent)
-                            .lineLimit(1)
-                            .frame(width: 52, alignment: .leading)
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                                    .fill(accent.opacity(0.18))
 
-                        ProgressView(
-                            timerInterval: progressInterval(context),
-                            countsDown: false
-                        )
-                        .progressViewStyle(.linear)
-                        .labelsHidden()
-                        .tint(accent)
-                        .scaleEffect(x: 1, y: 1.18, anchor: .center)
+                                Image(systemName: "person.3.fill")
+                                    .font(.system(size: 17, weight: .bold))
+                                    .foregroundStyle(accent)
+                            }
+                            .frame(width: 40, height: 40)
+
+                            HStack(spacing: 6) {
+                                Text(context.attributes.title)
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.68)
+                                    .layoutPriority(2)
+
+                                Text("·")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.48))
+
+                                Text(context.attributes.roomName)
+                                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.white.opacity(0.72))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.64)
+                                    .layoutPriority(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text(context.state.endsAt, style: .timer)
+                                .font(.system(size: 21, weight: .bold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(accent)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.58)
+                                .frame(minWidth: 58, alignment: .trailing)
+                        }
+
+                        HStack(spacing: 12) {
+                            Text(context.attributes.startsAt, style: .time)
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(accent)
+                                .lineLimit(1)
+                                .frame(width: 52, alignment: .leading)
+
+                            ProgressView(
+                                timerInterval: progressInterval(context),
+                                countsDown: false
+                            )
+                            .progressViewStyle(.linear)
+                            .labelsHidden()
+                            .tint(accent)
+                            .scaleEffect(x: 1, y: 1.18, anchor: .center)
+                        }
                     }
-                    .padding(.top, 5)
+                    .padding(.top, 2)
                 }
             } compactLeading: {
                 Image(systemName: "person.3.fill")
