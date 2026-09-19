@@ -266,6 +266,17 @@ private final class NativeAppContainerViewController: UIViewController {
             .sink { [weak self] state in
                 guard let self else { return }
                 self.launchLogger.notice("Observed authentication state: \(self.description(of: state), privacy: .public)")
+
+                // A user can sign in while the app is already active, so
+                // applicationDidBecomeActive won't run again. Re-sync the
+                // current Push-to-Start token as soon as the authenticated
+                // Keychain session exists.
+                if state == .signedIn {
+                    if #available(iOS 17.2, *) {
+                        MeetingLiveActivityStartRegistration.observe()
+                    }
+                }
+
                 self.installRootView()
             }
         profileObservation = session.$profile.sink { [weak self] _ in
