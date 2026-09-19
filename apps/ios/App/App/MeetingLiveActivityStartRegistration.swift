@@ -7,28 +7,44 @@ import Foundation
 @available(iOS 17.2, *)
 enum MeetingLiveActivityStartRegistration {
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static let cachedTokenKey = "net.sukavinagroup.live-activity-push-to-start-token"
     private static var observationTask: Task<Void, Never>?
 
     static func observe() {
-        // Do not consume the initial token stream before a user has signed
-        // in: Apple may not emit the current token a second time.
-        guard KeychainStore.loadToken() != nil, observationTask == nil else { return }
+        // Retry a token that was issued while the API was unavailable or the
+        // user was signed out. The backend upsert makes this safe on every
+        // foreground activation and also remaps the device after account switch.
+        retryCachedTokenIfPossible()
 
+        guard observationTask == nil else { return }
         observationTask = Task {
             for await token in Activity<MeetingLiveActivityAttributes>.pushToStartTokenUpdates {
-                await upload(token: token)
+                let tokenValue = token.map { String(format: "%02x", $0) }.joined()
+                guard !tokenValue.isEmpty else { continue }
+
+                // Persist before networking. Push-to-Start tokens may not be
+                // re-emitted merely because a previous upload failed.
+                UserDefaults.standard.set(tokenValue, forKey: cachedTokenKey)
+                await upload(tokenValue: tokenValue)
             }
         }
     }
 
-    private static func upload(token: Data) async {
+    private static func retryCachedTokenIfPossible() {
+        guard KeychainStore.loadToken() != nil,
+              let tokenValue = UserDefaults.standard.string(forKey: cachedTokenKey),
+              !tokenValue.isEmpty else { return }
+
+        Task {
+            await upload(tokenValue: tokenValue)
+        }
+    }
+
+    private static func upload(tokenValue: String) async {
         guard let accessToken = KeychainStore.loadToken() else {
-            ConnectionDiagnostics.record("Live Activity start token skipped: no access token")
+            ConnectionDiagnostics.record("Live Activity start token cached until sign-in")
             return
         }
-
-        let tokenValue = token.map { String(format: "%02x", $0) }.joined()
-        guard !tokenValue.isEmpty else { return }
 
         var request = URLRequest(
             url: URL(string: "me/meeting-bookings/live-activity-start-token", relativeTo: baseURL)!
