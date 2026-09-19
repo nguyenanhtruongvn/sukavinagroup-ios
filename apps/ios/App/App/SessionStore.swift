@@ -56,6 +56,15 @@ final class SessionStore: ObservableObject {
         let savedAt: Date
         let value: AttendanceMonth
     }
+
+    // Meeting details contain participant information, so keep this cache in
+    // memory only. It makes repeated opens instant without persisting extra
+    // personal data to disk.
+    private struct MeetingDetailsMemoryEntry {
+        let savedAt: Date
+        let value: MeetingBookingDetails
+    }
+
     enum State {
         case restoring
         case signedOut
@@ -123,6 +132,9 @@ final class SessionStore: ObservableObject {
     fileprivate var activeMeetingScheduleDate = Date()
     private var displayedMeetingScheduleDay: String?
     private var meetingScheduleRefreshTasks: [String: Task<Void, Never>] = [:]
+    private var meetingDetailsCache: [String: MeetingDetailsMemoryEntry] = [:]
+    private var meetingDetailsRefreshTasks: [String: Task<MeetingBookingDetails?, Never>] = [:]
+    private let meetingDetailsCacheTTL: TimeInterval = 60
     private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
@@ -156,6 +168,7 @@ final class SessionStore: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.meetingDetailsCache.removeAll()
                 await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
             }
         }
@@ -788,6 +801,22 @@ final class SessionStore: ObservableObject {
         offlineNoticeTask = nil
         isOfflineNoticeVisible = false
         registeredAPNsIdentity = nil
+
+        // Remove account-scoped notification data from disk on sign-out.
+        // Meeting details are RAM-only and are cancelled/cleared here as well.
+        if let employeeCode = cacheEmployeeCode {
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: requestNotificationsCachePrefix + employeeCode)
+            defaults.removeObject(forKey: localAttendanceNotificationsPrefix + employeeCode)
+            defaults.removeObject(forKey: acknowledgedNotificationBadgePrefix + employeeCode)
+            defaults.removeObject(forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
+        }
+        meetingDetailsRefreshTasks.values.forEach { $0.cancel() }
+        meetingDetailsRefreshTasks.removeAll()
+        meetingDetailsCache.removeAll()
+        latestRequestNotifications = []
+        localAttendanceNotifications = []
+
         SessionCache.clear()
         token = nil
         profile = nil
@@ -1292,17 +1321,79 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func meetingBookingDetails(id: String) async -> MeetingBookingDetails? {
-        guard let token else { return nil }
-        do {
-            return try await APIClient.shared.request(
-                "me/meeting-bookings/\(id)",
-                token: token
-            )
-        } catch {
-            present(error)
-            return nil
+    func cachedMeetingBookingDetails(id: String) -> MeetingBookingDetails? {
+        meetingDetailsCache[id]?.value
+    }
+
+    /// Returns fresh details from a short-lived RAM cache when possible.
+    /// Stale cached data remains available to the caller for immediate display
+    /// while this method revalidates it. Concurrent opens of the same meeting
+    /// share one network request.
+    func meetingBookingDetails(id: String, forceRefresh: Bool = false) async -> MeetingBookingDetails? {
+        guard !id.isEmpty else { return nil }
+
+        let cached = meetingDetailsCache[id]
+        if !forceRefresh,
+           let cached,
+           Date().timeIntervalSince(cached.savedAt) < meetingDetailsCacheTTL {
+            return cached.value
         }
+
+        if let existing = meetingDetailsRefreshTasks[id] {
+            return await existing.value
+        }
+
+        guard let token else { return cached?.value }
+        guard !hasConfirmedOfflineConnection else { return cached?.value }
+
+        let staleValue = cached?.value
+        let task = Task { @MainActor [weak self] () -> MeetingBookingDetails? in
+            guard let self else { return staleValue }
+            do {
+                let fresh: MeetingBookingDetails = try await APIClient.shared.request(
+                    "me/meeting-bookings/\(id)",
+                    token: token
+                )
+                self.meetingDetailsCache[id] = MeetingDetailsMemoryEntry(
+                    savedAt: Date(),
+                    value: fresh
+                )
+                return fresh
+            } catch is CancellationError {
+                return staleValue
+            } catch {
+                ConnectionDiagnostics.record(
+                    "Meeting details refresh deferred: \(error.localizedDescription)"
+                )
+                return staleValue
+            }
+        }
+
+        meetingDetailsRefreshTasks[id] = task
+        let result = await task.value
+        meetingDetailsRefreshTasks[id] = nil
+        return result
+    }
+
+    private func updateCachedMeetingDetails(from booking: MeetingBooking) {
+        guard let entry = meetingDetailsCache[booking.id] else { return }
+        let current = entry.value
+        let updated = MeetingBookingDetails(
+            id: booking.id,
+            roomId: booking.roomId,
+            startsAt: booking.startsAt,
+            endsAt: booking.endsAt,
+            title: booking.title,
+            attendeeCount: booking.attendeeCount,
+            status: booking.status,
+            room: current.room,
+            employee: current.employee,
+            participants: current.participants
+        )
+        meetingDetailsCache[booking.id] = MeetingDetailsMemoryEntry(
+            savedAt: Date(),
+            value: updated
+        )
     }
 
     /// Cancelling is restricted by the server to the organiser and to meetings
@@ -1319,6 +1410,7 @@ final class SessionStore: ObservableObject {
                 method: "DELETE",
                 token: token
             )
+            meetingDetailsCache.removeValue(forKey: id)
             meetingBookings.removeAll { $0.id == id }
             await refreshMeetingSchedule(
                 date: MeetingPresentation.date(from: scheduledAt) ?? activeMeetingScheduleDate,
@@ -1398,6 +1490,7 @@ final class SessionStore: ObservableObject {
     }
 
     private func replaceMeetingInCurrentSchedule(_ serverBooking: MeetingBooking) {
+        updateCachedMeetingDetails(from: serverBooking)
         guard meetingBookings.contains(where: { $0.id == serverBooking.id }) else { return }
 
         // Preserve client-only role flags when mutation endpoints return the
