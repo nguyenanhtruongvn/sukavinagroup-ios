@@ -193,8 +193,7 @@ final class EmployeeRequestStore: ObservableObject {
 
         if !force,
            let lastLoadedAt,
-           Date().timeIntervalSince(lastLoadedAt) < refreshTTL,
-           (!requests.isEmpty || !approvals.isEmpty) {
+           Date().timeIntervalSince(lastLoadedAt) < refreshTTL {
             return
         }
 
