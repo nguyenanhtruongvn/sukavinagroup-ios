@@ -145,6 +145,8 @@ struct MeetingRoomsView: View {
     }
 
     var body: some View {
+        let bookingsByRoom = Dictionary(grouping: session.meetingBookings, by: \.roomId)
+
         NavigationStack {
             ZStack {
                 Color(uiColor: .systemGroupedBackground)
@@ -157,7 +159,7 @@ struct MeetingRoomsView: View {
                         ForEach(session.meetingRooms) { room in
                             MeetingRoomCard(
                                 room: room,
-                                bookings: session.meetingBookings.filter { $0.roomId == room.id },
+                                bookings: bookingsByRoom[room.id] ?? [],
                                 day: day,
                                 onBook: { bookingRoom = room },
                                 onSchedule: { scheduleRoom = room }
@@ -208,7 +210,7 @@ struct MeetingRoomsView: View {
                 refreshForCalendarChange()
             }
             .refreshable {
-                await session.refreshMeetingSchedule(date: day)
+                await session.refreshMeetingSchedule(date: day, force: true)
             }
             .sheet(item: $bookingRoom) { room in
                 MeetingBookingSheet(room: room, day: day)

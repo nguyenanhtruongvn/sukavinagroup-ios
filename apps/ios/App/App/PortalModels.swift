@@ -183,6 +183,7 @@ enum SessionCache {
     private static let profileKey = "cached-session-profile-v1"
     private static let meetingRoomsPrefix = "cached-meeting-rooms-v1-"
     private static let meetingSchedulePrefix = "cached-meeting-schedule-v1-"
+    private static let meetingScheduleSavedAtPrefix = "cached-meeting-schedule-saved-at-v1-"
     private static let meetingRoomOrderPrefix = "meeting-room-order-v1-"
 
     static func save(profile: Profile) {
@@ -219,12 +220,20 @@ enum SessionCache {
 
     static func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, day: String, employeeCode: String) {
         guard let data = try? JSONEncoder().encode(schedule) else { return }
-        UserDefaults.standard.set(data, forKey: meetingSchedulePrefix + employeeCode + "-" + day)
+        let suffix = employeeCode + "-" + day
+        UserDefaults.standard.set(data, forKey: meetingSchedulePrefix + suffix)
+        UserDefaults.standard.set(Date(), forKey: meetingScheduleSavedAtPrefix + suffix)
     }
 
     static func loadMeetingSchedule(day: String, employeeCode: String) -> MeetingScheduleResponse? {
         guard let data = UserDefaults.standard.data(forKey: meetingSchedulePrefix + employeeCode + "-" + day) else { return nil }
         return try? JSONDecoder().decode(MeetingScheduleResponse.self, from: data)
+    }
+
+    static func meetingScheduleSavedAt(day: String, employeeCode: String) -> Date? {
+        UserDefaults.standard.object(
+            forKey: meetingScheduleSavedAtPrefix + employeeCode + "-" + day
+        ) as? Date
     }
 
     static func clear() {

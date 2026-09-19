@@ -121,6 +121,8 @@ final class SessionStore: ObservableObject {
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
     fileprivate var activeMeetingScheduleDate = Date()
+    private var displayedMeetingScheduleDay: String?
+    private var meetingScheduleRefreshTasks: [String: Task<Void, Never>] = [:]
     private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
@@ -154,7 +156,7 @@ final class SessionStore: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
+                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
             }
         }
         CFNotificationCenterAddObserver(
@@ -775,6 +777,9 @@ final class SessionStore: ObservableObject {
         realtimeRefreshTask?.cancel()
         realtimeRefreshTask = nil
         pendingRealtimeEvents.removeAll()
+        meetingScheduleRefreshTasks.values.forEach { $0.cancel() }
+        meetingScheduleRefreshTasks.removeAll()
+        displayedMeetingScheduleDay = nil
         sessionRefreshTask?.cancel()
         sessionRefreshTask = nil
         foregroundRefreshTask?.cancel()
@@ -787,6 +792,9 @@ final class SessionStore: ObservableObject {
         token = nil
         profile = nil
         dashboard = nil
+        meetingRooms = []
+        meetingBookings = []
+        meetingInvitees = []
         AttendanceWidgetBridge.clear()
         unreadCount = 0
         requestUnreadCount = 0
@@ -1056,7 +1064,7 @@ final class SessionStore: ObservableObject {
                 await self.syncPushBadgeReset()
                 if self.profile?.accountType == "CANTEEN" { return }
                 await self.refreshDashboard()
-                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
+                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
                 self.startRealTimeUpdates()
             }
         }
@@ -1166,34 +1174,82 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshMeetingSchedule(date: Date = .now) async {
+    /// Shows the last confirmed schedule immediately and only revalidates when it is stale.
+    /// Realtime/APNs events and explicit user refreshes bypass the freshness window.
+    func refreshMeetingSchedule(date: Date = .now, force: Bool = false) async {
         activeMeetingScheduleDate = date
         let day = DateFormatter.meetingDay.string(from: date)
-        restoreCachedMeetingSchedule(for: day)
+        displayCachedMeetingScheduleIfNeeded(for: day)
 
         guard let token else { return }
         // Before the first path callback, allow the request to proceed. Once the
         // monitor confirms an offline path, use the cached schedule only.
         guard isNetworkAvailable || lastPathStatus == nil else { return }
+        guard force || shouldRevalidateMeetingSchedule(day: day) else { return }
+
+        // Tab activation, foreground changes and SwiftUI lifecycle callbacks can
+        // arrive together. Coalesce them into one request per day.
+        if let existing = meetingScheduleRefreshTasks[day] {
+            await existing.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.fetchMeetingSchedule(day: day, token: token)
+        }
+        meetingScheduleRefreshTasks[day] = task
+        await task.value
+        meetingScheduleRefreshTasks[day] = nil
+    }
+
+    private func shouldRevalidateMeetingSchedule(day: String) -> Bool {
+        guard let employeeCode = meetingCacheEmployeeCode,
+              let savedAt = SessionCache.meetingScheduleSavedAt(day: day, employeeCode: employeeCode)
+        else { return true }
+
+        let today = DateFormatter.meetingDay.string(from: Date())
+        let ttl: TimeInterval = day == today ? 60 : 5 * 60
+        return Date().timeIntervalSince(savedAt) >= ttl
+    }
+
+    private func displayCachedMeetingScheduleIfNeeded(for day: String) {
+        guard displayedMeetingScheduleDay != day else { return }
+        restoreCachedMeetingSchedule(for: day)
+        displayedMeetingScheduleDay = day
+    }
+
+    private func fetchMeetingSchedule(day: String, token: String) async {
         do {
             let value: MeetingScheduleResponse = try await APIClient.shared.request(
                 "me/meeting-rooms?date=\(day)",
                 token: token
             )
+            guard !Task.isCancelled else { return }
+
             let pendingEndedMeeting = pendingEndedMeetingLiveActivityResult()
-            meetingRooms = applyMeetingRoomOrder(value.rooms)
-            meetingBookings = normalizedMeetingBookings(value.bookings)
-            applyEndedMeetingLiveActivityResultIfAvailable()
-            meetingBookings = normalizedMeetingBookings(meetingBookings)
+            var cachedBookings = normalizedMeetingBookings(value.bookings)
+
+            // A slower response for a previously selected date must never replace
+            // the date the user is currently looking at.
+            if displayedMeetingScheduleDay == day {
+                meetingRooms = applyMeetingRoomOrder(value.rooms)
+                meetingBookings = cachedBookings
+                applyEndedMeetingLiveActivityResultIfAvailable()
+                meetingBookings = normalizedMeetingBookings(meetingBookings)
+                cachedBookings = meetingBookings
+            }
+
             if let pendingEndedMeeting,
                serverHasConfirmed(pendingEndedMeeting, in: value.bookings) {
                 clearPendingEndedMeetingLiveActivityResult()
             }
             saveMeetingSchedule(
-                MeetingScheduleResponse(rooms: value.rooms, bookings: meetingBookings),
+                MeetingScheduleResponse(rooms: value.rooms, bookings: cachedBookings),
                 for: day
             )
         } catch {
+            guard !Task.isCancelled else { return }
             ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
         }
     }
@@ -1264,7 +1320,10 @@ final class SessionStore: ObservableObject {
                 token: token
             )
             meetingBookings.removeAll { $0.id == id }
-            await refreshMeetingSchedule(date: MeetingPresentation.date(from: scheduledAt) ?? activeMeetingScheduleDate)
+            await refreshMeetingSchedule(
+                date: MeetingPresentation.date(from: scheduledAt) ?? activeMeetingScheduleDate,
+                force: true
+            )
             return nil
         } catch {
             return error.localizedDescription
@@ -1282,7 +1341,7 @@ final class SessionStore: ObservableObject {
             MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
             for: day
         )
-        await refreshMeetingSchedule(date: activeMeetingScheduleDate)
+        await refreshMeetingSchedule(date: activeMeetingScheduleDate, force: true)
     }
 
     private struct EndedMeetingLiveActivityResult: Codable {
@@ -1425,7 +1484,7 @@ final class SessionStore: ObservableObject {
             default:
                 return nil
             }
-            await refreshMeetingSchedule(date: activeMeetingScheduleDate)
+            await refreshMeetingSchedule(date: activeMeetingScheduleDate, force: true)
             return nil
         } catch {
             present(error)
@@ -1473,7 +1532,7 @@ final class SessionStore: ObservableObject {
                 meetingBookings.append(optimistic)
                 meetingBookings.sort { $0.startsAt < $1.startsAt }
             }
-            await refreshMeetingSchedule(date: start)
+            await refreshMeetingSchedule(date: start, force: true)
             return nil
         } catch {
             return error.localizedDescription
@@ -1531,7 +1590,7 @@ final class SessionStore: ObservableObject {
                 await self.refreshTodayMenu()
             }
             if events.contains("meeting_changed") {
-                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate)
+                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
             }
         }
     }
