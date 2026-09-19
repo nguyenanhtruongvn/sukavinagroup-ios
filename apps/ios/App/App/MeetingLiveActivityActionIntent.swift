@@ -23,10 +23,23 @@ struct EndMeetingLiveActivityIntent: LiveActivityIntent {
 
     func perform() async throws -> some IntentResult {
         let result = try await MeetingLiveActivityAction.request(bookingID: bookingID, action: .end)
+
+        // Publish the server-confirmed end time to the app process before
+        // waiting for ActivityKit to animate/dismiss the island. The room
+        // schedule can redraw immediately while the system finishes removing
+        // the Live Activity.
         MeetingLiveActivityAction.saveEndedMeeting(bookingID: bookingID, endsAt: result.endsAt)
-        await MeetingLiveActivityAction.updateActivity(bookingID: bookingID, endsAt: result.endsAt, endNow: true)
         MeetingLiveActivityAction.notifyAppOfMeetingStateChange()
-        NotificationCenter.default.post(name: Notification.Name("net.sukavinagroup.meeting-changed"), object: nil)
+        NotificationCenter.default.post(
+            name: Notification.Name("net.sukavinagroup.meeting-changed"),
+            object: nil
+        )
+
+        await MeetingLiveActivityAction.updateActivity(
+            bookingID: bookingID,
+            endsAt: result.endsAt,
+            endNow: true
+        )
         return .result()
     }
 }
