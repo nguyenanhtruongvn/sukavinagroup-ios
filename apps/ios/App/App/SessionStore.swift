@@ -132,6 +132,12 @@ final class SessionStore: ObservableObject {
     fileprivate var activeMeetingScheduleDate = Date()
     private var displayedMeetingScheduleDay: String?
     private var meetingScheduleRefreshTasks: [String: Task<Void, Never>] = [:]
+    private var meetingInviteesLoadedAt: Date?
+    private var meetingInviteesRefreshTask: Task<String?, Never>?
+    private let meetingInviteesCacheTTL: TimeInterval = 10 * 60
+    private var todayMenuRefreshTask: Task<Void, Never>?
+    private var todayMenuLoadedAt: Date?
+    private let todayMenuRefreshTTL: TimeInterval = 90
     private var meetingDetailsCache: [String: MeetingDetailsMemoryEntry] = [:]
     private var meetingDetailsRefreshTasks: [String: Task<MeetingBookingDetails?, Never>] = [:]
     private let meetingDetailsCacheTTL: TimeInterval = 60
@@ -274,6 +280,7 @@ final class SessionStore: ObservableObject {
               cached.value.date == DateFormatter.meetingDay.string(from: Date()),
               Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
         todayMenu = cached.value
+        todayMenuLoadedAt = cached.savedAt
     }
 
     private func saveTodayMenuCache(_ value: TodayMenu) {
@@ -476,18 +483,46 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshTodayMenu() async {
+    func refreshTodayMenu(force: Bool = false) async {
         guard let token else { return }
-        do {
-            let value: TodayMenu = try await APIClient.shared.request("me/menu", token: token)
-            todayMenu = value
-            saveTodayMenuCache(value)
-        } catch is CancellationError {
-            // An obsolete SwiftUI refresh was cancelled; no user-facing error.
+
+        if !force,
+           todayMenu != nil,
+           let todayMenuLoadedAt,
+           Date().timeIntervalSince(todayMenuLoadedAt) < todayMenuRefreshTTL {
             return
-        } catch {
-            present(error)
         }
+
+        if let existing = todayMenuRefreshTask {
+            await existing.value
+            return
+        }
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let value: TodayMenu = try await APIClient.shared.request("me/menu", token: token)
+                self.todayMenu = value
+                self.todayMenuLoadedAt = Date()
+                self.saveTodayMenuCache(value)
+            } catch is CancellationError {
+                return
+            } catch {
+                // Keep a restored menu visible if revalidation is temporarily
+                // unavailable instead of replacing useful cached UI with an alert.
+                if self.todayMenu == nil {
+                    self.present(error)
+                } else {
+                    ConnectionDiagnostics.record(
+                        "Today menu refresh deferred: \(error.localizedDescription)"
+                    )
+                }
+            }
+        }
+
+        todayMenuRefreshTask = task
+        await task.value
+        todayMenuRefreshTask = nil
     }
 
     func scanMealQRCode(_ qrToken: String) async -> MealScanResponse? {
@@ -533,6 +568,7 @@ final class SessionStore: ObservableObject {
                 body: MealSelectionBody(choice: choice)
             )
             todayMenu = value
+            todayMenuLoadedAt = Date()
             saveTodayMenuCache(value)
         } catch {
             present(error)
@@ -550,6 +586,7 @@ final class SessionStore: ObservableObject {
                 token: token
             )
             todayMenu = value
+            todayMenuLoadedAt = Date()
             saveTodayMenuCache(value)
         } catch {
             present(error)
@@ -567,6 +604,7 @@ final class SessionStore: ObservableObject {
                 token: token
             )
             todayMenu = value
+            todayMenuLoadedAt = Date()
             saveTodayMenuCache(value)
         } catch {
             present(error)
@@ -816,8 +854,20 @@ final class SessionStore: ObservableObject {
         meetingDetailsRefreshTasks.values.forEach { $0.cancel() }
         meetingDetailsRefreshTasks.removeAll()
         meetingDetailsCache.removeAll()
+        meetingInviteesRefreshTask?.cancel()
+        meetingInviteesRefreshTask = nil
+        meetingInviteesLoadedAt = nil
+        meetingInvitees = []
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
+        todayMenuLoadedAt = nil
         latestRequestNotifications = []
         localAttendanceNotifications = []
+        if let employeeCode = cacheEmployeeCode {
+            UserDefaults.standard.removeObject(
+                forKey: "native-employee-requests-cache-" + employeeCode
+            )
+        }
 
         SessionCache.clear()
         token = nil
@@ -1307,20 +1357,50 @@ final class SessionStore: ObservableObject {
         SessionCache.saveMeetingSchedule(schedule, day: day, employeeCode: employeeCode)
     }
 
-    /// Invitees are optional supporting data for the booking form. Returning the
-    /// message lets that form offer a retry without presenting a global
-    /// “offline” alert while the room schedule itself is already usable.
-    func refreshMeetingInvitees() async -> String? {
+    /// Invitees are supporting data for the booking form. Keep them in RAM for
+    /// a short window and coalesce concurrent opens of the booking sheet.
+    func refreshMeetingInvitees(force: Bool = false) async -> String? {
         guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
-        do {
-            meetingInvitees = try await APIClient.shared.request(
-                "me/meeting-rooms/invitees",
-                token: token
-            )
+
+        if !force,
+           !meetingInvitees.isEmpty,
+           let meetingInviteesLoadedAt,
+           Date().timeIntervalSince(meetingInviteesLoadedAt) < meetingInviteesCacheTTL {
             return nil
-        } catch {
-            return error.localizedDescription
         }
+
+        if let existing = meetingInviteesRefreshTask {
+            return await existing.value
+        }
+
+        let staleInvitees = meetingInvitees
+        let task = Task { @MainActor [weak self] () -> String? in
+            guard let self else { return nil }
+            do {
+                self.meetingInvitees = try await APIClient.shared.request(
+                    "me/meeting-rooms/invitees",
+                    token: token
+                )
+                self.meetingInviteesLoadedAt = Date()
+                return nil
+            } catch is CancellationError {
+                return nil
+            } catch {
+                // Existing RAM data is still useful when a revalidation fails.
+                if !staleInvitees.isEmpty {
+                    ConnectionDiagnostics.record(
+                        "Meeting invitees refresh deferred: \(error.localizedDescription)"
+                    )
+                    return nil
+                }
+                return error.localizedDescription
+            }
+        }
+
+        meetingInviteesRefreshTask = task
+        let result = await task.value
+        meetingInviteesRefreshTask = nil
+        return result
     }
 
     func cachedMeetingBookingDetails(id: String) -> MeetingBookingDetails? {
