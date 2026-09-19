@@ -8,6 +8,7 @@ import Foundation
 enum MeetingLiveActivityStartRegistration {
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
     private static let cachedTokenKey = "net.sukavinagroup.live-activity-push-to-start-token"
+    private static let installationIDKey = "net.sukavinagroup.live-activity-installation-id"
     private static var observationTask: Task<Void, Never>?
 
     static func observe() {
@@ -68,7 +69,12 @@ enum MeetingLiveActivityStartRegistration {
         request.timeoutInterval = 20
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["token": tokenValue])
+        request.httpBody = try? JSONSerialization.data(
+            withJSONObject: [
+                "token": tokenValue,
+                "installationId": installationID,
+            ]
+        )
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
@@ -82,4 +88,14 @@ enum MeetingLiveActivityStartRegistration {
         }
     }
 
+    private static var installationID: String {
+        if let value = UserDefaults.standard.string(forKey: installationIDKey),
+           !value.isEmpty {
+            return value
+        }
+
+        let value = UUID().uuidString.lowercased()
+        UserDefaults.standard.set(value, forKey: installationIDKey)
+        return value
+    }
 }
