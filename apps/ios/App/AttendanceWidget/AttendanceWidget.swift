@@ -470,53 +470,54 @@ private struct MeetingLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Use the canonical expanded regions without priority. Giving
-                // the center region a higher priority caused WidgetKit to size
-                // it aggressively on the real device and the bottom row could
-                // disappear. Region-specific margins keep the curved edges safe.
-                DynamicIslandExpandedRegion(.leading) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .fill(accent.opacity(0.22))
-                        Image(systemName: "person.3.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(accent)
-                    }
-                    .frame(width: 26, height: 26)
-                }
-                .contentMargins(.leading, 9)
-                .contentMargins(.trailing, 2)
-
-                DynamicIslandExpandedRegion(.trailing) {
-                    Text(context.state.endsAt, style: .timer)
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(accent)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                        .frame(minWidth: 40, idealWidth: 44, alignment: .trailing)
-                }
-                .contentMargins(.leading, 2)
-                .contentMargins(.trailing, 10)
-
+                // Put the whole primary row in the safe center area below the
+                // TrueDepth hardware. On the real device the expanded
+                // leading/trailing regions sit too close to the curved upper
+                // corners, which clipped the icon/timer and wasted width.
                 DynamicIslandExpandedRegion(.center) {
-                    Text("\(context.attributes.title) · \(context.attributes.roomName)")
-                        .font(.system(size: 11, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white.opacity(0.90))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.66)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .contentMargins(.horizontal, 4)
-
-                DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 8) {
-                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(accent.opacity(0.22))
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(accent)
+                        }
+                        .frame(width: 28, height: 28)
+                        .fixedSize()
+
+                        Text("\(context.attributes.title) · \(context.attributes.roomName)")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.64)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .layoutPriority(1)
+
+                        Text(context.state.endsAt, style: .timer)
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(accent)
                             .lineLimit(1)
-                            .frame(width: 40, alignment: .leading)
+                            .minimumScaleFactor(0.78)
+                            .frame(width: 44, alignment: .trailing)
+                            .layoutPriority(2)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .contentMargins(.leading, 10)
+                .contentMargins(.trailing, 10)
+                .contentMargins(.top, 2)
+                .contentMargins(.bottom, 1)
+
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack(spacing: 10) {
+                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                            .frame(width: 42, alignment: .leading)
 
                         ProgressView(
                             timerInterval: context.attributes.startsAt...context.state.endsAt,
@@ -526,12 +527,14 @@ private struct MeetingLiveActivityWidget: Widget {
                         .labelsHidden()
                         .tint(accent)
                         .frame(maxWidth: .infinity)
+                        .scaleEffect(x: 1, y: 1.05, anchor: .center)
                     }
+                    .frame(maxWidth: .infinity)
                 }
-                .contentMargins(.leading, 14)
-                .contentMargins(.trailing, 14)
-                .contentMargins(.top, 3)
-                .contentMargins(.bottom, 4)
+                .contentMargins(.leading, 12)
+                .contentMargins(.trailing, 12)
+                .contentMargins(.top, 4)
+                .contentMargins(.bottom, 5)
             } compactLeading: {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 8, weight: .bold))
@@ -552,7 +555,6 @@ private struct MeetingLiveActivityWidget: Widget {
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accent)
             }
-            .contentMargins(.vertical, 2, for: .expanded)
             .contentMargins(.leading, 3, for: .compactLeading)
             .contentMargins(.trailing, 0, for: .compactTrailing)
             .keylineTint(accent.opacity(0.9))
