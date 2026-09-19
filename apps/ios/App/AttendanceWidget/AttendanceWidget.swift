@@ -488,37 +488,28 @@ private struct MeetingLiveActivityWidget: Widget {
 
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(context.state.endsAt, style: .timer)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .foregroundStyle(accent)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                        .padding(.trailing, 10)
+                        .minimumScaleFactor(0.62)
+                        .frame(width: 42, alignment: .trailing)
+                        .padding(.trailing, 8)
                 }
 
                 DynamicIslandExpandedRegion(.center) {
-                    (
-                        Text(context.attributes.title)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        +
-                        Text(" · ")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.42))
-                        +
-                        Text(context.attributes.roomName)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.68))
-                    )
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.66)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 4)
+                    Text("\(context.attributes.title) · \(context.attributes.roomName)")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.88))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 3)
                 }
 
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 8) {
-                        Text(context.attributes.startsAt, style: .time)
+                        Text(Self.clockFormatter.string(from: context.attributes.startsAt))
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .monospacedDigit()
                             .foregroundStyle(accent)
