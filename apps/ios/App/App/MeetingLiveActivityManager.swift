@@ -145,17 +145,17 @@ private enum MeetingLiveActivityPushRegistration {
     private static var observedActivityIDs = Set<String>()
 
     static func observe(_ activity: Activity<MeetingLiveActivityAttributes>) {
-        guard observedActivityIDs.insert(activity.id).inserted else { return }
-
-        // Don't wait for the async sequence if ActivityKit already has the
-        // current token. This matters for activities started remotely while
-        // the app is being woken in the background.
+        // Re-upload the current token whenever lifecycle/session restoration
+        // asks us to reconcile. A previous attempt may have happened before
+        // the authenticated Keychain session was available.
         if let token = activity.pushToken {
             Task {
                 await upload(token: token, bookingID: activity.attributes.bookingID)
             }
         }
 
+        // Only the long-lived async stream needs de-duplication.
+        guard observedActivityIDs.insert(activity.id).inserted else { return }
         Task {
             for await token in activity.pushTokenUpdates {
                 await upload(token: token, bookingID: activity.attributes.bookingID)
