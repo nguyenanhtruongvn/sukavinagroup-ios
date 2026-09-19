@@ -1397,14 +1397,28 @@ final class SessionStore: ObservableObject {
         if didUpdate { meetingBookings = normalizedMeetingBookings(updated) }
     }
 
-    private func replaceEndedMeetingInCurrentSchedule(_ endedBooking: MeetingBooking) {
-        guard meetingBookings.contains(where: { $0.id == endedBooking.id }) else { return }
-        // Match Android: retain the booking in the day timeline, but draw it
-        // only up to the exact endsAt returned by the server's /end endpoint.
+    private func replaceMeetingInCurrentSchedule(_ serverBooking: MeetingBooking) {
+        guard meetingBookings.contains(where: { $0.id == serverBooking.id }) else { return }
+
+        // Preserve client-only role flags when mutation endpoints return the
+        // lean booking shape without isMine/isOwner. The server-confirmed time
+        // and status still replace the old schedule entry immediately.
         var updated = meetingBookings
-        for index in updated.indices where updated[index].id == endedBooking.id {
-            updated[index] = endedBooking
+        for index in updated.indices where updated[index].id == serverBooking.id {
+            let current = updated[index]
+            updated[index] = MeetingBooking(
+                id: serverBooking.id,
+                roomId: serverBooking.roomId,
+                startsAt: serverBooking.startsAt,
+                endsAt: serverBooking.endsAt,
+                title: serverBooking.title,
+                attendeeCount: serverBooking.attendeeCount,
+                status: serverBooking.status,
+                isMine: serverBooking.isMine ?? current.isMine,
+                isOwner: serverBooking.isOwner ?? current.isOwner
+            )
         }
+
         meetingBookings = normalizedMeetingBookings(updated)
         let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
         saveMeetingSchedule(
@@ -1470,21 +1484,37 @@ final class SessionStore: ObservableObject {
                 let ended: MeetingBooking = try await APIClient.shared.request(
                     "me/meeting-bookings/\(bookingID)/end", method: "POST", token: token
                 )
-                // Keep the server-confirmed result until the schedule endpoint
-                // echoes it.  This prevents a briefly stale schedule response
-                // from putting the original end time back on the timeline.
+                // Apply the authoritative result immediately. A schedule
+                // revalidation runs afterwards and no longer blocks button UI.
                 savePendingEndedMeetingLiveActivityResult(ended)
-                replaceEndedMeetingInCurrentSchedule(ended)
-                if #available(iOS 17.0, *) { MeetingLiveActivityManager.end(bookingID: bookingID) }
+                replaceMeetingInCurrentSchedule(ended)
+                if #available(iOS 17.0, *) {
+                    MeetingLiveActivityManager.end(bookingID: bookingID)
+                }
+
             case "extend":
-                let _: MeetingBooking = try await APIClient.shared.request(
+                let extended: MeetingBooking = try await APIClient.shared.request(
                     "me/meeting-bookings/\(bookingID)/extend", method: "POST", token: token,
                     body: ExtendMeetingBookingBody(minutes: extensionMinutes)
                 )
+                replaceMeetingInCurrentSchedule(extended)
+                if #available(iOS 17.0, *),
+                   let endsAt = MeetingPresentation.date(from: extended.endsAt) {
+                    MeetingLiveActivityManager.update(
+                        bookingID: bookingID,
+                        endsAt: endsAt
+                    )
+                }
+
             default:
                 return nil
             }
-            await refreshMeetingSchedule(date: activeMeetingScheduleDate, force: true)
+
+            let refreshDate = activeMeetingScheduleDate
+            Task { [weak self] in
+                guard let self else { return }
+                await self.refreshMeetingSchedule(date: refreshDate, force: true)
+            }
             return nil
         } catch {
             present(error)
