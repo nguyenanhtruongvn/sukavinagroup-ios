@@ -470,42 +470,46 @@ private struct MeetingLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Keep all primary content in the safe center region below the
-                // TrueDepth hardware. Leading/trailing expanded regions sit in
-                // the upper curved corners and were visibly clipping both the
-                // icon and countdown on the real device.
-                DynamicIslandExpandedRegion(.center, priority: 2) {
-                    HStack(spacing: 7) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(accent.opacity(0.22))
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(accent)
-                        }
-                        .frame(width: 26, height: 26)
-                        .fixedSize()
-
-                        Text("\(context.attributes.title) · \(context.attributes.roomName)")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.white.opacity(0.90))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.62)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Text(context.state.endsAt, style: .timer)
-                            .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .monospacedDigit()
+                // Use the canonical expanded regions without priority. Giving
+                // the center region a higher priority caused WidgetKit to size
+                // it aggressively on the real device and the bottom row could
+                // disappear. Region-specific margins keep the curved edges safe.
+                DynamicIslandExpandedRegion(.leading) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(accent.opacity(0.22))
+                        Image(systemName: "person.3.fill")
+                            .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(accent)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .frame(width: 42, alignment: .trailing)
                     }
-                    .padding(.horizontal, 10)
-                    .frame(maxWidth: .infinity)
+                    .frame(width: 26, height: 26)
                 }
+                .contentMargins(.leading, 9)
+                .contentMargins(.trailing, 2)
 
-                DynamicIslandExpandedRegion(.bottom, priority: 1) {
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(context.state.endsAt, style: .timer)
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                        .frame(minWidth: 40, idealWidth: 44, alignment: .trailing)
+                }
+                .contentMargins(.leading, 2)
+                .contentMargins(.trailing, 10)
+
+                DynamicIslandExpandedRegion(.center) {
+                    Text("\(context.attributes.title) · \(context.attributes.roomName)")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.90))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.66)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentMargins(.horizontal, 4)
+
+                DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 8) {
                         Text(Self.clockFormatter.string(from: context.attributes.startsAt))
                             .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -523,9 +527,11 @@ private struct MeetingLiveActivityWidget: Widget {
                         .tint(accent)
                         .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.top, 2)
                 }
+                .contentMargins(.leading, 14)
+                .contentMargins(.trailing, 14)
+                .contentMargins(.top, 3)
+                .contentMargins(.bottom, 4)
             } compactLeading: {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 8, weight: .bold))
@@ -546,8 +552,7 @@ private struct MeetingLiveActivityWidget: Widget {
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(accent)
             }
-            .contentMargins(.horizontal, 4, for: .expanded)
-            .contentMargins(.vertical, 3, for: .expanded)
+            .contentMargins(.vertical, 2, for: .expanded)
             .contentMargins(.leading, 3, for: .compactLeading)
             .contentMargins(.trailing, 0, for: .compactTrailing)
             .keylineTint(accent.opacity(0.9))
