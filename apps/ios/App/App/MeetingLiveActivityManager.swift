@@ -4,6 +4,7 @@ import Security
 
 @available(iOS 17.0, *)
 enum MeetingLiveActivityManager {
+    private static var activityUpdatesTask: Task<Void, Never>?
     static func start(from userInfo: [AnyHashable: Any]) {
         guard userInfo["type"] as? String == "meeting_ending_soon",
               userInfo["is_owner"] as? String == "true",
@@ -60,6 +61,21 @@ enum MeetingLiveActivityManager {
         for activity in Activity<MeetingLiveActivityAttributes>.activities {
             MeetingLiveActivityPushRegistration.observe(activity)
         }
+
+        // A push-to-start notification can launch the process in the
+        // background without making the app active. Observe ActivityKit's
+        // activity stream from launch so remotely started activities can
+        // immediately upload their per-activity update/end token.
+        guard activityUpdatesTask == nil else { return }
+        activityUpdatesTask = Task {
+            for await activity in Activity<MeetingLiveActivityAttributes>.activityUpdates {
+                MeetingLiveActivityPushRegistration.observe(activity)
+                MeetingLiveActivityExpiry.schedule(
+                    bookingID: activity.attributes.bookingID,
+                    endsAt: activity.content.state.endsAt
+                )
+            }
+        }
     }
 
     private static func date(_ value: String?) -> Date? {
@@ -81,8 +97,20 @@ enum MeetingLiveActivityManager {
 @available(iOS 17.0, *)
 private enum MeetingLiveActivityPushRegistration {
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static var observedActivityIDs = Set<String>()
 
     static func observe(_ activity: Activity<MeetingLiveActivityAttributes>) {
+        guard observedActivityIDs.insert(activity.id).inserted else { return }
+
+        // Don't wait for the async sequence if ActivityKit already has the
+        // current token. This matters for activities started remotely while
+        // the app is being woken in the background.
+        if let token = activity.pushToken {
+            Task {
+                await upload(token: token, bookingID: activity.attributes.bookingID)
+            }
+        }
+
         Task {
             for await token in activity.pushTokenUpdates {
                 await upload(token: token, bookingID: activity.attributes.bookingID)
