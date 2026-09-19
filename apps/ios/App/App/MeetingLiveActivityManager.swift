@@ -62,6 +62,26 @@ enum MeetingLiveActivityManager {
         }
     }
 
+    static func update(bookingID: String, endsAt: Date) {
+        Task {
+            for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
+                let current = activity.content.state
+                let state = MeetingLiveActivityAttributes.ContentState(
+                    endsAt: endsAt,
+                    extensionMinutes: current.extensionMinutes,
+                    isChoosingExtension: false
+                )
+                await activity.update(
+                    ActivityContent(state: state, staleDate: endsAt)
+                )
+                MeetingLiveActivityExpiry.schedule(
+                    bookingID: bookingID,
+                    endsAt: endsAt
+                )
+            }
+        }
+    }
+
     static func end(bookingID: String) {
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
