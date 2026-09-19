@@ -470,80 +470,70 @@ private struct MeetingLiveActivityWidget: Widget {
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             DynamicIsland {
-                // Expanded Island: keep the entire design in one full-width
-                // bottom region. Splitting icon/title/timer across
-                // leading/center/trailing makes WidgetKit squeeze each region
-                // around the TrueDepth camera and was the reason the device UI
-                // looked tiny and misaligned.
-                DynamicIslandExpandedRegion(.bottom, priority: 1) {
-                    VStack(spacing: 7) {
-                        HStack(spacing: 9) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                    .fill(accent.opacity(0.22))
-
-                                Image(systemName: "person.3.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundStyle(accent)
-                            }
-                            .frame(width: 32, height: 32)
-                            .fixedSize()
-
-                            HStack(spacing: 5) {
-                                Text(context.attributes.title)
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                                    .foregroundStyle(.white)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.72)
-                                    .layoutPriority(2)
-
-                                Text("·")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(.white.opacity(0.46))
-
-                                Text(context.attributes.roomName)
-                                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.white.opacity(0.70))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.68)
-                                    .layoutPriority(1)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                            Text(context.state.endsAt, style: .timer)
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(accent)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .layoutPriority(4)
-                        }
-
-                        HStack(spacing: 10) {
-                            Text(Self.clockFormatter.string(from: context.attributes.startsAt))
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .monospacedDigit()
-                                .foregroundStyle(accent)
-                                .lineLimit(1)
-                                .frame(width: 46, alignment: .leading)
-
-                            ProgressView(
-                                timerInterval: context.attributes.startsAt...context.state.endsAt,
-                                countsDown: false
-                            )
-                            .progressViewStyle(.linear)
-                            .labelsHidden()
-                            .tint(accent)
-                            .frame(maxWidth: .infinity)
-                            .scaleEffect(x: 1, y: 0.92, anchor: .center)
-                        }
+                // Use WidgetKit's canonical expanded regions. This is more
+                // resilient than placing the whole design in one bottom region,
+                // which can leave the Island visibly expanded but with no
+                // rendered content on some iOS/device combinations.
+                DynamicIslandExpandedRegion(.leading) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(accent.opacity(0.22))
+                        Image(systemName: "person.3.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(accent)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 2)
+                    .frame(width: 32, height: 32)
                 }
-                .contentMargins(.horizontal, 0)
-                .contentMargins(.vertical, 0)
+
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(context.state.endsAt, style: .timer)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                }
+
+                DynamicIslandExpandedRegion(.center) {
+                    HStack(spacing: 5) {
+                        Text(context.attributes.title)
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+
+                        Text("·")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.46))
+
+                        Text(context.attributes.roomName)
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                            .foregroundStyle(.white.opacity(0.70))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.68)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                DynamicIslandExpandedRegion(.bottom) {
+                    HStack(spacing: 10) {
+                        Text(context.attributes.startsAt, style: .time)
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                            .frame(width: 46, alignment: .leading)
+
+                        ProgressView(
+                            timerInterval: context.attributes.startsAt...context.state.endsAt,
+                            countsDown: false
+                        )
+                        .progressViewStyle(.linear)
+                        .labelsHidden()
+                        .tint(accent)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.top, 2)
+                }
             } compactLeading: {
                 Image(systemName: "person.3.fill")
                     .font(.system(size: 11, weight: .bold))
@@ -553,18 +543,11 @@ private struct MeetingLiveActivityWidget: Widget {
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundStyle(accent)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-                    .frame(minWidth: 34, alignment: .trailing)
             } minimal: {
                 Image(systemName: "person.3.fill")
                     .font(.caption2.bold())
                     .foregroundStyle(accent)
             }
-            .contentMargins(.horizontal, 2, for: .compactLeading)
-            .contentMargins(.horizontal, 2, for: .compactTrailing)
-            .contentMargins(.all, 2, for: .minimal)
-            .contentMargins(.horizontal, 10, for: .expanded)
-            .contentMargins(.vertical, 4, for: .expanded)
             .keylineTint(accent.opacity(0.9))
         }
     }
