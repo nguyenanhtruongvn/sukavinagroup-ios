@@ -219,6 +219,7 @@ final class EmployeeRequestStore: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 self.record(error)
             }
         }
