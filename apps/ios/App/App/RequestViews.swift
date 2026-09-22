@@ -844,7 +844,7 @@ struct RequestComposer: View {
 
     private var canSubmit: Bool {
         let dates = submissionDates
-        return (kind == .business || cleanReason.count >= 10)
+        return cleanReason.count >= 10
             && dates.to >= dates.from
             && (kind != .business || (destination.count >= 2 && (transport != "personal_vehicle" || localizedDecimal(distanceKm) ?? 0 > 0)))
     }
@@ -977,8 +977,6 @@ struct RequestComposer: View {
                                 focus: .expense,
                                 scrollID: "request-expense"
                             )
-                            Text("Không cần nhập lý do cho đơn công tác.")
-                                .font(.footnote).foregroundStyle(AppTheme.muted)
                         }
                     }
                     if kind == .gate {
@@ -1026,12 +1024,17 @@ struct RequestComposer: View {
                         }
                     }
 
-                    if kind != .business {
                     VStack(alignment: .leading, spacing: 12) {
-                        composerLabel("Nội dung đơn", icon: "text.alignleft")
+                        composerLabel(kind == .business ? "Nội dung đơn công tác" : "Nội dung đơn", icon: "text.alignleft")
                         ZStack(alignment: .topLeading) {
                             if reason.isEmpty {
-                                Text(kind == .attendance ? "Mô tả phần giờ công cần xác nhận hoặc thông tin người duyệt cần lưu ý..." : "Mô tả lý do và thông tin cần người duyệt lưu ý...")
+                                Text(
+                                    kind == .business
+                                        ? "Nêu mục đích và nội dung công tác..."
+                                        : kind == .attendance
+                                            ? "Mô tả phần giờ công cần xác nhận hoặc thông tin người duyệt cần lưu ý..."
+                                            : "Mô tả lý do và thông tin cần người duyệt lưu ý..."
+                                )
                                     .font(.body)
                                     .foregroundStyle(AppTheme.muted.opacity(0.72))
                                     .padding(.horizontal, 16)
@@ -1064,7 +1067,6 @@ struct RequestComposer: View {
                         .font(.caption.weight(.medium))
                     }
                     .id("request-reason")
-                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
@@ -1134,7 +1136,7 @@ struct RequestComposer: View {
             .safeAreaInset(edge: .bottom) {
                 Button {
                     let dates = submissionDates
-                    submit(kind, dates.from, dates.to, kind == .business ? "" : submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
+                    submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
                     dismiss()
                 } label: {
                     HStack(spacing: 10) {
