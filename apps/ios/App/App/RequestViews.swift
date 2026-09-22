@@ -1025,7 +1025,7 @@ struct RequestComposer: View {
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
-                        composerLabel(kind == .business ? "Nội dung đơn công tác" : "Nội dung đơn", icon: "text.alignleft")
+                        composerLabel("Nội dung đơn", icon: "text.alignleft")
                         ZStack(alignment: .topLeading) {
                             if reason.isEmpty {
                                 Text(
