@@ -374,6 +374,7 @@ struct NotificationsView: View {
     }
     private func notificationIcon(_ item: RequestNotification) -> String {
         let type = item.type
+        if type == "meeting_room_booking" { return "building.2.badge.plus" }
         if type == "meeting_invite" { return "calendar.badge.clock" }
         if type == "meeting_reminder" { return "bell.badge.fill" }
         if type == "attendance_check_in" { return "arrow.right.to.line.circle.fill" }
@@ -389,6 +390,7 @@ struct NotificationsView: View {
     }
     private func notificationColor(_ item: RequestNotification) -> Color {
         let type = item.type
+        if type == "meeting_room_booking" { return .teal }
         if type == "meeting_invite" { return .blue }
         if type == "meeting_reminder" { return .orange }
         if type == "attendance_check_in" { return .green }
@@ -456,12 +458,14 @@ private struct MeetingNotificationDetail: View {
         // consistently so ownership is immediately recognizable and matches
         // the meeting timeline semantics.
         if isEndingSoonReminder { return .green }
+        if notification.type == "meeting_room_booking" { return .teal }
         if notification.type == "meeting_reminder" { return .orange }
         if notification.type == "meeting_cancelled" { return .gray }
         return .blue
     }
     private var title: String {
         notification.title
+            .replacingOccurrences(of: "Lịch phòng mới: ", with: "")
             .replacingOccurrences(of: "Bạn được mời: ", with: "")
             .replacingOccurrences(of: "Sắp bắt đầu: ", with: "")
     }
@@ -530,9 +534,11 @@ private struct MeetingNotificationDetail: View {
                             Text(
                                 isEndingSoonReminder
                                     ? "Sắp kết thúc"
-                                    : notification.type == "meeting_reminder"
-                                        ? "Sắp bắt đầu"
-                                        : notification.type == "meeting_cancelled"
+                                : notification.type == "meeting_reminder"
+                                    ? "Sắp bắt đầu"
+                                    : notification.type == "meeting_room_booking"
+                                        ? "Lịch phòng mới"
+                                    : notification.type == "meeting_cancelled"
                                             ? "Đã hủy"
                                             : "Lời mời"
                             )
@@ -547,6 +553,8 @@ private struct MeetingNotificationDetail: View {
                                 ? "Hãy chuẩn bị tham gia đúng giờ"
                                 : notification.type == "meeting_cancelled"
                                     ? "Lịch họp này đã được hủy"
+                                    : notification.type == "meeting_room_booking"
+                                        ? "Phòng Nhân sự có quyền xem chi tiết cuộc họp"
                                     : isOrganizer
                                         ? "Bạn là người tổ chức cuộc họp"
                                         : "Bạn được mời tham dự cuộc họp",
@@ -596,6 +604,8 @@ private struct MeetingNotificationDetail: View {
                                 ? "Cuộc họp bạn tổ chức còn khoảng 10 phút."
                                 : notification.type == "meeting_reminder"
                                     ? "Đây là lời nhắc trước giờ họp."
+                                    : notification.type == "meeting_room_booking"
+                                        ? "Một lịch phòng họp mới vừa được tạo."
                                     : "Lời mời đã được gửi đến bạn."
                         )
                             .font(.subheadline).foregroundStyle(.secondary)
