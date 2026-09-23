@@ -524,14 +524,17 @@ struct RequestCard: View {
         HStack(spacing: 12) {
             requestIcon
             VStack(alignment: .leading, spacing: 6) {
-                Text(creatorName).font(.headline).lineLimit(1)
+                Text(creatorName)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .layoutPriority(1)
                 HStack(spacing: 7) {
                     kindBadge
                     departmentLabel
+                    Spacer(minLength: 4)
+                    statusBadge
                 }
             }
-            Spacer(minLength: 4)
-            statusBadge
         }
     }
 
