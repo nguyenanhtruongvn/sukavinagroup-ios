@@ -119,7 +119,11 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
 }
 
 struct EmployeeRequest: Codable, Identifiable {
-    struct EmployeeSummary: Codable { let fullName: String; let employeeCode: String }
+    struct EmployeeSummary: Codable {
+        let fullName: String
+        let employeeCode: String
+        let department: String?
+    }
     let id: String
     let kind: EmployeeRequestKind
     let from: Date
@@ -520,10 +524,10 @@ struct RequestCard: View {
         HStack(spacing: 12) {
             requestIcon
             VStack(alignment: .leading, spacing: 6) {
-                Text(request.employee?.fullName ?? "Đơn của tôi").font(.headline).lineLimit(1)
+                Text(creatorName).font(.headline).lineLimit(1)
                 HStack(spacing: 7) {
                     kindBadge
-                    Text(request.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.muted).lineLimit(1)
+                    departmentLabel
                 }
             }
             Spacer(minLength: 4)
@@ -535,20 +539,33 @@ struct RequestCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 requestIcon
-                Text(request.employee?.fullName ?? "Đơn của tôi")
+                Text(creatorName)
                     .font(.headline)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
             HStack(spacing: 8) {
                 kindBadge
+                departmentLabel
                 Spacer(minLength: 8)
                 statusBadge
             }
-            Text(request.createdAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.caption)
-                .foregroundStyle(AppTheme.muted)
         }
+    }
+
+    private var creatorName: String {
+        let name = request.employee?.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let code = request.employee?.employeeCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name, !name.isEmpty else { return "Đơn của tôi" }
+        guard let code, !code.isEmpty else { return name }
+        return "\(name) · \(code)"
+    }
+
+    private var departmentLabel: some View {
+        Text(request.employee?.department?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Chưa cập nhật bộ phận")
+            .font(.caption)
+            .foregroundStyle(AppTheme.muted)
+            .lineLimit(1)
     }
 
     private var requestIcon: some View {
