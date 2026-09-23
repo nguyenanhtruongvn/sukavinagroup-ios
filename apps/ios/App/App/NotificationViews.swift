@@ -568,7 +568,12 @@ private struct MeetingNotificationDetail: View {
 
                     notificationCard(title: "Thông tin cuộc họp", icon: "calendar") {
                         if let details {
-                            Label(details.room.name, systemImage: "building.2.fill").font(.headline)
+                            if details.isLimitedViewer == true {
+                                Label("Loại cuộc họp: \(details.title)", systemImage: "tag.fill")
+                                    .font(.headline)
+                            } else {
+                                Label(details.room.name, systemImage: "building.2.fill").font(.headline)
+                            }
                             Label(
                                 MeetingPresentation.range(
                                     MeetingBooking(
@@ -587,9 +592,11 @@ private struct MeetingNotificationDetail: View {
                             )
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            if !details.room.location.isEmpty { Label(details.room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
                             Label("Người tổ chức: \(details.employee.fullName)", systemImage: "person.crop.circle").font(.subheadline).foregroundStyle(.secondary)
-                            if !details.participants.isEmpty { Text("Người tham gia: \(details.participants.map { $0.employee.fullName }.joined(separator: ", "))").font(.subheadline).foregroundStyle(.secondary) }
+                            if details.isLimitedViewer != true {
+                                if !details.room.location.isEmpty { Label(details.room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
+                                if !details.participants.isEmpty { Text("Người tham gia: \(details.participants.map { $0.employee.fullName }.joined(separator: ", "))").font(.subheadline).foregroundStyle(.secondary) }
+                            }
                         } else {
                             if let room = messageParts.first, !room.isEmpty { Label(room, systemImage: "building.2.fill").font(.headline) }
                             if messageParts.count > 1 { Label(messageParts[1], systemImage: "clock.fill").font(.subheadline).foregroundStyle(.secondary) }

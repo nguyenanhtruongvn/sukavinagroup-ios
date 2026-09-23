@@ -81,6 +81,7 @@ struct MeetingBookingDetails: Codable, Identifiable {
     let room: MeetingRoom
     let employee: MeetingBookingPerson
     let participants: [MeetingBookingParticipant]
+    let isLimitedViewer: Bool?
 }
 
 struct MeetingInvitee: Codable, Identifiable {

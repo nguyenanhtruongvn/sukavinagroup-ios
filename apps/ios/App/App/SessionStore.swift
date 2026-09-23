@@ -1480,7 +1480,8 @@ final class SessionStore: ObservableObject {
             status: booking.status,
             room: current.room,
             employee: current.employee,
-            participants: current.participants
+            participants: current.participants,
+            isLimitedViewer: current.isLimitedViewer
         )
         meetingDetailsCache[booking.id] = MeetingDetailsMemoryEntry(
             savedAt: Date(),
