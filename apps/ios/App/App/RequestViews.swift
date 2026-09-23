@@ -562,10 +562,15 @@ struct RequestCard: View {
     }
 
     private var departmentLabel: some View {
-        Text(request.employee?.department?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "Chưa cập nhật bộ phận")
+        Text(departmentName)
             .font(.caption)
             .foregroundStyle(AppTheme.muted)
             .lineLimit(1)
+    }
+
+    private var departmentName: String {
+        let department = request.employee?.department?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return department.isEmpty ? "Chưa cập nhật bộ phận" : department
     }
 
     private var requestIcon: some View {
