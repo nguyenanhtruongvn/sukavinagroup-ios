@@ -1184,7 +1184,12 @@ private struct MeetingScheduleLabel: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Text(booking.title.isEmpty ? "Đã có lịch" : booking.title)
+            Text(
+                [booking.title.isEmpty ? "Đã có lịch" : booking.title, booking.organizerName]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+                    .joined(separator: " · ")
+            )
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(style.foreground)
                 .lineLimit(1)

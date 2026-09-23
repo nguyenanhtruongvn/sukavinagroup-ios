@@ -47,6 +47,7 @@ struct MeetingBooking: Codable, Identifiable {
     let status: String
     let isMine: Bool?
     let isOwner: Bool?
+    let organizerName: String?
 }
 
 struct MeetingScheduleResponse: Codable {

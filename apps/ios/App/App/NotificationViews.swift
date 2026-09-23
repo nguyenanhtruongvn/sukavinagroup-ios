@@ -585,7 +585,8 @@ private struct MeetingNotificationDetail: View {
                                         attendeeCount: details.attendeeCount,
                                         status: currentScheduleBooking?.status ?? details.status,
                                         isMine: true,
-                                        isOwner: isOrganizer
+                                        isOwner: isOrganizer,
+                                        organizerName: nil
                                     )
                                 ),
                                 systemImage: "clock.fill"

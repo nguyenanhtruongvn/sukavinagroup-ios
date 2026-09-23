@@ -1575,7 +1575,8 @@ final class SessionStore: ObservableObject {
                 attendeeCount: booking.attendeeCount,
                 status: booking.status,
                 isMine: booking.isMine,
-                isOwner: booking.isOwner
+                isOwner: booking.isOwner,
+                organizerName: booking.organizerName
             )
             didUpdate = true
         }
@@ -1601,7 +1602,8 @@ final class SessionStore: ObservableObject {
                 attendeeCount: serverBooking.attendeeCount,
                 status: serverBooking.status,
                 isMine: serverBooking.isMine ?? current.isMine,
-                isOwner: serverBooking.isOwner ?? current.isOwner
+                isOwner: serverBooking.isOwner ?? current.isOwner,
+                organizerName: serverBooking.organizerName ?? current.organizerName
             )
         }
 
@@ -1742,7 +1744,8 @@ final class SessionStore: ObservableObject {
                 attendeeCount: created.attendeeCount,
                 status: created.status,
                 isMine: true,
-                isOwner: true
+                isOwner: true,
+                organizerName: nil
             )
             if !meetingBookings.contains(where: { $0.id == optimistic.id }) {
                 meetingBookings.append(optimistic)
