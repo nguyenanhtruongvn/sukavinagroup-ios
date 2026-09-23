@@ -1238,10 +1238,16 @@ struct MeetingBookingDetailSheet: View {
     @State private var controlAction: String?
     @State private var controlError: String?
 
-    // Role color is shared with Android: organiser green, invitee blue.
+    // Role color is shared with Android: organiser green, invitee/limited blue.
+    private var isLimitedViewer: Bool { details?.isLimitedViewer == true }
     private var accent: Color { booking.isOwner == true ? Color(red: 0.13, green: 0.71, blue: 0.45) : .blue }
-    private var roleTitle: String { booking.isOwner == true ? "Bạn là người tổ chức" : "Bạn được mời tham dự" }
-    private var roleIcon: String { booking.isOwner == true ? "person.badge.key.fill" : "person.2.badge.gearshape.fill" }
+    private var roleTitle: String {
+        if isLimitedViewer { return "Thông tin giới hạn dành cho Phòng Nhân sự" }
+        return booking.isOwner == true ? "Bạn là người tổ chức" : "Bạn được mời tham dự"
+    }
+    private var roleIcon: String {
+        isLimitedViewer ? "lock.shield.fill" : booking.isOwner == true ? "person.badge.key.fill" : "person.2.badge.gearshape.fill"
+    }
 
     // Read the live schedule copy first so an end/extension redraws this sheet
     // immediately after the mutation endpoint responds.
@@ -1335,36 +1341,49 @@ struct MeetingBookingDetailSheet: View {
                     detailCard(title: "Thời gian", icon: "clock.fill") {
                         Text(MeetingPresentation.range(currentBooking)).font(.title3.weight(.bold).monospacedDigit())
                         Text(dateTitle).font(.subheadline).foregroundStyle(.secondary)
-                        HStack(spacing: 8) {
-                            detailPill(durationTitle, icon: "timer")
-                            detailPill("\(currentBooking.attendeeCount) người", icon: "person.2.fill")
+                        if !isLimitedViewer {
+                            HStack(spacing: 8) {
+                                detailPill(durationTitle, icon: "timer")
+                                detailPill("\(currentBooking.attendeeCount) người", icon: "person.2.fill")
+                            }
                         }
                     }
-                    detailCard(title: "Địa điểm", icon: "building.2.fill") {
-                        Text(displayedRoom.name).font(.headline)
-                        if !displayedRoom.location.isEmpty { Label(displayedRoom.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
-                        Text("Sức chứa phòng: \(displayedRoom.capacity) người").font(.caption.weight(.medium)).foregroundStyle(.secondary)
-                    }
-                    if !displayedRoom.equipment.isEmpty {
-                        detailCard(title: "Thiết bị sẵn có", icon: "display.2") {
-                            Text(displayedRoom.equipment.joined(separator: "  ·  ")).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                    if !isLimitedViewer {
+                        detailCard(title: "Địa điểm", icon: "building.2.fill") {
+                            Text(displayedRoom.name).font(.headline)
+                            if !displayedRoom.location.isEmpty { Label(displayedRoom.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
+                            Text("Sức chứa phòng: \(displayedRoom.capacity) người").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                        }
+                        if !displayedRoom.equipment.isEmpty {
+                            detailCard(title: "Thiết bị sẵn có", icon: "display.2") {
+                                Text(displayedRoom.equipment.joined(separator: "  ·  ")).font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                            }
                         }
                     }
                     if let details {
-                        detailCard(title: "Người tổ chức", icon: "person.crop.circle.fill") {
-                            Text(details.employee.fullName).font(.headline)
-                            Text([details.employee.employeeCode, details.employee.department, details.employee.jobTitle]
-                                .compactMap { $0?.isEmpty == false ? $0 : nil }
-                                .joined(separator: " · "))
-                                .font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        detailCard(title: "Người tham gia (\(details.participants.count))", icon: "person.2.fill") {
-                            if details.participants.isEmpty {
-                                Text("Chưa có người được mời thêm.").font(.subheadline).foregroundStyle(.secondary)
-                            } else {
-                                ForEach(details.participants) { participant in
-                                    Text(participant.employee.fullName)
-                                        .font(.subheadline.weight(.medium))
+                        if isLimitedViewer {
+                            detailCard(title: "Thông tin cuộc họp", icon: "lock.shield.fill") {
+                                Label("Loại cuộc họp: \(details.title)", systemImage: "tag.fill")
+                                    .font(.headline)
+                                Label("Người tổ chức: \(details.employee.fullName)", systemImage: "person.crop.circle.fill")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                        } else {
+                            detailCard(title: "Người tổ chức", icon: "person.crop.circle.fill") {
+                                Text(details.employee.fullName).font(.headline)
+                                Text([details.employee.employeeCode, details.employee.department, details.employee.jobTitle]
+                                    .compactMap { $0?.isEmpty == false ? $0 : nil }
+                                    .joined(separator: " · "))
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                            }
+                            detailCard(title: "Người tham gia (\(details.participants.count))", icon: "person.2.fill") {
+                                if details.participants.isEmpty {
+                                    Text("Chưa có người được mời thêm.").font(.subheadline).foregroundStyle(.secondary)
+                                } else {
+                                    ForEach(details.participants) { participant in
+                                        Text(participant.employee.fullName)
+                                            .font(.subheadline.weight(.medium))
+                                    }
                                 }
                             }
                         }
