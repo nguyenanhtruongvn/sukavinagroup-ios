@@ -1573,6 +1573,7 @@ private struct MeetingBookingSheet: View {
     let day: Date
 
     @State private var title = ""
+    @State private var meetingType = "Nội bộ"
     @State private var start = Date()
     @State private var durationValue = 30
     @State private var durationUnit = "phút"
@@ -1636,8 +1637,12 @@ private struct MeetingBookingSheet: View {
     }
 
     private var isValid: Bool {
-        title.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
-            && selected.count + 1 <= room.capacity
+        selected.count + 1 <= room.capacity
+    }
+
+    private var bookingTitle: String {
+        let content = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return content.isEmpty ? meetingType : "\(meetingType) · \(content)"
     }
 
     private var canConfirmBooking: Bool {
@@ -1769,6 +1774,11 @@ private struct MeetingBookingSheet: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Color(uiColor: .label))
 
+            HStack(spacing: 10) {
+                meetingTypeButton("Nội bộ", icon: "person.2.fill")
+                meetingTypeButton("Tiếp khách", icon: "person.badge.plus")
+            }
+
             VStack(alignment: .leading, spacing: 7) {
                 Text("Nội dung cuộc họp")
                     .font(.caption.weight(.semibold))
@@ -1853,6 +1863,26 @@ private struct MeetingBookingSheet: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.black.opacity(0.06), lineWidth: 1)
         }
+    }
+
+    private func meetingTypeButton(_ value: String, icon: String) -> some View {
+        let selected = meetingType == value
+        return Button {
+            meetingType = value
+        } label: {
+            Label(value, systemImage: icon)
+                .font(.subheadline.weight(.bold))
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .foregroundStyle(selected ? .white : Color(uiColor: .label))
+                .background(selected ? Color(red: 0.0, green: 0.42, blue: 0.25) : Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(selected ? Color.clear : Color(uiColor: .separator), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     private var inviteesCard: some View {
@@ -2294,7 +2324,7 @@ private struct MeetingBookingSheet: View {
         Task {
             let failureMessage = await session.createMeeting(
                 room: room,
-                title: title,
+                title: bookingTitle,
                 start: start,
                 duration: durationMinutes,
                 participants: Array(selected)
