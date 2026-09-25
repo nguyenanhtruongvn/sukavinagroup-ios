@@ -204,11 +204,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     }
 }
 
-/// iOS 17's Swift runtime aborts while resolving the large conditional
-/// `SukavinaAppView.body` metadata emitted by Xcode 26.  Keep the app's
-/// lifecycle in UIKit and host one concrete SwiftUI screen at a time instead.
-/// The displayed screens remain the native SwiftUI application; this only
-/// removes the incompatible root metadata graph from the first layout pass.
+/// Keep the lifecycle in UIKit and host one concrete SwiftUI screen at a time.
+/// This avoids constructing a large conditional SwiftUI root during the first
+/// layout pass on iOS 17 while preserving the native SwiftUI screens.
 @available(iOS 17.0, *)
 @MainActor
 private final class NativeAppContainerViewController: UIViewController {

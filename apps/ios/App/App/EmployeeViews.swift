@@ -2535,9 +2535,28 @@ struct EmployeePortalView: View {
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
-    var body: some View {
-        // Keep every tab item structurally stable. iOS 17 can recursively
-        // re-evaluate a TabView when an AppStorage preference swaps its label.
+    var body: AnyView {
+        let content: AnyView
+        if #available(iOS 18.0, *) {
+            content = AnyView(systemPortalTabs)
+        } else {
+            content = AnyView(ios17PortalTabs)
+        }
+        return AnyView(
+            content
+                .accentColor(AppTheme.red)
+                .onChange(of: selectedTab) { _, tab in
+                    if tab == 3 { session.clearNotificationBadge() }
+                }
+                .onChange(of: notificationRouter.pendingRoute) { _, route in
+                    if route != nil { selectedTab = 3 }
+                }
+        )
+    }
+
+    private var systemPortalTabs: some View {
+        // Keep every tab item structurally stable. iOS 18+ does not use the
+        // iOS 17 fallback, but still must not swap tab-label view types.
         TabView(selection: $selectedTab) {
             DashboardView(isActive: selectedTab == 0) {
                 requestInitialFilter = .pending
@@ -2557,26 +2576,84 @@ struct EmployeePortalView: View {
                 .tag(3)
             ProfileView()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
-                .tag(4)
+            .tag(4)
         }
-        .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
-        .onChange(of: selectedTab) { _, tab in
-            if tab == 3 { session.clearNotificationBadge() }
-        }
-        .onChange(of: notificationRouter.pendingRoute) { _, route in
-            if route != nil { selectedTab = 3 }
+    }
+
+    private var ios17PortalTabs: some View {
+        // iOS 17.6 can overflow its SwiftUI/AttributeGraph stack while
+        // constructing the main TabView at launch. Keep the same five pages
+        // but use a small, stable app-owned tab bar on iOS 17 only.
+        ZStack(alignment: .bottom) {
+            selectedPortalPage
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            HStack(spacing: 0) {
+                portalTabButton(title: "Trang chủ", image: "house.fill", tab: 0)
+                portalTabButton(title: "Đơn từ", image: "doc.text.fill", tab: 1)
+                portalTabButton(title: "Phòng họp", image: "building.2.fill", tab: 2)
+                portalTabButton(title: "Thông báo", image: "bell.fill", tab: 3, badge: session.notificationBadgeCount)
+                portalTabButton(title: "Tài khoản", image: "person.crop.circle.fill", tab: 4)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 6)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .top) {
+                Divider()
+            }
         }
     }
 
+    @ViewBuilder
+    private var selectedPortalPage: some View {
+        switch selectedTab {
+        case 1:
+            RequestsView(initialFilter: requestInitialFilter)
+        case 2:
+            MeetingRoomsView(isActive: true)
+        case 3:
+            NotificationsView()
+        case 4:
+            ProfileView()
+        default:
+            DashboardView(isActive: true) {
+                requestInitialFilter = .pending
+                selectedTab = 1
+            }
+        }
+    }
 
-
-
-
-
-
-
-
+    private func portalTabButton(title: String, image: String, tab: Int, badge: Int = 0) -> some View {
+        Button {
+            selectedTab = tab
+        } label: {
+            VStack(spacing: 3) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: image)
+                        .font(.system(size: 18, weight: .semibold))
+                    if badge > 0 {
+                        Text(badge > 99 ? "99+" : "\(badge)")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(AppTheme.red, in: Capsule())
+                            .offset(x: 9, y: -6)
+                    }
+                }
+                Text(title)
+                    .font(.system(size: 10, weight: selectedTab == tab ? .semibold : .regular))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selectedTab == tab ? AppTheme.red : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
+    }
 }
 
 
