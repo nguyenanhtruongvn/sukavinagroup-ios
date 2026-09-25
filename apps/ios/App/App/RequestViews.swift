@@ -375,6 +375,11 @@ struct RequestsView: View {
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .animation(.easeInOut(duration: 0.22), value: filterIndex)
+                    // The outer portal TabView reserves its tab-bar safe area
+                    // for every child.  Let only the request pager extend
+                    // through that area so cards can scroll beneath the menu;
+                    // the floating compose button stays in the parent safe area.
+                    .ignoresSafeArea(.container, edges: .bottom)
                 }
                 .padding(.top, 8)
                 .onChange(of: filterIndex) { _, newIndex in
