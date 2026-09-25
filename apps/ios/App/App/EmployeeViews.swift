@@ -11,70 +11,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-/// The profile setting must update the already-created UIKit tab bar. SwiftUI
-/// does not reliably rebuild tab-item titles after initial presentation.  This
-/// bridge is deliberately available only on iOS 18+, where it was previously
-/// stable; iOS 17 uses SwiftUI's declarative label instead.
-@available(iOS 18.0, *)
-private struct TabBarLabelVisibilityUpdater: UIViewRepresentable {
-    let showsLabels: Bool
-    private static let tabTitles = ["Trang chủ", "Đơn từ", "Phòng họp", "Thông báo", "Tài khoản"]
-
-    final class Coordinator {
-        weak var tabBar: UITabBar?
-        var showsLabels: Bool?
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
-        view.isUserInteractionEnabled = false
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {
-        DispatchQueue.main.async {
-            guard let window = uiView.window, let tabBar = findTabBar(from: window) else { return }
-            guard context.coordinator.tabBar !== tabBar || context.coordinator.showsLabels != showsLabels else { return }
-
-            context.coordinator.tabBar = tabBar
-            context.coordinator.showsLabels = showsLabels
-            for (index, item) in (tabBar.items ?? []).enumerated() {
-                guard Self.tabTitles.indices.contains(index) else { continue }
-                let title = Self.tabTitles[index]
-                item.title = showsLabels ? title : nil
-                item.accessibilityLabel = title
-                item.titlePositionAdjustment = .zero
-                item.imageInsets = showsLabels ? .zero : UIEdgeInsets(top: 6, left: 0, bottom: -6, right: 0)
-            }
-            tabBar.items?.forEach { $0.setTitleTextAttributes(nil, for: .normal) }
-        }
-    }
-
-    private func findTabBar(from window: UIWindow) -> UITabBar? {
-        if let root = window.rootViewController, let tabBar = findTabBar(in: root) { return tabBar }
-        return findTabBar(in: window)
-    }
-
-    private func findTabBar(in controller: UIViewController) -> UITabBar? {
-        if let tabController = controller as? UITabBarController { return tabController.tabBar }
-        for child in controller.children {
-            if let tabBar = findTabBar(in: child) { return tabBar }
-        }
-        if let presented = controller.presentedViewController { return findTabBar(in: presented) }
-        return nil
-    }
-
-    private func findTabBar(in view: UIView) -> UITabBar? {
-        if let tabBar = view as? UITabBar { return tabBar }
-        for child in view.subviews {
-            if let tabBar = findTabBar(in: child) { return tabBar }
-        }
-        return nil
-    }
-}
-
 enum MeetingPresentation {
     static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
     static var calendar: Calendar = {
@@ -2602,20 +2538,10 @@ struct EmployeePortalView: View {
 
     @ViewBuilder
     private func portalTabLabel(_ title: String, systemImage: String) -> some View {
-        if #available(iOS 18.0, *) {
-            // UIKit applies the dynamic title preference on these releases.
-            Label(title, systemImage: systemImage)
-        } else if showTabLabels {
+        if showTabLabels {
             Label(title, systemImage: systemImage)
         } else {
             Image(systemName: systemImage).accessibilityLabel(title)
-        }
-    }
-
-    @ViewBuilder
-    private var tabBarLabelPreferenceBridge: some View {
-        if #available(iOS 18.0, *) {
-            TabBarLabelVisibilityUpdater(showsLabels: showTabLabels)
         }
     }
 
@@ -2641,7 +2567,6 @@ struct EmployeePortalView: View {
                 .tabItem { portalTabLabel("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
-        .background(tabBarLabelPreferenceBridge)
         .accentColor(AppTheme.red)
         .adaptivePortalTabBarBackground()
         .onChange(of: selectedTab) { _, tab in
