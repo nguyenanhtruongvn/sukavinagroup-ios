@@ -22,7 +22,6 @@ struct ProfileView: View {
     @EnvironmentObject private var session: SessionStore
     @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
     @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
-    @AppStorage("sukavina.showTabLabels") private var showTabLabels = true
     @State private var showDelete = false
     @State private var showPasswordChange = false
     @State private var showPasswordChangeLimit = false
@@ -65,19 +64,6 @@ struct ProfileView: View {
                             }
                             .pickerStyle(.segmented)
                         }
-
-                        Divider()
-
-                        Toggle(isOn: $showTabLabels) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Label("Nhãn", systemImage: "text.below.photo")
-                                    .font(.headline)
-                                Text("Hiển thị tên dưới các biểu tượng ở thanh menu.")
-                                    .font(.caption)
-                                    .foregroundStyle(AppTheme.muted)
-                            }
-                        }
-                        .tint(AppTheme.red)
 
                         Divider()
 

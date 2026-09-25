@@ -2532,39 +2532,31 @@ private struct MeetingSummaryCard: View {
 struct EmployeePortalView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
-    @AppStorage("sukavina.showTabLabels") private var showTabLabels = true
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
-    @ViewBuilder
-    private func portalTabLabel(_ title: String, systemImage: String) -> some View {
-        if showTabLabels {
-            Label(title, systemImage: systemImage)
-        } else {
-            Image(systemName: systemImage).accessibilityLabel(title)
-        }
-    }
-
     var body: some View {
+        // Keep every tab item structurally stable. iOS 17 can recursively
+        // re-evaluate a TabView when an AppStorage preference swaps its label.
         TabView(selection: $selectedTab) {
             DashboardView(isActive: selectedTab == 0) {
                 requestInitialFilter = .pending
                 selectedTab = 1
             }
-                .tabItem { portalTabLabel("Trang chủ", systemImage: "house.fill") }
+                .tabItem { Label("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
-                .tabItem { portalTabLabel("Đơn từ", systemImage: "doc.text.fill") }
+                .tabItem { Label("Đơn từ", systemImage: "doc.text.fill") }
             .tag(1)
             MeetingRoomsView(isActive: selectedTab == 2)
-                .tabItem { portalTabLabel("Phòng họp", systemImage: "building.2.fill") }
+                .tabItem { Label("Phòng họp", systemImage: "building.2.fill") }
                 .tag(2)
             NotificationsView()
-                .tabItem { portalTabLabel("Thông báo", systemImage: "bell.fill") }
+                .tabItem { Label("Thông báo", systemImage: "bell.fill") }
                 .badge(session.notificationBadgeCount)
                 .tag(3)
             ProfileView()
-                .tabItem { portalTabLabel("Tài khoản", systemImage: "person.crop.circle.fill") }
+                .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
                 .tag(4)
         }
         .accentColor(AppTheme.red)
