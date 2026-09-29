@@ -142,7 +142,8 @@ final class APIClient {
         method: String = "GET",
         token: String? = nil,
         body: Body? = nil,
-        allowSessionRefresh: Bool = true
+        allowSessionRefresh: Bool = true,
+        allowTransportFallback: Bool = false
     ) async throws -> Response {
         guard let baseURL, let url = URL(string: path, relativeTo: baseURL) else {
             throw NetworkError.invalidResponse
@@ -165,6 +166,10 @@ final class APIClient {
         var data: Data
         var response: URLResponse
         let retryable = ["GET", "HEAD"].contains(method.uppercased())
+        // Mutating requests are never retried by default. Authentication can
+        // opt in to a single alternate-host attempt only after a transport
+        // failure (DNS/connectivity/timeout), never after an HTTP response.
+        let transportFallbackAllowed = retryable || allowTransportFallback
         let primaryHost = url.host ?? "unknown"
         ConnectionDiagnostics.record("API primary start: \(method) \(primaryHost)/\(path)")
         do {
@@ -181,7 +186,8 @@ final class APIClient {
             let code = (error as? URLError)?.code.rawValue
             let codeText = code.map(String.init) ?? "n/a"
             ConnectionDiagnostics.record("API primary failed: code=\(codeText) \(error.localizedDescription)")
-            guard retryable,
+            guard transportFallbackAllowed,
+                  shouldRetry(error),
                   let fallbackBaseURL,
                   let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
                 throw NetworkError.offline
@@ -190,7 +196,7 @@ final class APIClient {
             let fallbackHost = fallbackURL.host ?? "unknown"
             ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackHost)/\(path)")
             do {
-                (data, response) = try await load(urlRequest, retryable: true, path: path, hostRole: "fallback")
+                (data, response) = try await load(urlRequest, retryable: retryable, path: path, hostRole: "fallback")
             } catch is CancellationError {
                 ConnectionDiagnostics.record("API fallback cancelled: \(method) \(fallbackHost)/\(path)")
                 throw CancellationError()
@@ -242,7 +248,8 @@ final class APIClient {
                     method: method,
                     token: refreshed.accessToken,
                     body: body,
-                    allowSessionRefresh: false
+                    allowSessionRefresh: false,
+                    allowTransportFallback: allowTransportFallback
                 )
             }
             if token != nil && http.statusCode == 401 {
