@@ -154,9 +154,12 @@ final class APIClient {
         urlRequest.timeoutInterval = 30
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
-        let effectiveToken = token.flatMap { _ in KeychainStore.loadToken() } ?? token
-        if let effectiveToken {
-            urlRequest.setValue("Bearer \(effectiveToken)", forHTTPHeaderField: "Authorization")
+        // The caller already owns the current in-memory session token.
+        // Reading Keychain synchronously here can block CFNetwork requests on
+        // re-signed/upgraded iOS installs and can also resurrect a stale token
+        // during an account switch. Keychain is persistence, not live state.
+        if let token {
+            urlRequest.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         if let body {
             urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
