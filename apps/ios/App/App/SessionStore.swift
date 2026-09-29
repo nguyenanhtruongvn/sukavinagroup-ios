@@ -450,17 +450,17 @@ final class SessionStore: ObservableObject {
         activeRestoreAttempt = nil
         isWorking = true
         defer { isWorking = false }
-        ConnectionDiagnostics.record("Sign-in started; identifierLength=\(loginId.count)")
-        if lastPathStatus == .unsatisfied && lastPathWasCellular == true {
-            ConnectionDiagnostics.record("Sign-in stopped: iOS reports an unsatisfied cellular path")
-            present(NetworkError.cellularRestricted)
-            return false
-        }
+        let normalizedLoginId = loginId.trimmingCharacters(in: .whitespacesAndNewlines)
+        ConnectionDiagnostics.record("Sign-in started; identifierLength=\(normalizedLoginId.count)")
+        // NWPathMonitor is advisory and can briefly report .unsatisfied while
+        // iOS hands connectivity between Wi-Fi and cellular. Let URLSession
+        // make the authoritative connection attempt instead of blocking login.
         do {
             let response: LoginResponse = try await APIClient.shared.request(
                 "auth/login",
                 method: "POST",
-                body: LoginBody(loginId: loginId, password: password)
+                body: LoginBody(loginId: normalizedLoginId, password: password),
+                allowTransportFallback: true
             )
             resetBiometricsWhenAccountChanges(to: response.user.employeeCode)
             applySession(response)
