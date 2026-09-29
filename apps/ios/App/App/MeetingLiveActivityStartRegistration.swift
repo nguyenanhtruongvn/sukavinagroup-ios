@@ -37,7 +37,7 @@ enum MeetingLiveActivityStartRegistration {
             let tokenValue = token.map { String(format: "%02x", $0) }.joined()
             guard !tokenValue.isEmpty else { return }
             UserDefaults.standard.set(tokenValue, forKey: cachedTokenKey)
-            Task {
+            Task.detached(priority: .utility) {
                 await upload(tokenValue: tokenValue)
             }
             return
@@ -47,11 +47,13 @@ enum MeetingLiveActivityStartRegistration {
     }
 
     private static func retryCachedTokenIfPossible() {
-        guard KeychainStore.loadToken() != nil,
-              let tokenValue = UserDefaults.standard.string(forKey: cachedTokenKey),
+        guard let tokenValue = UserDefaults.standard.string(forKey: cachedTokenKey),
               !tokenValue.isEmpty else { return }
 
-        Task {
+        // Keychain/Security.framework must never be touched synchronously from
+        // the session-state observer on the main thread. upload() performs the
+        // credential lookup on this detached utility task instead.
+        Task.detached(priority: .utility) {
             await upload(tokenValue: tokenValue)
         }
     }
