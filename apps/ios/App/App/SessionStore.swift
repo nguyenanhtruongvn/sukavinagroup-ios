@@ -157,6 +157,9 @@ final class SessionStore: ObservableObject {
     // cleanup or an account switch on the same iPhone.
     private var registeredAPNsIdentity: String?
     private var transportReachabilityObserver: NSObjectProtocol?
+    // Suppress duplicate Internet-loss alerts from concurrent API calls.
+    // Reset only after a real HTTP response proves connectivity is back.
+    private var hasPresentedOfflineAlertForCurrentOutage = false
 
     init() {
         transportReachabilityObserver = NotificationCenter.default.addObserver(
@@ -167,6 +170,7 @@ final class SessionStore: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.isNetworkAvailable = true
+                self.hasPresentedOfflineAlertForCurrentOutage = false
                 self.offlineNoticeTask?.cancel()
                 self.isOfflineNoticeVisible = false
             }
@@ -1117,6 +1121,39 @@ final class SessionStore: ObservableObject {
 
     private func present(_ error: Error) {
         guard !(error is CancellationError) else { return }
+
+        let isOfflineError: Bool
+        if let networkError = error as? NetworkError,
+           case .offline = networkError {
+            isOfflineError = true
+        } else if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .networkConnectionLost, .notConnectedToInternet,
+                 .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
+                 .resourceUnavailable, .cannotLoadFromNetwork:
+                isOfflineError = true
+            default:
+                isOfflineError = false
+            }
+        } else {
+            isOfflineError = false
+        }
+
+        if isOfflineError {
+            // Several dashboard/profile/notification requests can fail at the
+            // same time when Internet disappears. Present one alert for the
+            // whole outage instead of one alert per failed request.
+            guard !hasPresentedOfflineAlertForCurrentOutage else {
+                ConnectionDiagnostics.record("Duplicate offline alert suppressed")
+                return
+            }
+            hasPresentedOfflineAlertForCurrentOutage = true
+            errorMessage = NetworkError.offline.localizedDescription
+            errorTitle = "Kiểm tra kết nối Internet"
+            errorOffersSettings = false
+            return
+        }
+
         errorMessage = error.localizedDescription
         if let networkError = error as? NetworkError,
            case .cellularRestricted = networkError {
@@ -1125,10 +1162,6 @@ final class SessionStore: ObservableObject {
         } else if let networkError = error as? NetworkError,
                   case .invalidCredentials = networkError {
             errorTitle = "Sai thông tin đăng nhập"
-            errorOffersSettings = false
-        } else if let networkError = error as? NetworkError,
-                  case .offline = networkError {
-            errorTitle = "Kiểm tra kết nối Internet"
             errorOffersSettings = false
         } else {
             errorTitle = "Chưa thể thực hiện"
