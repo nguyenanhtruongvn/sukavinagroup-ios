@@ -60,16 +60,16 @@ enum NetworkSessions {
 
     private static func makeSession(resourceTimeout: TimeInterval) -> URLSession {
         let configuration = URLSessionConfiguration.default
-        // A pull-to-refresh can begin while iOS is briefly handing a live
-        // connection between Wi-Fi and cellular. Waiting lets the system
-        // complete that handoff instead of immediately failing the request.
-        configuration.waitsForConnectivity = true
+        // Do not let requests sit invisibly in URLSession while iOS changes
+        // interfaces. The API client already owns retry/fallback policy and
+        // can recover faster from a Wi-Fi <-> cellular handoff.
+        configuration.waitsForConnectivity = false
         configuration.allowsCellularAccess = true
         configuration.allowsExpensiveNetworkAccess = true
         configuration.allowsConstrainedNetworkAccess = true
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForRequest = 20
         configuration.timeoutIntervalForResource = resourceTimeout
         return URLSession(configuration: configuration)
     }
@@ -157,7 +157,7 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method
         urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
-        urlRequest.timeoutInterval = 30
+        urlRequest.timeoutInterval = path == "auth/login" ? 15 : 20
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
         // The caller already owns the current in-memory session token.
@@ -287,7 +287,9 @@ final class APIClient {
         path: String,
         hostRole: String
     ) async throws -> (Data, URLResponse) {
-        let delays: [UInt64] = retryable ? [0, 750_000_000, 1_500_000_000] : [0]
+        // One quick retry is enough before the alternate HTTPS host is tried.
+        // Multiple 30-second waits made cellular failures look like a frozen app.
+        let delays: [UInt64] = retryable ? [0, 400_000_000] : [0]
         for (attempt, delay) in delays.enumerated() {
             if delay > 0 {
                 try await Task.sleep(nanoseconds: delay)
@@ -297,8 +299,15 @@ final class APIClient {
             } catch is CancellationError {
                 throw CancellationError()
             } catch let error as URLError where error.code == .cancelled {
-                ConnectionDiagnostics.record("API \(hostRole) cancelled: code=\(error.code.rawValue) path=\(path)")
-                throw CancellationError()
+                // -999 is also emitted by CFNetwork during some interface
+                // handoffs. Only treat it as task cancellation when Swift
+                // actually cancelled the task; otherwise let fallback recover.
+                if Task.isCancelled {
+                    ConnectionDiagnostics.record("API \(hostRole) task cancelled: path=\(path)")
+                    throw CancellationError()
+                }
+                ConnectionDiagnostics.record("API \(hostRole) transport cancelled during handoff: path=\(path)")
+                guard attempt < delays.count - 1 else { throw error }
             } catch {
                 guard attempt < delays.count - 1, shouldRetry(error) else { throw error }
                 let code = (error as? URLError)?.code.rawValue
@@ -311,9 +320,9 @@ final class APIClient {
     private func shouldRetry(_ error: Error) -> Bool {
         guard let error = error as? URLError else { return false }
         switch error.code {
-        case .timedOut, .networkConnectionLost, .notConnectedToInternet,
+        case .cancelled, .timedOut, .networkConnectionLost, .notConnectedToInternet,
              .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
-             .resourceUnavailable:
+             .resourceUnavailable, .cannotLoadFromNetwork:
             return true
         default:
             return false
