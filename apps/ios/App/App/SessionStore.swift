@@ -156,8 +156,21 @@ final class SessionStore: ObservableObject {
     // made a valid APNs token silently disappear from the server after a token
     // cleanup or an account switch on the same iPhone.
     private var registeredAPNsIdentity: String?
+    private var transportReachabilityObserver: NSObjectProtocol?
 
     init() {
+        transportReachabilityObserver = NotificationCenter.default.addObserver(
+            forName: .sukavinaTransportReachable,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isNetworkAvailable = true
+                self.offlineNoticeTask?.cancel()
+                self.isOfflineNoticeVisible = false
+            }
+        }
         apnsTokenObserver = NotificationCenter.default.addObserver(
             forName: .sukavinaAPNsTokenUpdated,
             object: nil,
@@ -192,6 +205,9 @@ final class SessionStore: ObservableObject {
 
     deinit {
         offlineNoticeTask?.cancel()
+        if let transportReachabilityObserver {
+            NotificationCenter.default.removeObserver(transportReachabilityObserver)
+        }
         if let apnsTokenObserver {
             NotificationCenter.default.removeObserver(apnsTokenObserver)
         }
@@ -917,19 +933,9 @@ final class SessionStore: ObservableObject {
     }
 
     private func applySession(_ response: LoginResponse) {
+        // Apply the authenticated identity in memory first. Keychain persistence
+        // must not sit on the UI-critical path between HTTP 201 and the portal.
         token = response.accessToken
-        KeychainStore.save(token: response.accessToken)
-        if #available(iOS 17.2, *) {
-            // Fresh sign-in is the first point at which the start token can
-            // be authenticated and retained by the server.
-            MeetingLiveActivityStartRegistration.observe()
-        }
-        if !response.refreshToken.isEmpty {
-            KeychainStore.save(refreshToken: response.refreshToken)
-        }
-        if !response.widgetToken.isEmpty {
-            AttendanceWidgetBridge.configure(token: response.widgetToken)
-        }
         profile = Profile(
             id: "",
             employeeCode: response.user.employeeCode,
@@ -942,6 +948,19 @@ final class SessionStore: ObservableObject {
             passwordChangedAt: nil
         )
         if let profile { SessionCache.save(profile: profile) }
+        if !response.widgetToken.isEmpty {
+            AttendanceWidgetBridge.configure(token: response.widgetToken)
+        }
+
+        let accessToken = response.accessToken
+        let refreshToken = response.refreshToken
+        Task.detached(priority: .utility) {
+            KeychainStore.save(token: accessToken)
+            if !refreshToken.isEmpty {
+                KeychainStore.save(refreshToken: refreshToken)
+            }
+        }
+
         Task { @MainActor [weak self] in
             await APNsRegistration.requestAuthorizationAndRegister()
             await self?.syncAPNsToken()
@@ -1273,9 +1292,8 @@ final class SessionStore: ObservableObject {
         displayCachedMeetingScheduleIfNeeded(for: day)
 
         guard let token else { return }
-        // Before the first path callback, allow the request to proceed. Once the
-        // monitor confirms an offline path, use the cached schedule only.
-        guard isNetworkAvailable || lastPathStatus == nil else { return }
+        // NWPathMonitor is advisory only. Let URLSession decide whether the
+        // current Wi-Fi/cellular route can actually reach the API.
         guard force || shouldRevalidateMeetingSchedule(day: day) else { return }
 
         // Tab activation, foreground changes and SwiftUI lifecycle callbacks can
@@ -1436,7 +1454,6 @@ final class SessionStore: ObservableObject {
         }
 
         guard let token else { return cached?.value }
-        guard !hasConfirmedOfflineConnection else { return cached?.value }
 
         let staleValue = cached?.value
         let task = Task { @MainActor [weak self] () -> MeetingBookingDetails? in
@@ -1494,7 +1511,6 @@ final class SessionStore: ObservableObject {
     /// the server also broadcasts the change to every other signed-in client.
     func cancelMeeting(id: String, scheduledAt: String) async -> String? {
         guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
-        guard isNetworkAvailable else { return "Mất kết nối internet. Không thể hủy lịch khi đang ngoại tuyến." }
         isWorking = true
         defer { isWorking = false }
         do {
@@ -1713,7 +1729,6 @@ final class SessionStore: ObservableObject {
     /// a short, contextual notice instead of a global blocking alert.
     func createMeeting(room: MeetingRoom, title: String, start: Date, duration: Int, participants: [String]) async -> String? {
         guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
-        guard isNetworkAvailable else { return "Mất kết nối internet. Không thể đặt phòng khi đang ngoại tuyến." }
         isWorking = true
         defer { isWorking = false }
         do {
