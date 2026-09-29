@@ -75,6 +75,12 @@ enum NetworkSessions {
     }
 }
 
+extension Notification.Name {
+    /// Any HTTP response proves that URLSession has a working transport path,
+    /// even when NWPathMonitor is briefly stale during Wi-Fi/cellular handoff.
+    static let sukavinaTransportReachable = Notification.Name("net.sukavinagroup.transport-reachable")
+}
+
 enum ConnectionDiagnostics {
     private static let key = "connection-diagnostics-v1"
     private static let lock = NSLock()
@@ -218,6 +224,10 @@ final class APIClient {
             ConnectionDiagnostics.record("API invalid non-HTTP response: \(path)")
             throw NetworkError.invalidResponse
         }
+        // Treat the actual HTTP transport as authoritative. On some iOS/carrier
+        // combinations NWPathMonitor can transiently report .unsatisfied while
+        // CFNetwork is already sending and receiving normally over cellular.
+        NotificationCenter.default.post(name: .sukavinaTransportReachable, object: nil)
         let responseHost = http.url?.host ?? "unknown"
         ConnectionDiagnostics.record("API response: \(http.statusCode) host=\(responseHost) path=\(path) bytes=\(data.count)")
         guard (200..<300).contains(http.statusCode) else {
