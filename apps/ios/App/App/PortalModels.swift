@@ -585,6 +585,11 @@ struct AttendancePunch: Codable, Identifiable {
     let machineNo: Int
 }
 
+struct AiAssistantSettings: Codable {
+    let mobileEnabled: Bool
+    let updatedAt: String?
+}
+
 struct LoginBody: Encodable { let loginId: String; let password: String }
 struct PushTokenRegistrationBody: Encodable { let token: String; let platform: String }
 struct PushBadgeResetBody: Encodable { let token: String; let acknowledgedAt: Date }
