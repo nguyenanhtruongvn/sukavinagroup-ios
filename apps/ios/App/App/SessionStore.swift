@@ -408,7 +408,9 @@ final class SessionStore: ObservableObject {
                 startSessionRefresh()
                 return
             }
-            await NotificationManager.shared.requestAuthorizationIfNeeded()
+            Task {
+                await NotificationManager.shared.requestAuthorizationIfNeeded()
+            }
             await refreshDashboard()
             await refreshProfile()
             startRealTimeUpdates()
@@ -478,16 +480,20 @@ final class SessionStore: ObservableObject {
                 body: LoginBody(loginId: normalizedLoginId, password: password),
                 allowTransportFallback: true
             )
-            resetBiometricsWhenAccountChanges(to: response.user.employeeCode)
             applySession(response)
-            loadKnownArticles()
+
+            // Publish the authenticated UI before any optional local cleanup,
+            // notification registration or path-monitor work. This prevents a
+            // successful HTTP 201 from appearing stuck on slower cellular paths.
             state = .signedIn
-            startNetworkMonitoring()
-            // The session is authenticated at this point.  Present the portal
-            // immediately and hydrate its data in the background rather than
-            // holding the login button until every dashboard request finishes.
+
             Task { @MainActor [weak self] in
-                await self?.hydrateSignedInSession(
+                guard let self else { return }
+                await Task.yield()
+                self.resetBiometricsWhenAccountChanges(to: response.user.employeeCode)
+                self.loadKnownArticles()
+                self.startNetworkMonitoring()
+                await self.hydrateSignedInSession(
                     isCanteen: response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO"
                 )
             }
@@ -732,10 +738,12 @@ final class SessionStore: ObservableObject {
     }
 
     private func disableBiometricLogin() {
-        BiometricKeychain.clear()
         BiometricPreferences.enabled = false
         BiometricPreferences.employeeCode = nil
         biometricsEnabled = false
+        Task.detached(priority: .utility) {
+            BiometricKeychain.clear()
+        }
     }
 
     private func resetBiometricsWhenAccountChanges(to employeeCode: String) {
@@ -924,7 +932,13 @@ final class SessionStore: ObservableObject {
             ConnectionDiagnostics.record("Canteen sign-in completed successfully")
             return
         }
-        await NotificationManager.shared.requestAuthorizationIfNeeded()
+
+        // User data must load independently of notification services. On some
+        // cellular/carrier combinations notification authorization/APNs work can
+        // be delayed even though the HTTPS API is already reachable.
+        Task {
+            await NotificationManager.shared.requestAuthorizationIfNeeded()
+        }
         await refreshDashboard()
         await refreshProfile()
         startRealTimeUpdates()
