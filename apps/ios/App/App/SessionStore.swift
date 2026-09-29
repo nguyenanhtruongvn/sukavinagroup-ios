@@ -947,9 +947,16 @@ final class SessionStore: ObservableObject {
             email: nil,
             passwordChangedAt: nil
         )
-        if let profile { SessionCache.save(profile: profile) }
-        if !response.widgetToken.isEmpty {
-            AttendanceWidgetBridge.configure(token: response.widgetToken)
+        let cachedProfile = profile
+        let widgetToken = response.widgetToken
+        Task { @MainActor in
+            // Persist/cache only after the caller has had a chance to publish
+            // .signedIn. Widget/App Group work must never delay the login UI.
+            await Task.yield()
+            if let cachedProfile { SessionCache.save(profile: cachedProfile) }
+            if !widgetToken.isEmpty {
+                AttendanceWidgetBridge.configure(token: widgetToken)
+            }
         }
 
         let accessToken = response.accessToken
