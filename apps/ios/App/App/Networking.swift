@@ -341,11 +341,29 @@ enum KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
-        var item = query
-        item[kSecValueData as String] = data
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemAdd(item as CFDictionary, nil)
+
+        // Updating an existing item is materially safer on upgraded/re-signed
+        // installs than deleting it first. A Security.framework delete can
+        // wait on protected-data services and leave a successful login stuck
+        // before the app transitions to its signed-in screen.
+        let updateStatus = SecItemUpdate(
+            query as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        if updateStatus == errSecSuccess { return }
+
+        if updateStatus == errSecItemNotFound {
+            var item = query
+            item[kSecValueData as String] = data
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            let addStatus = SecItemAdd(item as CFDictionary, nil)
+            if addStatus != errSecSuccess {
+                ConnectionDiagnostics.record("Keychain add failed: status=\(addStatus) account=\(account)")
+            }
+            return
+        }
+
+        ConnectionDiagnostics.record("Keychain update failed: status=\(updateStatus) account=\(account)")
     }
 
     static func loadToken() -> String? {
