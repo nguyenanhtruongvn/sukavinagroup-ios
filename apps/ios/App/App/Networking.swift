@@ -160,6 +160,7 @@ final class APIClient {
         urlRequest.timeoutInterval = path == "auth/login" ? 15 : 20
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+        urlRequest.setValue("ios", forHTTPHeaderField: "X-Sukavina-Client")
         // The caller already owns the current in-memory session token.
         // Reading Keychain synchronously here can block CFNetwork requests on
         // re-signed/upgraded iOS installs and can also resurrect a stale token
