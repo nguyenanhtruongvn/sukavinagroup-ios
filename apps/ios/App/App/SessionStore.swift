@@ -91,6 +91,7 @@ final class SessionStore: ObservableObject {
     @Published var meetingRooms: [MeetingRoom] = []
     @Published var meetingBookings: [MeetingBooking] = []
     @Published var meetingInvitees: [MeetingInvitee] = []
+    @Published private(set) var aiAssistantMobileEnabled = true
     @Published private(set) var attendanceRevision = 0
     @Published private(set) var requestRevision = 0
     @Published private(set) var localAttendanceNotifications: [RequestNotification] = []
@@ -415,8 +416,10 @@ final class SessionStore: ObservableObject {
             Task {
                 await NotificationManager.shared.requestAuthorizationIfNeeded()
             }
+            async let aiSettings: Void = refreshAiAssistantAvailability()
             await refreshDashboard()
             await refreshProfile()
+            _ = await aiSettings
             startRealTimeUpdates()
             startSessionRefresh()
         } catch NetworkError.unauthorized {
@@ -943,8 +946,10 @@ final class SessionStore: ObservableObject {
         Task {
             await NotificationManager.shared.requestAuthorizationIfNeeded()
         }
+        async let aiSettings: Void = refreshAiAssistantAvailability()
         await refreshDashboard()
         await refreshProfile()
+        _ = await aiSettings
         startRealTimeUpdates()
         startSessionRefresh()
         ConnectionDiagnostics.record("Sign-in completed successfully")
@@ -1225,6 +1230,7 @@ final class SessionStore: ObservableObject {
                       wasStatus != .satisfied || wasCellular != isCellular,
                       self.token != nil else { return }
                 await self.refreshProfile()
+                await self.refreshAiAssistantAvailability()
                 await self.syncPushBadgeReset()
                 if self.profile?.accountType == "CANTEEN" { return }
                 await self.refreshDashboard()
@@ -1257,6 +1263,24 @@ final class SessionStore: ObservableObject {
             if let profile { SessionCache.save(profile: profile) }
         } catch {
             present(error)
+        }
+    }
+
+    func refreshAiAssistantAvailability() async {
+        guard let token else {
+            aiAssistantMobileEnabled = true
+            return
+        }
+        do {
+            let settings: AiAssistantSettings = try await APIClient.shared.request(
+                "me/ai-assistant/settings",
+                token: token
+            )
+            aiAssistantMobileEnabled = settings.mobileEnabled
+        } catch {
+            // Fail open for older server versions or temporary network issues.
+            // The chat endpoint remains the final authorization boundary.
+            ConnectionDiagnostics.record("AI assistant settings refresh deferred: \(error.localizedDescription)")
         }
     }
 
