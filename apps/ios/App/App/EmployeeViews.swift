@@ -1601,7 +1601,9 @@ private struct MeetingBookingSheet: View {
     }
 
     private var canConfirmBooking: Bool {
-        isValid && session.isNetworkAvailable && !isSubmittingBooking
+        // Do not disable booking from NWPathMonitor alone. CFNetwork can have a
+        // valid cellular route while the monitor is briefly stale.
+        isValid && !isSubmittingBooking
     }
 
     private var endTime: Date {
@@ -3604,14 +3606,9 @@ struct ModernAttendanceHistoryView: View {
             selectedDates[month] = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
                 ?? cached.days.last?.date
         }
-        // Do not leave an uncached neighbour in a loading state while the
-        // device is known to be offline. Cached months above remain usable.
-        if session.hasConfirmedOfflineConnection {
-            if cache[month] == nil {
-                errors[month] = "Chưa có bản lưu ngoại tuyến cho tháng này."
-            }
-            return
-        }
+        // NWPathMonitor is only advisory. Always let URLSession attempt the
+        // revalidation; loadAttendanceMonth already falls back to disk cache
+        // when the transport is genuinely unavailable.
         // Historical months are served instantly from a recent disk snapshot.
         // The current month is revalidated frequently because punches change it.
         guard session.shouldRevalidateAttendanceMonth(month) else { return }
