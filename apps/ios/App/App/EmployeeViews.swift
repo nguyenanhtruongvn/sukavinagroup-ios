@@ -3306,6 +3306,10 @@ private struct AiAssistantChatView: View {
             }
 
             inputBar
+                .onChange(of: inputHeight) { _, _ in
+                    guard isInputFocused else { return }
+                    requestScrollToLatest()
+                }
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .task { await loadHistoryIfNeeded() }
