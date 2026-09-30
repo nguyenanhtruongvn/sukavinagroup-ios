@@ -3261,8 +3261,8 @@ private struct AiAssistantChatView: View {
             }
 
             HStack(alignment: .bottom, spacing: 10) {
-                TextField("Nhập câu hỏi…", text: $draft, axis: .vertical)
-                    .lineLimit(1...4)
+                TextField("Nhập câu hỏi…", text: $draft)
+                    .lineLimit(1)
                     .textInputAutocapitalization(.sentences)
                     .autocorrectionDisabled(false)
                     .padding(.horizontal, 14)
@@ -3393,6 +3393,7 @@ struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
     @StateObject private var requestStore = EmployeeRequestStore()
     @State private var showTodayMenu = false
+    @State private var showAttendanceHistory = false
     @State private var showAiAssistant = false
     @State private var showAiAssistantLaunchLabel = true
     @State private var hasScheduledAiAssistantLaunchLabel = false
@@ -3449,7 +3450,11 @@ struct DashboardView: View {
 
 
 
-                    NavigationLink(destination: ModernAttendanceHistoryView()) {
+                    NavigationLink(
+                        destination: ModernAttendanceHistoryView()
+                            .onAppear { showAttendanceHistory = true }
+                            .onDisappear { showAttendanceHistory = false }
+                    ) {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("Chấm công hôm nay").font(.headline)
@@ -3514,36 +3519,44 @@ struct DashboardView: View {
                 await session.refreshTodayMenu(force: true)
             }
             .overlay(alignment: .bottomTrailing) {
-                if isActive && !showTodayMenu && session.aiAssistantMobileEnabled {
+                if isActive &&
+                    !showAttendanceHistory &&
+                    !showTodayMenu &&
+                    session.aiAssistantMobileEnabled {
                     Button {
                         showAiAssistant = true
                     } label: {
-                        HStack(spacing: 9) {
+                        Group {
                             if showAiAssistantLaunchLabel {
-                                Text("Trợ lý AI")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.primary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 8)
-                                    .background(.ultraThinMaterial, in: Capsule())
-                                    .overlay {
-                                        Capsule()
-                                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                    }
+                                HStack(spacing: 9) {
+                                    AiAssistantOrbView(size: 34)
+                                    Text("Trợ lý AI")
+                                        .font(.subheadline.weight(.bold))
+                                        .foregroundStyle(.white)
+                                }
+                                .padding(.horizontal, 14)
+                                .frame(height: 54)
+                                .background(
+                                    Color(red: 32 / 255, green: 36 / 255, blue: 49 / 255),
+                                    in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                )
+                                .transition(
+                                    .scale(scale: 0.92)
+                                    .combined(with: .opacity)
+                                )
+                            } else {
+                                AiAssistantOrbView(size: 66)
+                                    .contentShape(Circle())
                                     .transition(
-                                        .move(edge: .trailing)
+                                        .scale(scale: 0.90)
                                         .combined(with: .opacity)
                                     )
                             }
-
-                            AiAssistantOrbView(size: 66)
-                                .contentShape(Circle())
                         }
                     }
                     .buttonStyle(.plain)
                     .padding(.trailing, 20)
                     .padding(.bottom, 82)
-                    .transition(.scale(scale: 0.86).combined(with: .opacity))
                     .accessibilityLabel("Mở Trợ lý AI")
                 }
             }
