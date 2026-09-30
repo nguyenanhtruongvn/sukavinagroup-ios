@@ -3394,6 +3394,8 @@ struct DashboardView: View {
     @StateObject private var requestStore = EmployeeRequestStore()
     @State private var showTodayMenu = false
     @State private var showAiAssistant = false
+    @State private var showAiAssistantLaunchLabel = true
+    @State private var hasScheduledAiAssistantLaunchLabel = false
     let isActive: Bool
     let openPendingRequests: () -> Void
 
@@ -3511,6 +3513,42 @@ struct DashboardView: View {
                 await requestStore.load(session.token, force: true)
                 await session.refreshTodayMenu(force: true)
             }
+            .overlay(alignment: .bottomTrailing) {
+                if isActive && !showTodayMenu && session.aiAssistantMobileEnabled {
+                    Button {
+                        showAiAssistant = true
+                    } label: {
+                        HStack(spacing: 9) {
+                            if showAiAssistantLaunchLabel {
+                                Text("Trợ lý AI")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.primary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                                    .overlay {
+                                        Capsule()
+                                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                    }
+                                    .transition(
+                                        .move(edge: .trailing)
+                                        .combined(with: .opacity)
+                                    )
+                            }
+
+                            AiAssistantOrbView(size: 66)
+                                .contentShape(Circle())
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 82)
+                    .transition(.scale(scale: 0.86).combined(with: .opacity))
+                    .accessibilityLabel("Mở Trợ lý AI")
+                }
+            }
+            .animation(.easeInOut(duration: 0.24), value: showAiAssistantLaunchLabel)
+            .animation(.easeInOut(duration: 0.20), value: session.aiAssistantMobileEnabled)
             .sheet(isPresented: $showTodayMenu) {
                 TodayMenuView()
                     .environmentObject(session)
@@ -3519,27 +3557,19 @@ struct DashboardView: View {
             }
         }
         .navigationViewStyle(.stack)
-        .overlay(alignment: .bottomTrailing) {
-            if isActive && session.aiAssistantMobileEnabled {
-                Button {
-                    showAiAssistant = true
-                } label: {
-                    AiAssistantOrbView(size: 66)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 20)
-                .padding(.bottom, 82)
-                .transition(.scale(scale: 0.86).combined(with: .opacity))
-                .accessibilityLabel("Mở Trợ lý AI")
-            }
-        }
-        .animation(.easeInOut(duration: 0.20), value: session.aiAssistantMobileEnabled)
         .sheet(isPresented: $showAiAssistant) {
             AiAssistantChatView()
                 .environmentObject(session)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
+        }
+        .task(id: isActive) {
+            guard isActive, !hasScheduledAiAssistantLaunchLabel else { return }
+            hasScheduledAiAssistantLaunchLabel = true
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            withAnimation(.easeInOut(duration: 0.24)) {
+                showAiAssistantLaunchLabel = false
+            }
         }
         .onChange(of: session.aiAssistantMobileEnabled) { _, enabled in
             if !enabled { showAiAssistant = false }
