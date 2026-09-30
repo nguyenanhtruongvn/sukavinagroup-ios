@@ -3111,6 +3111,36 @@ private struct AiAssistantOrbView: View {
 }
 
 @available(iOS 17.0, *)
+private struct AiAssistantTypingIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 0.22)) { timeline in
+            let activeDot = reduceMotion
+                ? -1
+                : Int((timeline.date.timeIntervalSinceReferenceDate / 0.28).rounded(.down)) % 3
+
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(AppTheme.muted.opacity(index == activeDot ? 0.95 : 0.42))
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(index == activeDot ? 1.18 : 0.86)
+                        .offset(y: index == activeDot ? -2 : 0)
+                        .animation(.easeInOut(duration: 0.18), value: activeDot)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(AppTheme.card)
+            .clipShape(Capsule())
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Trợ lý AI đang nhập")
+    }
+}
+
+@available(iOS 17.0, *)
 private struct AiAssistantChatView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
@@ -3157,11 +3187,8 @@ private struct AiAssistantChatView: View {
                         }
 
                         if isSending {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("Trợ lý AI đang xử lý…")
-                                    .font(.footnote)
-                                    .foregroundStyle(AppTheme.muted)
+                            HStack {
+                                AiAssistantTypingIndicator()
                                 Spacer()
                             }
                             .padding(.horizontal, 4)
@@ -3244,12 +3271,11 @@ private struct AiAssistantChatView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .submitLabel(.send)
                     .onSubmit {
-                        guard canSend else { return }
-                        Task { await sendMessage() }
+                        submitDraft()
                     }
 
                 Button {
-                    Task { await sendMessage() }
+                    submitDraft()
                 } label: {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 16, weight: .bold))
@@ -3272,6 +3298,11 @@ private struct AiAssistantChatView: View {
         !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
         !isSending &&
         session.aiAssistantMobileEnabled
+    }
+
+    private func submitDraft() {
+        guard canSend else { return }
+        Task { await sendMessage() }
     }
 
     @ViewBuilder
