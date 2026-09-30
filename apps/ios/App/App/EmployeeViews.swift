@@ -1,5 +1,6 @@
 import UIKit
 import SwiftUI
+import UIKit
 import Combine
 import Security
 import UserNotifications
@@ -3143,34 +3144,40 @@ private struct AiAssistantTypingIndicator: View {
 @available(iOS 17.0, *)
 private struct AiAssistantInputField: UIViewRepresentable {
     @Binding var text: String
+    @Binding var height: CGFloat
     let onFocusChanged: (Bool) -> Void
     let onSend: () -> Void
 
-    final class Coordinator: NSObject, UITextFieldDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate {
         var parent: AiAssistantInputField
 
         init(parent: AiAssistantInputField) {
             self.parent = parent
         }
 
-        @objc func editingChanged(_ textField: UITextField) {
-            parent.text = textField.text ?? ""
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text ?? ""
+            parent.updateHeight(for: textView)
         }
 
-        func textFieldDidBeginEditing(_ textField: UITextField) {
+        func textViewDidBeginEditing(_ textView: UITextView) {
             parent.onFocusChanged(true)
         }
 
-        func textFieldDidEndEditing(_ textField: UITextField) {
+        func textViewDidEndEditing(_ textView: UITextView) {
             parent.onFocusChanged(false)
         }
 
-        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-            parent.onSend()
-
-            // Keep first responder active. Returning false prevents UIKit from
-            // dismissing and recreating the keyboard after the Send action.
-            return false
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn range: NSRange,
+            replacementText replacement: String
+        ) -> Bool {
+            if replacement == "\n" {
+                parent.onSend()
+                return false
+            }
+            return true
         }
     }
 
@@ -3178,33 +3185,44 @@ private struct AiAssistantInputField: UIViewRepresentable {
         Coordinator(parent: self)
     }
 
-    func makeUIView(context: Context) -> UITextField {
-        let field = UITextField(frame: .zero)
-        field.delegate = context.coordinator
-        field.placeholder = "Nhập câu hỏi…"
-        field.accessibilityLabel = "Nhập câu hỏi"
-        field.returnKeyType = .send
-        field.enablesReturnKeyAutomatically = true
-        field.autocapitalizationType = .sentences
-        field.autocorrectionType = .yes
-        field.spellCheckingType = .default
-        field.clearButtonMode = .never
-        field.borderStyle = .none
-        field.backgroundColor = .clear
-        field.font = .preferredFont(forTextStyle: .body)
-        field.adjustsFontForContentSizeCategory = true
-        field.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.editingChanged(_:)),
-            for: .editingChanged
-        )
-        return field
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView(frame: .zero)
+        view.delegate = context.coordinator
+        view.accessibilityLabel = "Nhập câu hỏi"
+        view.returnKeyType = .send
+        view.enablesReturnKeyAutomatically = true
+        view.autocapitalizationType = .sentences
+        view.autocorrectionType = .yes
+        view.spellCheckingType = .default
+        view.backgroundColor = .clear
+        view.font = .preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
+        view.textContainerInset = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
+        view.textContainer.lineFragmentPadding = 0
+        view.isScrollEnabled = false
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
     }
 
-    func updateUIView(_ uiView: UITextField, context: Context) {
+    func updateUIView(_ uiView: UITextView, context: Context) {
         context.coordinator.parent = self
         if uiView.text != text {
             uiView.text = text
+        }
+        updateHeight(for: uiView)
+    }
+
+    private func updateHeight(for textView: UITextView) {
+        guard textView.bounds.width > 0 else { return }
+        let measured = textView.sizeThatFits(
+            CGSize(width: textView.bounds.width, height: CGFloat.greatestFiniteMagnitude)
+        ).height
+        let nextHeight = min(max(measured, 42), 104)
+        textView.isScrollEnabled = measured > 104
+
+        guard abs(height - nextHeight) > 0.5 else { return }
+        DispatchQueue.main.async {
+            height = nextHeight
         }
     }
 }
@@ -3223,6 +3241,7 @@ private struct AiAssistantChatView: View {
     @State private var inlineError: String?
     @State private var scrollToLatestRequest = 0
     @State private var isInputFocused = false
+    @State private var inputHeight: CGFloat = 42
 
     var body: some View {
         VStack(spacing: 0) {
@@ -3334,22 +3353,33 @@ private struct AiAssistantChatView: View {
             }
 
             HStack(alignment: .bottom, spacing: 10) {
-                AiAssistantInputField(
-                    text: $draft,
-                    onFocusChanged: { focused in
-                        isInputFocused = focused
-                        if focused {
-                            requestScrollToLatest()
-                        }
-                    },
-                    onSend: {
-                        submitDraft()
+                ZStack(alignment: .topLeading) {
+                    if draft.isEmpty {
+                        Text("Nhập câu hỏi…")
+                            .font(.body)
+                            .foregroundStyle(Color.secondary.opacity(0.72))
+                            .padding(.top, 10)
+                            .allowsHitTesting(false)
                     }
-                )
-                    .frame(height: 42)
-                    .padding(.horizontal, 14)
-                    .background(Color.primary.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                    AiAssistantInputField(
+                        text: $draft,
+                        height: $inputHeight,
+                        onFocusChanged: { focused in
+                            isInputFocused = focused
+                            if focused {
+                                requestScrollToLatest()
+                            }
+                        },
+                        onSend: {
+                            submitDraft()
+                        }
+                    )
+                }
+                .frame(height: inputHeight)
+                .padding(.horizontal, 14)
+                .background(Color.primary.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                 Button {
                     submitDraft()
@@ -3425,6 +3455,11 @@ private struct AiAssistantChatView: View {
                         bottomTrailingRadius: message.isUser ? 5 : 17,
                         topTrailingRadius: 17
                     )
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(
+                    maxWidth: 300,
+                    alignment: message.isUser ? .trailing : .leading
                 )
                 .textSelection(.enabled)
 
