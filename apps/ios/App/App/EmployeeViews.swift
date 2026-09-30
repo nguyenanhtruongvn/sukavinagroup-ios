@@ -3152,6 +3152,8 @@ private struct AiAssistantChatView: View {
     @State private var isSending = false
     @State private var historyLoaded = false
     @State private var inlineError: String?
+    @State private var scrollToLatestRequest = 0
+    @FocusState private var isInputFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -3194,22 +3196,24 @@ private struct AiAssistantChatView: View {
                             .padding(.horizontal, 4)
                             .id("assistant-typing")
                         }
+
+                        Color.clear
+                            .frame(height: 1)
+                            .id("assistant-bottom")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 14)
                 }
                 .background(AppTheme.ink)
+                .scrollDismissesKeyboard(.never)
                 .onChange(of: messages.count) { _, _ in
-                    guard let lastID = messages.last?.id else { return }
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        proxy.scrollTo(lastID, anchor: .bottom)
-                    }
+                    scrollToLatest(using: proxy)
                 }
-                .onChange(of: isSending) { _, sending in
-                    guard sending else { return }
-                    withAnimation(.easeOut(duration: 0.22)) {
-                        proxy.scrollTo("assistant-typing", anchor: .bottom)
-                    }
+                .onChange(of: isSending) { _, _ in
+                    scrollToLatest(using: proxy)
+                }
+                .onChange(of: scrollToLatestRequest) { _, _ in
+                    scrollToLatest(using: proxy)
                 }
             }
 
@@ -3263,8 +3267,13 @@ private struct AiAssistantChatView: View {
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Nhập câu hỏi…", text: $draft)
                     .lineLimit(1)
+                    .focused($isInputFocused)
                     .textInputAutocapitalization(.sentences)
                     .autocorrectionDisabled(false)
+                    .onChange(of: isInputFocused) { _, focused in
+                        guard focused else { return }
+                        requestScrollToLatest()
+                    }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
                     .background(Color.primary.opacity(0.06))
@@ -3302,7 +3311,44 @@ private struct AiAssistantChatView: View {
 
     private func submitDraft() {
         guard canSend else { return }
-        Task { await sendMessage() }
+        let shouldKeepKeyboardVisible = isInputFocused
+
+        Task { @MainActor in
+            await sendMessage()
+            guard shouldKeepKeyboardVisible else { return }
+            isInputFocused = true
+            requestScrollToLatest()
+        }
+
+        // iOS may resign the TextField after handling the keyboard's Send
+        // action. Restore focus on the next run-loop turn so the keyboard
+        // remains visible for the next question.
+        if shouldKeepKeyboardVisible {
+            Task { @MainActor in
+                await Task.yield()
+                isInputFocused = true
+                requestScrollToLatest()
+            }
+        }
+    }
+
+    private func requestScrollToLatest() {
+        scrollToLatestRequest += 1
+
+        // The visible chat height changes while the keyboard animates in.
+        // Scroll once more after that resize so the newest bubble stays above
+        // the keyboard instead of being hidden underneath it.
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            guard isInputFocused else { return }
+            scrollToLatestRequest += 1
+        }
+    }
+
+    private func scrollToLatest(using proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.22)) {
+            proxy.scrollTo("assistant-bottom", anchor: .bottom)
+        }
     }
 
     @ViewBuilder
