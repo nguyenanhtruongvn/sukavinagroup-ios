@@ -118,6 +118,7 @@ final class SessionStore: ObservableObject {
     private let dashboardCachePrefix = "native-dashboard-cache-"
     private let todayMenuCachePrefix = "native-today-menu-cache-"
     private let requestNotificationsCachePrefix = "native-request-notifications-cache-"
+    private let aiAssistantMobileEnabledKey = "native-ai-assistant-mobile-enabled"
     /// Re-signed/TestFlight builds can receive a rewritten App Group.  Resolve
     /// it exactly as the widget bridge does so the app and AppIntent extension
     /// read the same end-time payload.
@@ -163,6 +164,8 @@ final class SessionStore: ObservableObject {
     private var hasPresentedOfflineAlertForCurrentOutage = false
 
     init() {
+        aiAssistantMobileEnabled =
+            UserDefaults.standard.object(forKey: aiAssistantMobileEnabledKey) as? Bool ?? true
         transportReachabilityObserver = NotificationCenter.default.addObserver(
             forName: .sukavinaTransportReachable,
             object: nil,
@@ -463,9 +466,11 @@ final class SessionStore: ObservableObject {
                 self.startSessionRefresh()
                 return
             }
+            async let aiSettingsRefresh: Void = self.refreshAiAssistantAvailability()
             await self.refreshDashboard(shouldRefreshRequestNotificationCount: false)
             await self.refreshTodayMenu()
             _ = await notificationCountRefresh
+            _ = await aiSettingsRefresh
             self.startRealTimeUpdates()
             self.startSessionRefresh()
         }
@@ -1193,6 +1198,12 @@ final class SessionStore: ObservableObject {
                           (200..<300).contains(http.statusCode) else {
                         throw NetworkError.invalidResponse
                     }
+
+                    // Revalidate once whenever SSE establishes/re-establishes.
+                    // This closes the tiny gap where an Admin toggle happened
+                    // while the stream was disconnected without adding polling.
+                    await self.refreshAiAssistantAvailability()
+
                     for try await line in bytes.lines {
                         if Task.isCancelled { return }
                         if line.hasPrefix("data:") && line.contains("_changed") {
@@ -1267,20 +1278,54 @@ final class SessionStore: ObservableObject {
     }
 
     func refreshAiAssistantAvailability() async {
-        guard let token else {
-            aiAssistantMobileEnabled = true
-            return
-        }
+        guard let token else { return }
         do {
             let settings: AiAssistantSettings = try await APIClient.shared.request(
                 "me/ai-assistant/settings",
                 token: token
             )
-            aiAssistantMobileEnabled = settings.mobileEnabled
+            applyAiAssistantAvailability(settings.mobileEnabled)
         } catch {
-            // Fail open for older server versions or temporary network issues.
-            // The chat endpoint remains the final authorization boundary.
+            // Keep the last confirmed value when transport is temporarily
+            // unavailable. The chat endpoint remains the final server guard.
             ConnectionDiagnostics.record("AI assistant settings refresh deferred: \(error.localizedDescription)")
+        }
+    }
+
+    private func applyAiAssistantAvailability(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: aiAssistantMobileEnabledKey)
+        if aiAssistantMobileEnabled != enabled {
+            aiAssistantMobileEnabled = enabled
+        }
+    }
+
+    func loadAiAssistantHistory() async throws -> [AiAssistantHistoryItem] {
+        guard let token else { throw NetworkError.unauthorized }
+        return try await APIClient.shared.request(
+            "me/ai-assistant/history",
+            token: token
+        )
+    }
+
+    func askAiAssistant(message: String, contextID: String?) async throws -> AiAssistantChatResponse {
+        guard let token else { throw NetworkError.unauthorized }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw NetworkError.server("Vui lòng nhập nội dung cần hỏi.")
+        }
+
+        do {
+            return try await APIClient.shared.request(
+                "me/ai-assistant/chat",
+                method: "POST",
+                token: token,
+                body: AiAssistantChatBody(message: trimmed, contextId: contextID)
+            )
+        } catch {
+            // If Admin disabled the assistant while this request was in flight,
+            // refresh the authoritative setting before surfacing the error.
+            await refreshAiAssistantAvailability()
+            throw error
         }
     }
 
@@ -1868,6 +1913,14 @@ final class SessionStore: ObservableObject {
     }
 
     private func scheduleRealtimeRefresh(for event: String) {
+        if event.contains("ai_assistant_settings_changed_disabled") {
+            applyAiAssistantAvailability(false)
+            return
+        }
+        if event.contains("ai_assistant_settings_changed_enabled") {
+            applyAiAssistantAvailability(true)
+            return
+        }
         if event.contains("attendance_changed") { pendingRealtimeEvents.insert("attendance_changed") }
         if event.contains("request_changed") { pendingRealtimeEvents.insert("request_changed") }
         if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }

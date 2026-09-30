@@ -157,7 +157,16 @@ final class APIClient {
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = method
         urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
-        urlRequest.timeoutInterval = path == "auth/login" ? 15 : 20
+        if path == "auth/login" {
+            urlRequest.timeoutInterval = 15
+        } else if path == "me/ai-assistant/chat" {
+            // The server may perform document lookup plus a local LLM request.
+            // Give that single user-initiated call enough time to finish while
+            // keeping ordinary API requests on the tighter transport timeout.
+            urlRequest.timeoutInterval = 75
+        } else {
+            urlRequest.timeoutInterval = 20
+        }
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
         urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
         urlRequest.setValue("ios", forHTTPHeaderField: "X-Sukavina-Client")

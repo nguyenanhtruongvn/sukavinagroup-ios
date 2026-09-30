@@ -590,11 +590,24 @@ struct AiAssistantSettings: Codable {
     let updatedAt: String?
 }
 
-struct LoginBody: Encodable { let loginId: String; let password: String }
-struct AiAssistantSettings: Decodable {
-    let mobileEnabled: Bool
-    let updatedAt: String?
+struct AiAssistantChatBody: Encodable {
+    let message: String
+    let contextId: String?
 }
+
+struct AiAssistantChatResponse: Decodable {
+    let answer: String
+    let contextId: String?
+}
+
+struct AiAssistantHistoryItem: Decodable {
+    let role: String
+    let content: String
+    let contextId: String?
+    let createdAt: String?
+}
+
+struct LoginBody: Encodable { let loginId: String; let password: String }
 struct PushTokenRegistrationBody: Encodable { let token: String; let platform: String }
 struct PushBadgeResetBody: Encodable { let token: String; let acknowledgedAt: Date }
 struct ForgotPasswordRequestBody: Encodable { let employeeCode: String }
