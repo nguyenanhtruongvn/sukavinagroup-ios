@@ -3411,6 +3411,10 @@ private struct AiAssistantChatView: View {
         session.aiAssistantMobileEnabled
     }
 
+    private var latestAssistantMessageID: UUID? {
+        messages.last(where: { !$0.isUser })?.id
+    }
+
     private func submitDraft() {
         guard canSend else { return }
 
@@ -3443,31 +3447,41 @@ private struct AiAssistantChatView: View {
 
     @ViewBuilder
     private func messageBubble(_ message: AiAssistantMessage) -> some View {
-        HStack(alignment: .bottom) {
-            if message.isUser { Spacer(minLength: 54) }
+        VStack(spacing: 4) {
+            HStack(alignment: .bottom) {
+                if message.isUser { Spacer(minLength: 54) }
 
-            Text(message.content)
-                .font(.body)
-                .foregroundStyle(message.isUser ? Color.white : Color.primary)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 10)
-                .background(message.isUser ? AppTheme.red : AppTheme.card)
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        topLeadingRadius: 17,
-                        bottomLeadingRadius: message.isUser ? 17 : 5,
-                        bottomTrailingRadius: message.isUser ? 5 : 17,
-                        topTrailingRadius: 17
+                Text(message.content)
+                    .font(.body)
+                    .foregroundStyle(message.isUser ? Color.white : Color.primary)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 10)
+                    .background(message.isUser ? AppTheme.red : AppTheme.card)
+                    .clipShape(
+                        UnevenRoundedRectangle(
+                            topLeadingRadius: 17,
+                            bottomLeadingRadius: message.isUser ? 17 : 5,
+                            bottomTrailingRadius: message.isUser ? 5 : 17,
+                            topTrailingRadius: 17
+                        )
                     )
-                )
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(
-                    maxWidth: 300,
-                    alignment: message.isUser ? .trailing : .leading
-                )
-                .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(
+                        maxWidth: 300,
+                        alignment: message.isUser ? .trailing : .leading
+                    )
+                    .textSelection(.enabled)
 
-            if !message.isUser { Spacer(minLength: 54) }
+                if !message.isUser { Spacer(minLength: 54) }
+            }
+            if !message.isUser && message.id == latestAssistantMessageID && !isSending {
+                Text("Trợ lý AI có thể mắc lỗi. Hãy kiểm tra thông tin quan trọng.")
+                    .font(.system(size: 9))
+                    .foregroundStyle(AppTheme.muted.opacity(0.42))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 1)
+            }
         }
         .frame(maxWidth: .infinity)
     }
