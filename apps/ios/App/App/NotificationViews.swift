@@ -17,6 +17,8 @@ struct RequestNotification: Codable, Identifiable, Equatable {
     let requestId: String?
     let read: Bool
     let createdAt: Date
+    let startsAt: Date? = nil
+    let endsAt: Date? = nil
 }
 struct UpdateCount: Decodable { let count: Int }
 
@@ -88,6 +90,16 @@ struct NotificationsView: View {
                                 Text(item.title).font(.headline)
                                 if let request = linkedRequest(item) {
                                     Text(request.kind.title).font(.caption.bold()).foregroundStyle(request.kind.color).padding(.horizontal, 9).padding(.vertical, 4).background(request.kind.color.opacity(0.13)).clipShape(Capsule())
+                                }
+                                let startsAt = linkedRequest(item)?.from ?? item.startsAt
+                                let endsAt = linkedRequest(item)?.to ?? item.endsAt
+                                if item.type.hasPrefix("request_") && (startsAt != nil || endsAt != nil) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        if let startsAt { Label("Từ: \(startsAt.requestDateTimeText)", systemImage: "calendar") }
+                                        if let endsAt { Label("Đến: \(endsAt.requestDateTimeText)", systemImage: "calendar") }
+                                    }
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.muted)
                                 }
                                 Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
                                 Text(item.createdAt.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)

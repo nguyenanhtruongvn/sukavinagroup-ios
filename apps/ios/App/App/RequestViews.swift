@@ -613,15 +613,10 @@ struct RequestCard: View {
 
     @ViewBuilder
     private var requestPeriod: some View {
-        if usesExpandedLayout {
-            VStack(alignment: .leading, spacing: 6) {
-                requestPeriodLine("Từ", request.from)
-                requestPeriodLine("Đến", request.to)
-            }
-        } else {
-            Label("\(request.from.formatted(date: .abbreviated, time: .shortened)) – \(request.to.formatted(date: .abbreviated, time: .shortened))", systemImage: "calendar")
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.muted)
+        // Two labelled rows remain unambiguous even when the dates span days.
+        VStack(alignment: .leading, spacing: 6) {
+            requestPeriodLine("Từ", request.from)
+            requestPeriodLine("Đến", request.to)
         }
     }
 
@@ -631,12 +626,29 @@ struct RequestCard: View {
                 .font(.caption)
             Text(title + ":")
                 .font(.subheadline.weight(.semibold))
-            Text(date.formatted(date: .abbreviated, time: .shortened))
+            Text(date.requestDateTimeText)
                 .font(.subheadline)
                 .monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(AppTheme.muted)
+    }
+}
+
+private enum RequestDateTimeDisplay {
+    static let formatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = "HH:mm dd/MM/yyyy"
+        return formatter
+    }()
+}
+
+extension Date {
+    var requestDateTimeText: String {
+        RequestDateTimeDisplay.formatter.string(from: self)
     }
 }
 
