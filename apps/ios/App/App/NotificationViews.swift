@@ -95,8 +95,8 @@ struct NotificationsView: View {
                                 let endsAt = linkedRequest(item)?.to ?? item.endsAt
                                 if item.type.hasPrefix("request_") && (startsAt != nil || endsAt != nil) {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        if let startsAt { Label("Từ: \(startsAt.requestDateTimeText)", systemImage: "calendar") }
-                                        if let endsAt { Label("Đến: \(endsAt.requestDateTimeText)", systemImage: "calendar") }
+                                        if let startsAt { Text("Từ: \(startsAt.requestDateTimeText)") }
+                                        if let endsAt { Text("Đến: \(endsAt.requestDateTimeText)") }
                                     }
                                     .font(.caption)
                                     .foregroundStyle(AppTheme.muted)

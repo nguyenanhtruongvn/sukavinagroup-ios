@@ -622,8 +622,6 @@ struct RequestCard: View {
 
     private func requestPeriodLine(_ title: String, _ date: Date) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Image(systemName: "calendar")
-                .font(.caption)
             Text(title + ":")
                 .font(.subheadline.weight(.semibold))
             Text(date.requestDateTimeText)
