@@ -4405,7 +4405,10 @@ struct ModernAttendanceHistoryView: View {
                 selectedMonth = first
                 monthIndex = 0
             }
-            await preloadAdjacentMonths(forceNetwork: restrictToInitialMonth)
+            // Paint cached snapshots first, then always revalidate the two
+            // visible months. This keeps navigation fast without serving stale
+            // attendance after a system-side change.
+            await preloadAdjacentMonths(forceNetwork: true)
         }
         .task(id: session.attendanceRevision) {
             guard session.attendanceRevision > 0 else { return }
