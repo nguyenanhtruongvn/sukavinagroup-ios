@@ -45,7 +45,7 @@ struct ProfileView: View {
                         Divider().padding(.leading, 18)
                         ProfileLine(label: "Loại tài khoản", value: accountType)
                         Divider().padding(.leading, 18)
-                        ProfileLine(label: "Quản lý trực tiếp", value: session.profile?.managerFullName?.nilIfEmpty ?? "Chưa cập nhật")
+                        ProfileLine(label: "Quản lý trực tiếp", value: managerDisplayName)
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -224,6 +224,12 @@ struct ProfileView: View {
         default: return "Nhân viên"
         }
     }
+    private var managerDisplayName: String {
+        let value = session.profile?.managerFullName?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? "Chưa cập nhật" : value
+    }
+
     private var passwordChangedThisMonth: Bool {
         if isAdminAccount { return false }
         guard let changedAt = session.profile?.passwordChangedAt else { return false }

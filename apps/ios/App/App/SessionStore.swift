@@ -992,6 +992,7 @@ final class SessionStore: ObservableObject {
             permissions: response.user.permissions,
             protected: response.user.protected,
             email: nil,
+            managerFullName: nil,
             passwordChangedAt: nil
         )
         let cachedProfile = profile
