@@ -218,7 +218,7 @@ struct NotificationsView: View {
                 ) {
                     if let month = attendanceReportMonth {
                         NavigationStack {
-                            ModernAttendanceHistoryView(initialMonth: month)
+                            ModernAttendanceHistoryView(initialMonth: month, restrictToInitialMonth: true)
                                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { attendanceReportMonth = nil } } }
                         }
                     }
@@ -361,6 +361,13 @@ struct NotificationsView: View {
 
     private func openPendingAPNsRouteIfNeeded() async {
         guard let route = notificationRouter.pendingRoute, session.token != nil else { return }
+        if route.type == "attendance_monthly_report",
+           let month = route.referenceID,
+           month.range(of: "^[0-9]{4}-(0[1-9]|1[0-2])$", options: .regularExpression) != nil {
+            attendanceReportMonth = month
+            notificationRouter.consume(route)
+            return
+        }
         if session.isAttendanceNotificationType(route.type) {
             notificationRouter.consume(route)
             return
