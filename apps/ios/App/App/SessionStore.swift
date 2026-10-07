@@ -291,10 +291,14 @@ final class SessionStore: ObservableObject {
     }
 
     private func invalidateAttendanceCacheForRealtimeUpdate() {
-        let defaults = UserDefaults.standard
-        defaults.dictionaryRepresentation().keys
-            .filter { $0.hasPrefix(attendanceMonthCachePrefix) }
-            .forEach { defaults.removeObject(forKey: $0) }
+        // Attendance realtime events normally affect the current month. Keep
+        // historical months cached so opening attendance does not become a
+        // cold network load. Released historical reports are force-refreshed
+        // by their dedicated screen when opened.
+        let currentMonth = String(DateFormatter.meetingDay.string(from: Date()).prefix(7))
+        if let cacheKey = attendanceMonthCacheKey(currentMonth) {
+            UserDefaults.standard.removeObject(forKey: cacheKey)
+        }
     }
 
     private func restoreCachedDashboard() {
