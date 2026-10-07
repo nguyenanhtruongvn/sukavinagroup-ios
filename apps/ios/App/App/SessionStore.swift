@@ -313,9 +313,32 @@ final class SessionStore: ObservableObject {
     }
 
     private func invalidateAttendanceCacheForRealtimeUpdate() {
-        // Keep the last month snapshots on disk. Attendance screens paint this
-        // cache immediately and then revalidate from the API, matching Android
-        // and avoiding a blank/loading calendar after realtime events.
+        // Preserve snapshots for instant paint, but persistently mark them stale.
+        // This survives leaving the attendance screen or restarting the app after
+        // an admin/attendance realtime event, matching Android's cache semantics.
+        let defaults = UserDefaults.standard
+        let employeeCode = profile?.employeeCode.nilIfEmpty
+            ?? dashboard?.employeeCode.nilIfEmpty
+            ?? defaults.string(forKey: attendanceMonthCacheOwnerKey)?.nilIfEmpty
+        guard let employeeCode else { return }
+
+        let prefix = attendanceMonthCachePrefix + employeeCode + "-"
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+            guard let data = defaults.data(forKey: key) else { continue }
+            let value: AttendanceMonth
+            if let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) {
+                value = cached.value
+            } else if let legacy = try? JSONDecoder().decode(AttendanceMonth.self, from: data) {
+                value = legacy
+            } else {
+                continue
+            }
+            let stale = CachedAttendanceMonth(savedAt: .distantPast, value: value)
+            attendanceMemoryCache[key] = stale
+            if let encoded = try? JSONEncoder().encode(stale) {
+                defaults.set(encoded, forKey: key)
+            }
+        }
     }
 
     private func restoreCachedDashboard() {
