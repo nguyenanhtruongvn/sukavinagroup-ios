@@ -30,7 +30,10 @@ final class APNsNotificationRouter: ObservableObject {
         // Attendance alerts are system-notification-only. Tapping one may open
         // the app, but it must not route the user into the Notifications tab.
         guard type != "attendance_check_in", type != "attendance_check_out" else { return }
-        let referenceID = (userInfo["requestId"] as? String) ?? (userInfo["bookingId"] as? String)
+        let referenceID =
+            (userInfo["requestId"] as? String)
+            ?? (userInfo["bookingId"] as? String)
+            ?? (userInfo["month"] as? String)
         DispatchQueue.main.async { [weak self] in
             self?.pendingRoute = APNsNotificationRoute(type: type, referenceID: referenceID)
         }

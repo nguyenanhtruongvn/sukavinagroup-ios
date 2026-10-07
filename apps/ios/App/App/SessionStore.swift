@@ -291,10 +291,9 @@ final class SessionStore: ObservableObject {
     }
 
     private func invalidateAttendanceCacheForRealtimeUpdate() {
-        let defaults = UserDefaults.standard
-        defaults.dictionaryRepresentation().keys
-            .filter { $0.hasPrefix(attendanceMonthCachePrefix) }
-            .forEach { defaults.removeObject(forKey: $0) }
+        // Keep the last month snapshots on disk. Attendance screens paint this
+        // cache immediately and then revalidate from the API, matching Android
+        // and avoiding a blank/loading calendar after realtime events.
     }
 
     private func restoreCachedDashboard() {
