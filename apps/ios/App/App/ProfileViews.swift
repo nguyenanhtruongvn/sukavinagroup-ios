@@ -21,7 +21,6 @@ struct ProfileView: View {
 
     @EnvironmentObject private var session: SessionStore
     @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
-    @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
     @State private var showDelete = false
     @State private var showPasswordChange = false
     @State private var showPasswordChangeLimit = false
@@ -67,21 +66,6 @@ struct ProfileView: View {
                             .pickerStyle(.segmented)
                         }
 
-                        Divider()
-
-                        VStack(alignment: .leading, spacing: 9) {
-                            Label("Xem chấm công tháng", systemImage: "calendar")
-                                .font(.headline)
-                            Text("Bản đầy đủ hiển thị giờ vào và giờ ra ngay trong từng ô ngày.")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.muted)
-                            Picker("Xem chấm công tháng", selection: $attendanceMonthDisplayMode) {
-                                ForEach(AttendanceMonthDisplayMode.allCases) { mode in
-                                    Text(mode.title).tag(mode.rawValue)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
                     }
                     .padding(18)
                     .background(AppTheme.card)

@@ -2561,10 +2561,7 @@ struct EmployeePortalView: View {
         // Keep every tab item structurally stable. iOS 18+ does not use the
         // iOS 17 fallback, but still must not swap tab-label view types.
         TabView(selection: $selectedTab) {
-            DashboardView(isActive: selectedTab == 0) {
-                requestInitialFilter = .pending
-                selectedTab = 1
-            }
+            DashboardView(isActive: selectedTab == 0)
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
@@ -2620,10 +2617,7 @@ struct EmployeePortalView: View {
         case 4:
             ProfileView()
         default:
-            DashboardView(isActive: true) {
-                requestInitialFilter = .pending
-                selectedTab = 1
-            }
+            DashboardView(isActive: true)
         }
     }
 
@@ -3546,14 +3540,13 @@ private struct AiAssistantChatView: View {
 @available(iOS 17.0, *)
 struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
-    @StateObject private var requestStore = EmployeeRequestStore()
     @State private var showTodayMenu = false
     @State private var showAttendanceHistory = false
+    @State private var showAttendanceStatement = false
     @State private var showAiAssistant = false
     @State private var showAiAssistantLaunchLabel = true
     @State private var hasScheduledAiAssistantLaunchLabel = false
     let isActive: Bool
-    let openPendingRequests: () -> Void
 
 
 
@@ -3585,17 +3578,16 @@ struct DashboardView: View {
 
 
                     HStack(spacing: 12) {
-                        MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
-                        Button(action: openPendingRequests) {
-                            MetricCard(
-                                value: "\(requestStore.requests.filter { $0.status == .pending }.count)",
-                                label: "Đơn đang chờ",
-                                icon: "doc.text.fill"
-                            )
+                        NavigationLink(
+                            destination: AttendanceStatementListView(),
+                            isActive: $showAttendanceStatement
+                        ) {
+                            MetricCard(value: "Xem", label: "Bảng công", icon: "calendar")
                         }
                         .buttonStyle(.plain)
                         .frame(maxWidth: .infinity)
-                        .accessibilityLabel("Xem đơn từ đang chờ")
+                        .accessibilityLabel("Xem bảng công")
+                        MetricCard(value: "—", label: "Bảng lương", icon: "banknote")
                     }
 
 
@@ -3652,10 +3644,6 @@ struct DashboardView: View {
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
-            .task {
-                requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
-                await requestStore.load(session.token)
-            }
             .task { await session.refreshTodayMenu() }
             // Realtime events and app activation keep the dashboard current.
             // Do not poll while the user scrolls: replacing card data during a
@@ -3664,18 +3652,14 @@ struct DashboardView: View {
                 guard isActive else { return }
                 await session.refreshDashboard()
             }
-            .task(id: session.requestRevision) {
-                guard session.requestRevision > 0 else { return }
-                await requestStore.load(session.token, force: true)
-            }
             .refreshable {
                 await session.refreshDashboard()
-                await requestStore.load(session.token, force: true)
                 await session.refreshTodayMenu(force: true)
             }
             .overlay(alignment: .bottomTrailing) {
                 if isActive &&
                     !showAttendanceHistory &&
+                    !showAttendanceStatement &&
                     !showTodayMenu &&
                     session.aiAssistantMobileEnabled {
                     Button {
@@ -3889,6 +3873,441 @@ struct DashboardView: View {
 
 
 
+private struct AttendanceWorkMetrics {
+    let coefficient: Double
+    let overtimeHours: Double
+}
+
+private enum AttendanceMetrics {
+    static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+
+    static func statuses(_ day: AttendanceDay) -> [String] {
+        let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
+        let exemptStatuses: Set<String> = [
+            "holiday", "office_day_off", "leave", "weekend",
+            "overtime", "upcoming", "not-started", "absent",
+        ]
+        if serverStatuses.contains(where: { exemptStatuses.contains($0) }) {
+            return serverStatuses
+        }
+        if day.checkIn == nil, day.checkOut != nil { return ["missing_checkin"] }
+        if day.checkIn != nil, day.checkOut == nil { return ["missing_checkout"] }
+        if day.classification == "ambiguous" { return ["incomplete"] }
+        return serverStatuses
+    }
+
+    static func workMetrics(_ day: AttendanceDay, month: AttendanceMonth) -> AttendanceWorkMetrics {
+        let start = scheduledDate(day.date, time: day.startTime ?? month.startTime)
+        let end = scheduledDate(day.date, time: day.endTime ?? month.endTime)
+        let checkIn = instant(day.checkIn)
+        let checkOut = instant(day.checkOut)
+
+        let scheduledMinutes: Int
+        if let start, let end {
+            scheduledMinutes = max(0, Int(end.timeIntervalSince(start) / 60))
+        } else {
+            scheduledMinutes = 0
+        }
+        let fullWorkMinutes = max(0, scheduledMinutes - (scheduledMinutes >= 8 * 60 ? 60 : 0))
+
+        let latePenalty = positiveHalfHourPenalty(from: start, to: checkIn)
+        let earlyPenalty = positiveHalfHourPenalty(from: checkOut, to: end)
+        let recognizedMinutes: Int
+        if checkIn == nil || checkOut == nil {
+            recognizedMinutes = 0
+        } else {
+            recognizedMinutes = min(fullWorkMinutes, max(0, fullWorkMinutes - latePenalty - earlyPenalty))
+        }
+
+        let coefficient = fullWorkMinutes == 0
+            ? 0
+            : Double(recognizedMinutes) / Double(fullWorkMinutes)
+        return AttendanceWorkMetrics(
+            coefficient: coefficient,
+            overtimeHours: overtimeHours(day, defaultEndTime: month.endTime)
+        )
+    }
+
+    static func overtimeHours(_ day: AttendanceDay, defaultEndTime: String?) -> Double {
+        guard let checkOut = instant(day.checkOut),
+              let scheduledEnd = scheduledDate(day.date, time: day.endTime ?? defaultEndTime) else {
+            return 0
+        }
+        let minutes = max(0, Int(checkOut.timeIntervalSince(scheduledEnd) / 60))
+        guard minutes >= 30 else { return 0 }
+        return Double(minutes / 30) * 0.5
+    }
+
+    static func regularOvertimeHours(_ month: AttendanceMonth) -> Double {
+        month.days
+            .filter {
+                let values = statuses($0)
+                return !values.contains("holiday") && !values.contains("overtime")
+            }
+            .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
+    }
+
+    static func overtimeHours(for status: String, in month: AttendanceMonth) -> Double {
+        month.days
+            .filter { statuses($0).contains(status) }
+            .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
+    }
+
+    static func totalWorkDays(_ month: AttendanceMonth) -> Double {
+        month.days.reduce(0) { total, day in
+            let values = statuses(day)
+            if values.contains("holiday") || values.contains("office_day_off") {
+                return total + 1
+            }
+            return total + workMetrics(day, month: month).coefficient
+        }
+    }
+
+    static func paidDayCount(_ month: AttendanceMonth) -> Int {
+        let paid: Set<String> = ["present", "holiday", "office_day_off"]
+        return month.days.filter { day in
+            statuses(day).contains(where: { paid.contains($0) })
+        }.count
+    }
+
+    static func missingPunchCount(_ month: AttendanceMonth) -> Int {
+        month.days.filter { $0.punchCount == 1 }.count
+    }
+
+    static func violationCount(_ month: AttendanceMonth) -> Int {
+        let dayStatuses = month.days.map { statuses($0) }
+        return dayStatuses.filter { $0.contains("late") }.count
+            + dayStatuses.filter { $0.contains("early") }.count
+            + missingPunchCount(month)
+    }
+
+    static func hourText(_ value: Double) -> String {
+        abs(value.rounded() - value) < 0.005
+            ? String(Int(value.rounded()))
+            : String(format: "%.1f", value)
+    }
+
+    static func workFactorText(_ value: Double) -> String {
+        if value < 0.005 { return "0" }
+        if value >= 0.995 { return "1" }
+        return String(format: "%.2f", value)
+    }
+
+    static func workDayTotalText(_ value: Double) -> String {
+        if value < 0.005 { return "0" }
+        if abs(value.rounded() - value) < 0.005 { return String(Int(value.rounded())) }
+        return String(format: "%.2f", value)
+    }
+
+    static func monthTitle(_ month: String) -> String {
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "yyyy-MM"
+        guard let date = parser.date(from: month) else { return month }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.dateFormat = "'Tháng' M/yyyy"
+        return formatter.string(from: date)
+    }
+
+    private static func instant(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    private static func scheduledDate(_ day: String, time: String?) -> Date? {
+        guard let time, !time.isEmpty else { return nil }
+        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm"] {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = vietnamTimeZone
+            formatter.dateFormat = format
+            if let value = formatter.date(from: "\(day) \(time)") { return value }
+        }
+        return nil
+    }
+
+    private static func positiveHalfHourPenalty(from start: Date?, to end: Date?) -> Int {
+        guard let start, let end else { return 0 }
+        let seconds = end.timeIntervalSince(start)
+        guard seconds > 0 else { return 0 }
+        return Int(ceil(seconds / 1_800)) * 30
+    }
+}
+
+@available(iOS 17.0, *)
+private struct AttendanceStatementListView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var reports: [AttendanceReport] = []
+    @State private var isLoading = true
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if isLoading && reports.isEmpty {
+                    ProgressView("Đang tải bảng công...")
+                        .tint(AppTheme.red)
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                } else if reports.isEmpty {
+                    ContentUnavailableView(
+                        "Chưa có bảng công",
+                        systemImage: "calendar.badge.clock",
+                        description: Text("Bảng công đã phát hành sẽ hiển thị tại đây.")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 260)
+                } else {
+                    ForEach(reports.sorted { $0.month > $1.month }) { report in
+                        NavigationLink(destination: AttendanceStatementDetailView(month: report.month)) {
+                            HStack(spacing: 14) {
+                                Image(systemName: "calendar")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(AppTheme.red)
+                                    .frame(width: 42, height: 42)
+                                    .background(AppTheme.red.opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                Text(AttendanceMetrics.monthTitle(report.month))
+                                    .font(.headline)
+                                    .foregroundStyle(Color.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.muted)
+                            }
+                            .padding(17)
+                            .background(AppTheme.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(16)
+            .padding(.bottom, 100)
+        }
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationTitle("Bảng công")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: session.attendanceRevision) {
+            isLoading = true
+            reports = await session.loadAttendanceReports()
+            isLoading = false
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct AttendanceStatementDetailView: View {
+    @EnvironmentObject private var session: SessionStore
+    let month: String
+    @State private var report: AttendanceMonth?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        ScrollView {
+            Group {
+                if let report {
+                    AttendanceStatementReportView(
+                        month: report,
+                        remainingLeaveDays: session.dashboard?.remainingLeaveDays ?? 0
+                    )
+                } else if let errorMessage {
+                    ContentUnavailableView {
+                        Label("Không tải được bảng công", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(errorMessage)
+                    } actions: {
+                        Button("Thử lại") { Task { await load() } }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppTheme.red)
+                    }
+                } else {
+                    ProgressView("Đang tải bảng công...")
+                        .tint(AppTheme.red)
+                        .frame(maxWidth: .infinity, minHeight: 240)
+                }
+            }
+            .padding(16)
+            .padding(.bottom, 100)
+        }
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text("Tổng hợp công").font(.headline)
+                    Text(AttendanceMetrics.monthTitle(month))
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+            }
+        }
+        .task(id: session.attendanceRevision) { await load() }
+    }
+
+    private func load() async {
+        if report == nil, let cached = session.cachedAttendanceMonth(month) {
+            report = cached
+        }
+        guard let token = session.token else { return }
+        do {
+            report = try await session.loadAttendanceMonth(month, token: token)
+            errorMessage = nil
+        } catch {
+            if report == nil { errorMessage = error.localizedDescription }
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct AttendanceStatementReportView: View {
+    let month: AttendanceMonth
+    let remainingLeaveDays: Int
+
+    private var regularOvertime: Double { AttendanceMetrics.regularOvertimeHours(month) }
+    private var sundayOvertime: Double { AttendanceMetrics.overtimeHours(for: "overtime", in: month) }
+    private var holidayOvertime: Double { AttendanceMetrics.overtimeHours(for: "holiday", in: month) }
+    private var totalOvertime: Double { regularOvertime + sundayOvertime + holidayOvertime }
+    private var violations: Int { AttendanceMetrics.violationCount(month) }
+    private var leaveDays: Int { month.days.filter { AttendanceMetrics.statuses($0).contains("leave") }.count }
+    private var absentDays: Int { month.days.filter { AttendanceMetrics.statuses($0).contains("absent") }.count }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 16) {
+                Image(systemName: "calendar.badge.checkmark")
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(Color.blue)
+                    .frame(width: 56, height: 56)
+                    .background(Color.blue.opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Tổng ngày công")
+                        .font(.headline)
+                        .foregroundStyle(Color.primary)
+                    HStack(alignment: .lastTextBaseline, spacing: 7) {
+                        Text("\(AttendanceMetrics.paidDayCount(month))")
+                            .font(.system(size: 46, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.blue)
+                        Text("ngày")
+                            .font(.headline)
+                            .foregroundStyle(Color.blue)
+                    }
+                }
+                Spacer()
+            }
+            .padding(20)
+            .background(Color.blue.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+            HStack(spacing: 8) {
+                overviewTile(
+                    "Tăng ca (Tổng)",
+                    "\(AttendanceMetrics.hourText(totalOvertime)) giờ",
+                    icon: "clock.fill",
+                    color: AppTheme.red
+                )
+                overviewTile(
+                    "Phép còn lại",
+                    "\(month.leaveSummary?.closingBalance ?? remainingLeaveDays) ngày",
+                    icon: "beach.umbrella.fill",
+                    color: .green
+                )
+                overviewTile(
+                    "Vi phạm chấm công",
+                    "\(violations) lần",
+                    icon: "exclamationmark.triangle.fill",
+                    color: AppTheme.muted
+                )
+            }
+
+            reportCard("Chi tiết công", icon: "doc.text.fill", color: AppTheme.red) {
+                reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
+                reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
+            }
+
+            reportCard("Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
+                reportRow("Tăng ca thường", "\(AttendanceMetrics.hourText(regularOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca chủ nhật", "\(AttendanceMetrics.hourText(sundayOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca lễ", "\(AttendanceMetrics.hourText(holidayOvertime)) giờ", color: .orange)
+                Divider()
+                reportRow("Tổng tăng ca", "\(AttendanceMetrics.hourText(totalOvertime)) giờ", color: AppTheme.red, bold: true)
+            }
+
+            reportCard("Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
+                reportRow("Tổng số phép còn trong tháng trước", "\(month.leaveSummary?.openingBalance ?? 0) ngày", color: AppTheme.muted)
+                reportRow("Số ngày phép được hưởng trong tháng", "\(month.leaveSummary?.accruedDays ?? 0) ngày", color: .green)
+                reportRow("Số ngày phép đã dùng trong tháng", "\(month.leaveSummary?.usedDays ?? leaveDays) ngày", color: .blue)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(month.leaveSummary?.unpaidDays ?? absentDays) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(month.leaveSummary?.sickDays ?? 0) ngày", color: AppTheme.muted)
+                Divider()
+                reportRow("Số phép còn lại trong tháng", "\(month.leaveSummary?.closingBalance ?? remainingLeaveDays) ngày", color: .green, bold: true)
+            }
+
+            reportCard("Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
+                reportRow(
+                    "Tổng số lần quên chấm công / đi trễ / về sớm",
+                    "\(violations) lần",
+                    color: AppTheme.muted,
+                    bold: true
+                )
+            }
+        }
+    }
+
+    private func overviewTile(_ title: String, _ value: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Image(systemName: icon).foregroundStyle(color)
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.muted)
+                .lineLimit(2)
+                .frame(height: 30, alignment: .topLeading)
+            Text(value)
+                .font(.subheadline.bold())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+        .padding(11)
+        .background(color.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func reportCard<Content: View>(
+        _ title: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .foregroundStyle(color)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func reportRow(_ title: String, _ value: String, color: Color, bold: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.muted)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(bold ? .subheadline.bold() : .subheadline.weight(.semibold))
+                .foregroundStyle(color)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
 @available(iOS 17.0, *)
 struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
@@ -3902,7 +4321,6 @@ struct ModernAttendanceHistoryView: View {
 
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
     let initialMonth: String?
     @State private var selectedMonth: String
     @State private var cache: [String: AttendanceMonth] = [:]
@@ -3911,24 +4329,11 @@ struct ModernAttendanceHistoryView: View {
     @State private var loadingMonths = Set<String>()
     @State private var monthIndex = 0
     @State private var releasedMonths = Set<String>()
+    @State private var workMetricMonths = Set<String>()
 
     init(initialMonth: String? = nil) {
         self.initialMonth = initialMonth
         _selectedMonth = State(initialValue: initialMonth ?? Self.monthValue(Date()))
-    }
-
-    private var showsFullMonthCells: Bool {
-        attendanceMonthDisplayMode == AttendanceMonthDisplayMode.full.rawValue
-    }
-
-    /// iOS 26's paged TabView retains a grid's old measured height when this
-    /// AppStorage value changes. Recreate only the affected pages on iOS 26+
-    /// so full cells cannot inherit compact-cell geometry and clip their times.
-    private var attendanceLayoutVersion: String {
-        if #available(iOS 26.0, *) {
-            return attendanceMonthDisplayMode
-        }
-        return "stable"
     }
 
 
@@ -3964,7 +4369,6 @@ struct ModernAttendanceHistoryView: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .id("attendance-pages-\(attendanceLayoutVersion)")
                     .transaction { transaction in
                         // A simultaneous cell-height animation makes the
                         // cached page briefly shorter than its full grid.
@@ -4021,17 +4425,14 @@ struct ModernAttendanceHistoryView: View {
     private func preloadedMonthPage(_ index: Int) -> some View {
         let month = options[index]
         let data = cache[month]
+        let showWorkMetrics = workMetricMonths.contains(month)
         return ScrollView {
             VStack(spacing: 14) {
                 if let data {
-                    preloadedSummaryCards(data)
-                    preloadedCalendarCard(data, month: month)
-                        .id("attendance-calendar-\(month)-\(attendanceLayoutVersion)")
+                    preloadedSummaryCards(data, showWorkMetrics: showWorkMetrics)
+                    preloadedCalendarCard(data, month: month, showWorkMetrics: showWorkMetrics)
                     if releasedMonths.contains(month) {
                         preloadedMonthlyDetails(data)
-                    }
-                    if !showsFullMonthCells, let day = selectedDay(in: data, month: month) {
-                        preloadedDayDetail(day, data: data)
                     }
                 } else if let message = errors[month] {
                     ContentUnavailableView {
@@ -4073,21 +4474,46 @@ struct ModernAttendanceHistoryView: View {
 
 
 
-    private func preloadedSummaryCards(_ data: AttendanceMonth) -> some View {
-        let values: [(String, Int, Color)] = [
-            ("Ngày công", preloadedCount("present", in: data), .green),
-            ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
-            ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
-            ("Thiếu chấm công", incompletePunchCount(in: data), .orange),
-            ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
-        ].filter { $0.1 > 0 }
-        return HStack(spacing: 6) {
-            ForEach(Array(values.enumerated()), id: \.offset) { _, item in
-                summary(item.1, item.0, item.2)
+    @ViewBuilder
+    private func preloadedSummaryCards(_ data: AttendanceMonth, showWorkMetrics: Bool) -> some View {
+        if showWorkMetrics {
+            HStack(spacing: 6) {
+                metricSummary(
+                    AttendanceMetrics.workDayTotalText(AttendanceMetrics.totalWorkDays(data)),
+                    "Tổng ngày công",
+                    .green
+                )
+                metricSummary(
+                    AttendanceMetrics.hourText(
+                        data.days.reduce(0) { $0 + AttendanceMetrics.workMetrics($1, month: data).overtimeHours }
+                    ),
+                    "Tổng giờ tăng ca",
+                    .orange
+                )
+            }
+            .frame(maxWidth: .infinity)
+            .dynamicTypeSize(.xSmall ... .accessibility1)
+        } else {
+            let paidStatuses: Set<String> = ["present", "holiday", "office_day_off"]
+            let values: [(String, Int, Color)] = [
+                ("Đủ công", data.days.filter { dayStatuses($0).contains(where: { paidStatuses.contains($0) }) }.count, .green),
+                ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
+                ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
+                ("Thiếu chấm công", incompletePunchCount(in: data), .orange),
+                ("Nghỉ phép", preloadedCount("leave", in: data), EmployeeRequestKind.leave.color),
+                ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
+                ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
+            ].filter { $0.1 > 0 }
+            if !values.isEmpty {
+                HStack(spacing: 5) {
+                    ForEach(Array(values.enumerated()), id: \.offset) { _, item in
+                        summary(item.1, item.0, item.2)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .dynamicTypeSize(.xSmall ... .accessibility1)
             }
         }
-        .frame(maxWidth: .infinity)
-        .dynamicTypeSize(.xSmall ... .accessibility1)
     }
 
 
@@ -4097,10 +4523,16 @@ struct ModernAttendanceHistoryView: View {
 
 
 
-    private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
-        let cellHeight: CGFloat = showsFullMonthCells ? 78 : 50
+    private func preloadedCalendarCard(
+        _ data: AttendanceMonth,
+        month: String,
+        showWorkMetrics: Bool
+    ) -> some View {
+        let cellHeight: CGFloat = 80
         return VStack(alignment: .leading, spacing: 14) {
-            Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
+            Text(showWorkMetrics ? "Lịch chấm công · Hệ số công / Tăng ca" : "Lịch chấm công")
+                .font(.headline)
+                .foregroundStyle(Color.primary)
             HStack(spacing: 4) {
                 ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
                     Text($0).font(.caption.bold()).foregroundStyle(AppTheme.muted)
@@ -4112,43 +4544,84 @@ struct ModernAttendanceHistoryView: View {
                     Color.clear.frame(height: cellHeight)
                 }
                 ForEach(data.days) { day in
-                    let selected = selectedDay(in: data, month: month)?.date == day.date
-                    Button {
-                        selectedDates[month] = day.date
-                    } label: {
-                        VStack(spacing: showsFullMonthCells ? 3 : 0) {
-                            Text(String(Int(day.date.suffix(2)) ?? 0))
-                                .font(.subheadline.weight(selected ? .bold : .medium))
-                            if showsFullMonthCells {
-                                VStack(spacing: 1) {
-                                    Text(time(day.checkIn))
-                                    Text(time(day.checkOut))
-                                }
-                                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                                    .monospacedDigit()
-                                    .foregroundStyle(Color.primary.opacity(0.72))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
+                    let statuses = dayStatuses(day)
+                    let isHoliday = statuses.contains("holiday")
+                    let isOfficeDayOff = statuses.contains("office_day_off")
+                    let metrics = AttendanceMetrics.workMetrics(day, month: data)
+                    VStack(spacing: 2) {
+                        Text(String(Int(day.date.suffix(2)) ?? 0))
+                            .font(.subheadline.weight(.medium))
+                        if isHoliday || isOfficeDayOff {
+                            Text(isHoliday ? "NL" : "NVP")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(isHoliday ? Color.green : Color.teal)
+                                .frame(height: 37, alignment: .top)
+                        } else if showWorkMetrics {
+                            VStack(spacing: 1) {
+                                Text(AttendanceMetrics.workFactorText(metrics.coefficient))
+                                Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                             }
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.primary.opacity(0.72))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        } else {
+                            VStack(spacing: 1) {
+                                Text(time(day.checkIn))
+                                Text(time(day.checkOut))
+                            }
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.primary.opacity(0.72))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         }
-                            .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                            .frame(maxWidth: .infinity, minHeight: cellHeight)
-                            .background(dayBackground(day))
-                            .clipShape(RoundedRectangle(cornerRadius: 11))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 11)
-                                    .stroke(selected ? Color(red: 0.05, green: 0.25, blue: 0.5) : .clear, lineWidth: 2)
-                            }
                     }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
+                    .frame(maxWidth: .infinity, minHeight: cellHeight)
+                    .background(dayBackground(day))
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(
+                        accessibilityLabel(
+                            for: day,
+                            data: data,
+                            showWorkMetrics: showWorkMetrics
+                        )
+                    )
                 }
             }
         }
         .padding(18)
         .background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture {
+            UISelectionFeedbackGenerator().selectionChanged()
+            if workMetricMonths.contains(month) {
+                workMetricMonths.remove(month)
+            } else {
+                workMetricMonths.insert(month)
+            }
+        }
     }
 
+    private func accessibilityLabel(
+        for day: AttendanceDay,
+        data: AttendanceMonth,
+        showWorkMetrics: Bool
+    ) -> String {
+        let dayNumber = Int(day.date.suffix(2)) ?? 0
+        let statuses = dayStatuses(day)
+        if statuses.contains("holiday") { return "Ngày \(dayNumber). Nghỉ lễ" }
+        if statuses.contains("office_day_off") { return "Ngày \(dayNumber). Nghỉ văn phòng" }
+        if showWorkMetrics {
+            let metrics = AttendanceMetrics.workMetrics(day, month: data)
+            return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
+        }
+        return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
+    }
 
 
 
@@ -4161,24 +4634,27 @@ struct ModernAttendanceHistoryView: View {
     }
 
     private func incompletePunchCount(in data: AttendanceMonth) -> Int {
-        data.days.filter { $0.punchCount == 1 }.count
+        AttendanceMetrics.missingPunchCount(data)
     }
 
     private func preloadedMonthlyDetails(_ data: AttendanceMonth) -> some View {
-        let statuses = data.days.map(dayStatuses)
-        let late = statuses.filter { $0.contains("late") }.count
-        let early = statuses.filter { $0.contains("early") }.count
-        let missing = incompletePunchCount(in: data)
         let leave = data.leaveSummary
+        let regularOvertime = AttendanceMetrics.regularOvertimeHours(data)
+        let sundayOvertime = AttendanceMetrics.overtimeHours(for: "overtime", in: data)
+        let holidayOvertime = AttendanceMetrics.overtimeHours(for: "holiday", in: data)
+        let totalOvertime = regularOvertime + sundayOvertime + holidayOvertime
+        let violations = AttendanceMetrics.violationCount(data)
         return VStack(alignment: .leading, spacing: 14) {
             attendanceReportCard(title: "Chi tiết công", icon: "doc.text.fill", color: .red) {
                 reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
                 reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
             }
             attendanceReportCard(title: "Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
-                reportRow("Tăng ca thường", "0 giờ", color: .orange)
-                reportRow("Tăng ca chủ nhật", "0 giờ", color: .orange)
-                reportRow("Tăng ca lễ", "0 giờ", color: .orange)
+                reportRow("Tăng ca thường", "\(AttendanceMetrics.hourText(regularOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca chủ nhật", "\(AttendanceMetrics.hourText(sundayOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca lễ", "\(AttendanceMetrics.hourText(holidayOvertime)) giờ", color: .orange)
+                Divider()
+                reportRow("Tổng tăng ca", "\(AttendanceMetrics.hourText(totalOvertime)) giờ", color: AppTheme.red, bold: true)
             }
             attendanceReportCard(title: "Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
                 reportRow("Tổng số phép còn trong tháng trước", "\(leave?.openingBalance ?? 0) ngày", color: AppTheme.muted)
@@ -4190,7 +4666,7 @@ struct ModernAttendanceHistoryView: View {
                 reportRow("Số phép còn lại trong tháng", "\(leave?.closingBalance ?? 0) ngày", color: .green, bold: true)
             }
             attendanceReportCard(title: "Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
-                reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(missing + late + early) lần", color: AppTheme.muted, bold: true)
+                reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(violations) lần", color: AppTheme.muted, bold: true)
             }
         }
     }
@@ -4378,6 +4854,15 @@ struct ModernAttendanceHistoryView: View {
         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
     }
 
+    private func metricSummary(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 5) {
+            Text(value).font(.title3.bold()).foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 13)
+        .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
+    }
+
 
 
 
@@ -4417,15 +4902,7 @@ struct ModernAttendanceHistoryView: View {
         formatter.dateFormat = "'Tháng' M / yyyy"; return formatter.string(from: date)
     }
     private func dayStatuses(_ day: AttendanceDay) -> [String] {
-        let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
-        // A cached or older API response can still carry `present` alongside
-        // one punch. Attendance completeness takes precedence for workdays.
-        let exemptStatuses: Set<String> = ["leave", "weekend", "overtime", "upcoming", "not-started", "absent"]
-        if serverStatuses.contains(where: { exemptStatuses.contains($0) }) { return serverStatuses }
-        if day.checkIn == nil, day.checkOut != nil { return ["missing_checkin"] }
-        if day.checkIn != nil, day.checkOut == nil { return ["missing_checkout"] }
-        if day.classification == "ambiguous" { return ["incomplete"] }
-        return serverStatuses
+        AttendanceMetrics.statuses(day)
     }
     @ViewBuilder private func dayBackground(_ day: AttendanceDay) -> some View {
         let statuses = dayStatuses(day)
