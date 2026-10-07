@@ -3868,6 +3868,442 @@ struct DashboardView: View {
 
 
 
+private struct AttendanceWorkMetrics {
+    let coefficient: Double
+    let overtimeHours: Double
+}
+
+private enum AttendanceMetrics {
+    static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+
+    private static let scheduledFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = vietnamTimeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return formatter
+    }()
+
+    static func statuses(_ day: AttendanceDay) -> [String] {
+        let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
+        let exemptStatuses: Set<String> = [
+            "holiday", "office_day_off", "leave", "weekend",
+            "overtime", "upcoming", "not-started", "absent",
+        ]
+        if serverStatuses.contains(where: { exemptStatuses.contains($0) }) {
+            return serverStatuses
+        }
+        if day.checkIn == nil, day.checkOut != nil { return ["missing_checkin"] }
+        if day.checkIn != nil, day.checkOut == nil { return ["missing_checkout"] }
+        if day.classification == "ambiguous" { return ["incomplete"] }
+        return serverStatuses
+    }
+
+    static func workMetrics(_ day: AttendanceDay, month: AttendanceMonth) -> AttendanceWorkMetrics {
+        let start = scheduledDate(day.date, time: day.startTime ?? month.startTime)
+        let end = scheduledDate(day.date, time: day.endTime ?? month.endTime)
+        let checkIn = instant(day.checkIn)
+        let checkOut = instant(day.checkOut)
+
+        let scheduledMinutes: Int
+        if let start, let end {
+            scheduledMinutes = max(0, Int(end.timeIntervalSince(start) / 60))
+        } else {
+            scheduledMinutes = 0
+        }
+        let fullWorkMinutes = max(0, scheduledMinutes - (scheduledMinutes >= 8 * 60 ? 60 : 0))
+
+        let latePenalty = positiveHalfHourPenalty(from: start, to: checkIn)
+        let earlyPenalty = positiveHalfHourPenalty(from: checkOut, to: end)
+        let recognizedMinutes: Int
+        if checkIn == nil || checkOut == nil {
+            recognizedMinutes = 0
+        } else {
+            recognizedMinutes = min(fullWorkMinutes, max(0, fullWorkMinutes - latePenalty - earlyPenalty))
+        }
+
+        let coefficient = fullWorkMinutes == 0
+            ? 0
+            : Double(recognizedMinutes) / Double(fullWorkMinutes)
+        return AttendanceWorkMetrics(
+            coefficient: coefficient,
+            overtimeHours: overtimeHours(day, defaultEndTime: month.endTime)
+        )
+    }
+
+    static func overtimeHours(_ day: AttendanceDay, defaultEndTime: String?) -> Double {
+        guard let checkOut = instant(day.checkOut),
+              let scheduledEnd = scheduledDate(day.date, time: day.endTime ?? defaultEndTime) else {
+            return 0
+        }
+        let minutes = max(0, Int(checkOut.timeIntervalSince(scheduledEnd) / 60))
+        guard minutes >= 30 else { return 0 }
+        return Double(minutes / 30) * 0.5
+    }
+
+    static func regularOvertimeHours(_ month: AttendanceMonth) -> Double {
+        month.days
+            .filter {
+                let values = statuses($0)
+                return !values.contains("holiday") && !values.contains("overtime")
+            }
+            .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
+    }
+
+    static func overtimeHours(for status: String, in month: AttendanceMonth) -> Double {
+        month.days
+            .filter { statuses($0).contains(status) }
+            .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
+    }
+
+    static func totalWorkDays(_ month: AttendanceMonth) -> Double {
+        month.days.reduce(0) { total, day in
+            let values = statuses(day)
+            if values.contains("holiday") || values.contains("office_day_off") {
+                return total + 1
+            }
+            return total + workMetrics(day, month: month).coefficient
+        }
+    }
+
+    static func paidDayCount(_ month: AttendanceMonth) -> Int {
+        let paid: Set<String> = ["present", "holiday", "office_day_off"]
+        return month.days.filter { day in
+            statuses(day).contains(where: { paid.contains($0) })
+        }.count
+    }
+
+    static func missingPunchCount(_ month: AttendanceMonth) -> Int {
+        month.days.filter { $0.punchCount == 1 }.count
+    }
+
+    static func violationCount(_ month: AttendanceMonth) -> Int {
+        let dayStatuses = month.days.map(statuses)
+        return dayStatuses.filter { $0.contains("late") }.count
+            + dayStatuses.filter { $0.contains("early") }.count
+            + missingPunchCount(month)
+    }
+
+    static func hourText(_ value: Double) -> String {
+        abs(value.rounded() - value) < 0.005
+            ? String(Int(value.rounded()))
+            : String(format: "%.1f", value)
+    }
+
+    static func workFactorText(_ value: Double) -> String {
+        if value < 0.005 { return "0" }
+        if value >= 0.995 { return "1" }
+        return String(format: "%.2f", value)
+    }
+
+    static func workDayTotalText(_ value: Double) -> String {
+        if value < 0.005 { return "0" }
+        if abs(value.rounded() - value) < 0.005 { return String(Int(value.rounded())) }
+        return String(format: "%.2f", value)
+    }
+
+    static func monthTitle(_ month: String) -> String {
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.dateFormat = "yyyy-MM"
+        guard let date = parser.date(from: month) else { return month }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "vi_VN")
+        formatter.dateFormat = "'Tháng' M/yyyy"
+        return formatter.string(from: date)
+    }
+
+    private static func instant(_ value: String?) -> Date? {
+        guard let value else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    private static func scheduledDate(_ day: String, time: String?) -> Date? {
+        guard let time, !time.isEmpty else { return nil }
+        return scheduledFormatter.date(from: "\(day) \(time)")
+    }
+
+    private static func positiveHalfHourPenalty(from start: Date?, to end: Date?) -> Int {
+        guard let start, let end else { return 0 }
+        let seconds = end.timeIntervalSince(start)
+        guard seconds > 0 else { return 0 }
+        return Int(ceil(seconds / 1_800)) * 30
+    }
+}
+
+@available(iOS 17.0, *)
+private struct AttendanceStatementListView: View {
+    @EnvironmentObject private var session: SessionStore
+    @State private var reports: [AttendanceReport] = []
+    @State private var isLoading = true
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                if isLoading && reports.isEmpty {
+                    ProgressView("Đang tải bảng công...")
+                        .tint(AppTheme.red)
+                        .frame(maxWidth: .infinity, minHeight: 220)
+                } else if reports.isEmpty {
+                    ContentUnavailableView(
+                        "Chưa có bảng công",
+                        systemImage: "calendar.badge.clock",
+                        description: Text("Bảng công đã phát hành sẽ hiển thị tại đây.")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 260)
+                } else {
+                    ForEach(reports.sorted { $0.month > $1.month }) { report in
+                        NavigationLink(destination: AttendanceStatementDetailView(month: report.month)) {
+                            HStack(spacing: 14) {
+                                Image(systemName: "calendar")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(AppTheme.red)
+                                    .frame(width: 42, height: 42)
+                                    .background(AppTheme.red.opacity(0.12))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                Text(AttendanceMetrics.monthTitle(report.month))
+                                    .font(.headline)
+                                    .foregroundStyle(Color.primary)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.muted)
+                            }
+                            .padding(17)
+                            .background(AppTheme.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(16)
+            .padding(.bottom, 100)
+        }
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationTitle("Bảng công")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: session.attendanceRevision) {
+            isLoading = true
+            reports = await session.loadAttendanceReports()
+            isLoading = false
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct AttendanceStatementDetailView: View {
+    @EnvironmentObject private var session: SessionStore
+    let month: String
+    @State private var report: AttendanceMonth?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        ScrollView {
+            Group {
+                if let report {
+                    AttendanceStatementReportView(
+                        month: report,
+                        remainingLeaveDays: session.dashboard?.remainingLeaveDays ?? 0
+                    )
+                } else if let errorMessage {
+                    ContentUnavailableView {
+                        Label("Không tải được bảng công", systemImage: "wifi.exclamationmark")
+                    } description: {
+                        Text(errorMessage)
+                    } actions: {
+                        Button("Thử lại") { Task { await load() } }
+                            .buttonStyle(.borderedProminent)
+                            .tint(AppTheme.red)
+                    }
+                } else {
+                    ProgressView("Đang tải bảng công...")
+                        .tint(AppTheme.red)
+                        .frame(maxWidth: .infinity, minHeight: 240)
+                }
+            }
+            .padding(16)
+            .padding(.bottom, 100)
+        }
+        .background(AppTheme.ink.ignoresSafeArea())
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text("Tổng hợp công").font(.headline)
+                    Text(AttendanceMetrics.monthTitle(month))
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.muted)
+                }
+            }
+        }
+        .task(id: session.attendanceRevision) { await load() }
+    }
+
+    private func load() async {
+        if report == nil, let cached = session.cachedAttendanceMonth(month) {
+            report = cached
+        }
+        guard let token = session.token else { return }
+        do {
+            report = try await session.loadAttendanceMonth(month, token: token)
+            errorMessage = nil
+        } catch {
+            if report == nil { errorMessage = error.localizedDescription }
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct AttendanceStatementReportView: View {
+    let month: AttendanceMonth
+    let remainingLeaveDays: Int
+
+    private var regularOvertime: Double { AttendanceMetrics.regularOvertimeHours(month) }
+    private var sundayOvertime: Double { AttendanceMetrics.overtimeHours(for: "overtime", in: month) }
+    private var holidayOvertime: Double { AttendanceMetrics.overtimeHours(for: "holiday", in: month) }
+    private var totalOvertime: Double { regularOvertime + sundayOvertime + holidayOvertime }
+    private var violations: Int { AttendanceMetrics.violationCount(month) }
+    private var leaveDays: Int { month.days.filter { AttendanceMetrics.statuses($0).contains("leave") }.count }
+    private var absentDays: Int { month.days.filter { AttendanceMetrics.statuses($0).contains("absent") }.count }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 16) {
+                Image(systemName: "calendar.badge.checkmark")
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(Color.blue)
+                    .frame(width: 56, height: 56)
+                    .background(Color.blue.opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Tổng ngày công")
+                        .font(.headline)
+                        .foregroundStyle(Color.primary)
+                    HStack(alignment: .lastTextBaseline, spacing: 7) {
+                        Text("\(AttendanceMetrics.paidDayCount(month))")
+                            .font(.system(size: 46, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color.blue)
+                        Text("ngày")
+                            .font(.headline)
+                            .foregroundStyle(Color.blue)
+                    }
+                }
+                Spacer()
+            }
+            .padding(20)
+            .background(Color.blue.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+            HStack(spacing: 8) {
+                overviewTile(
+                    "Tăng ca (Tổng)",
+                    "\(AttendanceMetrics.hourText(totalOvertime)) giờ",
+                    icon: "clock.fill",
+                    color: AppTheme.red
+                )
+                overviewTile(
+                    "Phép còn lại",
+                    "\(month.leaveSummary?.closingBalance ?? remainingLeaveDays) ngày",
+                    icon: "beach.umbrella.fill",
+                    color: .green
+                )
+                overviewTile(
+                    "Vi phạm chấm công",
+                    "\(violations) lần",
+                    icon: "exclamationmark.triangle.fill",
+                    color: AppTheme.muted
+                )
+            }
+
+            reportCard("Chi tiết công", icon: "doc.text.fill", color: AppTheme.red) {
+                reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
+                reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
+            }
+
+            reportCard("Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
+                reportRow("Tăng ca thường", "\(AttendanceMetrics.hourText(regularOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca chủ nhật", "\(AttendanceMetrics.hourText(sundayOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca lễ", "\(AttendanceMetrics.hourText(holidayOvertime)) giờ", color: .orange)
+                Divider()
+                reportRow("Tổng tăng ca", "\(AttendanceMetrics.hourText(totalOvertime)) giờ", color: AppTheme.red, bold: true)
+            }
+
+            reportCard("Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
+                reportRow("Tổng số phép còn trong tháng trước", "\(month.leaveSummary?.openingBalance ?? 0) ngày", color: AppTheme.muted)
+                reportRow("Số ngày phép được hưởng trong tháng", "\(month.leaveSummary?.accruedDays ?? 0) ngày", color: .green)
+                reportRow("Số ngày phép đã dùng trong tháng", "\(month.leaveSummary?.usedDays ?? leaveDays) ngày", color: .blue)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(month.leaveSummary?.unpaidDays ?? absentDays) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(month.leaveSummary?.sickDays ?? 0) ngày", color: AppTheme.muted)
+                Divider()
+                reportRow("Số phép còn lại trong tháng", "\(month.leaveSummary?.closingBalance ?? remainingLeaveDays) ngày", color: .green, bold: true)
+            }
+
+            reportCard("Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
+                reportRow(
+                    "Tổng số lần quên chấm công / đi trễ / về sớm",
+                    "\(violations) lần",
+                    color: AppTheme.muted,
+                    bold: true
+                )
+            }
+        }
+    }
+
+    private func overviewTile(_ title: String, _ value: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Image(systemName: icon).foregroundStyle(color)
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(AppTheme.muted)
+                .lineLimit(2)
+                .frame(height: 30, alignment: .topLeading)
+            Text(value)
+                .font(.subheadline.bold())
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+        .padding(11)
+        .background(color.opacity(0.09))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private func reportCard<Content: View>(
+        _ title: String,
+        icon: String,
+        color: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Label(title, systemImage: icon)
+                .font(.headline)
+                .foregroundStyle(color)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func reportRow(_ title: String, _ value: String, color: Color, bold: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(AppTheme.muted)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(bold ? .subheadline.bold() : .subheadline.weight(.semibold))
+                .foregroundStyle(color)
+                .multilineTextAlignment(.trailing)
+        }
+    }
+}
+
 @available(iOS 17.0, *)
 struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
