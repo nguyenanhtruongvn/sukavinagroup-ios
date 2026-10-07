@@ -288,7 +288,7 @@ struct NotificationsView: View {
 
         if item.type == "attendance_monthly_report",
            let month = item.requestId,
-           month.range(of: "^[0-9]{4}-(0[0-9]|1[0-2])$", options: .regularExpression) != nil {
+           month.range(of: "^[0-9]{4}-(0[1-9]|1[0-2])$", options: .regularExpression) != nil {
             attendanceReportMonth = month
             markReadOptimistically(item)
             Task {
