@@ -178,6 +178,7 @@ struct Profile: Codable {
     let permissions: [String]
     let protected: Bool
     let email: String?
+    let managerFullName: String?
     let passwordChangedAt: Date?
 }
 

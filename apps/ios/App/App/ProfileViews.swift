@@ -45,6 +45,8 @@ struct ProfileView: View {
                         ProfileLine(label: "Vai trò", value: session.profile?.role ?? "")
                         Divider().padding(.leading, 18)
                         ProfileLine(label: "Loại tài khoản", value: accountType)
+                        Divider().padding(.leading, 18)
+                        ProfileLine(label: "Quản lý trực tiếp", value: session.profile?.managerFullName?.nilIfEmpty ?? "Chưa cập nhật")
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
