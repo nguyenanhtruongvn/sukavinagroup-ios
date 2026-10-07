@@ -4405,7 +4405,7 @@ struct ModernAttendanceHistoryView: View {
                 selectedMonth = first
                 monthIndex = 0
             }
-            await preloadAdjacentMonths()
+            await preloadAdjacentMonths(forceNetwork: restrictToInitialMonth)
         }
         .task(id: session.attendanceRevision) {
             guard session.attendanceRevision > 0 else { return }
