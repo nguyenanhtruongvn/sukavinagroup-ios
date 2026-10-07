@@ -4317,7 +4317,6 @@ struct ModernAttendanceHistoryView: View {
 
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
     let initialMonth: String?
     @State private var selectedMonth: String
     @State private var cache: [String: AttendanceMonth] = [:]
@@ -4326,24 +4325,11 @@ struct ModernAttendanceHistoryView: View {
     @State private var loadingMonths = Set<String>()
     @State private var monthIndex = 0
     @State private var releasedMonths = Set<String>()
+    @State private var workMetricMonths = Set<String>()
 
     init(initialMonth: String? = nil) {
         self.initialMonth = initialMonth
         _selectedMonth = State(initialValue: initialMonth ?? Self.monthValue(Date()))
-    }
-
-    private var showsFullMonthCells: Bool {
-        attendanceMonthDisplayMode == AttendanceMonthDisplayMode.full.rawValue
-    }
-
-    /// iOS 26's paged TabView retains a grid's old measured height when this
-    /// AppStorage value changes. Recreate only the affected pages on iOS 26+
-    /// so full cells cannot inherit compact-cell geometry and clip their times.
-    private var attendanceLayoutVersion: String {
-        if #available(iOS 26.0, *) {
-            return attendanceMonthDisplayMode
-        }
-        return "stable"
     }
 
 
@@ -4379,7 +4365,6 @@ struct ModernAttendanceHistoryView: View {
                         }
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
-                    .id("attendance-pages-\(attendanceLayoutVersion)")
                     .transaction { transaction in
                         // A simultaneous cell-height animation makes the
                         // cached page briefly shorter than its full grid.
