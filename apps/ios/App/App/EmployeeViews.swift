@@ -4630,24 +4630,27 @@ struct ModernAttendanceHistoryView: View {
     }
 
     private func incompletePunchCount(in data: AttendanceMonth) -> Int {
-        data.days.filter { $0.punchCount == 1 }.count
+        AttendanceMetrics.missingPunchCount(data)
     }
 
     private func preloadedMonthlyDetails(_ data: AttendanceMonth) -> some View {
-        let statuses = data.days.map(dayStatuses)
-        let late = statuses.filter { $0.contains("late") }.count
-        let early = statuses.filter { $0.contains("early") }.count
-        let missing = incompletePunchCount(in: data)
         let leave = data.leaveSummary
+        let regularOvertime = AttendanceMetrics.regularOvertimeHours(data)
+        let sundayOvertime = AttendanceMetrics.overtimeHours(for: "overtime", in: data)
+        let holidayOvertime = AttendanceMetrics.overtimeHours(for: "holiday", in: data)
+        let totalOvertime = regularOvertime + sundayOvertime + holidayOvertime
+        let violations = AttendanceMetrics.violationCount(data)
         return VStack(alignment: .leading, spacing: 14) {
             attendanceReportCard(title: "Chi tiết công", icon: "doc.text.fill", color: .red) {
                 reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
                 reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
             }
             attendanceReportCard(title: "Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
-                reportRow("Tăng ca thường", "0 giờ", color: .orange)
-                reportRow("Tăng ca chủ nhật", "0 giờ", color: .orange)
-                reportRow("Tăng ca lễ", "0 giờ", color: .orange)
+                reportRow("Tăng ca thường", "\(AttendanceMetrics.hourText(regularOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca chủ nhật", "\(AttendanceMetrics.hourText(sundayOvertime)) giờ", color: .orange)
+                reportRow("Tăng ca lễ", "\(AttendanceMetrics.hourText(holidayOvertime)) giờ", color: .orange)
+                Divider()
+                reportRow("Tổng tăng ca", "\(AttendanceMetrics.hourText(totalOvertime)) giờ", color: AppTheme.red, bold: true)
             }
             attendanceReportCard(title: "Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
                 reportRow("Tổng số phép còn trong tháng trước", "\(leave?.openingBalance ?? 0) ngày", color: AppTheme.muted)
@@ -4659,7 +4662,7 @@ struct ModernAttendanceHistoryView: View {
                 reportRow("Số phép còn lại trong tháng", "\(leave?.closingBalance ?? 0) ngày", color: .green, bold: true)
             }
             attendanceReportCard(title: "Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
-                reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(missing + late + early) lần", color: AppTheme.muted, bold: true)
+                reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(violations) lần", color: AppTheme.muted, bold: true)
             }
         }
     }
@@ -4847,6 +4850,15 @@ struct ModernAttendanceHistoryView: View {
         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
     }
 
+    private func metricSummary(_ value: String, _ label: String, _ color: Color) -> some View {
+        VStack(spacing: 5) {
+            Text(value).font(.title3.bold()).foregroundStyle(color)
+            Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 13)
+        .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
+    }
+
 
 
 
@@ -4886,15 +4898,7 @@ struct ModernAttendanceHistoryView: View {
         formatter.dateFormat = "'Tháng' M / yyyy"; return formatter.string(from: date)
     }
     private func dayStatuses(_ day: AttendanceDay) -> [String] {
-        let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
-        // A cached or older API response can still carry `present` alongside
-        // one punch. Attendance completeness takes precedence for workdays.
-        let exemptStatuses: Set<String> = ["leave", "weekend", "overtime", "upcoming", "not-started", "absent"]
-        if serverStatuses.contains(where: { exemptStatuses.contains($0) }) { return serverStatuses }
-        if day.checkIn == nil, day.checkOut != nil { return ["missing_checkin"] }
-        if day.checkIn != nil, day.checkOut == nil { return ["missing_checkout"] }
-        if day.classification == "ambiguous" { return ["incomplete"] }
-        return serverStatuses
+        AttendanceMetrics.statuses(day)
     }
     @ViewBuilder private func dayBackground(_ day: AttendanceDay) -> some View {
         let statuses = dayStatuses(day)
