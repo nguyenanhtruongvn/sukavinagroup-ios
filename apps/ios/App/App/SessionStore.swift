@@ -262,6 +262,18 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    func loadAttendanceReports() async -> [AttendanceReport] {
+        guard let token else { return [] }
+        do {
+            let reports: [AttendanceReport] = try await APIClient.shared.request(
+                "me/attendance/reports", token: token
+            )
+            return reports
+        } catch {
+            return []
+        }
+    }
+
     private func attendanceMonthCacheKey(_ month: String) -> String? {
         let employeeCode = profile?.employeeCode.nilIfEmpty
             ?? dashboard?.employeeCode.nilIfEmpty
@@ -276,6 +288,13 @@ final class SessionStore: ObservableObject {
               let data = try? JSONEncoder().encode(CachedAttendanceMonth(savedAt: Date(), value: month)) else { return }
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
         UserDefaults.standard.set(data, forKey: cacheKey)
+    }
+
+    private func invalidateAttendanceCacheForRealtimeUpdate() {
+        let defaults = UserDefaults.standard
+        defaults.dictionaryRepresentation().keys
+            .filter { $0.hasPrefix(attendanceMonthCachePrefix) }
+            .forEach { defaults.removeObject(forKey: $0) }
     }
 
     private func restoreCachedDashboard() {
@@ -1944,6 +1963,10 @@ final class SessionStore: ObservableObject {
             self.realtimeRefreshTask = nil
             if events.contains("request_changed") {
                 self.requestRevision &+= 1
+            }
+            if events.contains("attendance_changed") {
+                self.invalidateAttendanceCacheForRealtimeUpdate()
+                self.attendanceRevision &+= 1
             }
             if events.contains("attendance_changed") ||
                 events.contains("request_changed") ||

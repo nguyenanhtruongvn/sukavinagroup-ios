@@ -31,6 +31,7 @@ struct NotificationsView: View {
     @State private var reviewing: EmployeeRequest?
     @State private var viewing: EmployeeRequest?
     @State private var meetingNotification: RequestNotification?
+    @State private var attendanceReportMonth: String?
     @State private var confirmClear = false
     @State private var hiddenArticleIDs = Set<String>()
     @State private var isReloadingNotifications = false
@@ -209,6 +210,19 @@ struct NotificationsView: View {
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
                 .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
                 .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification) }
+                .sheet(
+                    isPresented: Binding(
+                        get: { attendanceReportMonth != nil },
+                        set: { if !$0 { attendanceReportMonth = nil } }
+                    )
+                ) {
+                    if let month = attendanceReportMonth {
+                        NavigationStack {
+                            ModernAttendanceHistoryView(initialMonth: month)
+                                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { attendanceReportMonth = nil } } }
+                        }
+                    }
+                }
         }
         // Use the system confirmation UI: the iOS 26+ action sheet and the
         // compatible alert presentation on earlier iOS releases.
@@ -269,6 +283,23 @@ struct NotificationsView: View {
         if session.isLocalAttendanceNotification(item) {
             session.markLocalAttendanceNotificationRead(item.id)
             await reloadNotifications()
+            return
+        }
+
+        if item.type == "attendance_monthly_report",
+           let month = item.requestId,
+           month.range(of: "^[0-9]{4}-(0[0-9]|1[0-2])$", options: .regularExpression) != nil {
+            attendanceReportMonth = month
+            markReadOptimistically(item)
+            Task {
+                guard let token = session.token else { return }
+                let _: UpdateCount? = try? await APIClient.shared.request(
+                    "me/requests/notifications/\(item.id)/read",
+                    method: "PATCH",
+                    token: token
+                )
+                await reloadNotifications()
+            }
             return
         }
 
@@ -391,6 +422,7 @@ struct NotificationsView: View {
         if type == "meeting_reminder" { return "bell.badge.fill" }
         if type == "attendance_check_in" { return "arrow.right.to.line.circle.fill" }
         if type == "attendance_check_out" { return "arrow.left.to.line.circle.fill" }
+        if type == "attendance_monthly_report" { return "calendar.badge.checkmark" }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
         if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
         if type == "meeting_invite" { return "person.2.fill" }
@@ -407,6 +439,7 @@ struct NotificationsView: View {
         if type == "meeting_reminder" { return .orange }
         if type == "attendance_check_in" { return .green }
         if type == "attendance_check_out" { return .blue }
+        if type == "attendance_monthly_report" { return .green }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
         if type == "request_pending" { return .orange }
         if type == "meeting_invite" { return .blue }

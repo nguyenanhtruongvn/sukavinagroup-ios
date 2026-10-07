@@ -3903,12 +3903,19 @@ struct ModernAttendanceHistoryView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @AppStorage("sukavina.attendanceMonthDisplayMode") private var attendanceMonthDisplayMode = AttendanceMonthDisplayMode.compact.rawValue
-    @State private var selectedMonth = Self.monthValue(Date())
+    let initialMonth: String?
+    @State private var selectedMonth: String
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var errors: [String: String] = [:]
     @State private var selectedDates: [String: String] = [:]
     @State private var loadingMonths = Set<String>()
-    @State private var monthIndex = 1
+    @State private var monthIndex = 0
+    @State private var releasedMonths = Set<String>()
+
+    init(initialMonth: String? = nil) {
+        self.initialMonth = initialMonth
+        _selectedMonth = State(initialValue: initialMonth ?? Self.monthValue(Date()))
+    }
 
     private var showsFullMonthCells: Bool {
         attendanceMonthDisplayMode == AttendanceMonthDisplayMode.full.rawValue
@@ -3983,11 +3990,23 @@ struct ModernAttendanceHistoryView: View {
             UISelectionFeedbackGenerator().selectionChanged()
             Task { await preloadMonth(options[newIndex]) }
         }
-        .task { await preloadAdjacentMonths() }
+        .task {
+            let reports = await session.loadAttendanceReports()
+            releasedMonths = Set(reports.map(\.month))
+            if let index = options.firstIndex(of: selectedMonth) {
+                monthIndex = index
+            } else if let first = options.first {
+                selectedMonth = first
+                monthIndex = 0
+            }
+            await preloadAdjacentMonths()
+        }
         .task(id: session.attendanceRevision) {
             guard session.attendanceRevision > 0 else { return }
             cache.removeAll()
             errors.removeAll()
+            let reports = await session.loadAttendanceReports()
+            releasedMonths = Set(reports.map(\.month))
             await preloadAdjacentMonths()
         }
     }
@@ -4008,6 +4027,9 @@ struct ModernAttendanceHistoryView: View {
                     preloadedSummaryCards(data)
                     preloadedCalendarCard(data, month: month)
                         .id("attendance-calendar-\(month)-\(attendanceLayoutVersion)")
+                    if releasedMonths.contains(month) {
+                        preloadedMonthlyDetails(data)
+                    }
                     if !showsFullMonthCells, let day = selectedDay(in: data, month: month) {
                         preloadedDayDetail(day, data: data)
                     }
@@ -4056,9 +4078,8 @@ struct ModernAttendanceHistoryView: View {
             ("Ngày công", preloadedCount("present", in: data), .green),
             ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
             ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
-            ("Nghỉ phép", preloadedCount("leave", in: data), EmployeeRequestKind.leave.color),
+            ("Thiếu chấm công", incompletePunchCount(in: data), .orange),
             ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
-            ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
         ].filter { $0.1 > 0 }
         return HStack(spacing: 6) {
             ForEach(Array(values.enumerated()), id: \.offset) { _, item in
@@ -4137,6 +4158,59 @@ struct ModernAttendanceHistoryView: View {
 
     private func preloadedCount(_ status: String, in data: AttendanceMonth) -> Int {
         data.days.filter { dayStatuses($0).contains(status) }.count
+    }
+
+    private func incompletePunchCount(in data: AttendanceMonth) -> Int {
+        data.days.filter { $0.punchCount == 1 }.count
+    }
+
+    private func preloadedMonthlyDetails(_ data: AttendanceMonth) -> some View {
+        let statuses = data.days.map(dayStatuses)
+        let late = statuses.filter { $0.contains("late") }.count
+        let early = statuses.filter { $0.contains("early") }.count
+        let missing = incompletePunchCount(in: data)
+        let leave = data.leaveSummary
+        return VStack(alignment: .leading, spacing: 14) {
+            attendanceReportCard(title: "Chi tiết công", icon: "doc.text.fill", color: .red) {
+                reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
+                reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
+            }
+            attendanceReportCard(title: "Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
+                reportRow("Tăng ca thường", "0 giờ", color: .orange)
+                reportRow("Tăng ca chủ nhật", "0 giờ", color: .orange)
+                reportRow("Tăng ca lễ", "0 giờ", color: .orange)
+            }
+            attendanceReportCard(title: "Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
+                reportRow("Tổng số phép còn trong tháng trước", "\(leave?.openingBalance ?? 0) ngày", color: AppTheme.muted)
+                reportRow("Số ngày phép được hưởng trong tháng", "\(leave?.accruedDays ?? 0) ngày", color: .green)
+                reportRow("Số ngày phép đã dùng trong tháng", "\(leave?.usedDays ?? 0) ngày", color: .blue)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(leave?.unpaidDays ?? 0) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(leave?.sickDays ?? 0) ngày", color: AppTheme.muted)
+                Divider()
+                reportRow("Số phép còn lại trong tháng", "\(leave?.closingBalance ?? 0) ngày", color: .green, bold: true)
+            }
+            attendanceReportCard(title: "Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
+                reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(missing + late + early) lần", color: AppTheme.muted, bold: true)
+            }
+        }
+    }
+
+    private func attendanceReportCard<Content: View>(title: String, icon: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            Label(title, systemImage: icon).font(.headline).foregroundStyle(color)
+            content()
+        }
+        .padding(18)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private func reportRow(_ title: String, _ value: String, color: Color, bold: Bool = false) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title).font(.subheadline).foregroundStyle(AppTheme.muted)
+            Spacer(minLength: 12)
+            Text(value).font(bold ? .subheadline.bold() : .subheadline.weight(.semibold)).foregroundStyle(color)
+        }
     }
 
 
@@ -4323,11 +4397,10 @@ struct ModernAttendanceHistoryView: View {
 
 
     private var options: [String] {
-        Array(
-            (0..<2).compactMap { Calendar.current.date(byAdding: .month, value: -$0, to: Date()) }
-                .map(Self.monthValue)
-                .reversed()
-        )
+        let currentAndPrevious = (0..<2).compactMap {
+            Calendar.current.date(byAdding: .month, value: -$0, to: Date())
+        }.map(Self.monthValue)
+        return Array(Set(currentAndPrevious + Array(releasedMonths) + [initialMonth].compactMap { $0 })).sorted()
     }
     private var monthTitle: String { monthTitle(for: selectedMonth) }
 
@@ -4374,6 +4447,8 @@ struct ModernAttendanceHistoryView: View {
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
+        case "holiday": return .green.opacity(0.24)
+        case "office_day_off": return .teal.opacity(0.24)
         case "weekend": return .gray.opacity(0.13)
         case "not-started": return .gray.opacity(0.18)
         case "pending": return .orange.opacity(0.16)
@@ -4392,6 +4467,8 @@ struct ModernAttendanceHistoryView: View {
         case "leave": return "Nghỉ phép"
         case "absent": return "Vắng"
         case "overtime": return "Làm thêm giờ"
+        case "holiday": return "Nghỉ lễ"
+        case "office_day_off": return "Nghỉ văn phòng"
         case "weekend": return "Cuối tuần"
         case "not-started": return "Chưa tới giờ làm"
         case "pending": return "Chưa ghi nhận"

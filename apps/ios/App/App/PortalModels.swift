@@ -561,6 +561,22 @@ struct AttendanceMonth: Codable {
     let endTime: String?
     let department: String?
     let days: [AttendanceDay]
+    let leaveSummary: AttendanceLeaveSummary?
+}
+
+struct AttendanceLeaveSummary: Codable {
+    let openingBalance: Int
+    let accruedDays: Int
+    let usedDays: Int
+    let unpaidDays: Int
+    let sickDays: Int
+    let closingBalance: Int
+}
+
+struct AttendanceReport: Codable, Identifiable {
+    let month: String
+    let releasedAt: String?
+    var id: String { month }
 }
 
 struct AttendanceDay: Codable, Identifiable {
