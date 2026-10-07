@@ -2561,10 +2561,7 @@ struct EmployeePortalView: View {
         // Keep every tab item structurally stable. iOS 18+ does not use the
         // iOS 17 fallback, but still must not swap tab-label view types.
         TabView(selection: $selectedTab) {
-            DashboardView(isActive: selectedTab == 0) {
-                requestInitialFilter = .pending
-                selectedTab = 1
-            }
+            DashboardView(isActive: selectedTab == 0)
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
                 .tag(0)
             RequestsView(initialFilter: requestInitialFilter)
@@ -2620,10 +2617,7 @@ struct EmployeePortalView: View {
         case 4:
             ProfileView()
         default:
-            DashboardView(isActive: true) {
-                requestInitialFilter = .pending
-                selectedTab = 1
-            }
+            DashboardView(isActive: true)
         }
     }
 
@@ -3546,14 +3540,12 @@ private struct AiAssistantChatView: View {
 @available(iOS 17.0, *)
 struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
-    @StateObject private var requestStore = EmployeeRequestStore()
     @State private var showTodayMenu = false
     @State private var showAttendanceHistory = false
     @State private var showAiAssistant = false
     @State private var showAiAssistantLaunchLabel = true
     @State private var hasScheduledAiAssistantLaunchLabel = false
     let isActive: Bool
-    let openPendingRequests: () -> Void
 
 
 
@@ -3585,17 +3577,13 @@ struct DashboardView: View {
 
 
                     HStack(spacing: 12) {
-                        MetricCard(value: "\(session.dashboard?.remainingLeaveDays ?? 0)", label: "Ngày phép còn lại", icon: "calendar.badge.clock")
-                        Button(action: openPendingRequests) {
-                            MetricCard(
-                                value: "\(requestStore.requests.filter { $0.status == .pending }.count)",
-                                label: "Đơn đang chờ",
-                                icon: "doc.text.fill"
-                            )
+                        NavigationLink(destination: AttendanceStatementListView()) {
+                            MetricCard(value: "Xem", label: "Bảng công", icon: "calendar")
                         }
                         .buttonStyle(.plain)
                         .frame(maxWidth: .infinity)
-                        .accessibilityLabel("Xem đơn từ đang chờ")
+                        .accessibilityLabel("Xem bảng công")
+                        MetricCard(value: "—", label: "Bảng lương", icon: "banknote")
                     }
 
 
@@ -3652,10 +3640,6 @@ struct DashboardView: View {
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
-            .task {
-                requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
-                await requestStore.load(session.token)
-            }
             .task { await session.refreshTodayMenu() }
             // Realtime events and app activation keep the dashboard current.
             // Do not poll while the user scrolls: replacing card data during a
@@ -3664,13 +3648,8 @@ struct DashboardView: View {
                 guard isActive else { return }
                 await session.refreshDashboard()
             }
-            .task(id: session.requestRevision) {
-                guard session.requestRevision > 0 else { return }
-                await requestStore.load(session.token, force: true)
-            }
             .refreshable {
                 await session.refreshDashboard()
-                await requestStore.load(session.token, force: true)
                 await session.refreshTodayMenu(force: true)
             }
             .overlay(alignment: .bottomTrailing) {
