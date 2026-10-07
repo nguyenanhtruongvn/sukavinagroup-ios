@@ -4312,7 +4312,7 @@ private struct AttendanceStatementReportView: View {
 struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
     // Match Android's dedicated holiday violet (#8E3FC5). Keep it separate
-    // from leave/overtime colors and use it consistently for label, fill and border.
+    // from leave/overtime colors without drawing a special cell border.
     private static let holidayColor = Color(red: 142.0 / 255.0, green: 63.0 / 255.0, blue: 197.0 / 255.0)
 
 
@@ -4414,7 +4414,9 @@ struct ModernAttendanceHistoryView: View {
             // Release metadata and attendance revalidation are independent.
             // Run them together while leaving cached calendar data visible.
             async let reportsTask = session.loadAttendanceReports()
-            await preloadAdjacentMonths(forceNetwork: true)
+            // Cache-first on a normal open: only stale months hit the network.
+            // Realtime events below still force refresh after actual changes.
+            await preloadAdjacentMonths()
             releasedMonths = Set((await reportsTask).map(\.month))
         }
         .task(id: session.attendanceRevision) {
@@ -4597,12 +4599,6 @@ struct ModernAttendanceHistoryView: View {
                     .frame(maxWidth: .infinity, minHeight: cellHeight)
                     .background(dayBackground(day))
                     .clipShape(RoundedRectangle(cornerRadius: 11))
-                    .overlay {
-                        if isHoliday {
-                            RoundedRectangle(cornerRadius: 11)
-                                .stroke(Self.holidayColor.opacity(0.92), lineWidth: 1.5)
-                        }
-                    }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(
                         accessibilityLabel(
