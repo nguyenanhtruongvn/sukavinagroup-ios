@@ -3542,6 +3542,7 @@ struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var showTodayMenu = false
     @State private var showAttendanceHistory = false
+    @State private var showAttendanceStatement = false
     @State private var showAiAssistant = false
     @State private var showAiAssistantLaunchLabel = true
     @State private var hasScheduledAiAssistantLaunchLabel = false
@@ -3577,7 +3578,10 @@ struct DashboardView: View {
 
 
                     HStack(spacing: 12) {
-                        NavigationLink(destination: AttendanceStatementListView()) {
+                        NavigationLink(
+                            destination: AttendanceStatementListView(),
+                            isActive: $showAttendanceStatement
+                        ) {
                             MetricCard(value: "Xem", label: "Bảng công", icon: "calendar")
                         }
                         .buttonStyle(.plain)
@@ -3655,6 +3659,7 @@ struct DashboardView: View {
             .overlay(alignment: .bottomTrailing) {
                 if isActive &&
                     !showAttendanceHistory &&
+                    !showAttendanceStatement &&
                     !showTodayMenu &&
                     session.aiAssistantMobileEnabled {
                     Button {
