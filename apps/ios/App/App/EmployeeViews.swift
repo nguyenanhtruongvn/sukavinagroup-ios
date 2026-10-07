@@ -4059,7 +4059,7 @@ private struct AttendanceStatementListView: View {
                     .frame(maxWidth: .infinity, minHeight: 260)
                 } else {
                     ForEach(reports.sorted { $0.month > $1.month }) { report in
-                        NavigationLink(destination: AttendanceStatementDetailView(month: report.month)) {
+                        NavigationLink(destination: ModernAttendanceHistoryView(initialMonth: report.month, restrictToInitialMonth: true)) {
                             HStack(spacing: 14) {
                                 Image(systemName: "calendar")
                                     .font(.title3.weight(.semibold))
@@ -4322,6 +4322,7 @@ struct ModernAttendanceHistoryView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let initialMonth: String?
+    let restrictToInitialMonth: Bool
     @State private var selectedMonth: String
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var errors: [String: String] = [:]
@@ -4331,8 +4332,9 @@ struct ModernAttendanceHistoryView: View {
     @State private var releasedMonths = Set<String>()
     @State private var workMetricMonths = Set<String>()
 
-    init(initialMonth: String? = nil) {
+    init(initialMonth: String? = nil, restrictToInitialMonth: Bool = false) {
         self.initialMonth = initialMonth
+        self.restrictToInitialMonth = restrictToInitialMonth
         _selectedMonth = State(initialValue: initialMonth ?? Self.monthValue(Date()))
     }
 
@@ -4407,11 +4409,13 @@ struct ModernAttendanceHistoryView: View {
         }
         .task(id: session.attendanceRevision) {
             guard session.attendanceRevision > 0 else { return }
-            cache.removeAll()
+            // Keep the last rendered month visible while refreshing. Clearing
+            // the in-memory cache here caused the page to flash a spinner and
+            // made every realtime attendance event feel like a cold load.
             errors.removeAll()
             let reports = await session.loadAttendanceReports()
             releasedMonths = Set(reports.map(\.month))
-            await preloadAdjacentMonths()
+            await preloadAdjacentMonths(forceNetwork: true)
         }
     }
 
@@ -4554,7 +4558,7 @@ struct ModernAttendanceHistoryView: View {
                         if isHoliday || isOfficeDayOff {
                             Text(isHoliday ? "NL" : "NVP")
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(isHoliday ? Color.green : Color.teal)
+                                .foregroundStyle(isHoliday ? Color(red: 0.56, green: 0.25, blue: 0.77) : Color.teal)
                                 .frame(height: 37, alignment: .top)
                         } else if showWorkMetrics {
                             VStack(spacing: 1) {
@@ -4747,11 +4751,11 @@ struct ModernAttendanceHistoryView: View {
 
 
 
-    private func preloadMonth(_ month: String) async {
-        // A TabView keeps both neighbour pages alive while the user swipes.
-        // Do not let page creation, preloading, and selection start duplicate
-        // requests for the same month on the main actor.
-        guard cache[month] == nil, !loadingMonths.contains(month) else { return }
+    private func preloadMonth(_ month: String, forceNetwork: Bool = false) async {
+        // Keep already-rendered data on screen while a refresh is in flight.
+        // This mirrors Android: cache first, then revalidate without replacing
+        // the calendar with a loading state.
+        guard !loadingMonths.contains(month) else { return }
         loadingMonths.insert(month)
         defer { loadingMonths.remove(month) }
 
@@ -4760,12 +4764,8 @@ struct ModernAttendanceHistoryView: View {
             selectedDates[month] = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
                 ?? cached.days.last?.date
         }
-        // NWPathMonitor is only advisory. Always let URLSession attempt the
-        // revalidation; loadAttendanceMonth already falls back to disk cache
-        // when the transport is genuinely unavailable.
-        // Historical months are served instantly from a recent disk snapshot.
-        // The current month is revalidated frequently because punches change it.
-        guard session.shouldRevalidateAttendanceMonth(month) else { return }
+
+        guard forceNetwork || session.shouldRevalidateAttendanceMonth(month) else { return }
         guard let token = session.token else { return }
         do {
             let loaded = try await session.loadAttendanceMonth(month, token: token)
@@ -4776,7 +4776,11 @@ struct ModernAttendanceHistoryView: View {
                     ?? loaded.days.last?.date
             }
         } catch {
-            errors[month] = error.localizedDescription
+            // If cached data exists, keep it visible and do not replace the
+            // whole month with an error state just because revalidation failed.
+            if cache[month] == nil {
+                errors[month] = error.localizedDescription
+            }
         }
     }
 
@@ -4882,10 +4886,15 @@ struct ModernAttendanceHistoryView: View {
 
 
     private var options: [String] {
-        let currentAndPrevious = (0..<2).compactMap {
+        if restrictToInitialMonth, let initialMonth {
+            return [initialMonth]
+        }
+        // The normal attendance screen intentionally exposes only this month
+        // and the immediately previous month. Older released statements are
+        // opened explicitly from "Bảng công" or from their notification.
+        return (0..<2).compactMap {
             Calendar.current.date(byAdding: .month, value: -$0, to: Date())
-        }.map(Self.monthValue)
-        return Array(Set(currentAndPrevious + Array(releasedMonths) + [initialMonth].compactMap { $0 })).sorted()
+        }.map(Self.monthValue).sorted()
     }
     private var monthTitle: String { monthTitle(for: selectedMonth) }
 
@@ -4924,7 +4933,7 @@ struct ModernAttendanceHistoryView: View {
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
-        case "holiday": return .green.opacity(0.24)
+        case "holiday": return Color(red: 0.56, green: 0.25, blue: 0.77).opacity(0.24)
         case "office_day_off": return .teal.opacity(0.24)
         case "weekend": return .gray.opacity(0.13)
         case "not-started": return .gray.opacity(0.18)
@@ -4964,12 +4973,12 @@ struct ModernAttendanceHistoryView: View {
         guard let date = Self.dayParser.date(from: value) else { return value }
         let formatter = DateFormatter(); formatter.dateFormat = "dd/MM/yyyy"; return formatter.string(from: date)
     }
-    private func preloadAdjacentMonths() async {
+    private func preloadAdjacentMonths(forceNetwork: Bool = false) async {
         // Always hydrate the visible month first. A missing neighbouring month
         // must never block it behind a slow or offline network request.
         let orderedMonths = [selectedMonth] + options.filter { $0 != selectedMonth }
-        for month in orderedMonths where cache[month] == nil {
-            await preloadMonth(month)
+        for month in orderedMonths {
+            await preloadMonth(month, forceNetwork: forceNetwork)
         }
     }
     private static func monthValue(_ date: Date) -> String {
