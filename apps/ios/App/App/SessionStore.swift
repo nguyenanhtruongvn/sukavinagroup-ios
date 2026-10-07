@@ -115,6 +115,10 @@ final class SessionStore: ObservableObject {
     private var articleBadgeCount = 0
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
+    // Keep decoded month snapshots in RAM as well as UserDefaults. The disk
+    // layer survives launches; the memory layer makes repeated opens/swipes
+    // avoid JSON decoding and disk reads on the main actor.
+    private var attendanceMemoryCache: [String: CachedAttendanceMonth] = [:]
     private let dashboardCachePrefix = "native-dashboard-cache-"
     private let todayMenuCachePrefix = "native-today-menu-cache-"
     private let requestNotificationsCachePrefix = "native-request-notifications-cache-"
@@ -231,19 +235,35 @@ final class SessionStore: ObservableObject {
     }
 
     func cachedAttendanceMonth(_ month: String) -> AttendanceMonth? {
-        guard let cacheKey = attendanceMonthCacheKey(month),
-              let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
-        if let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) {
+        guard let cacheKey = attendanceMonthCacheKey(month) else { return nil }
+        if let cached = attendanceMemoryCache[cacheKey] {
             return cached.value
         }
-        // One-release migration path for the former unversioned cache.
-        return try? JSONDecoder().decode(AttendanceMonth.self, from: data)
+        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        if let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) {
+            attendanceMemoryCache[cacheKey] = cached
+            return cached.value
+        }
+        // One-release migration path for the former unversioned cache. Mark it
+        // stale so it is painted immediately but refreshed in the background.
+        if let legacy = try? JSONDecoder().decode(AttendanceMonth.self, from: data) {
+            attendanceMemoryCache[cacheKey] = CachedAttendanceMonth(savedAt: .distantPast, value: legacy)
+            return legacy
+        }
+        return nil
     }
 
     func shouldRevalidateAttendanceMonth(_ month: String) -> Bool {
-        guard let cacheKey = attendanceMonthCacheKey(month),
-              let data = UserDefaults.standard.data(forKey: cacheKey),
-              let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) else { return true }
+        guard let cacheKey = attendanceMonthCacheKey(month) else { return true }
+        let cached: CachedAttendanceMonth
+        if let memory = attendanceMemoryCache[cacheKey] {
+            cached = memory
+        } else {
+            guard let data = UserDefaults.standard.data(forKey: cacheKey),
+                  let disk = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) else { return true }
+            attendanceMemoryCache[cacheKey] = disk
+            cached = disk
+        }
         let currentMonth = String(DateFormatter.meetingDay.string(from: Date()).prefix(7))
         let ttl: TimeInterval = month == currentMonth ? 90 : 12 * 60 * 60
         return Date().timeIntervalSince(cached.savedAt) >= ttl
@@ -284,8 +304,10 @@ final class SessionStore: ObservableObject {
 
     private func saveAttendanceMonth(_ month: AttendanceMonth, for keyMonth: String) {
         guard let cacheKey = attendanceMonthCacheKey(keyMonth),
-              let employeeCode = profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty,
-              let data = try? JSONEncoder().encode(CachedAttendanceMonth(savedAt: Date(), value: month)) else { return }
+              let employeeCode = profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty else { return }
+        let cached = CachedAttendanceMonth(savedAt: Date(), value: month)
+        attendanceMemoryCache[cacheKey] = cached
+        guard let data = try? JSONEncoder().encode(cached) else { return }
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
         UserDefaults.standard.set(data, forKey: cacheKey)
     }
@@ -1941,6 +1963,7 @@ final class SessionStore: ObservableObject {
             return
         }
         if event.contains("attendance_changed") { pendingRealtimeEvents.insert("attendance_changed") }
+        if event.contains("employee_changed") { pendingRealtimeEvents.insert("employee_changed") }
         if event.contains("request_changed") { pendingRealtimeEvents.insert("request_changed") }
         if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }
         if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
@@ -1964,11 +1987,17 @@ final class SessionStore: ObservableObject {
             if events.contains("request_changed") {
                 self.requestRevision &+= 1
             }
-            if events.contains("attendance_changed") {
+            if events.contains("attendance_changed") || events.contains("employee_changed") {
+                // Employee/shift edits can change the calculated attendance
+                // status for an already cached month just like holiday edits.
                 self.invalidateAttendanceCacheForRealtimeUpdate()
                 self.attendanceRevision &+= 1
             }
+            if events.contains("employee_changed") {
+                await self.refreshProfile()
+            }
             if events.contains("attendance_changed") ||
+                events.contains("employee_changed") ||
                 events.contains("request_changed") ||
                 events.contains("content_changed") ||
                 events.contains("meeting_changed") {
