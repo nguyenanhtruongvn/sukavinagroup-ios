@@ -291,14 +291,9 @@ final class SessionStore: ObservableObject {
     }
 
     private func invalidateAttendanceCacheForRealtimeUpdate() {
-        // Attendance realtime events normally affect the current month. Keep
-        // historical months cached so opening attendance does not become a
-        // cold network load. Released historical reports are force-refreshed
-        // by their dedicated screen when opened.
-        let currentMonth = String(DateFormatter.meetingDay.string(from: Date()).prefix(7))
-        if let cacheKey = attendanceMonthCacheKey(currentMonth) {
-            UserDefaults.standard.removeObject(forKey: cacheKey)
-        }
+        // Keep the last month snapshots on disk. Attendance screens paint this
+        // cache immediately and then revalidate from the API, matching Android
+        // and avoiding a blank/loading calendar after realtime events.
     }
 
     private func restoreCachedDashboard() {
