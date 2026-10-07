@@ -3876,14 +3876,6 @@ private struct AttendanceWorkMetrics {
 private enum AttendanceMetrics {
     static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
 
-    private static let scheduledFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = vietnamTimeZone
-        formatter.dateFormat = "yyyy-MM-dd HH:mm"
-        return formatter
-    }()
-
     static func statuses(_ day: AttendanceDay) -> [String] {
         let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
         let exemptStatuses: Set<String> = [
@@ -3978,7 +3970,7 @@ private enum AttendanceMetrics {
     }
 
     static func violationCount(_ month: AttendanceMonth) -> Int {
-        let dayStatuses = month.days.map(statuses)
+        let dayStatuses = month.days.map { statuses($0) }
         return dayStatuses.filter { $0.contains("late") }.count
             + dayStatuses.filter { $0.contains("early") }.count
             + missingPunchCount(month)
@@ -4022,7 +4014,14 @@ private enum AttendanceMetrics {
 
     private static func scheduledDate(_ day: String, time: String?) -> Date? {
         guard let time, !time.isEmpty else { return nil }
-        return scheduledFormatter.date(from: "\(day) \(time)")
+        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm"] {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = vietnamTimeZone
+            formatter.dateFormat = format
+            if let value = formatter.date(from: "\(day) \(time)") { return value }
+        }
+        return nil
     }
 
     private static func positiveHalfHourPenalty(from start: Date?, to end: Date?) -> Int {
