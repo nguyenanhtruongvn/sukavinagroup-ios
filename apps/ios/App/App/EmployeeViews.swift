@@ -4421,17 +4421,14 @@ struct ModernAttendanceHistoryView: View {
     private func preloadedMonthPage(_ index: Int) -> some View {
         let month = options[index]
         let data = cache[month]
+        let showWorkMetrics = workMetricMonths.contains(month)
         return ScrollView {
             VStack(spacing: 14) {
                 if let data {
-                    preloadedSummaryCards(data)
-                    preloadedCalendarCard(data, month: month)
-                        .id("attendance-calendar-\(month)-\(attendanceLayoutVersion)")
+                    preloadedSummaryCards(data, showWorkMetrics: showWorkMetrics)
+                    preloadedCalendarCard(data, month: month, showWorkMetrics: showWorkMetrics)
                     if releasedMonths.contains(month) {
                         preloadedMonthlyDetails(data)
-                    }
-                    if !showsFullMonthCells, let day = selectedDay(in: data, month: month) {
-                        preloadedDayDetail(day, data: data)
                     }
                 } else if let message = errors[month] {
                     ContentUnavailableView {
@@ -4473,21 +4470,46 @@ struct ModernAttendanceHistoryView: View {
 
 
 
-    private func preloadedSummaryCards(_ data: AttendanceMonth) -> some View {
-        let values: [(String, Int, Color)] = [
-            ("Ngày công", preloadedCount("present", in: data), .green),
-            ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
-            ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
-            ("Thiếu chấm công", incompletePunchCount(in: data), .orange),
-            ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
-        ].filter { $0.1 > 0 }
-        return HStack(spacing: 6) {
-            ForEach(Array(values.enumerated()), id: \.offset) { _, item in
-                summary(item.1, item.0, item.2)
+    @ViewBuilder
+    private func preloadedSummaryCards(_ data: AttendanceMonth, showWorkMetrics: Bool) -> some View {
+        if showWorkMetrics {
+            HStack(spacing: 6) {
+                metricSummary(
+                    AttendanceMetrics.workDayTotalText(AttendanceMetrics.totalWorkDays(data)),
+                    "Tổng ngày công",
+                    .green
+                )
+                metricSummary(
+                    AttendanceMetrics.hourText(
+                        data.days.reduce(0) { $0 + AttendanceMetrics.workMetrics($1, month: data).overtimeHours }
+                    ),
+                    "Tổng giờ tăng ca",
+                    .orange
+                )
+            }
+            .frame(maxWidth: .infinity)
+            .dynamicTypeSize(.xSmall ... .accessibility1)
+        } else {
+            let paidStatuses: Set<String> = ["present", "holiday", "office_day_off"]
+            let values: [(String, Int, Color)] = [
+                ("Đủ công", data.days.filter { dayStatuses($0).contains(where: { paidStatuses.contains($0) }) }.count, .green),
+                ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
+                ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
+                ("Thiếu chấm công", incompletePunchCount(in: data), .orange),
+                ("Nghỉ phép", preloadedCount("leave", in: data), EmployeeRequestKind.leave.color),
+                ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
+                ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
+            ].filter { $0.1 > 0 }
+            if !values.isEmpty {
+                HStack(spacing: 5) {
+                    ForEach(Array(values.enumerated()), id: \.offset) { _, item in
+                        summary(item.1, item.0, item.2)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .dynamicTypeSize(.xSmall ... .accessibility1)
             }
         }
-        .frame(maxWidth: .infinity)
-        .dynamicTypeSize(.xSmall ... .accessibility1)
     }
 
 
@@ -4497,10 +4519,16 @@ struct ModernAttendanceHistoryView: View {
 
 
 
-    private func preloadedCalendarCard(_ data: AttendanceMonth, month: String) -> some View {
-        let cellHeight: CGFloat = showsFullMonthCells ? 78 : 50
+    private func preloadedCalendarCard(
+        _ data: AttendanceMonth,
+        month: String,
+        showWorkMetrics: Bool
+    ) -> some View {
+        let cellHeight: CGFloat = 80
         return VStack(alignment: .leading, spacing: 14) {
-            Text("Lịch chấm công").font(.headline).foregroundStyle(Color.primary)
+            Text(showWorkMetrics ? "Lịch chấm công · Hệ số công / Tăng ca" : "Lịch chấm công")
+                .font(.headline)
+                .foregroundStyle(Color.primary)
             HStack(spacing: 4) {
                 ForEach(["T2", "T3", "T4", "T5", "T6", "T7", "CN"], id: \.self) {
                     Text($0).font(.caption.bold()).foregroundStyle(AppTheme.muted)
@@ -4512,43 +4540,84 @@ struct ModernAttendanceHistoryView: View {
                     Color.clear.frame(height: cellHeight)
                 }
                 ForEach(data.days) { day in
-                    let selected = selectedDay(in: data, month: month)?.date == day.date
-                    Button {
-                        selectedDates[month] = day.date
-                    } label: {
-                        VStack(spacing: showsFullMonthCells ? 3 : 0) {
-                            Text(String(Int(day.date.suffix(2)) ?? 0))
-                                .font(.subheadline.weight(selected ? .bold : .medium))
-                            if showsFullMonthCells {
-                                VStack(spacing: 1) {
-                                    Text(time(day.checkIn))
-                                    Text(time(day.checkOut))
-                                }
-                                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                                    .monospacedDigit()
-                                    .foregroundStyle(Color.primary.opacity(0.72))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
+                    let statuses = dayStatuses(day)
+                    let isHoliday = statuses.contains("holiday")
+                    let isOfficeDayOff = statuses.contains("office_day_off")
+                    let metrics = AttendanceMetrics.workMetrics(day, month: data)
+                    VStack(spacing: 2) {
+                        Text(String(Int(day.date.suffix(2)) ?? 0))
+                            .font(.subheadline.weight(.medium))
+                        if isHoliday || isOfficeDayOff {
+                            Text(isHoliday ? "NL" : "NVP")
+                                .font(.system(size: 11, weight: .bold, design: .rounded))
+                                .foregroundStyle(isHoliday ? Color.green : Color.teal)
+                                .frame(height: 37, alignment: .top)
+                        } else if showWorkMetrics {
+                            VStack(spacing: 1) {
+                                Text(AttendanceMetrics.workFactorText(metrics.coefficient))
+                                Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                             }
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.primary.opacity(0.72))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                        } else {
+                            VStack(spacing: 1) {
+                                Text(time(day.checkIn))
+                                Text(time(day.checkOut))
+                            }
+                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(Color.primary.opacity(0.72))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                         }
-                            .foregroundStyle(dayStatuses(day).contains("absent") ? Self.absentColor : Color.primary)
-                            .frame(maxWidth: .infinity, minHeight: cellHeight)
-                            .background(dayBackground(day))
-                            .clipShape(RoundedRectangle(cornerRadius: 11))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 11)
-                                    .stroke(selected ? Color(red: 0.05, green: 0.25, blue: 0.5) : .clear, lineWidth: 2)
-                            }
                     }
-                    .buttonStyle(.plain)
+                    .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
+                    .frame(maxWidth: .infinity, minHeight: cellHeight)
+                    .background(dayBackground(day))
+                    .clipShape(RoundedRectangle(cornerRadius: 11))
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(
+                        accessibilityLabel(
+                            for: day,
+                            data: data,
+                            showWorkMetrics: showWorkMetrics
+                        )
+                    )
                 }
             }
         }
         .padding(18)
         .background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .onTapGesture {
+            UISelectionFeedbackGenerator().selectionChanged()
+            if workMetricMonths.contains(month) {
+                workMetricMonths.remove(month)
+            } else {
+                workMetricMonths.insert(month)
+            }
+        }
     }
 
+    private func accessibilityLabel(
+        for day: AttendanceDay,
+        data: AttendanceMonth,
+        showWorkMetrics: Bool
+    ) -> String {
+        let dayNumber = Int(day.date.suffix(2)) ?? 0
+        let statuses = dayStatuses(day)
+        if statuses.contains("holiday") { return "Ngày \(dayNumber). Nghỉ lễ" }
+        if statuses.contains("office_day_off") { return "Ngày \(dayNumber). Nghỉ văn phòng" }
+        if showWorkMetrics {
+            let metrics = AttendanceMetrics.workMetrics(day, month: data)
+            return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
+        }
+        return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
+    }
 
 
 
