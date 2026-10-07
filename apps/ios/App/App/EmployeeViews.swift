@@ -4311,6 +4311,9 @@ private struct AttendanceStatementReportView: View {
 @available(iOS 17.0, *)
 struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
+    // Match Android's dedicated holiday violet (#8E3FC5). Keep it separate
+    // from leave/overtime colors and use it consistently for label, fill and border.
+    private static let holidayColor = Color(red: 142.0 / 255.0, green: 63.0 / 255.0, blue: 197.0 / 255.0)
 
 
 
@@ -4397,18 +4400,22 @@ struct ModernAttendanceHistoryView: View {
             Task { await preloadMonth(options[newIndex]) }
         }
         .task {
-            let reports = await session.loadAttendanceReports()
-            releasedMonths = Set(reports.map(\.month))
+            // Hydrate the on-disk month snapshots before the first network await.
+            // Previously the reports request ran first, so a perfectly valid
+            // attendance cache still looked like a cold load on a slow network.
+            hydrateCachedMonths()
             if let index = options.firstIndex(of: selectedMonth) {
                 monthIndex = index
             } else if let first = options.first {
                 selectedMonth = first
                 monthIndex = 0
             }
-            // Paint cached snapshots first, then always revalidate the two
-            // visible months. This keeps navigation fast without serving stale
-            // attendance after a system-side change.
+
+            // Release metadata and attendance revalidation are independent.
+            // Run them together while leaving cached calendar data visible.
+            async let reportsTask = session.loadAttendanceReports()
             await preloadAdjacentMonths(forceNetwork: true)
+            releasedMonths = Set((await reportsTask).map(\.month))
         }
         .task(id: session.attendanceRevision) {
             guard session.attendanceRevision > 0 else { return }
@@ -4416,9 +4423,10 @@ struct ModernAttendanceHistoryView: View {
             // the in-memory cache here caused the page to flash a spinner and
             // made every realtime attendance event feel like a cold load.
             errors.removeAll()
-            let reports = await session.loadAttendanceReports()
-            releasedMonths = Set(reports.map(\.month))
+            hydrateCachedMonths()
+            async let reportsTask = session.loadAttendanceReports()
             await preloadAdjacentMonths(forceNetwork: true)
+            releasedMonths = Set((await reportsTask).map(\.month))
         }
     }
 
@@ -4561,7 +4569,7 @@ struct ModernAttendanceHistoryView: View {
                         if isHoliday || isOfficeDayOff {
                             Text(isHoliday ? "NL" : "NVP")
                                 .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(isHoliday ? Color(red: 0.56, green: 0.25, blue: 0.77) : Color.teal)
+                                .foregroundStyle(isHoliday ? Self.holidayColor : Color.teal)
                                 .frame(height: 37, alignment: .top)
                         } else if showWorkMetrics {
                             VStack(spacing: 1) {
@@ -4589,6 +4597,12 @@ struct ModernAttendanceHistoryView: View {
                     .frame(maxWidth: .infinity, minHeight: cellHeight)
                     .background(dayBackground(day))
                     .clipShape(RoundedRectangle(cornerRadius: 11))
+                    .overlay {
+                        if isHoliday {
+                            RoundedRectangle(cornerRadius: 11)
+                                .stroke(Self.holidayColor.opacity(0.92), lineWidth: 1.5)
+                        }
+                    }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(
                         accessibilityLabel(
@@ -4753,6 +4767,18 @@ struct ModernAttendanceHistoryView: View {
 
 
 
+
+    private func hydrateCachedMonths() {
+        for month in options {
+            guard cache[month] == nil,
+                  let cached = session.cachedAttendanceMonth(month) else { continue }
+            cache[month] = cached
+            if selectedDates[month] == nil {
+                selectedDates[month] = cached.days.first(where: { $0.date == Self.dayValue(Date()) })?.date
+                    ?? cached.days.last?.date
+            }
+        }
+    }
 
     private func preloadMonth(_ month: String, forceNetwork: Bool = false) async {
         // Keep already-rendered data on screen while a refresh is in flight.
@@ -4936,7 +4962,7 @@ struct ModernAttendanceHistoryView: View {
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
-        case "holiday": return Color(red: 0.56, green: 0.25, blue: 0.77).opacity(0.24)
+        case "holiday": return Self.holidayColor.opacity(0.38)
         case "office_day_off": return .teal.opacity(0.24)
         case "weekend": return .gray.opacity(0.13)
         case "not-started": return .gray.opacity(0.18)
