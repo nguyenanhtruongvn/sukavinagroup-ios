@@ -26,6 +26,7 @@ struct ProfileView: View {
     @State private var showPasswordChangeLimit = false
     @State private var legalPage: LegalPage?
     @State private var showSignOutConfirmation = false
+    @State private var displayedManagerName = "Chưa cập nhật"
 
     var body: some View {
         NavigationView {
@@ -45,7 +46,7 @@ struct ProfileView: View {
                         Divider().padding(.leading, 18)
                         ProfileLine(label: "Loại tài khoản", value: accountType)
                         Divider().padding(.leading, 18)
-                        ProfileLine(label: "Quản lý trực tiếp", value: managerDisplayName)
+                        ProfileLine(label: "Quản lý trực tiếp", value: displayedManagerName)
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20))
@@ -187,6 +188,13 @@ struct ProfileView: View {
                 Text("Thao tác này không thể hoàn tác. Tài khoản, dữ liệu cá nhân, đơn từ, lựa chọn món và dữ liệu ứng dụng liên quan sẽ bị xóa. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.")
             }
         }
+        .onAppear { synchronizeDisplayedManagerName(session.profile?.managerFullName) }
+        .onChange(of: session.profile?.employeeCode) { _, _ in
+            synchronizeDisplayedManagerName(session.profile?.managerFullName)
+        }
+        .onChange(of: session.profile?.managerFullName) { _, managerName in
+            synchronizeDisplayedManagerName(managerName)
+        }
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showPasswordChange) {
             PasswordChangeView().environmentObject(session)
@@ -224,10 +232,13 @@ struct ProfileView: View {
         default: return "Nhân viên"
         }
     }
-    private var managerDisplayName: String {
-        let value = session.profile?.managerFullName?
+    private func synchronizeDisplayedManagerName(_ managerName: String?) {
+        let normalizedName = managerName?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return value.isEmpty ? "Chưa cập nhật" : value
+        let nextValue = normalizedName.isEmpty ? "Chưa cập nhật" : normalizedName
+        if displayedManagerName != nextValue {
+            displayedManagerName = nextValue
+        }
     }
 
     private var passwordChangedThisMonth: Bool {
