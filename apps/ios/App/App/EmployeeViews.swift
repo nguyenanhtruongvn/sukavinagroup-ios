@@ -4369,6 +4369,7 @@ private struct AttendanceStatementReportView: View {
                     bold: true
                 )
             }
+            AttendanceCodeLegend()
         }
     }
 
@@ -4414,13 +4415,59 @@ private struct AttendanceStatementReportView: View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Text(title)
                 .font(.subheadline)
-                .foregroundStyle(AppTheme.muted)
+                .foregroundStyle(AttendanceReportValueStyle.hasData(value) ? Color.primary : AppTheme.muted)
             Spacer(minLength: 8)
             Text(value)
                 .font(bold ? .subheadline.bold() : .subheadline.weight(.semibold))
                 .foregroundStyle(AttendanceReportValueStyle.hasData(value) ? color : AppTheme.muted)
                 .multilineTextAlignment(.trailing)
         }
+    }
+}
+
+@available(iOS 17.0, *)
+private struct AttendanceCodeLegend: View {
+    // Shared across current attendance and released monthly statements.
+    // Explanations reflect the HR-approved meaning of each payroll code.
+    private static let notes: [(code: String, meaning: String)] = [
+        ("1", "Làm đủ 1 ngày công 8h"),
+        ("NP/2", "Nửa ngày công, nửa ngày hưởng lương phép năm"),
+        ("RO", "Nghỉ có xin phép không hưởng lương"),
+        ("RO/2", "Nửa ngày công, nửa ngày có xin phép và không hưởng lương"),
+        ("B", "Nghỉ bệnh hưởng lương BHXH chi trả"),
+        ("NP", "Nghỉ phép hưởng lương phép năm"),
+        ("P/2", "Nghỉ cả ngày có đơn, 0,5 ngày hưởng phép năm, 0,5 ngày không lương"),
+        ("NTL", "Nghỉ trừ lương (do nhân sự xác nhận)"),
+        ("CT", "Công tác"),
+        ("NN", "Ngày nghỉ (nghỉ hưởng chế độ, nghỉ bù)"),
+        ("KCC", "Không chấm công"),
+        ("NL", "Nghỉ lễ")
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("Ghi chú:")
+                .font(.subheadline.bold())
+                .italic()
+                .underline()
+                .foregroundStyle(Color.primary)
+
+            ForEach(Self.notes.indices, id: \.self) { index in
+                (Text("\(Self.notes[index].code): ").bold()
+                 + Text(Self.notes[index].meaning).italic())
+                    .font(.subheadline)
+                    .foregroundStyle(Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityLabel(
+                        "\(Self.notes[index].code): \(Self.notes[index].meaning)"
+                    )
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 }
 
@@ -4823,6 +4870,7 @@ struct ModernAttendanceHistoryView: View {
             attendanceReportCard(title: "Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
                 reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(violations) lần", color: .orange, bold: true)
             }
+            AttendanceCodeLegend()
         }
     }
 
@@ -4838,7 +4886,9 @@ struct ModernAttendanceHistoryView: View {
 
     private func reportRow(_ title: String, _ value: String, color: Color, bold: Bool = false) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.subheadline).foregroundStyle(AppTheme.muted)
+            Text(title)
+                .font(.subheadline)
+                .foregroundStyle(AttendanceReportValueStyle.hasData(value) ? Color.primary : AppTheme.muted)
             Spacer(minLength: 12)
             Text(value)
                 .font(bold ? .subheadline.bold() : .subheadline.weight(.semibold))
