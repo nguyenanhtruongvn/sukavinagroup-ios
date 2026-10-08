@@ -3921,6 +3921,26 @@ private enum AttendanceMetrics {
         return serverStatuses
     }
 
+    // A calendar note is an attendance/payroll status, not proof of worked
+    // hours. Keep notes visible without manufacturing 0/0 hour lines.
+    static func calendarNote(_ day: AttendanceDay) -> String? {
+        if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
+        let values = statuses(day)
+        if values.contains("holiday") { return "NL" }
+        if values.contains("office_day_off") { return "NVP" }
+        if values.contains("absent"), day.checkIn == nil, day.checkOut == nil {
+            return "KCC"
+        }
+        return nil
+    }
+
+    static func hasCompletePunchPair(_ day: AttendanceDay) -> Bool {
+        guard let start = instant(day.checkIn), let end = instant(day.checkOut) else {
+            return false
+        }
+        return end > start
+    }
+
     static func workMetrics(_ day: AttendanceDay, month: AttendanceMonth) -> AttendanceWorkMetrics {
         let start = scheduledDate(day.date, time: day.startTime ?? month.startTime)
         let end = scheduledDate(day.date, time: day.endTime ?? month.endTime)
@@ -4634,26 +4654,30 @@ struct ModernAttendanceHistoryView: View {
                 ForEach(data.days) { day in
                     let statuses = dayStatuses(day)
                     let isHoliday = statuses.contains("holiday")
-                    let isOfficeDayOff = statuses.contains("office_day_off")
+                    let note = AttendanceMetrics.calendarNote(day)
+                    let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
                     let metrics = AttendanceMetrics.workMetrics(day, month: data)
                     VStack(spacing: 2) {
                         Text(String(Int(day.date.suffix(2)) ?? 0))
                             .font(.subheadline.weight(.medium))
-                        if isHoliday || isOfficeDayOff {
+                        if let note {
                             VStack(spacing: 1) {
-                                Text(showWorkMetrics ? (day.workdayCode ?? (isHoliday ? "NL" : "NVP")) : (isHoliday ? "NL" : "NVP"))
+                                Text(note)
                                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(isHoliday ? Self.holidayColor : Color.teal)
-                                if isHoliday && showWorkMetrics && metrics.overtimeHours > 0 {
+                                    .foregroundStyle(isHoliday ? Self.holidayColor : Color.primary)
+                                // Only a real, valid pair of punches can
+                                // produce holiday overtime. NL alone cannot.
+                                if isHoliday && showWorkMetrics && hasCompletePunchPair
+                                    && metrics.overtimeHours > 0 {
                                     Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
                                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                                         .foregroundStyle(Self.holidayColor)
                                 }
                             }
                             .frame(height: 37, alignment: .top)
-                        } else if showWorkMetrics {
+                        } else if showWorkMetrics && hasCompletePunchPair {
                             VStack(spacing: 1) {
-                                Text(day.workdayCode ?? AttendanceMetrics.workFactorText(metrics.coefficient))
+                                Text(AttendanceMetrics.workFactorText(metrics.coefficient))
                                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                             }
                             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
@@ -4661,7 +4685,7 @@ struct ModernAttendanceHistoryView: View {
                             .foregroundStyle(Color.primary.opacity(0.72))
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
-                        } else {
+                        } else if !showWorkMetrics && (day.checkIn != nil || day.checkOut != nil) {
                             VStack(spacing: 1) {
                                 Text(time(day.checkIn))
                                 Text(time(day.checkOut))
@@ -4708,17 +4732,20 @@ struct ModernAttendanceHistoryView: View {
         showWorkMetrics: Bool
     ) -> String {
         let dayNumber = Int(day.date.suffix(2)) ?? 0
-        let statuses = dayStatuses(day)
-        if statuses.contains("holiday") {
-            let overtime = showWorkMetrics ? AttendanceMetrics.workMetrics(day, month: data).overtimeHours : 0
-            return "Ngày \(dayNumber). Nghỉ lễ" + (overtime > 0
+        if let note = AttendanceMetrics.calendarNote(day) {
+            let hasPair = AttendanceMetrics.hasCompletePunchPair(day)
+            let isHoliday = dayStatuses(day).contains("holiday")
+            let overtime = hasPair && isHoliday && showWorkMetrics
+                ? AttendanceMetrics.workMetrics(day, month: data).overtimeHours : 0
+            return "Ngày \(dayNumber). Mã công \(note)" + (overtime > 0
                 ? ". Tăng ca \(AttendanceMetrics.hourText(overtime)) giờ" : "")
         }
-        if statuses.contains("office_day_off") { return "Ngày \(dayNumber). Nghỉ văn phòng" }
-        if showWorkMetrics {
+        if showWorkMetrics && AttendanceMetrics.hasCompletePunchPair(day) {
             let metrics = AttendanceMetrics.workMetrics(day, month: data)
-            let result = day.workdayCode ?? AttendanceMetrics.workFactorText(metrics.coefficient)
-            return "Ngày \(dayNumber). Mã công \(result), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
+            return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
+        }
+        if day.checkIn == nil && day.checkOut == nil {
+            return "Ngày \(dayNumber). Không có lượt chấm công"
         }
         return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
     }
