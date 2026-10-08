@@ -4237,13 +4237,12 @@ private enum AttendanceMetrics {
     }
 
     static func missingPunchCount(_ month: AttendanceMonth) -> Int {
+        month.days.filter { $0.punchCount == 1 }.count
+    }
+
+    static func absenceCount(_ month: AttendanceMonth) -> Int {
         month.days.filter { day in
-            let dayStatuses = statuses(day)
-            return day.punchCount == 1
-                || dayStatuses.contains("absent")
-                || dayStatuses.contains("missing_checkin")
-                || dayStatuses.contains("missing_checkout")
-                || dayStatuses.contains("incomplete")
+            day.punchCount == 0 && statuses(day).contains("absent")
         }.count
     }
 
@@ -4900,8 +4899,9 @@ struct ModernAttendanceHistoryView: View {
                 ("Đủ công", AttendanceMetrics.paidDayCount(data), .green),
                 ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
                 ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
+                ("Quên chấm công", AttendanceMetrics.missingPunchCount(data), .orange),
                 ("Nghỉ phép", preloadedCount("leave", in: data), EmployeeRequestKind.leave.color),
-                ("Vắng", AttendanceMetrics.missingPunchCount(data), Self.absentColor),
+                ("Vắng", AttendanceMetrics.absenceCount(data), Self.absentColor),
                 ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
             ].filter { $0.1 > 0 }
             if !values.isEmpty {
