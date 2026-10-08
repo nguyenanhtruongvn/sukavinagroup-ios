@@ -4813,14 +4813,20 @@ struct ModernAttendanceHistoryView: View {
 
     private func preloadedMonthPage(_ index: Int) -> some View {
         let month = options[index]
-        let data = cache[month]
+        // Read the persisted month during the first body evaluation. Waiting
+        // for hydrateCachedMonths() in .task caused a brief loading view even
+        // though the statement had already been cached on this device.
+        let data = cache[month] ?? session.cachedAttendanceMonth(month)
         let showWorkMetrics = workMetricMonths.contains(month)
+        let visibleReleasedMonths = releasedMonths.isEmpty
+            ? Set(session.cachedAttendanceReports().map(\.month))
+            : releasedMonths
         return ScrollView {
             VStack(spacing: 14) {
                 if let data {
                     preloadedSummaryCards(data, showWorkMetrics: showWorkMetrics)
                     preloadedCalendarCard(data, month: month, showWorkMetrics: showWorkMetrics)
-                    if releasedMonths.contains(month) {
+                    if visibleReleasedMonths.contains(month) {
                         preloadedMonthlyDetails(data)
                     }
                 } else if let message = errors[month] {
