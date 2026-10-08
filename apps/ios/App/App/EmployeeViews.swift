@@ -3880,6 +3880,30 @@ private struct AttendanceWorkMetrics {
 
 private enum AttendanceMetrics {
     static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
+    private static let vietnamCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = vietnamTimeZone
+        return calendar
+    }()
+    private static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = vietnamTimeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    // A public holiday takes precedence over Sunday. These categories are
+    // mutually exclusive, so every minute is added to the monthly total once.
+    private static func overtimeCategory(_ day: AttendanceDay) -> String {
+        let values = statuses(day)
+        if values.contains("holiday") { return "holiday" }
+        let sunday = dayFormatter.date(from: day.date).map {
+            vietnamCalendar.component(.weekday, from: $0) == 1
+        } ?? false
+        if sunday || values.contains("overtime") { return "sunday" }
+        return "regular"
+    }
 
     static func statuses(_ day: AttendanceDay) -> [String] {
         let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
@@ -3929,27 +3953,39 @@ private enum AttendanceMetrics {
     }
 
     static func overtimeHours(_ day: AttendanceDay, defaultEndTime: String?) -> Double {
-        guard let checkOut = instant(day.checkOut),
-              let scheduledEnd = scheduledDate(day.date, time: day.endTime ?? defaultEndTime) else {
-            return 0
+        // Never infer paid overtime from a single punch or an invalid interval.
+        guard let checkIn = instant(day.checkIn),
+              let checkOut = instant(day.checkOut),
+              checkOut > checkIn else { return 0 }
+
+        let minutes: Int
+        if overtimeCategory(day) == "regular" {
+            // Weekdays only count time after the scheduled shift has ended.
+            guard let scheduledEnd = scheduledDate(day.date, time: day.endTime ?? defaultEndTime) else {
+                return 0
+            }
+            minutes = max(0, Int(checkOut.timeIntervalSince(scheduledEnd) / 60))
+        } else {
+            // All net working time on Sundays/holidays is overtime, not only
+            // the time after the usual shift. Match the one-hour lunch break
+            // already excluded by the work-day coefficient for full shifts.
+            let elapsed = max(0, Int(checkOut.timeIntervalSince(checkIn) / 60))
+            minutes = max(0, elapsed - (elapsed >= 8 * 60 ? 60 : 0))
         }
-        let minutes = max(0, Int(checkOut.timeIntervalSince(scheduledEnd) / 60))
         guard minutes >= 30 else { return 0 }
         return Double(minutes / 30) * 0.5
     }
 
     static func regularOvertimeHours(_ month: AttendanceMonth) -> Double {
         month.days
-            .filter {
-                let values = statuses($0)
-                return !values.contains("holiday") && !values.contains("overtime")
-            }
+            .filter { overtimeCategory($0) == "regular" }
             .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
     }
 
     static func overtimeHours(for status: String, in month: AttendanceMonth) -> Double {
-        month.days
-            .filter { statuses($0).contains(status) }
+        let category = status == "overtime" ? "sunday" : status
+        return month.days
+            .filter { overtimeCategory($0) == category }
             .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
     }
 
