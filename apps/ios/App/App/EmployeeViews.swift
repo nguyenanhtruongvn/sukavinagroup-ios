@@ -4776,48 +4776,58 @@ struct ModernAttendanceHistoryView: View {
                     )
                     let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
                     let metrics = AttendanceMetrics.workMetrics(day, month: data)
+                    // Reserve the same top date row and detail area for every
+                    // day. Without this, an empty work-metrics cell collapses
+                    // to its date and SwiftUI vertically centres it.
                     VStack(spacing: 2) {
                         Text(String(Int(day.date.suffix(2)) ?? 0))
                             .font(.subheadline.weight(.medium))
-                        if let note {
-                            VStack(spacing: 1) {
-                                Text(note)
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                                    .foregroundStyle(isHoliday ? Self.holidayColor : Color.primary)
-                                // Only a real, valid pair of punches can
-                                // produce holiday overtime. NL alone cannot.
-                                if isHoliday && showWorkMetrics && hasCompletePunchPair
-                                    && metrics.overtimeHours > 0 {
-                                    Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
-                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(Self.holidayColor)
+                            .frame(height: 20, alignment: .top)
+                        Group {
+                            if let note {
+                                VStack(spacing: 1) {
+                                    Text(note)
+                                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                                        .foregroundStyle(isHoliday ? Self.holidayColor : Color.primary)
+                                    // Only a real, valid pair of punches can
+                                    // produce holiday overtime. NL alone cannot.
+                                    if isHoliday && showWorkMetrics && hasCompletePunchPair
+                                        && metrics.overtimeHours > 0 {
+                                        Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
+                                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(Self.holidayColor)
+                                    }
                                 }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                            } else if showWorkMetrics && hasCompletePunchPair {
+                                VStack(spacing: 1) {
+                                    Text(AttendanceMetrics.workFactorText(metrics.coefficient))
+                                    Text(AttendanceMetrics.hourText(metrics.overtimeHours))
+                                }
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(Color.primary.opacity(0.72))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            } else if !showWorkMetrics {
+                                VStack(spacing: 1) {
+                                    Text(time(day.checkIn))
+                                    Text(time(day.checkOut))
+                                }
+                                .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(Color.primary.opacity(0.72))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            } else {
+                                Color.clear
                             }
-                            .frame(height: 37, alignment: .top)
-                        } else if showWorkMetrics && hasCompletePunchPair {
-                            VStack(spacing: 1) {
-                                Text(AttendanceMetrics.workFactorText(metrics.coefficient))
-                                Text(AttendanceMetrics.hourText(metrics.overtimeHours))
-                            }
-                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(Color.primary.opacity(0.72))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                        } else if !showWorkMetrics {
-                            VStack(spacing: 1) {
-                                Text(time(day.checkIn))
-                                Text(time(day.checkOut))
-                            }
-                            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(Color.primary.opacity(0.72))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
                         }
+                        .frame(maxWidth: .infinity, height: 37, alignment: .top)
+                        Spacer(minLength: 0)
                     }
                     .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
-                    .frame(maxWidth: .infinity, minHeight: cellHeight)
+                    .frame(maxWidth: .infinity, minHeight: cellHeight, alignment: .top)
                     .background(dayBackground(day))
                     .clipShape(RoundedRectangle(cornerRadius: 11))
                     .accessibilityElement(children: .ignore)
