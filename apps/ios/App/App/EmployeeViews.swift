@@ -3944,33 +3944,47 @@ private enum AttendanceMetrics {
             recognizedMinutes = min(fullWorkMinutes, max(0, fullWorkMinutes - latePenalty - earlyPenalty))
         }
 
-        let coefficient = fullWorkMinutes == 0
+        let overtime = overtimeHours(
+            day, defaultStartTime: month.startTime, defaultEndTime: month.endTime
+        )
+        // Sunday work only accrues overtime. A holiday remains a paid day
+        // when nobody worked, but must not add a second workday when overtime
+        // was recorded on that holiday.
+        let excludedFromWorkdays = overtimeCategory(day) == "sunday"
+            || (overtimeCategory(day) == "holiday" && overtime > 0)
+        let coefficient = (fullWorkMinutes == 0 || excludedFromWorkdays)
             ? 0
             : Double(recognizedMinutes) / Double(fullWorkMinutes)
         return AttendanceWorkMetrics(
             coefficient: coefficient,
-            overtimeHours: overtimeHours(day, defaultEndTime: month.endTime)
+            overtimeHours: overtime
         )
     }
 
-    static func overtimeHours(_ day: AttendanceDay, defaultEndTime: String?) -> Double {
-        // Never infer paid overtime from a single punch or an invalid interval.
+    static func overtimeHours(
+        _ day: AttendanceDay, defaultStartTime: String?, defaultEndTime: String?
+    ) -> Double {
+        // Two valid punches are required to recognize overtime.
         guard let checkIn = instant(day.checkIn),
               let checkOut = instant(day.checkOut),
               checkOut > checkIn else { return 0 }
 
         let minutes: Int
         if overtimeCategory(day) == "regular" {
-            // Weekdays only count time after the scheduled shift has ended.
+            // Weekdays only count time after the employee's scheduled shift.
             guard let scheduledEnd = scheduledDate(day.date, time: day.endTime ?? defaultEndTime) else {
                 return 0
             }
             minutes = max(0, Int(checkOut.timeIntervalSince(scheduledEnd) / 60))
         } else {
-            // All net working time on Sundays/holidays is overtime, not only
-            // the time after the usual shift. Match the one-hour lunch break
-            // already excluded by the work-day coefficient for full shifts.
-            let elapsed = max(0, Int(checkOut.timeIntervalSince(checkIn) / 60))
+            // On Sunday/holidays overtime begins at the configured shift start
+            // (employee override first, then department schedule), never at
+            // an earlier check-in. A missing schedule must not create overtime.
+            guard let scheduledStart = scheduledDate(day.date, time: day.startTime ?? defaultStartTime) else {
+                return 0
+            }
+            let effectiveStart = max(checkIn, scheduledStart)
+            let elapsed = max(0, Int(checkOut.timeIntervalSince(effectiveStart) / 60))
             minutes = max(0, elapsed - (elapsed >= 8 * 60 ? 60 : 0))
         }
         guard minutes >= 30 else { return 0 }
@@ -3980,31 +3994,42 @@ private enum AttendanceMetrics {
     static func regularOvertimeHours(_ month: AttendanceMonth) -> Double {
         month.days
             .filter { overtimeCategory($0) == "regular" }
-            .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
+            .reduce(0) { $0 + overtimeHours($1, defaultStartTime: month.startTime, defaultEndTime: month.endTime) }
     }
 
     static func overtimeHours(for status: String, in month: AttendanceMonth) -> Double {
         let category = status == "overtime" ? "sunday" : status
         return month.days
             .filter { overtimeCategory($0) == category }
-            .reduce(0) { $0 + overtimeHours($1, defaultEndTime: month.endTime) }
+            .reduce(0) { $0 + overtimeHours($1, defaultStartTime: month.startTime, defaultEndTime: month.endTime) }
+    }
+
+    static func isPaidDay(_ day: AttendanceDay, month: AttendanceMonth) -> Bool {
+        let values = statuses(day)
+        if overtimeCategory(day) == "sunday" { return false }
+        if overtimeCategory(day) == "holiday",
+           overtimeHours(
+               day, defaultStartTime: month.startTime, defaultEndTime: month.endTime
+           ) > 0 {
+            return false
+        }
+        return values.contains("present")
+            || values.contains("holiday")
+            || values.contains("office_day_off")
     }
 
     static func totalWorkDays(_ month: AttendanceMonth) -> Double {
         month.days.reduce(0) { total, day in
             let values = statuses(day)
             if values.contains("holiday") || values.contains("office_day_off") {
-                return total + 1
+                return total + (isPaidDay(day, month: month) ? 1 : 0)
             }
             return total + workMetrics(day, month: month).coefficient
         }
     }
 
     static func paidDayCount(_ month: AttendanceMonth) -> Int {
-        let paid: Set<String> = ["present", "holiday", "office_day_off"]
-        return month.days.filter { day in
-            statuses(day).contains(where: { paid.contains($0) })
-        }.count
+        month.days.filter { isPaidDay($0, month: month) }.count
     }
 
     static func missingPunchCount(_ month: AttendanceMonth) -> Int {
@@ -4548,9 +4573,8 @@ struct ModernAttendanceHistoryView: View {
             .frame(maxWidth: .infinity)
             .dynamicTypeSize(.xSmall ... .accessibility1)
         } else {
-            let paidStatuses: Set<String> = ["present", "holiday", "office_day_off"]
             let values: [(String, Int, Color)] = [
-                ("Đủ công", data.days.filter { dayStatuses($0).contains(where: { paidStatuses.contains($0) }) }.count, .green),
+                ("Đủ công", AttendanceMetrics.paidDayCount(data), .green),
                 ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
                 ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
                 ("Thiếu chấm công", incompletePunchCount(in: data), .orange),
