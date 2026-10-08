@@ -2677,6 +2677,9 @@ private struct PreloadedAttendanceDayCell: View {
         let dayNumber = Int(day.date.suffix(2)) ?? 0
 
         return VStack(spacing: 2) {
+            // Keep the date/detail blocks stable while distributing the spare
+            // cell height evenly above and below them.
+            Spacer(minLength: 0)
             Text(String(dayNumber))
                 .font(.subheadline.weight(.medium))
                 .frame(height: 20)
@@ -2689,7 +2692,7 @@ private struct PreloadedAttendanceDayCell: View {
             Spacer(minLength: 0)
         }
         .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
-        .frame(maxWidth: .infinity, minHeight: cellHeight, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: cellHeight)
         .background(background(for: statuses))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .ignore)
