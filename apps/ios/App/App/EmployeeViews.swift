@@ -4239,7 +4239,7 @@ private enum AttendanceMetrics {
     static func missingPunchCount(_ month: AttendanceMonth) -> Int {
         month.days.filter { day in
             let dayStatuses = statuses(day)
-            day.punchCount == 1
+            return day.punchCount == 1
                 || dayStatuses.contains("absent")
                 || dayStatuses.contains("missing_checkin")
                 || dayStatuses.contains("missing_checkout")
