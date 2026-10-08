@@ -477,7 +477,7 @@ struct Dashboard: Codable {
     let employeeCode: String
     let fullName: String
     let role: String
-    let remainingLeaveDays: Int
+    let remainingLeaveDays: Double
     let attendanceStatus: String
     let payrollStatus: String
     let name: String
@@ -566,12 +566,12 @@ struct AttendanceMonth: Codable {
 }
 
 struct AttendanceLeaveSummary: Codable {
-    let openingBalance: Int
-    let accruedDays: Int
-    let usedDays: Int
-    let unpaidDays: Int
-    let sickDays: Int
-    let closingBalance: Int
+    let openingBalance: Double
+    let accruedDays: Double
+    let usedDays: Double
+    let unpaidDays: Double
+    let sickDays: Double
+    let closingBalance: Double
 }
 
 struct AttendanceReport: Codable, Identifiable {
@@ -592,6 +592,10 @@ struct AttendanceDay: Codable, Identifiable {
     let endTime: String?
     let sources: [String]?
     let punches: [AttendancePunch]?
+    // Additive API fields: old cached responses without them remain decodable.
+    let workdayCode: String?
+    let workdayFactor: Double?
+    let overrideCode: String?
     var id: String { date }
 }
 
