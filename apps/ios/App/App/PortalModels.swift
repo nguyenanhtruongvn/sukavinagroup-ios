@@ -478,6 +478,7 @@ struct Dashboard: Codable {
     let fullName: String
     let role: String
     let remainingLeaveDays: Double
+    let remainingLeaveDaysExact: Double?
     let attendanceStatus: String
     let payrollStatus: String
     let name: String
@@ -563,6 +564,7 @@ struct AttendanceMonth: Codable {
     let department: String?
     let days: [AttendanceDay]
     let leaveSummary: AttendanceLeaveSummary?
+    let leaveSummaryExact: AttendanceLeaveSummary?
 }
 
 struct AttendanceLeaveSummary: Codable {
