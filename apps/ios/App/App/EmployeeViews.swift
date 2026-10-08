@@ -3934,6 +3934,18 @@ private enum AttendanceMetrics {
         return nil
     }
 
+    // The standard calendar shows punch times, not payroll/leave codes.
+    // Holidays and office days off keep their original permanent labels.
+    static func calendarDisplayNote(
+        _ day: AttendanceDay, showWorkMetrics: Bool
+    ) -> String? {
+        if showWorkMetrics { return calendarNote(day) }
+        let values = statuses(day)
+        if values.contains("holiday") { return "NL" }
+        if values.contains("office_day_off") { return "NVP" }
+        return nil
+    }
+
     static func hasCompletePunchPair(_ day: AttendanceDay) -> Bool {
         guard let start = instant(day.checkIn), let end = instant(day.checkOut) else {
             return false
@@ -4654,7 +4666,9 @@ struct ModernAttendanceHistoryView: View {
                 ForEach(data.days) { day in
                     let statuses = dayStatuses(day)
                     let isHoliday = statuses.contains("holiday")
-                    let note = AttendanceMetrics.calendarNote(day)
+                    let note = AttendanceMetrics.calendarDisplayNote(
+                        day, showWorkMetrics: showWorkMetrics
+                    )
                     let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
                     let metrics = AttendanceMetrics.workMetrics(day, month: data)
                     VStack(spacing: 2) {
@@ -4685,7 +4699,7 @@ struct ModernAttendanceHistoryView: View {
                             .foregroundStyle(Color.primary.opacity(0.72))
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
-                        } else if !showWorkMetrics && (day.checkIn != nil || day.checkOut != nil) {
+                        } else if !showWorkMetrics {
                             VStack(spacing: 1) {
                                 Text(time(day.checkIn))
                                 Text(time(day.checkOut))
@@ -4732,7 +4746,9 @@ struct ModernAttendanceHistoryView: View {
         showWorkMetrics: Bool
     ) -> String {
         let dayNumber = Int(day.date.suffix(2)) ?? 0
-        if let note = AttendanceMetrics.calendarNote(day) {
+        if let note = AttendanceMetrics.calendarDisplayNote(
+            day, showWorkMetrics: showWorkMetrics
+        ) {
             let hasPair = AttendanceMetrics.hasCompletePunchPair(day)
             let isHoliday = dayStatuses(day).contains("holiday")
             let overtime = hasPair && isHoliday && showWorkMetrics
@@ -4740,14 +4756,14 @@ struct ModernAttendanceHistoryView: View {
             return "Ngày \(dayNumber). Mã công \(note)" + (overtime > 0
                 ? ". Tăng ca \(AttendanceMetrics.hourText(overtime)) giờ" : "")
         }
-        if showWorkMetrics && AttendanceMetrics.hasCompletePunchPair(day) {
+        if !showWorkMetrics {
+            return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
+        }
+        if AttendanceMetrics.hasCompletePunchPair(day) {
             let metrics = AttendanceMetrics.workMetrics(day, month: data)
             return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
         }
-        if day.checkIn == nil && day.checkOut == nil {
-            return "Ngày \(dayNumber). Không có lượt chấm công"
-        }
-        return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
+        return "Ngày \(dayNumber). Không đủ cặp chấm công để tính giờ làm hoặc tăng ca"
     }
 
 
