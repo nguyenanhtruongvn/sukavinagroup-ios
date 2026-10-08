@@ -4917,7 +4917,6 @@ struct ModernAttendanceHistoryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    @ViewBuilder
     private func calendarCellDetail(
         day: AttendanceDay,
         month: AttendanceMonth,
@@ -4925,10 +4924,10 @@ struct ModernAttendanceHistoryView: View {
         isHoliday: Bool,
         hasCompletePunchPair: Bool,
         showWorkMetrics: Bool
-    ) -> some View {
+    ) -> AnyView {
         let metrics = AttendanceMetrics.workMetrics(day, month: month)
         if let note {
-            VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 1) {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(isHoliday ? Self.holidayColor : Color.primary)
@@ -4938,9 +4937,9 @@ struct ModernAttendanceHistoryView: View {
                         .foregroundStyle(Self.holidayColor)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(maxWidth: .infinity, alignment: .center))
         } else if showWorkMetrics && hasCompletePunchPair {
-            VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 1) {
                 Text(AttendanceMetrics.workFactorText(metrics.coefficient))
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
             }
@@ -4948,9 +4947,9 @@ struct ModernAttendanceHistoryView: View {
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
-            .minimumScaleFactor(0.7)
+            .minimumScaleFactor(0.7))
         } else if !showWorkMetrics {
-            VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 1) {
                 Text(time(day.checkIn))
                 Text(time(day.checkOut))
             }
@@ -4958,9 +4957,9 @@ struct ModernAttendanceHistoryView: View {
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
-            .minimumScaleFactor(0.7)
+            .minimumScaleFactor(0.7))
         } else {
-            Color.clear
+            return AnyView(Color.clear)
         }
     }
 
