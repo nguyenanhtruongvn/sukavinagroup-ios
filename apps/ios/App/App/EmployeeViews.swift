@@ -3878,6 +3878,18 @@ private struct AttendanceWorkMetrics {
     let overtimeHours: Double
 }
 
+// Only non-zero numeric quantities and their units receive an accent.
+// The string values here are formatted locally as "0 ngày", "1.5 giờ", etc.
+private enum AttendanceReportValueStyle {
+    static func hasData(_ value: String) -> Bool {
+        guard let first = value.split(separator: " ").first,
+              let amount = Double(first.replacingOccurrences(of: ",", with: ".")) else {
+            return false
+        }
+        return abs(amount) > 0.000_001
+    }
+}
+
 private enum AttendanceMetrics {
     static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
     private static let vietnamCalendar: Calendar = {
@@ -4326,12 +4338,12 @@ private struct AttendanceStatementReportView: View {
                 )
             }
 
-            reportCard("Chi tiết công", icon: "doc.text.fill", color: AppTheme.red) {
+            reportCard("Chi tiết công", icon: "doc.text.fill", color: AppTheme.muted) {
                 reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
                 reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
             }
 
-            reportCard("Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
+            reportCard("Chi tiết tăng ca", icon: "clock.fill", color: AppTheme.muted) {
                 reportRow("Tăng ca thường", "\(AttendanceMetrics.hourText(regularOvertime)) giờ", color: .orange)
                 reportRow("Tăng ca chủ nhật", "\(AttendanceMetrics.hourText(sundayOvertime)) giờ", color: .orange)
                 reportRow("Tăng ca lễ", "\(AttendanceMetrics.hourText(holidayOvertime)) giờ", color: .orange)
@@ -4339,12 +4351,12 @@ private struct AttendanceStatementReportView: View {
                 reportRow("Tổng tăng ca", "\(AttendanceMetrics.hourText(totalOvertime)) giờ", color: AppTheme.red, bold: true)
             }
 
-            reportCard("Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
-                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(leave?.openingBalance ?? 0)) ngày", color: AppTheme.muted)
+            reportCard("Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: AppTheme.muted) {
+                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(leave?.openingBalance ?? 0)) ngày", color: .green)
                 reportRow("Số ngày phép được hưởng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.accruedDays ?? 0)) ngày", color: .green)
                 reportRow("Số ngày phép đã dùng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.usedDays ?? Double(leaveDays))) ngày", color: .blue)
-                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.unpaidDays ?? Double(absentDays))) ngày", color: AppTheme.muted)
-                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.sickDays ?? 0)) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.unpaidDays ?? Double(absentDays))) ngày", color: .orange)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.sickDays ?? 0)) ngày", color: .blue)
                 Divider()
                 reportRow("Số phép còn lại trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.closingBalance ?? remainingLeaveDays)) ngày", color: .green, bold: true)
             }
@@ -4353,7 +4365,7 @@ private struct AttendanceStatementReportView: View {
                 reportRow(
                     "Tổng số lần quên chấm công / đi trễ / về sớm",
                     "\(violations) lần",
-                    color: AppTheme.muted,
+                    color: .orange,
                     bold: true
                 )
             }
@@ -4406,7 +4418,7 @@ private struct AttendanceStatementReportView: View {
             Spacer(minLength: 8)
             Text(value)
                 .font(bold ? .subheadline.bold() : .subheadline.weight(.semibold))
-                .foregroundStyle(color)
+                .foregroundStyle(AttendanceReportValueStyle.hasData(value) ? color : AppTheme.muted)
                 .multilineTextAlignment(.trailing)
         }
     }
@@ -4788,28 +4800,28 @@ struct ModernAttendanceHistoryView: View {
         let totalOvertime = regularOvertime + sundayOvertime + holidayOvertime
         let violations = AttendanceMetrics.violationCount(data)
         return VStack(alignment: .leading, spacing: 14) {
-            attendanceReportCard(title: "Chi tiết công", icon: "doc.text.fill", color: .red) {
+            attendanceReportCard(title: "Chi tiết công", icon: "doc.text.fill", color: AppTheme.muted) {
                 reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
                 reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
             }
-            attendanceReportCard(title: "Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
+            attendanceReportCard(title: "Chi tiết tăng ca", icon: "clock.fill", color: AppTheme.muted) {
                 reportRow("Tăng ca thường", "\(AttendanceMetrics.hourText(regularOvertime)) giờ", color: .orange)
                 reportRow("Tăng ca chủ nhật", "\(AttendanceMetrics.hourText(sundayOvertime)) giờ", color: .orange)
                 reportRow("Tăng ca lễ", "\(AttendanceMetrics.hourText(holidayOvertime)) giờ", color: .orange)
                 Divider()
                 reportRow("Tổng tăng ca", "\(AttendanceMetrics.hourText(totalOvertime)) giờ", color: AppTheme.red, bold: true)
             }
-            attendanceReportCard(title: "Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
-                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(leave?.openingBalance ?? 0)) ngày", color: AppTheme.muted)
+            attendanceReportCard(title: "Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: AppTheme.muted) {
+                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(leave?.openingBalance ?? 0)) ngày", color: .green)
                 reportRow("Số ngày phép được hưởng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.accruedDays ?? 0)) ngày", color: .green)
                 reportRow("Số ngày phép đã dùng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.usedDays ?? 0)) ngày", color: .blue)
-                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.unpaidDays ?? 0)) ngày", color: AppTheme.muted)
-                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.sickDays ?? 0)) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.unpaidDays ?? 0)) ngày", color: .orange)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.sickDays ?? 0)) ngày", color: .blue)
                 Divider()
                 reportRow("Số phép còn lại trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.closingBalance ?? 0)) ngày", color: .green, bold: true)
             }
             attendanceReportCard(title: "Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
-                reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(violations) lần", color: AppTheme.muted, bold: true)
+                reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(violations) lần", color: .orange, bold: true)
             }
         }
     }
@@ -4828,7 +4840,9 @@ struct ModernAttendanceHistoryView: View {
         HStack(alignment: .firstTextBaseline) {
             Text(title).font(.subheadline).foregroundStyle(AppTheme.muted)
             Spacer(minLength: 12)
-            Text(value).font(bold ? .subheadline.bold() : .subheadline.weight(.semibold)).foregroundStyle(color)
+            Text(value)
+                .font(bold ? .subheadline.bold() : .subheadline.weight(.semibold))
+                .foregroundStyle(AttendanceReportValueStyle.hasData(value) ? color : AppTheme.muted)
         }
     }
 
