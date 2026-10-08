@@ -3883,7 +3883,7 @@ private struct AttendanceWorkMetrics {
 private enum AttendanceReportValueStyle {
     static func hasData(_ value: String) -> Bool {
         guard let first = value.split(separator: " ").first,
-              let amount = Double(first.replacingOccurrences(of: ",", with: ".")) else {
+              let amount = Double(String(first).replacingOccurrences(of: ",", with: ".")) else {
             return false
         }
         return abs(amount) > 0.000_001
