@@ -4310,13 +4310,17 @@ private struct AttendanceStatementListView: View {
     @State private var isLoading = true
 
     var body: some View {
+        // Read the persisted snapshot during the first body evaluation, before
+        // SwiftUI starts the asynchronous refresh task. This avoids a visible
+        // loading flash when the employee has already opened this screen.
+        let displayedReports = reports.isEmpty ? session.cachedAttendanceReports() : reports
         ScrollView {
             LazyVStack(spacing: 12) {
-                if isLoading && reports.isEmpty {
+                if isLoading && displayedReports.isEmpty {
                     ProgressView("Đang tải bảng công...")
                         .tint(AppTheme.red)
                         .frame(maxWidth: .infinity, minHeight: 220)
-                } else if reports.isEmpty {
+                } else if displayedReports.isEmpty {
                     ContentUnavailableView(
                         "Chưa có bảng công",
                         systemImage: "calendar.badge.clock",
@@ -4324,7 +4328,7 @@ private struct AttendanceStatementListView: View {
                     )
                     .frame(maxWidth: .infinity, minHeight: 260)
                 } else {
-                    ForEach(reports.sorted { $0.month > $1.month }) { report in
+                    ForEach(displayedReports.sorted { $0.month > $1.month }) { report in
                         NavigationLink(destination: ModernAttendanceHistoryView(initialMonth: report.month, restrictToInitialMonth: true)) {
                             HStack(spacing: 14) {
                                 Image(systemName: "calendar")
@@ -4378,11 +4382,12 @@ private struct AttendanceStatementDetailView: View {
     @State private var errorMessage: String?
 
     var body: some View {
+        let displayedReport = report ?? session.cachedAttendanceMonth(month)
         ScrollView {
             Group {
-                if let report {
+                if let displayedReport {
                     AttendanceStatementReportView(
-                        month: report,
+                        month: displayedReport,
                         remainingLeaveDays: session.dashboard?.remainingLeaveDaysExact ?? session.dashboard?.remainingLeaveDays ?? 0
                     )
                 } else if let errorMessage {
