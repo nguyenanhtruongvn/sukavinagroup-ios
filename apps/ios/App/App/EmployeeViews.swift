@@ -2719,7 +2719,7 @@ private struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, alignment: .center))
         }
         if showWorkMetrics && hasCompletePunchPair {
-            return AnyView(VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 5) {
                 Text(AttendanceMetrics.workFactorText(metrics.coefficient))
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
             }
@@ -2730,7 +2730,7 @@ private struct PreloadedAttendanceDayCell: View {
             .minimumScaleFactor(0.7))
         }
         if !showWorkMetrics {
-            return AnyView(VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 5) {
                 Text(time(day.checkIn))
                 Text(time(day.checkOut))
             }
