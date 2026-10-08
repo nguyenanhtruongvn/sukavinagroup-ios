@@ -2653,6 +2653,154 @@ struct EmployeePortalView: View {
     }
 }
 
+/// A concrete view keeps the calendar's `ForEach` closure small enough for
+/// Release builds on current Xcode toolchains to type-check reliably.
+@available(iOS 17.0, *)
+private struct PreloadedAttendanceDayCell: View {
+    private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
+    private static let holidayColor = Color(
+        red: 142.0 / 255.0,
+        green: 63.0 / 255.0,
+        blue: 197.0 / 255.0
+    )
+
+    let day: AttendanceDay
+    let month: AttendanceMonth
+    let showWorkMetrics: Bool
+    let cellHeight: CGFloat
+
+    var body: some View {
+        let statuses = AttendanceMetrics.statuses(day)
+        let isHoliday = statuses.contains("holiday")
+        let note = AttendanceMetrics.calendarDisplayNote(day, showWorkMetrics: showWorkMetrics)
+        let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
+        let dayNumber = Int(day.date.suffix(2)) ?? 0
+
+        return VStack(spacing: 2) {
+            Text(String(dayNumber))
+                .font(.subheadline.weight(.medium))
+                .frame(height: 20, alignment: .top)
+            detail(
+                note: note,
+                isHoliday: isHoliday,
+                hasCompletePunchPair: hasCompletePunchPair
+            )
+            .frame(maxWidth: .infinity, height: 37, alignment: .top)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
+        .frame(maxWidth: .infinity, minHeight: cellHeight, alignment: .top)
+        .background(background(for: statuses))
+        .clipShape(RoundedRectangle(cornerRadius: 11))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair))
+    }
+
+    private func detail(
+        note: String?,
+        isHoliday: Bool,
+        hasCompletePunchPair: Bool
+    ) -> AnyView {
+        let metrics = AttendanceMetrics.workMetrics(day, month: month)
+        if let note {
+            return AnyView(VStack(spacing: 1) {
+                Text(note)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundStyle(isHoliday ? Self.holidayColor : Color.primary)
+                if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
+                    Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Self.holidayColor)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .center))
+        }
+        if showWorkMetrics && hasCompletePunchPair {
+            return AnyView(VStack(spacing: 1) {
+                Text(AttendanceMetrics.workFactorText(metrics.coefficient))
+                Text(AttendanceMetrics.hourText(metrics.overtimeHours))
+            }
+            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(Color.primary.opacity(0.72))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7))
+        }
+        if !showWorkMetrics {
+            return AnyView(VStack(spacing: 1) {
+                Text(time(day.checkIn))
+                Text(time(day.checkOut))
+            }
+            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(Color.primary.opacity(0.72))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7))
+        }
+        return AnyView(Color.clear)
+    }
+
+    private func background(for statuses: [String]) -> AnyView {
+        if statuses.contains("late") && statuses.contains("early") {
+            return AnyView(HStack(spacing: 0) {
+                EmployeeRequestKind.late.color.opacity(0.34)
+                EmployeeRequestKind.early.color.opacity(0.36)
+            })
+        }
+        return AnyView(dayColor(statuses.first))
+    }
+
+    private func dayColor(_ status: String?) -> Color {
+        switch status {
+        case "present": return .green.opacity(0.32)
+        case "missing_checkin", "missing_checkout", "incomplete", "late": return .orange.opacity(0.34)
+        case "early": return EmployeeRequestKind.early.color.opacity(0.36)
+        case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
+        case "absent": return Self.absentColor.opacity(0.46)
+        case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
+        case "holiday": return Self.holidayColor.opacity(0.38)
+        case "office_day_off": return .teal.opacity(0.24)
+        case "weekend": return .gray.opacity(0.13)
+        case "not-started": return .gray.opacity(0.18)
+        case "pending": return .orange.opacity(0.16)
+        case "upcoming": return AppTheme.muted.opacity(0.1)
+        default: return AppTheme.muted.opacity(0.1)
+        }
+    }
+
+    private func accessibilityLabel(
+        for dayNumber: Int,
+        note: String?,
+        statuses: [String],
+        hasCompletePunchPair: Bool
+    ) -> String {
+        if let note {
+            let overtime = hasCompletePunchPair && statuses.contains("holiday") && showWorkMetrics
+                ? AttendanceMetrics.workMetrics(day, month: month).overtimeHours : 0
+            return "Ngày \(dayNumber). Mã công \(note)" + (overtime > 0
+                ? ". Tăng ca \(AttendanceMetrics.hourText(overtime)) giờ" : "")
+        }
+        if !showWorkMetrics {
+            return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
+        }
+        if hasCompletePunchPair {
+            let metrics = AttendanceMetrics.workMetrics(day, month: month)
+            return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
+        }
+        return "Ngày \(dayNumber). Không đủ cặp chấm công để tính giờ làm hoặc tăng ca"
+    }
+
+    private func time(_ value: String?) -> String {
+        guard let value else { return "--:--" }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value) else {
+            return "--:--"
+        }
+        return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
 
 
 
@@ -4768,46 +4916,12 @@ struct ModernAttendanceHistoryView: View {
                 ForEach(0..<preloadedLeadingEmptyDays(data), id: \.self) { _ in
                     Color.clear.frame(height: cellHeight)
                 }
-                // State the element identity explicitly. This prevents newer
-                // Swift compilers from selecting ForEach's Range<Int>
-                // overload while type-checking the calendar cell view.
                 ForEach(data.days, id: \.id) { (day: AttendanceDay) in
-                    let statuses = dayStatuses(day)
-                    let isHoliday = statuses.contains("holiday")
-                    let note = AttendanceMetrics.calendarDisplayNote(
-                        day, showWorkMetrics: showWorkMetrics
-                    )
-                    let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
-                    let dayNumber = Int(day.date.suffix(2)) ?? 0
-                    // Reserve the same top date row and detail area for every
-                    // day. Without this, an empty work-metrics cell collapses
-                    // to its date and SwiftUI vertically centres it.
-                    VStack(spacing: 2) {
-                        Text(String(dayNumber))
-                            .font(.subheadline.weight(.medium))
-                            .frame(height: 20, alignment: .top)
-                        calendarCellDetail(
-                            day: day,
-                            month: data,
-                            note: note,
-                            isHoliday: isHoliday,
-                            hasCompletePunchPair: hasCompletePunchPair,
-                            showWorkMetrics: showWorkMetrics
-                        )
-                        .frame(maxWidth: .infinity, height: 37, alignment: .top)
-                        Spacer(minLength: 0)
-                    }
-                    .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
-                    .frame(maxWidth: .infinity, minHeight: cellHeight, alignment: .top)
-                    .background(dayBackground(day))
-                    .clipShape(RoundedRectangle(cornerRadius: 11))
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(
-                        accessibilityLabel(
-                            for: day,
-                            data: data,
-                            showWorkMetrics: showWorkMetrics
-                        )
+                    PreloadedAttendanceDayCell(
+                        day: day,
+                        month: data,
+                        showWorkMetrics: showWorkMetrics,
+                        cellHeight: cellHeight
                     )
                 }
             }
