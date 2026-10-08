@@ -3885,22 +3885,23 @@ private enum AttendanceMetrics {
         calendar.timeZone = vietnamTimeZone
         return calendar
     }()
-    private static let dayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = vietnamTimeZone
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-
     // A public holiday takes precedence over Sunday. These categories are
     // mutually exclusive, so every minute is added to the monthly total once.
     private static func overtimeCategory(_ day: AttendanceDay) -> String {
         let values = statuses(day)
         if values.contains("holiday") { return "holiday" }
-        let sunday = dayFormatter.date(from: day.date).map {
-            vietnamCalendar.component(.weekday, from: $0) == 1
-        } ?? false
+        // Parse the yyyy-MM-dd date with a Vietnam-timezone Calendar rather
+        // than a shared mutable DateFormatter (safe under Swift 6 concurrency).
+        let components = day.date.split(separator: "-").compactMap { Int($0) }
+        let sunday: Bool
+        if components.count == 3,
+           let date = vietnamCalendar.date(from: DateComponents(
+               year: components[0], month: components[1], day: components[2]
+           )) {
+            sunday = vietnamCalendar.component(.weekday, from: date) == 1
+        } else {
+            sunday = false
+        }
         if sunday || values.contains("overtime") { return "sunday" }
         return "regular"
     }
