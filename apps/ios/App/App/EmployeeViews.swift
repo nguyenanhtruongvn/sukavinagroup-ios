@@ -4356,8 +4356,15 @@ private struct AttendanceStatementListView: View {
         .navigationTitle("Bảng công")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: session.attendanceRevision) {
-            isLoading = true
-            reports = await session.loadAttendanceReports()
+            let cached = session.cachedAttendanceReports()
+            if !cached.isEmpty {
+                reports = cached
+            }
+            isLoading = reports.isEmpty
+            let refreshed = await session.loadAttendanceReports()
+            if !refreshed.isEmpty || reports.isEmpty {
+                reports = refreshed
+            }
             isLoading = false
         }
     }

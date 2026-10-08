@@ -115,6 +115,7 @@ final class SessionStore: ObservableObject {
     private var articleBadgeCount = 0
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
+    private let attendanceReportsCachePrefix = "native-attendance-reports-"
     // Keep decoded month snapshots in RAM as well as UserDefaults. The disk
     // layer survives launches; the memory layer makes repeated opens/swipes
     // avoid JSON decoding and disk reads on the main actor.
@@ -288,10 +289,22 @@ final class SessionStore: ObservableObject {
             let reports: [AttendanceReport] = try await APIClient.shared.request(
                 "me/attendance/reports", token: token
             )
+            saveAttendanceReports(reports)
             return reports
         } catch {
+            return cachedAttendanceReports()
+        }
+    }
+
+    /// Released attendance statements are immutable, so show this disk-backed
+    /// snapshot immediately and refresh it from the server in the background.
+    func cachedAttendanceReports() -> [AttendanceReport] {
+        guard let cacheKey = attendanceReportsCacheKey(),
+              let data = UserDefaults.standard.data(forKey: cacheKey),
+              let cached = try? JSONDecoder().decode(CachedValue<[AttendanceReport]>.self, from: data) else {
             return []
         }
+        return cached.value
     }
 
     private func attendanceMonthCacheKey(_ month: String) -> String? {
@@ -300,6 +313,22 @@ final class SessionStore: ObservableObject {
             ?? UserDefaults.standard.string(forKey: attendanceMonthCacheOwnerKey)?.nilIfEmpty
         guard let employeeCode else { return nil }
         return attendanceMonthCachePrefix + employeeCode + "-" + month
+    }
+
+    private func attendanceReportsCacheKey() -> String? {
+        let employeeCode = profile?.employeeCode.nilIfEmpty
+            ?? dashboard?.employeeCode.nilIfEmpty
+            ?? UserDefaults.standard.string(forKey: attendanceMonthCacheOwnerKey)?.nilIfEmpty
+        guard let employeeCode else { return nil }
+        return attendanceReportsCachePrefix + employeeCode
+    }
+
+    private func saveAttendanceReports(_ reports: [AttendanceReport]) {
+        guard let cacheKey = attendanceReportsCacheKey(),
+              let employeeCode = profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty,
+              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: reports)) else { return }
+        UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
+        UserDefaults.standard.set(data, forKey: cacheKey)
     }
 
     private func saveAttendanceMonth(_ month: AttendanceMonth, for keyMonth: String) {
