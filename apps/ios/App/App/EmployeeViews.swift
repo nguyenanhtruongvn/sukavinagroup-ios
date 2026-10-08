@@ -3952,9 +3952,14 @@ private enum AttendanceMetrics {
         // was recorded on that holiday.
         let excludedFromWorkdays = overtimeCategory(day) == "sunday"
             || (overtimeCategory(day) == "holiday" && overtime > 0)
-        let coefficient = (fullWorkMinutes == 0 || excludedFromWorkdays)
-            ? 0
-            : Double(recognizedMinutes) / Double(fullWorkMinutes)
+        let coefficient: Double
+        if let verifiedFactor = day.workdayFactor {
+            coefficient = verifiedFactor
+        } else {
+            coefficient = (fullWorkMinutes == 0 || excludedFromWorkdays)
+                ? 0
+                : Double(recognizedMinutes) / Double(fullWorkMinutes)
+        }
         return AttendanceWorkMetrics(
             coefficient: coefficient,
             overtimeHours: overtime
@@ -4020,6 +4025,7 @@ private enum AttendanceMetrics {
 
     static func totalWorkDays(_ month: AttendanceMonth) -> Double {
         month.days.reduce(0) { total, day in
+            if let serverFactor = day.workdayFactor { return total + serverFactor }
             let values = statuses(day)
             if values.contains("holiday") || values.contains("office_day_off") {
                 return total + (isPaidDay(day, month: month) ? 1 : 0)
@@ -4029,7 +4035,10 @@ private enum AttendanceMetrics {
     }
 
     static func paidDayCount(_ month: AttendanceMonth) -> Int {
-        month.days.filter { isPaidDay($0, month: month) }.count
+        month.days.filter {
+            if let factor = $0.workdayFactor { return factor >= 0.995 }
+            return isPaidDay($0, month: month)
+        }.count
     }
 
     static func missingPunchCount(_ month: AttendanceMonth) -> Int {
@@ -4225,7 +4234,7 @@ private struct AttendanceStatementDetailView: View {
 @available(iOS 17.0, *)
 private struct AttendanceStatementReportView: View {
     let month: AttendanceMonth
-    let remainingLeaveDays: Int
+    let remainingLeaveDays: Double
 
     private var regularOvertime: Double { AttendanceMetrics.regularOvertimeHours(month) }
     private var sundayOvertime: Double { AttendanceMetrics.overtimeHours(for: "overtime", in: month) }
@@ -4249,7 +4258,7 @@ private struct AttendanceStatementReportView: View {
                         .font(.headline)
                         .foregroundStyle(Color.primary)
                     HStack(alignment: .lastTextBaseline, spacing: 7) {
-                        Text("\(AttendanceMetrics.paidDayCount(month))")
+                        Text(AttendanceMetrics.workDayTotalText(AttendanceMetrics.totalWorkDays(month)))
                             .font(.system(size: 46, weight: .heavy, design: .rounded))
                             .foregroundStyle(Color.blue)
                         Text("ngày")
@@ -4272,7 +4281,7 @@ private struct AttendanceStatementReportView: View {
                 )
                 overviewTile(
                     "Phép còn lại",
-                    "\(month.leaveSummary?.closingBalance ?? remainingLeaveDays) ngày",
+                    "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.closingBalance ?? remainingLeaveDays)) ngày",
                     icon: "beach.umbrella.fill",
                     color: .green
                 )
@@ -4298,13 +4307,13 @@ private struct AttendanceStatementReportView: View {
             }
 
             reportCard("Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
-                reportRow("Tổng số phép còn trong tháng trước", "\(month.leaveSummary?.openingBalance ?? 0) ngày", color: AppTheme.muted)
-                reportRow("Số ngày phép được hưởng trong tháng", "\(month.leaveSummary?.accruedDays ?? 0) ngày", color: .green)
-                reportRow("Số ngày phép đã dùng trong tháng", "\(month.leaveSummary?.usedDays ?? leaveDays) ngày", color: .blue)
-                reportRow("Số ngày nghỉ không lương trong tháng", "\(month.leaveSummary?.unpaidDays ?? absentDays) ngày", color: AppTheme.muted)
-                reportRow("Số ngày nghỉ bệnh trong tháng", "\(month.leaveSummary?.sickDays ?? 0) ngày", color: AppTheme.muted)
+                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.openingBalance ?? 0)) ngày", color: AppTheme.muted)
+                reportRow("Số ngày phép được hưởng trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.accruedDays ?? 0)) ngày", color: .green)
+                reportRow("Số ngày phép đã dùng trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.usedDays ?? Double(leaveDays))) ngày", color: .blue)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.unpaidDays ?? Double(absentDays))) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.sickDays ?? 0)) ngày", color: AppTheme.muted)
                 Divider()
-                reportRow("Số phép còn lại trong tháng", "\(month.leaveSummary?.closingBalance ?? remainingLeaveDays) ngày", color: .green, bold: true)
+                reportRow("Số phép còn lại trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.closingBalance ?? remainingLeaveDays)) ngày", color: .green, bold: true)
             }
 
             reportCard("Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
@@ -4631,7 +4640,7 @@ struct ModernAttendanceHistoryView: View {
                             .font(.subheadline.weight(.medium))
                         if isHoliday || isOfficeDayOff {
                             VStack(spacing: 1) {
-                                Text(isHoliday ? "NL" : "NVP")
+                                Text(showWorkMetrics ? (day.workdayCode ?? (isHoliday ? "NL" : "NVP")) : (isHoliday ? "NL" : "NVP"))
                                     .font(.system(size: 11, weight: .bold, design: .rounded))
                                     .foregroundStyle(isHoliday ? Self.holidayColor : Color.teal)
                                 if isHoliday && showWorkMetrics && metrics.overtimeHours > 0 {
@@ -4643,7 +4652,7 @@ struct ModernAttendanceHistoryView: View {
                             .frame(height: 37, alignment: .top)
                         } else if showWorkMetrics {
                             VStack(spacing: 1) {
-                                Text(AttendanceMetrics.workFactorText(metrics.coefficient))
+                                Text(day.workdayCode ?? AttendanceMetrics.workFactorText(metrics.coefficient))
                                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                             }
                             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
@@ -4707,7 +4716,8 @@ struct ModernAttendanceHistoryView: View {
         if statuses.contains("office_day_off") { return "Ngày \(dayNumber). Nghỉ văn phòng" }
         if showWorkMetrics {
             let metrics = AttendanceMetrics.workMetrics(day, month: data)
-            return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
+            let result = day.workdayCode ?? AttendanceMetrics.workFactorText(metrics.coefficient)
+            return "Ngày \(dayNumber). Mã công \(result), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
         }
         return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
     }
@@ -4746,13 +4756,13 @@ struct ModernAttendanceHistoryView: View {
                 reportRow("Tổng tăng ca", "\(AttendanceMetrics.hourText(totalOvertime)) giờ", color: AppTheme.red, bold: true)
             }
             attendanceReportCard(title: "Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
-                reportRow("Tổng số phép còn trong tháng trước", "\(leave?.openingBalance ?? 0) ngày", color: AppTheme.muted)
-                reportRow("Số ngày phép được hưởng trong tháng", "\(leave?.accruedDays ?? 0) ngày", color: .green)
-                reportRow("Số ngày phép đã dùng trong tháng", "\(leave?.usedDays ?? 0) ngày", color: .blue)
-                reportRow("Số ngày nghỉ không lương trong tháng", "\(leave?.unpaidDays ?? 0) ngày", color: AppTheme.muted)
-                reportRow("Số ngày nghỉ bệnh trong tháng", "\(leave?.sickDays ?? 0) ngày", color: AppTheme.muted)
+                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(leave?.openingBalance ?? 0)) ngày", color: AppTheme.muted)
+                reportRow("Số ngày phép được hưởng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.accruedDays ?? 0)) ngày", color: .green)
+                reportRow("Số ngày phép đã dùng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.usedDays ?? 0)) ngày", color: .blue)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.unpaidDays ?? 0)) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.sickDays ?? 0)) ngày", color: AppTheme.muted)
                 Divider()
-                reportRow("Số phép còn lại trong tháng", "\(leave?.closingBalance ?? 0) ngày", color: .green, bold: true)
+                reportRow("Số phép còn lại trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.closingBalance ?? 0)) ngày", color: .green, bold: true)
             }
             attendanceReportCard(title: "Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
                 reportRow("Tổng số lần quên chấm công / đi trễ / về sớm", "\(violations) lần", color: AppTheme.muted, bold: true)
