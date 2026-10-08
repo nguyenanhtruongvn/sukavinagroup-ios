@@ -2679,13 +2679,13 @@ private struct PreloadedAttendanceDayCell: View {
         return VStack(spacing: 2) {
             Text(String(dayNumber))
                 .font(.subheadline.weight(.medium))
-                .frame(height: 20, alignment: .top)
+                .frame(height: 20)
             detail(
                 note: note,
                 isHoliday: isHoliday,
                 hasCompletePunchPair: hasCompletePunchPair
             )
-            .frame(maxWidth: .infinity, height: 37, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
         .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
