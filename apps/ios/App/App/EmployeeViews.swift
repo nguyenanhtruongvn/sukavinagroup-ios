@@ -3936,10 +3936,10 @@ private enum AttendanceMetrics {
     // A calendar note is an attendance/payroll status, not proof of worked
     // hours. Keep notes visible without manufacturing 0/0 hour lines.
     static func calendarNote(_ day: AttendanceDay) -> String? {
-        if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
         let values = statuses(day)
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
+        if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
         if values.contains("absent"), day.checkIn == nil, day.checkOut == nil {
             return "KCC"
         }
@@ -4486,6 +4486,7 @@ private struct AttendanceCodeLegend: View {
         ("NTL", "Nghỉ trừ lương (do nhân sự xác nhận)"),
         ("CT", "Công tác"),
         ("NN", "Ngày nghỉ (nghỉ hưởng chế độ, nghỉ bù)"),
+        ("NVP", "Nghỉ văn phòng"),
         ("KCC", "Không chấm công"),
         ("NL", "Nghỉ lễ")
     ]
@@ -4495,7 +4496,6 @@ private struct AttendanceCodeLegend: View {
             Text("Ghi chú:")
                 .font(.subheadline.bold())
                 .italic()
-                .underline()
                 .foregroundStyle(Color.primary)
 
             ForEach(Self.notes.indices, id: \.self) { index in
