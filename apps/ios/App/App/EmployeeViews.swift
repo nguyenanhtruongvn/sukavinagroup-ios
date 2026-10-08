@@ -4768,7 +4768,10 @@ struct ModernAttendanceHistoryView: View {
                 ForEach(0..<preloadedLeadingEmptyDays(data), id: \.self) { _ in
                     Color.clear.frame(height: cellHeight)
                 }
-                ForEach(data.days) { day in
+                // State the element identity explicitly. This prevents newer
+                // Swift compilers from selecting ForEach's Range<Int>
+                // overload while type-checking the calendar cell view.
+                ForEach(data.days, id: \.id) { (day: AttendanceDay) in
                     let statuses = dayStatuses(day)
                     let isHoliday = statuses.contains("holiday")
                     let note = AttendanceMetrics.calendarDisplayNote(
