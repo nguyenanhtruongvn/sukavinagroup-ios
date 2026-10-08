@@ -4605,10 +4605,17 @@ struct ModernAttendanceHistoryView: View {
                         Text(String(Int(day.date.suffix(2)) ?? 0))
                             .font(.subheadline.weight(.medium))
                         if isHoliday || isOfficeDayOff {
-                            Text(isHoliday ? "NL" : "NVP")
-                                .font(.system(size: 11, weight: .bold, design: .rounded))
-                                .foregroundStyle(isHoliday ? Self.holidayColor : Color.teal)
-                                .frame(height: 37, alignment: .top)
+                            VStack(spacing: 1) {
+                                Text(isHoliday ? "NL" : "NVP")
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(isHoliday ? Self.holidayColor : Color.teal)
+                                if isHoliday && showWorkMetrics && metrics.overtimeHours > 0 {
+                                    Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
+                                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(Self.holidayColor)
+                                }
+                            }
+                            .frame(height: 37, alignment: .top)
                         } else if showWorkMetrics {
                             VStack(spacing: 1) {
                                 Text(AttendanceMetrics.workFactorText(metrics.coefficient))
@@ -4667,7 +4674,11 @@ struct ModernAttendanceHistoryView: View {
     ) -> String {
         let dayNumber = Int(day.date.suffix(2)) ?? 0
         let statuses = dayStatuses(day)
-        if statuses.contains("holiday") { return "Ngày \(dayNumber). Nghỉ lễ" }
+        if statuses.contains("holiday") {
+            let overtime = showWorkMetrics ? AttendanceMetrics.workMetrics(day, month: data).overtimeHours : 0
+            return "Ngày \(dayNumber). Nghỉ lễ" + (overtime > 0
+                ? ". Tăng ca \(AttendanceMetrics.hourText(overtime)) giờ" : "")
+        }
         if statuses.contains("office_day_off") { return "Ngày \(dayNumber). Nghỉ văn phòng" }
         if showWorkMetrics {
             let metrics = AttendanceMetrics.workMetrics(day, month: data)
