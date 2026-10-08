@@ -4181,7 +4181,7 @@ private struct AttendanceStatementDetailView: View {
                 if let report {
                     AttendanceStatementReportView(
                         month: report,
-                        remainingLeaveDays: session.dashboard?.remainingLeaveDays ?? 0
+                        remainingLeaveDays: session.dashboard?.remainingLeaveDaysExact ?? session.dashboard?.remainingLeaveDays ?? 0
                     )
                 } else if let errorMessage {
                     ContentUnavailableView {
@@ -4235,6 +4235,7 @@ private struct AttendanceStatementDetailView: View {
 private struct AttendanceStatementReportView: View {
     let month: AttendanceMonth
     let remainingLeaveDays: Double
+    private var leave: AttendanceLeaveSummary? { month.leaveSummaryExact ?? month.leaveSummary }
 
     private var regularOvertime: Double { AttendanceMetrics.regularOvertimeHours(month) }
     private var sundayOvertime: Double { AttendanceMetrics.overtimeHours(for: "overtime", in: month) }
@@ -4281,7 +4282,7 @@ private struct AttendanceStatementReportView: View {
                 )
                 overviewTile(
                     "Phép còn lại",
-                    "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.closingBalance ?? remainingLeaveDays)) ngày",
+                    "\(AttendanceMetrics.workDayTotalText(leave?.closingBalance ?? remainingLeaveDays)) ngày",
                     icon: "beach.umbrella.fill",
                     color: .green
                 )
@@ -4307,13 +4308,13 @@ private struct AttendanceStatementReportView: View {
             }
 
             reportCard("Tổng hợp ngày nghỉ", icon: "beach.umbrella.fill", color: .green) {
-                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.openingBalance ?? 0)) ngày", color: AppTheme.muted)
-                reportRow("Số ngày phép được hưởng trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.accruedDays ?? 0)) ngày", color: .green)
-                reportRow("Số ngày phép đã dùng trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.usedDays ?? Double(leaveDays))) ngày", color: .blue)
-                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.unpaidDays ?? Double(absentDays))) ngày", color: AppTheme.muted)
-                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.sickDays ?? 0)) ngày", color: AppTheme.muted)
+                reportRow("Tổng số phép còn trong tháng trước", "\(AttendanceMetrics.workDayTotalText(leave?.openingBalance ?? 0)) ngày", color: AppTheme.muted)
+                reportRow("Số ngày phép được hưởng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.accruedDays ?? 0)) ngày", color: .green)
+                reportRow("Số ngày phép đã dùng trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.usedDays ?? Double(leaveDays))) ngày", color: .blue)
+                reportRow("Số ngày nghỉ không lương trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.unpaidDays ?? Double(absentDays))) ngày", color: AppTheme.muted)
+                reportRow("Số ngày nghỉ bệnh trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.sickDays ?? 0)) ngày", color: AppTheme.muted)
                 Divider()
-                reportRow("Số phép còn lại trong tháng", "\(AttendanceMetrics.workDayTotalText(month.leaveSummary?.closingBalance ?? remainingLeaveDays)) ngày", color: .green, bold: true)
+                reportRow("Số phép còn lại trong tháng", "\(AttendanceMetrics.workDayTotalText(leave?.closingBalance ?? remainingLeaveDays)) ngày", color: .green, bold: true)
             }
 
             reportCard("Tổng hợp vi phạm", icon: "exclamationmark.triangle.fill", color: AppTheme.muted) {
@@ -4737,7 +4738,7 @@ struct ModernAttendanceHistoryView: View {
     }
 
     private func preloadedMonthlyDetails(_ data: AttendanceMonth) -> some View {
-        let leave = data.leaveSummary
+        let leave = data.leaveSummaryExact ?? data.leaveSummary
         let regularOvertime = AttendanceMetrics.regularOvertimeHours(data)
         let sundayOvertime = AttendanceMetrics.overtimeHours(for: "overtime", in: data)
         let holidayOvertime = AttendanceMetrics.overtimeHours(for: "holiday", in: data)
