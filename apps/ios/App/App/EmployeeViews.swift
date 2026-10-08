@@ -4900,9 +4900,8 @@ struct ModernAttendanceHistoryView: View {
                 ("Đủ công", AttendanceMetrics.paidDayCount(data), .green),
                 ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
                 ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
-                ("Thiếu chấm công", incompletePunchCount(in: data), .orange),
                 ("Nghỉ phép", preloadedCount("leave", in: data), EmployeeRequestKind.leave.color),
-                ("Vắng", preloadedCount("absent", in: data), Self.absentColor),
+                ("Vắng", AttendanceMetrics.missingPunchCount(data), Self.absentColor),
                 ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
             ].filter { $0.1 > 0 }
             if !values.isEmpty {
@@ -5002,10 +5001,6 @@ struct ModernAttendanceHistoryView: View {
 
     private func preloadedCount(_ status: String, in data: AttendanceMonth) -> Int {
         data.days.filter { dayStatuses($0).contains(status) }.count
-    }
-
-    private func incompletePunchCount(in data: AttendanceMonth) -> Int {
-        AttendanceMetrics.missingPunchCount(data)
     }
 
     private func preloadedMonthlyDetails(_ data: AttendanceMonth) -> some View {
