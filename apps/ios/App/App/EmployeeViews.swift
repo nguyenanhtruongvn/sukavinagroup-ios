@@ -4109,6 +4109,7 @@ private enum AttendanceMetrics {
         let values = displayStatuses(day)
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
+        if isUnfinishedToday(day) { return nil }
         if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
         if values.contains("absent"), day.checkIn == nil, day.checkOut == nil {
             return "KCC"
