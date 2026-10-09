@@ -202,42 +202,45 @@ private struct MeetingRoomOrderingModifier: ViewModifier {
 
     private var roomIndex: Int? { rooms.firstIndex(where: { $0.id == room.id }) }
 
-    @ViewBuilder
-    func body(content: Content) -> some View {
+    func body(content: Content) -> AnyView {
         if #available(iOS 18.0, *) {
-            content
-                .opacity(draggingRoom?.id == room.id ? 0.72 : 1)
-                .onDrag {
-                    draggingRoom = room
-                    return NSItemProvider(object: room.id as NSString)
-                }
-                .onDrop(
-                    of: [UTType.plainText.identifier],
-                    delegate: MeetingRoomOrderDropDelegate(
-                        target: room,
-                        rooms: rooms,
-                        draggingRoom: $draggingRoom,
-                        saveOrder: saveOrder
+            return AnyView(
+                content
+                    .opacity(draggingRoom?.id == room.id ? 0.72 : 1)
+                    .onDrag {
+                        draggingRoom = room
+                        return NSItemProvider(object: room.id as NSString)
+                    }
+                    .onDrop(
+                        of: [UTType.plainText.identifier],
+                        delegate: MeetingRoomOrderDropDelegate(
+                            target: room,
+                            rooms: rooms,
+                            draggingRoom: $draggingRoom,
+                            saveOrder: saveOrder
+                        )
                     )
-                )
-        } else {
-            content
-                .contextMenu {
-                    Button {
-                        move(by: -1)
-                    } label: {
-                        Label("Chuyển phòng lên trên", systemImage: "arrow.up")
-                    }
-                    .disabled((roomIndex ?? 0) <= 0)
-
-                    Button {
-                        move(by: 1)
-                    } label: {
-                        Label("Chuyển phòng xuống dưới", systemImage: "arrow.down")
-                    }
-                    .disabled((roomIndex ?? (rooms.count - 1)) >= rooms.count - 1)
-                }
+            )
         }
+        // The iOS 17 runtime sees only AnyView rather than the unavailable
+        // drag/drop view's nested generic metadata.
+        return AnyView(
+            content.contextMenu {
+                Button {
+                    move(by: -1)
+                } label: {
+                    Label("Chuyển phòng lên trên", systemImage: "arrow.up")
+                }
+                .disabled((roomIndex ?? 0) <= 0)
+
+                Button {
+                    move(by: 1)
+                } label: {
+                    Label("Chuyển phòng xuống dưới", systemImage: "arrow.down")
+                }
+                .disabled((roomIndex ?? (rooms.count - 1)) >= rooms.count - 1)
+            }
+        )
     }
 
     private func move(by offset: Int) {
