@@ -1770,9 +1770,19 @@ private struct MeetingBookingSheet: View {
             }
             .safeAreaInset(edge: .bottom) {
                 confirmButton
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial)
+                    // Match the new-request submit button's compact frosted card.
+                    .padding(8)
+                    .background {
+                        RoundedRectangle(cornerRadius: 25, style: .continuous)
+                            .fill(.regularMaterial)
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 25, style: .continuous)
+                                    .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.75)
+                            }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 6)
+                    .padding(.bottom, 8)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
