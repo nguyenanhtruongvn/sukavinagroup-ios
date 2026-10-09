@@ -2798,12 +2798,10 @@ private struct PreloadedAttendanceDayCell: View {
         case "NVP": return Color(red: 15.0 / 255.0, green: 118.0 / 255.0, blue: 110.0 / 255.0)
         case "KCC": return Self.absentColor
         case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
-        case "RO", "RO/2": return Color(red: 154.0 / 255.0, green: 52.0 / 255.0, blue: 18.0 / 255.0)
+        case "RO", "RO/2", "NP", "NP/2", "P/2": return Self.leaveColor
         case "CT": return Color(red: 3.0 / 255.0, green: 105.0 / 255.0, blue: 161.0 / 255.0)
         case "NN": return Color(red: 162.0 / 255.0, green: 28.0 / 255.0, blue: 175.0 / 255.0)
         case "B": return Color(red: 161.0 / 255.0, green: 98.0 / 255.0, blue: 7.0 / 255.0)
-        case "NP", "NP/2": return Color(red: 29.0 / 255.0, green: 78.0 / 255.0, blue: 216.0 / 255.0)
-        case "P/2": return Color(red: 79.0 / 255.0, green: 70.0 / 255.0, blue: 229.0 / 255.0)
         default: return Color(red: 71.0 / 255.0, green: 85.0 / 255.0, blue: 105.0 / 255.0)
         }
     }
@@ -4717,6 +4715,8 @@ private struct AttendanceOvertimeProgressRow: View {
 private struct AttendanceCodeLegend: View {
     // Shared across current attendance and released monthly statements.
     // Explanations reflect the HR-approved meaning of each payroll code.
+    private static let leavePayrollCodes: Set<String> = ["RO", "RO/2", "NP", "NP/2", "P/2"]
+    private static let leaveColor = Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)
     private static let notes: [(code: String, meaning: String)] = [
         ("1", "Làm đủ 1 ngày công 8h"),
         ("NP/2", "Nửa ngày công, nửa ngày hưởng lương phép năm"),
@@ -4741,10 +4741,11 @@ private struct AttendanceCodeLegend: View {
                 .foregroundStyle(Color.primary)
 
             ForEach(Self.notes.indices, id: \.self) { index in
-                (Text("\(Self.notes[index].code): ").bold()
-                 + Text(Self.notes[index].meaning).italic())
+                (Text("\(Self.notes[index].code): ")
+                    .bold()
+                    .foregroundColor(Self.leavePayrollCodes.contains(Self.notes[index].code) ? Self.leaveColor : Color.primary)
+                 + Text(Self.notes[index].meaning).italic().foregroundColor(Color.primary))
                     .font(.subheadline)
-                    .foregroundStyle(Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel(
