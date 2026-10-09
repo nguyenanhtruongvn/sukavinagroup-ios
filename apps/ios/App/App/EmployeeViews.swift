@@ -2679,24 +2679,28 @@ struct EmployeePortalView: View {
         // iOS 17.6 can overflow its SwiftUI/AttributeGraph stack while
         // constructing the main TabView at launch. Keep the same five pages
         // but use a small, stable app-owned tab bar on iOS 17 only.
-        ZStack(alignment: .bottom) {
-            selectedPortalPage
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            HStack(spacing: 0) {
-                portalTabButton(title: "Trang chủ", image: "house.fill", tab: 0)
-                portalTabButton(title: "Đơn từ", image: "doc.text.fill", tab: 1)
-                portalTabButton(title: "Phòng họp", image: "building.2.fill", tab: 2)
-                portalTabButton(title: "Thông báo", image: "bell.fill", tab: 3, badge: session.notificationBadgeCount)
-                portalTabButton(title: "Tài khoản", image: "person.crop.circle.fill", tab: 4)
+        //
+        // Reserve real bottom safe-area space rather than overlaying the tab
+        // bar on the page. An overlay obscures bottom-trailing controls such
+        // as the Requests screen's "Tạo đơn mới" button on iOS 17.
+        selectedPortalPage
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                HStack(spacing: 0) {
+                    portalTabButton(title: "Trang chủ", image: "house.fill", tab: 0)
+                    portalTabButton(title: "Đơn từ", image: "doc.text.fill", tab: 1)
+                    portalTabButton(title: "Phòng họp", image: "building.2.fill", tab: 2)
+                    portalTabButton(title: "Thông báo", image: "bell.fill", tab: 3, badge: session.notificationBadgeCount)
+                    portalTabButton(title: "Tài khoản", image: "person.crop.circle.fill", tab: 4)
+                }
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+                .frame(maxWidth: .infinity)
+                .background(.ultraThinMaterial)
+                .overlay(alignment: .top) {
+                    Divider()
+                }
             }
-            .padding(.top, 8)
-            .padding(.bottom, 6)
-            .background(.ultraThinMaterial)
-            .overlay(alignment: .top) {
-                Divider()
-            }
-        }
     }
 
     @ViewBuilder
