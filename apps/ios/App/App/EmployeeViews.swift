@@ -190,6 +190,64 @@ struct MeetingRoomsView: View {
     }
 }
 
+// Keep the iOS 17 room card's SwiftUI type small and its navigation gestures
+// predictable. Reordering remains possible with context-menu buttons on 17,
+// while native drag/drop continues unchanged on iOS 18 and later.
+@available(iOS 17.0, *)
+private struct MeetingRoomOrderingModifier: ViewModifier {
+    let room: MeetingRoom
+    let rooms: [MeetingRoom]
+    @Binding var draggingRoom: MeetingRoom?
+    let saveOrder: ([MeetingRoom]) -> Void
+
+    private var roomIndex: Int? { rooms.firstIndex(where: { $0.id == room.id }) }
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .opacity(draggingRoom?.id == room.id ? 0.72 : 1)
+                .onDrag {
+                    draggingRoom = room
+                    return NSItemProvider(object: room.id as NSString)
+                }
+                .onDrop(
+                    of: [UTType.plainText.identifier],
+                    delegate: MeetingRoomOrderDropDelegate(
+                        target: room,
+                        rooms: rooms,
+                        draggingRoom: $draggingRoom,
+                        saveOrder: saveOrder
+                    )
+                )
+        } else {
+            content
+                .contextMenu {
+                    Button {
+                        move(by: -1)
+                    } label: {
+                        Label("Chuyển phòng lên trên", systemImage: "arrow.up")
+                    }
+                    .disabled((roomIndex ?? 0) <= 0)
+
+                    Button {
+                        move(by: 1)
+                    } label: {
+                        Label("Chuyển phòng xuống dưới", systemImage: "arrow.down")
+                    }
+                    .disabled((roomIndex ?? (rooms.count - 1)) >= rooms.count - 1)
+                }
+        }
+    }
+
+    private func move(by offset: Int) {
+        guard let index = roomIndex, rooms.indices.contains(index + offset) else { return }
+        var reordered = rooms
+        reordered.swapAt(index, index + offset)
+        withAnimation(.snappy) { saveOrder(reordered) }
+    }
+}
+
 @available(iOS 17.0, *)
 private struct MeetingRoomOrderDropDelegate: DropDelegate {
     let target: MeetingRoom
