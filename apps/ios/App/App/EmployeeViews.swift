@@ -2696,6 +2696,16 @@ private struct PreloadedAttendanceDayCell: View {
     let showWorkMetrics: Bool
     let cellHeight: CGFloat
 
+    private var detailTextColor: Color {
+        let statuses = AttendanceMetrics.displayStatuses(day)
+        let note = AttendanceMetrics.calendarDisplayNote(day, showWorkMetrics: showWorkMetrics)
+        let colored = noteFillStatus(note) != nil || (note == nil && statuses.contains(where: {
+            ["present", "late", "early", "leave", "absent", "overtime", "missing_checkin",
+             "missing_checkout", "incomplete"].contains($0)
+        }))
+        return colored ? AttendanceFillPalette.darkText.opacity(0.84) : Color.primary.opacity(0.72)
+    }
+
     var body: some View {
         let statuses = AttendanceMetrics.displayStatuses(day)
         let isHoliday = statuses.contains("holiday")
@@ -2720,7 +2730,7 @@ private struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(note == nil && statuses.contains(where: { ["present", "late", "early", "absent", "leave", "overtime", "incomplete", "missing_checkin", "missing_checkout"].contains($0) }) ? AttendanceFillPalette.darkText : Color.primary)
+        .foregroundStyle(noteFillStatus(note) != nil || (note == nil && statuses.contains(where: { ["present", "late", "early", "absent", "leave", "overtime", "incomplete", "missing_checkin", "missing_checkout"].contains($0) })) ? AttendanceFillPalette.darkText : Color.primary)
         .frame(maxWidth: .infinity, minHeight: cellHeight)
         .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
@@ -2755,7 +2765,7 @@ private struct PreloadedAttendanceDayCell: View {
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(AttendanceFillPalette.darkText.opacity(0.84))
+            .foregroundStyle(detailTextColor)
             .lineLimit(1)
             .minimumScaleFactor(0.7))
         }
@@ -2766,7 +2776,7 @@ private struct PreloadedAttendanceDayCell: View {
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(AttendanceFillPalette.darkText.opacity(0.84)))
+            .foregroundStyle(detailTextColor))
         }
         if !showWorkMetrics {
             return AnyView(VStack(spacing: 5) {
@@ -2775,11 +2785,21 @@ private struct PreloadedAttendanceDayCell: View {
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(AttendanceFillPalette.darkText.opacity(0.84))
+            .foregroundStyle(detailTextColor)
             .lineLimit(1)
             .minimumScaleFactor(0.7))
         }
         return AnyView(Color.clear)
+    }
+
+    private func noteFillStatus(_ note: String?) -> String? {
+        switch note {
+        case "RO", "RO/2", "NP", "NP/2", "P/2": return "leave"
+        case "KCC": return "absent"
+        case "NL": return "holiday"
+        case "NVP": return "office_day_off"
+        default: return nil
+        }
     }
 
     private func background(for statuses: [String], note: String?) -> AnyView {
@@ -2787,10 +2807,11 @@ private struct PreloadedAttendanceDayCell: View {
             "present", "late", "early", "missing_checkin", "missing_checkout",
             "incomplete", "leave", "absent", "overtime"
         ]
-        // Notes are distinguished by text accent, so every note keeps the
-        // neutral cell surface, including the KCC absence code.
-        guard note == nil else {
-            return AnyView(AppTheme.muted.opacity(0.1))
+        if let note {
+            guard let fillStatus = noteFillStatus(note) else {
+                return AnyView(AppTheme.muted.opacity(0.1))
+            }
+            return AnyView(AttendanceFillPalette.color(fillStatus))
         }
         if statuses.contains("late") && statuses.contains("early") {
             return AnyView(HStack(spacing: 0) {
