@@ -2720,6 +2720,18 @@ private struct PreloadedAttendanceDayCell: View {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(noteColor(note))
+                    .padding(.horizontal, note == "NN" ? 7 : 0)
+                    .padding(.vertical, note == "NN" ? 3 : 0)
+                    .background {
+                        if note == "NN" {
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(noteColor(note).opacity(0.09))
+                                .overlay {
+                                    RoundedRectangle(cornerRadius: 7)
+                                        .strokeBorder(noteColor(note).opacity(0.4), lineWidth: 1)
+                                }
+                        }
+                    }
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -2802,7 +2814,10 @@ private struct PreloadedAttendanceDayCell: View {
         case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
         case "RO", "RO/2", "NP", "NP/2", "P/2": return Self.leaveColor
         case "CT": return Color(red: 3.0 / 255.0, green: 105.0 / 255.0, blue: 161.0 / 255.0)
-        case "NN": return Color(red: 162.0 / 255.0, green: 28.0 / 255.0, blue: 175.0 / 255.0)
+        // Neutral silver/graphite, avoiding the saturated colors of other statuses.
+        case "NN": return colorScheme == .dark
+            ? Color(red: 226.0 / 255.0, green: 232.0 / 255.0, blue: 240.0 / 255.0)
+            : Color(red: 51.0 / 255.0, green: 65.0 / 255.0, blue: 85.0 / 255.0)
         case "B": return Color(red: 161.0 / 255.0, green: 98.0 / 255.0, blue: 7.0 / 255.0)
         default: return Color(red: 71.0 / 255.0, green: 85.0 / 255.0, blue: 105.0 / 255.0)
         }
