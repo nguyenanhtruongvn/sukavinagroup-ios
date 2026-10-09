@@ -2691,7 +2691,7 @@ private struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(note == nil && statuses.contains("absent") ? Self.absentColor : Color.primary)
+        .foregroundStyle((note == nil || note == "KCC") && statuses.contains("absent") ? Self.absentColor : Color.primary)
         .frame(maxWidth: .infinity, minHeight: cellHeight)
         .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
@@ -2748,7 +2748,9 @@ private struct PreloadedAttendanceDayCell: View {
             "present", "late", "early", "missing_checkin", "missing_checkout",
             "incomplete", "leave", "absent", "overtime"
         ]
-        guard note == nil else {
+        // KCC is the visible code for an absence, so it keeps the absence
+        // colour. Other payroll/leave notes use the neutral cell background.
+        guard note == nil || note == "KCC" else {
             return AnyView(AppTheme.muted.opacity(0.1))
         }
         if statuses.contains("late") && statuses.contains("early") {
