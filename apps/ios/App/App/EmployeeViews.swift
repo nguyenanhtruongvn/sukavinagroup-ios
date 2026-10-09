@@ -4330,15 +4330,18 @@ private enum AttendanceMetrics {
     }
 
     static func workFactorText(_ value: Double) -> String {
-        // Always show two fractional digits; use the Vietnamese decimal comma.
-        // The API rounds each coefficient before sending it to mobile clients.
-        return String(format: "%.2f", value).replacingOccurrences(of: ".", with: ",")
+        // Keep at most two decimals, with a dot and no unnecessary zeros.
+        // The API already rounds each coefficient to two decimal places.
+        var text = String(format: "%.2f", value).replacingOccurrences(of: ",", with: ".")
+        while text.contains(".") && text.last == "0" {
+            text.removeLast()
+        }
+        if text.last == "." { text.removeLast() }
+        return text
     }
 
     static func workDayTotalText(_ value: Double) -> String {
-        if value < 0.005 { return "0" }
-        if abs(value.rounded() - value) < 0.005 { return String(Int(value.rounded())) }
-        return String(format: "%.2f", value)
+        workFactorText(value)
     }
 
     static func monthTitle(_ month: String) -> String {
