@@ -2739,7 +2739,7 @@ private struct PreloadedAttendanceDayCell: View {
         }
         if showWorkMetrics && hasForgottenPunch {
             return AnyView(VStack(spacing: 5) {
-                Text("0")
+                Text(AttendanceMetrics.workFactorText(0))
                 Text("0")
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
