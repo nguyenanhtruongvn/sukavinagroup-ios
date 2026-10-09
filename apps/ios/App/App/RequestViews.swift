@@ -96,7 +96,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
     case leave, late, early, overtime, business, attendance, gate
     var id: String { rawValue }
     var title: String {
-        switch self { case .leave: return "Nghỉ phép"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác"; case .attendance: return "Xác nhận giờ công"; case .gate: return "Ra cổng" }
+        switch self { case .leave: return "Xin nghỉ"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác"; case .attendance: return "Xác nhận giờ công"; case .gate: return "Ra cổng" }
     }
     var icon: String {
         switch self {
@@ -1022,7 +1022,7 @@ struct RequestComposer: View {
                         requestTimeRange(title: "Thời gian ra cổng", icon: "calendar.badge.clock")
                     }
                     if kind == .leave {
-                        requestTimeRange(title: "Thời gian nghỉ phép", icon: "calendar.badge.clock")
+                        requestTimeRange(title: "Thời gian xin nghỉ", icon: "calendar.badge.clock")
                     }
 
                     if kind == .late || kind == .early {
