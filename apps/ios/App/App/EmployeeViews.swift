@@ -2812,10 +2812,10 @@ private struct PreloadedAttendanceDayCell: View {
         case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
         case "RO", "RO/2", "NP", "NP/2", "P/2": return Self.leaveColor
         case "CT": return Color(red: 3.0 / 255.0, green: 105.0 / 255.0, blue: 161.0 / 255.0)
-        // Neutral silver/graphite, avoiding the saturated colors of other statuses.
+        // NN is vivid raspberry pink, distinct from purple overtime and green holiday.
         case "NN": return colorScheme == .dark
-            ? Color(red: 226.0 / 255.0, green: 232.0 / 255.0, blue: 240.0 / 255.0)
-            : Color(red: 51.0 / 255.0, green: 65.0 / 255.0, blue: 85.0 / 255.0)
+            ? Color(red: 244.0 / 255.0, green: 114.0 / 255.0, blue: 182.0 / 255.0)
+            : Color(red: 190.0 / 255.0, green: 24.0 / 255.0, blue: 93.0 / 255.0)
         case "B": return Color(red: 161.0 / 255.0, green: 98.0 / 255.0, blue: 7.0 / 255.0)
         default: return Color(red: 71.0 / 255.0, green: 85.0 / 255.0, blue: 105.0 / 255.0)
         }
@@ -5157,7 +5157,11 @@ struct ModernAttendanceHistoryView: View {
             return AnyView(VStack(spacing: 0) {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(isHoliday ? holidayColor : Color.primary)
+                    .foregroundStyle(note == "NN"
+                        ? (colorScheme == .dark
+                            ? Color(red: 244.0 / 255.0, green: 114.0 / 255.0, blue: 182.0 / 255.0)
+                            : Color(red: 190.0 / 255.0, green: 24.0 / 255.0, blue: 93.0 / 255.0))
+                        : (isHoliday ? holidayColor : Color.primary))
                     .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
