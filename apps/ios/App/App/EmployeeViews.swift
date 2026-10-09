@@ -2745,9 +2745,11 @@ private struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, alignment: .top))
         }
         if showWorkMetrics && hasCompletePunchPair {
-            return AnyView(VStack(spacing: 5) {
+            return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(metrics.coefficient))
+                    .frame(height: 18, alignment: .top)
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
+                    .frame(height: 18, alignment: .top)
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
@@ -2756,18 +2758,22 @@ private struct PreloadedAttendanceDayCell: View {
             .minimumScaleFactor(0.7))
         }
         if showWorkMetrics && hasForgottenPunch {
-            return AnyView(VStack(spacing: 5) {
+            return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(0))
+                    .frame(height: 18, alignment: .top)
                 Text("0")
+                    .frame(height: 18, alignment: .top)
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72)))
         }
         if !showWorkMetrics {
-            return AnyView(VStack(spacing: 5) {
+            return AnyView(VStack(spacing: 0) {
                 Text(time(day.checkIn))
+                    .frame(height: 18, alignment: .top)
                 Text(time(day.checkOut))
+                    .frame(height: 18, alignment: .top)
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
@@ -5176,9 +5182,11 @@ struct ModernAttendanceHistoryView: View {
             }
             .frame(maxWidth: .infinity, alignment: .top))
         } else if showWorkMetrics && hasCompletePunchPair {
-            return AnyView(VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(metrics.coefficient))
+                    .frame(height: 18, alignment: .top)
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
+                    .frame(height: 18, alignment: .top)
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
@@ -5186,9 +5194,11 @@ struct ModernAttendanceHistoryView: View {
             .lineLimit(1)
             .minimumScaleFactor(0.7))
         } else if !showWorkMetrics {
-            return AnyView(VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 0) {
                 Text(time(day.checkIn))
+                    .frame(height: 18, alignment: .top)
                 Text(time(day.checkOut))
+                    .frame(height: 18, alignment: .top)
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
