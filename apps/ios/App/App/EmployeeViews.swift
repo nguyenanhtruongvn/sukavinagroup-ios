@@ -2691,9 +2691,9 @@ private struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(statuses.contains("absent") ? Self.absentColor : Color.primary)
+        .foregroundStyle(note == nil && statuses.contains("absent") ? Self.absentColor : Color.primary)
         .frame(maxWidth: .infinity, minHeight: cellHeight)
-        .background(background(for: statuses))
+        .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair))
@@ -2743,14 +2743,21 @@ private struct PreloadedAttendanceDayCell: View {
         return AnyView(Color.clear)
     }
 
-    private func background(for statuses: [String]) -> AnyView {
+    private func background(for statuses: [String], note: String?) -> AnyView {
+        let coloredStatuses: Set<String> = [
+            "present", "late", "early", "missing_checkin", "missing_checkout",
+            "incomplete", "leave", "absent", "overtime"
+        ]
+        guard note == nil else {
+            return AnyView(AppTheme.muted.opacity(0.1))
+        }
         if statuses.contains("late") && statuses.contains("early") {
             return AnyView(HStack(spacing: 0) {
                 EmployeeRequestKind.late.color.opacity(0.34)
                 EmployeeRequestKind.early.color.opacity(0.36)
             })
         }
-        return AnyView(dayColor(statuses.first))
+        return AnyView(dayColor(statuses.first(where: { coloredStatuses.contains($0) })))
     }
 
     private func dayColor(_ status: String?) -> Color {
@@ -2761,12 +2768,6 @@ private struct PreloadedAttendanceDayCell: View {
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
-        case "holiday": return Self.holidayColor.opacity(0.38)
-        case "office_day_off": return .teal.opacity(0.24)
-        case "weekend": return .gray.opacity(0.13)
-        case "not-started": return .gray.opacity(0.18)
-        case "pending": return .orange.opacity(0.16)
-        case "upcoming": return AppTheme.muted.opacity(0.1)
         default: return AppTheme.muted.opacity(0.1)
         }
     }
