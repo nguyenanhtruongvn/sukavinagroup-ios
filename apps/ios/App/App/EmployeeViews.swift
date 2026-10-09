@@ -5413,8 +5413,8 @@ struct ModernAttendanceHistoryView: View {
         let statuses = dayStatuses(day)
         if statuses.contains("late") && statuses.contains("early") {
             HStack(spacing: 0) {
-                Self.lateColor.opacity(0.34)
-                Self.earlyColor.opacity(0.36)
+                EmployeeRequestKind.late.color.opacity(0.34)
+                EmployeeRequestKind.early.color.opacity(0.36)
             }
         } else {
             dayColor(statuses.first)
