@@ -1190,11 +1190,20 @@ struct RequestComposer: View {
                     .shadow(color: canSubmit ? AppTheme.red.opacity(0.28) : .clear, radius: 16, y: 7)
                 }
                 .disabled(!canSubmit)
-                // Match the meeting booking confirmation footer exactly.
-                // The frosted bar stays in the bottom safe-area on iOS 17+.
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(.ultraThinMaterial)
+                // Same compact rounded frosted backing as meeting booking.
+                // Only the area around the button is blurred (iOS 17+).
+                .padding(8)
+                .background {
+                    RoundedRectangle(cornerRadius: 25, style: .continuous)
+                        .fill(.regularMaterial)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.75)
+                        }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 8)
             }
             .onChange(of: from) { oldValue, newValue in
                 if to < newValue {
