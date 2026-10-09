@@ -2670,7 +2670,7 @@ private struct PreloadedAttendanceDayCell: View {
     let cellHeight: CGFloat
 
     var body: some View {
-        let statuses = AttendanceMetrics.statuses(day)
+        let statuses = AttendanceMetrics.displayStatuses(day)
         let isHoliday = statuses.contains("holiday")
         let note = AttendanceMetrics.calendarDisplayNote(day, showWorkMetrics: showWorkMetrics)
         let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
@@ -4084,10 +4084,29 @@ private enum AttendanceMetrics {
         return serverStatuses
     }
 
+    static func isUnfinishedToday(_ day: AttendanceDay) -> Bool {
+        guard day.punchCount < 2 else { return false }
+        let components = day.date.split(separator: "-").compactMap { Int($0) }
+        guard components.count == 3,
+              let date = vietnamCalendar.date(from: DateComponents(
+                  year: components[0], month: components[1], day: components[2]
+              )) else { return false }
+        return vietnamCalendar.isDateInToday(date)
+    }
+
+    static func displayStatuses(_ day: AttendanceDay) -> [String] {
+        let values = statuses(day)
+        let payrollException: Set<String> = ["holiday", "office_day_off", "leave", "weekend", "overtime"]
+        if isUnfinishedToday(day), !values.contains(where: { payrollException.contains($0) }) {
+            return ["pending"]
+        }
+        return values
+    }
+
     // A calendar note is an attendance/payroll status, not proof of worked
     // hours. Keep notes visible without manufacturing 0/0 hour lines.
     static func calendarNote(_ day: AttendanceDay) -> String? {
-        let values = statuses(day)
+        let values = displayStatuses(day)
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
         if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
@@ -4103,7 +4122,7 @@ private enum AttendanceMetrics {
         _ day: AttendanceDay, showWorkMetrics: Bool
     ) -> String? {
         if showWorkMetrics { return calendarNote(day) }
-        let values = statuses(day)
+        let values = displayStatuses(day)
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
         return nil
@@ -4237,12 +4256,12 @@ private enum AttendanceMetrics {
     }
 
     static func missingPunchCount(_ month: AttendanceMonth) -> Int {
-        month.days.filter { $0.punchCount == 1 }.count
+        month.days.filter { $0.punchCount == 1 && !isUnfinishedToday($0) }.count
     }
 
     static func absenceCount(_ month: AttendanceMonth) -> Int {
         month.days.filter { day in
-            day.punchCount == 0 && statuses(day).contains("absent")
+            day.punchCount == 0 && statuses(day).contains("absent") && !isUnfinishedToday(day)
         }.count
     }
 
@@ -4456,7 +4475,7 @@ private struct AttendanceStatementReportView: View {
     private var totalOvertime: Double { regularOvertime + sundayOvertime + holidayOvertime }
     private var violations: Int { AttendanceMetrics.violationCount(month) }
     private var leaveDays: Int { month.days.filter { AttendanceMetrics.statuses($0).contains("leave") }.count }
-    private var absentDays: Int { month.days.filter { AttendanceMetrics.statuses($0).contains("absent") }.count }
+    private var absentDays: Int { AttendanceMetrics.absenceCount(month) }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -5342,7 +5361,7 @@ struct ModernAttendanceHistoryView: View {
         formatter.dateFormat = "'Tháng' M / yyyy"; return formatter.string(from: date)
     }
     private func dayStatuses(_ day: AttendanceDay) -> [String] {
-        AttendanceMetrics.statuses(day)
+        AttendanceMetrics.displayStatuses(day)
     }
     @ViewBuilder private func dayBackground(_ day: AttendanceDay) -> some View {
         let statuses = dayStatuses(day)
