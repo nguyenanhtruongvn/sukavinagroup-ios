@@ -2655,26 +2655,6 @@ struct EmployeePortalView: View {
 
 /// A concrete view keeps the calendar's `ForEach` closure small enough for
 /// Release builds on current Xcode toolchains to type-check reliably.
-// Shared opaque colors for both calendar cell fills and summary numbers.
-private enum AttendanceFillPalette {
-    static func color(_ status: String?) -> Color {
-        switch status {
-        case "present": return Color(red: 204.0/255.0, green: 239.0/255.0, blue: 216.0/255.0)
-        case "late": return Color(red: 255.0/255.0, green: 227.0/255.0, blue: 178.0/255.0)
-        case "early": return Color(red: 229.0/255.0, green: 210.0/255.0, blue: 255.0/255.0)
-        case "leave": return Color(red: 207.0/255.0, green: 226.0/255.0, blue: 255.0/255.0)
-        case "absent": return Color(red: 255.0/255.0, green: 208.0/255.0, blue: 206.0/255.0)
-        case "overtime": return Color(red: 217.0/255.0, green: 213.0/255.0, blue: 255.0/255.0)
-        case "missing_checkin", "missing_checkout", "incomplete":
-            return Color(red: 202.0/255.0, green: 233.0/255.0, blue: 244.0/255.0)
-        case "holiday": return Color(red: 226.0/255.0, green: 239.0/255.0, blue: 189.0/255.0)
-        case "office_day_off": return Color(red: 206.0/255.0, green: 241.0/255.0, blue: 234.0/255.0)
-        default: return AppTheme.muted.opacity(0.1)
-        }
-    }
-    static let darkText = Color(red: 31.0/255.0, green: 39.0/255.0, blue: 51.0/255.0)
-}
-
 @available(iOS 17.0, *)
 private struct PreloadedAttendanceDayCell: View {
     private static let absentColor = Color(red: 211.0 / 255.0, green: 47.0 / 255.0, blue: 47.0 / 255.0)
@@ -2695,16 +2675,6 @@ private struct PreloadedAttendanceDayCell: View {
     let month: AttendanceMonth
     let showWorkMetrics: Bool
     let cellHeight: CGFloat
-
-    private var detailTextColor: Color {
-        let statuses = AttendanceMetrics.displayStatuses(day)
-        let note = AttendanceMetrics.calendarDisplayNote(day, showWorkMetrics: showWorkMetrics)
-        let colored = noteFillStatus(note) != nil || (note == nil && statuses.contains(where: {
-            ["present", "late", "early", "leave", "absent", "overtime", "missing_checkin",
-             "missing_checkout", "incomplete"].contains($0)
-        }))
-        return colored ? AttendanceFillPalette.darkText.opacity(0.84) : Color.primary.opacity(0.72)
-    }
 
     var body: some View {
         let statuses = AttendanceMetrics.displayStatuses(day)
@@ -2730,7 +2700,7 @@ private struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
-        .foregroundStyle(noteFillStatus(note) != nil || (note == nil && statuses.contains(where: { ["present", "late", "early", "absent", "leave", "overtime", "incomplete", "missing_checkin", "missing_checkout"].contains($0) })) ? AttendanceFillPalette.darkText : Color.primary)
+        .foregroundStyle(note == nil && statuses.contains("absent") ? Self.absentColor : Color.primary)
         .frame(maxWidth: .infinity, minHeight: cellHeight)
         .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
@@ -2765,7 +2735,7 @@ private struct PreloadedAttendanceDayCell: View {
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(detailTextColor)
+            .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
             .minimumScaleFactor(0.7))
         }
@@ -2776,7 +2746,7 @@ private struct PreloadedAttendanceDayCell: View {
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(detailTextColor))
+            .foregroundStyle(Color.primary.opacity(0.72)))
         }
         if !showWorkMetrics {
             return AnyView(VStack(spacing: 5) {
@@ -2785,21 +2755,11 @@ private struct PreloadedAttendanceDayCell: View {
             }
             .font(.system(size: 10.5, weight: .semibold, design: .rounded))
             .monospacedDigit()
-            .foregroundStyle(detailTextColor)
+            .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
             .minimumScaleFactor(0.7))
         }
         return AnyView(Color.clear)
-    }
-
-    private func noteFillStatus(_ note: String?) -> String? {
-        switch note {
-        case "RO", "RO/2", "NP", "NP/2", "P/2": return "leave"
-        case "KCC": return "absent"
-        case "NL": return "holiday"
-        case "NVP": return "office_day_off"
-        default: return nil
-        }
     }
 
     private func background(for statuses: [String], note: String?) -> AnyView {
@@ -2807,23 +2767,31 @@ private struct PreloadedAttendanceDayCell: View {
             "present", "late", "early", "missing_checkin", "missing_checkout",
             "incomplete", "leave", "absent", "overtime"
         ]
-        if let note {
-            guard let fillStatus = noteFillStatus(note) else {
-                return AnyView(AppTheme.muted.opacity(0.1))
-            }
-            return AnyView(AttendanceFillPalette.color(fillStatus))
+        // Notes are distinguished by text accent, so every note keeps the
+        // neutral cell surface, including the KCC absence code.
+        guard note == nil else {
+            return AnyView(AppTheme.muted.opacity(0.1))
         }
         if statuses.contains("late") && statuses.contains("early") {
             return AnyView(HStack(spacing: 0) {
-                AttendanceFillPalette.color("late")
-                AttendanceFillPalette.color("early")
+                EmployeeRequestKind.late.color.opacity(0.34)
+                EmployeeRequestKind.early.color.opacity(0.36)
             })
         }
         return AnyView(dayColor(statuses.first(where: { coloredStatuses.contains($0) })))
     }
 
     private func dayColor(_ status: String?) -> Color {
-        AttendanceFillPalette.color(status)
+        switch status {
+        case "present": return Color(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0).opacity(0.32)
+        case "missing_checkin", "missing_checkout", "incomplete": return Self.forgottenPunchColor.opacity(0.34)
+        case "late": return Self.lateColor.opacity(0.34)
+        case "early": return Self.earlyColor.opacity(0.36)
+        case "leave": return Self.leaveColor.opacity(0.32)
+        case "absent": return Self.absentColor.opacity(0.46)
+        case "overtime": return Self.overtimeColor.opacity(0.36)
+        default: return AppTheme.muted.opacity(0.1)
+        }
     }
 
     private func noteColor(_ note: String) -> Color {
@@ -4991,27 +4959,27 @@ struct ModernAttendanceHistoryView: View {
                 metricSummary(
                     AttendanceMetrics.workDayTotalText(AttendanceMetrics.totalWorkDays(data)),
                     "Tổng ngày công",
-                    AttendanceFillPalette.color("present")
+                    .green
                 )
                 metricSummary(
                     AttendanceMetrics.hourText(
                         data.days.reduce(0) { $0 + AttendanceMetrics.workMetrics($1, month: data).overtimeHours }
                     ),
                     "Tổng giờ tăng ca",
-                    AttendanceFillPalette.color("overtime")
+                    .orange
                 )
             }
             .frame(maxWidth: .infinity)
             .dynamicTypeSize(.xSmall ... .accessibility1)
         } else {
             let values: [(String, Int, Color)] = [
-                ("Đủ công", AttendanceMetrics.paidDayCount(data), AttendanceFillPalette.color("present")),
-                ("Đi trễ", preloadedCount("late", in: data), AttendanceFillPalette.color("late")),
-                ("Về sớm", preloadedCount("early", in: data), AttendanceFillPalette.color("early")),
-                ("Quên chấm công", AttendanceMetrics.missingPunchCount(data), AttendanceFillPalette.color("incomplete")),
-                ("Xin nghỉ", preloadedCount("leave", in: data), AttendanceFillPalette.color("leave")),
-                ("Vắng", AttendanceMetrics.absenceCount(data), AttendanceFillPalette.color("absent")),
-                ("Làm thêm", preloadedCount("overtime", in: data), AttendanceFillPalette.color("overtime")),
+                ("Đủ công", AttendanceMetrics.paidDayCount(data), Color(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0)),
+                ("Đi trễ", preloadedCount("late", in: data), Color(red: 217.0 / 255.0, green: 119.0 / 255.0, blue: 6.0 / 255.0)),
+                ("Về sớm", preloadedCount("early", in: data), Color(red: 219.0 / 255.0, green: 39.0 / 255.0, blue: 119.0 / 255.0)),
+                ("Quên chấm công", AttendanceMetrics.missingPunchCount(data), Color(red: 8.0 / 255.0, green: 145.0 / 255.0, blue: 178.0 / 255.0)),
+                ("Xin nghỉ", preloadedCount("leave", in: data), Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)),
+                ("Vắng", AttendanceMetrics.absenceCount(data), Self.absentColor),
+                ("Làm thêm", preloadedCount("overtime", in: data), Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)),
             ].filter { $0.1 > 0 }
             if !values.isEmpty {
                 HStack(spacing: 5) {
@@ -5392,8 +5360,6 @@ struct ModernAttendanceHistoryView: View {
     private func summary(_ value: Int, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
             Text("\(value)").font(.title3.bold()).foregroundStyle(color)
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(AttendanceFillPalette.darkText, in: RoundedRectangle(cornerRadius: 7))
             Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -5403,8 +5369,6 @@ struct ModernAttendanceHistoryView: View {
     private func metricSummary(_ value: String, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
             Text(value).font(.title3.bold()).foregroundStyle(color)
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(AttendanceFillPalette.darkText, in: RoundedRectangle(cornerRadius: 7))
             Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 13)
@@ -5461,15 +5425,30 @@ struct ModernAttendanceHistoryView: View {
         let statuses = dayStatuses(day)
         if statuses.contains("late") && statuses.contains("early") {
             HStack(spacing: 0) {
-                AttendanceFillPalette.color("late")
-                AttendanceFillPalette.color("early")
+                EmployeeRequestKind.late.color.opacity(0.34)
+                EmployeeRequestKind.early.color.opacity(0.36)
             }
         } else {
             dayColor(statuses.first)
         }
     }
     private func dayColor(_ status: String?) -> Color {
-        AttendanceFillPalette.color(status)
+        switch status {
+        case "present": return .green.opacity(0.32)
+        case "missing_checkin", "missing_checkout", "incomplete": return .orange.opacity(0.34)
+        case "late": return .orange.opacity(0.34)
+        case "early": return EmployeeRequestKind.early.color.opacity(0.36)
+        case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
+        case "absent": return Self.absentColor.opacity(0.46)
+        case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
+        case "holiday": return holidayColor.opacity(0.38)
+        case "office_day_off": return .teal.opacity(0.24)
+        case "weekend": return .gray.opacity(0.13)
+        case "not-started": return .gray.opacity(0.18)
+        case "pending": return .orange.opacity(0.16)
+        case "upcoming": return AppTheme.muted.opacity(0.1)
+        default: return AppTheme.muted.opacity(0.1)
+        }
     }
 
     private func statusTitle(_ status: String?) -> String {
