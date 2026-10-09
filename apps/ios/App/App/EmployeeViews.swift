@@ -2720,18 +2720,6 @@ private struct PreloadedAttendanceDayCell: View {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(noteColor(note))
-                    .padding(.horizontal, note == "NN" ? 7 : 0)
-                    .padding(.vertical, note == "NN" ? 3 : 0)
-                    .background {
-                        if note == "NN" {
-                            RoundedRectangle(cornerRadius: 7)
-                                .fill(noteColor(note).opacity(0.09))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 7)
-                                        .strokeBorder(noteColor(note).opacity(0.4), lineWidth: 1)
-                                }
-                        }
-                    }
                     .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
