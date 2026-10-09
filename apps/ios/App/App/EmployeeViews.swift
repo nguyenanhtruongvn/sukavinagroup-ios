@@ -4330,9 +4330,9 @@ private enum AttendanceMetrics {
     }
 
     static func workFactorText(_ value: Double) -> String {
-        if value < 0.005 { return "0" }
-        if value >= 0.995 { return "1" }
-        return String(format: "%.2f", value)
+        // Always show two fractional digits; use the Vietnamese decimal comma.
+        // The API rounds each coefficient before sending it to mobile clients.
+        return String(format: "%.2f", value).replacingOccurrences(of: ".", with: ",")
     }
 
     static func workDayTotalText(_ value: Double) -> String {
