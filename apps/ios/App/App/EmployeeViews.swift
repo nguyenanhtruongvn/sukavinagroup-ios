@@ -4120,12 +4120,16 @@ private enum AttendanceMetrics {
         return nil
     }
 
-    // The standard calendar shows punch times, not payroll/leave codes.
-    // Holidays and office days off keep their original permanent labels.
+    // The standard calendar shows punch times when present. A day without
+    // either punch has no times to show, so its recorded payroll/leave code is
+    // displayed in both calendar modes.
     static func calendarDisplayNote(
         _ day: AttendanceDay, showWorkMetrics: Bool
     ) -> String? {
-        if showWorkMetrics { return calendarNote(day) }
+        let note = calendarNote(day)
+        if showWorkMetrics || (day.checkIn == nil && day.checkOut == nil && note != nil) {
+            return note
+        }
         let values = displayStatuses(day)
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
