@@ -4151,6 +4151,8 @@ private enum AttendanceMetrics {
         if let manual = day.overrideCode, !manual.isEmpty { return manual }
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
+        // Do not show a stale KCC for a workday that has not yet ended.
+        if values.contains("pending") { return nil }
         // Legacy leave status does not establish available paid-leave balance.
         if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
         if isUnfinishedToday(day) { return nil }
