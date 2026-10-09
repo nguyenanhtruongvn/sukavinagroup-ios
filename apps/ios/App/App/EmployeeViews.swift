@@ -2716,7 +2716,7 @@ private struct PreloadedAttendanceDayCell: View {
     ) -> AnyView {
         let metrics = AttendanceMetrics.workMetrics(day, month: month)
         if let note {
-            return AnyView(VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 0) {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(noteColor(note))
@@ -2732,13 +2732,17 @@ private struct PreloadedAttendanceDayCell: View {
                                 }
                         }
                     }
+                    .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
-                    Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
+                    Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(holidayColor)
+                        .frame(height: 18, alignment: .top)
+                } else {
+                    Color.clear.frame(height: 18)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center))
+            .frame(maxWidth: .infinity, alignment: .top))
         }
         if showWorkMetrics && hasCompletePunchPair {
             return AnyView(VStack(spacing: 5) {
@@ -5156,17 +5160,21 @@ struct ModernAttendanceHistoryView: View {
     ) -> AnyView {
         let metrics = AttendanceMetrics.workMetrics(day, month: month)
         if let note {
-            return AnyView(VStack(spacing: 1) {
+            return AnyView(VStack(spacing: 0) {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(isHoliday ? holidayColor : Color.primary)
+                    .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
-                    Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
+                    Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                         .foregroundStyle(holidayColor)
+                        .frame(height: 18, alignment: .top)
+                } else {
+                    Color.clear.frame(height: 18)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .center))
+            .frame(maxWidth: .infinity, alignment: .top))
         } else if showWorkMetrics && hasCompletePunchPair {
             return AnyView(VStack(spacing: 1) {
                 Text(AttendanceMetrics.workFactorText(metrics.coefficient))
