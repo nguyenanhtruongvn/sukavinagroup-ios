@@ -574,9 +574,11 @@ private struct MeetingRoomScheduleSheet: View {
                             .onChange(of: selectedDay) { _, value in
                                 Task { await session.refreshMeetingSchedule(date: value) }
                             }
-                        MeetingTimeline(bookings: bookings, date: selectedDay) {
+                        // Type erase the heavy timeline separately from the
+                        // enclosing NavigationStack on iOS 17.
+                        AnyView(MeetingTimeline(bookings: bookings, date: selectedDay) {
                             presentedDestination = .detail($0)
-                        }
+                        })
                     }
                 }
                 .task {
@@ -1714,9 +1716,11 @@ private struct MeetingBookingSheet: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 18) {
-                            bookingHeader
-                            meetingDetailsCard
-                            inviteesCard
+                            // Limit the generic type metadata resolved in one
+                            // pass by iOS 17 while retaining the same native form.
+                            AnyView(bookingHeader)
+                            AnyView(meetingDetailsCard)
+                            AnyView(inviteesCard)
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
