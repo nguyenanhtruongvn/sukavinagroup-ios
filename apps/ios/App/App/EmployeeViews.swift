@@ -4715,8 +4715,6 @@ private struct AttendanceOvertimeProgressRow: View {
 private struct AttendanceCodeLegend: View {
     // Shared across current attendance and released monthly statements.
     // Explanations reflect the HR-approved meaning of each payroll code.
-    private static let leavePayrollCodes: Set<String> = ["RO", "RO/2", "NP", "NP/2", "P/2"]
-    private static let leaveColor = Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)
     private static let notes: [(code: String, meaning: String)] = [
         ("1", "Làm đủ 1 ngày công 8h"),
         ("NP/2", "Nửa ngày công, nửa ngày hưởng lương phép năm"),
@@ -4741,11 +4739,10 @@ private struct AttendanceCodeLegend: View {
                 .foregroundStyle(Color.primary)
 
             ForEach(Self.notes.indices, id: \.self) { index in
-                (Text("\(Self.notes[index].code): ")
-                    .bold()
-                    .foregroundColor(Self.leavePayrollCodes.contains(Self.notes[index].code) ? Self.leaveColor : Color.primary)
-                 + Text(Self.notes[index].meaning).italic().foregroundColor(Color.primary))
+                (Text("\(Self.notes[index].code): ").bold()
+                 + Text(Self.notes[index].meaning).italic())
                     .font(.subheadline)
+                    .foregroundStyle(Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityLabel(
