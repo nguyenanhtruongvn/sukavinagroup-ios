@@ -1190,8 +1190,19 @@ struct RequestComposer: View {
                     .shadow(color: canSubmit ? AppTheme.red.opacity(0.28) : .clear, radius: 16, y: 7)
                 }
                 .disabled(!canSubmit)
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                // Compact frosted backing follows the send button, not the
+                // full bottom edge. The system material supports iOS 17+.
+                .padding(8)
+                .background {
+                    RoundedRectangle(cornerRadius: 25, style: .continuous)
+                        .fill(.regularMaterial)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 25, style: .continuous)
+                                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.75)
+                        }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
                 .padding(.bottom, 8)
             }
             .onChange(of: from) { oldValue, newValue in
