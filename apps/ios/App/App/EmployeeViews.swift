@@ -4148,11 +4148,12 @@ private enum AttendanceMetrics {
     // hours. Keep notes visible without manufacturing 0/0 hour lines.
     static func calendarNote(_ day: AttendanceDay) -> String? {
         let values = displayStatuses(day)
+        if let manual = day.overrideCode, !manual.isEmpty { return manual }
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
-        if values.contains("leave") { return "NP" }
-        if isUnfinishedToday(day) { return nil }
+        // Legacy leave status does not establish available paid-leave balance.
         if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
+        if isUnfinishedToday(day) { return nil }
         if values.contains("absent"), day.checkIn == nil, day.checkOut == nil {
             return "KCC"
         }
