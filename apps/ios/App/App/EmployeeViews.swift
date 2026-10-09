@@ -2674,6 +2674,7 @@ private struct PreloadedAttendanceDayCell: View {
         let isHoliday = statuses.contains("holiday")
         let note = AttendanceMetrics.calendarDisplayNote(day, showWorkMetrics: showWorkMetrics)
         let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
+        let hasForgottenPunch = statuses.contains { ["missing_checkin", "missing_checkout", "incomplete"].contains($0) }
         let dayNumber = Int(day.date.suffix(2)) ?? 0
 
         return VStack(spacing: 2) {
@@ -2686,7 +2687,8 @@ private struct PreloadedAttendanceDayCell: View {
             detail(
                 note: note,
                 isHoliday: isHoliday,
-                hasCompletePunchPair: hasCompletePunchPair
+                hasCompletePunchPair: hasCompletePunchPair,
+                hasForgottenPunch: hasForgottenPunch
             )
             .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
@@ -2696,13 +2698,14 @@ private struct PreloadedAttendanceDayCell: View {
         .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair))
+        .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch))
     }
 
     private func detail(
         note: String?,
         isHoliday: Bool,
-        hasCompletePunchPair: Bool
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool
     ) -> AnyView {
         let metrics = AttendanceMetrics.workMetrics(day, month: month)
         if let note {
@@ -2728,6 +2731,15 @@ private struct PreloadedAttendanceDayCell: View {
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
             .minimumScaleFactor(0.7))
+        }
+        if showWorkMetrics && hasForgottenPunch {
+            return AnyView(VStack(spacing: 5) {
+                Text("0")
+                Text("0")
+            }
+            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .foregroundStyle(Color.primary.opacity(0.72)))
         }
         if !showWorkMetrics {
             return AnyView(VStack(spacing: 5) {
@@ -2792,7 +2804,8 @@ private struct PreloadedAttendanceDayCell: View {
         for dayNumber: Int,
         note: String?,
         statuses: [String],
-        hasCompletePunchPair: Bool
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool
     ) -> String {
         if let note {
             let overtime = hasCompletePunchPair && statuses.contains("holiday") && showWorkMetrics
@@ -2806,6 +2819,9 @@ private struct PreloadedAttendanceDayCell: View {
         if hasCompletePunchPair {
             let metrics = AttendanceMetrics.workMetrics(day, month: month)
             return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
+        }
+        if hasForgottenPunch {
+            return "Ngày \(dayNumber). Hệ số công 0, tăng ca 0 giờ"
         }
         return "Ngày \(dayNumber). Không đủ cặp chấm công để tính giờ làm hoặc tăng ca"
     }
