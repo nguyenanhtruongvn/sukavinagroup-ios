@@ -1190,20 +1190,11 @@ struct RequestComposer: View {
                     .shadow(color: canSubmit ? AppTheme.red.opacity(0.28) : .clear, radius: 16, y: 7)
                 }
                 .disabled(!canSubmit)
-                // Compact frosted backing follows the send button, not the
-                // full bottom edge. The system material supports iOS 17+.
-                .padding(8)
-                .background {
-                    RoundedRectangle(cornerRadius: 25, style: .continuous)
-                        .fill(.regularMaterial)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 25, style: .continuous)
-                                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.75)
-                        }
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
-                .padding(.bottom, 8)
+                // Match the meeting booking confirmation footer exactly.
+                // The frosted bar stays in the bottom safe-area on iOS 17+.
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.ultraThinMaterial)
             }
             .onChange(of: from) { oldValue, newValue in
                 if to < newValue {
