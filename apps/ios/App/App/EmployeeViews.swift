@@ -46,15 +46,43 @@ enum MeetingPresentation {
     }
 }
 
+// One active presentation at a time. On iOS 17 competing sheet modifiers
+// cause SwiftUI to resolve several complex generic destination trees together.
+@available(iOS 17.0, *)
+private enum MeetingRoomsDestination: Identifiable {
+    case booking(room: MeetingRoom, day: Date)
+    case schedule(room: MeetingRoom, day: Date)
+    case mine(day: Date)
+
+    var id: String {
+        switch self {
+        case .booking(let room, _): return "booking-\(room.id)"
+        case .schedule(let room, _): return "schedule-\(room.id)"
+        case .mine: return "my-meetings"
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private enum MeetingScheduleDestination: Identifiable {
+    case booking
+    case detail(MeetingBooking)
+
+    var id: String {
+        switch self {
+        case .booking: return "booking"
+        case .detail(let booking): return "detail-\(booking.id)"
+        }
+    }
+}
+
 @available(iOS 17.0, *)
 struct MeetingRoomsView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.scenePhase) private var scenePhase
     let isActive: Bool
     @State private var day = Date()
-    @State private var bookingRoom: MeetingRoom?
-    @State private var scheduleRoom: MeetingRoom?
-    @State private var showMine = false
+    @State private var presentedDestination: MeetingRoomsDestination?
     @State private var draggingRoom: MeetingRoom?
 
     private var tomorrow: Date {
@@ -91,32 +119,26 @@ struct MeetingRoomsView: View {
 
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        MeetingRoomsHeader(day: $day, showMine: $showMine)
+                        MeetingRoomsHeader(day: $day, onShowMine: {
+                            presentedDestination = .mine(day: day)
+                        })
 
                         ForEach(session.meetingRooms) { room in
                             MeetingRoomCard(
                                 room: room,
                                 bookings: bookingsByRoom[room.id] ?? [],
                                 day: day,
-                                onBook: { bookingRoom = room },
-                                onSchedule: { scheduleRoom = room }
+                                onBook: { presentedDestination = .booking(room: room, day: day) },
+                                onSchedule: { presentedDestination = .schedule(room: room, day: day) }
                             )
-                            // onDrag begins with the native long-press gesture, so a
-                            // normal tap on the card keeps opening that room's schedule.
-                            .opacity(draggingRoom?.id == room.id ? 0.72 : 1)
-                            .onDrag {
-                                draggingRoom = room
-                                return NSItemProvider(object: room.id as NSString)
-                            }
-                            .onDrop(
-                                of: [UTType.plainText.identifier],
-                                delegate: MeetingRoomOrderDropDelegate(
-                                    target: room,
-                                    rooms: session.meetingRooms,
-                                    draggingRoom: $draggingRoom,
-                                    saveOrder: { session.reorderMeetingRooms($0) }
-                                )
-                            )
+                            // A smaller row boundary avoids eager expansion of the
+                            // drag/drop generic tree by the iOS 17 SwiftUI runtime.
+                            .modifier(MeetingRoomOrderingModifier(
+                                room: room,
+                                rooms: session.meetingRooms,
+                                draggingRoom: $draggingRoom,
+                                saveOrder: { session.reorderMeetingRooms($0) }
+                            ))
                         }
                     }
                     .padding(.horizontal, 16)
@@ -149,17 +171,20 @@ struct MeetingRoomsView: View {
             .refreshable {
                 await session.refreshMeetingSchedule(date: day, force: true)
             }
-            .sheet(item: $bookingRoom) { room in
-                MeetingBookingSheet(room: room, day: day)
-                    .environmentObject(session)
-            }
-            .sheet(isPresented: $showMine) {
-                MyMeetingsSheet(day: day)
-                    .environmentObject(session)
-            }
-            .sheet(item: $scheduleRoom) { room in
-                MeetingRoomScheduleSheet(room: room, day: day)
-                    .environmentObject(session)
+            .sheet(item: $presentedDestination) { destination in
+                // Erase the concrete destination type at the sheet boundary.
+                // Only the selected destination is mounted (iOS 17 safe).
+                switch destination {
+                case .booking(let room, let selectedDay):
+                    AnyView(MeetingBookingSheet(room: room, day: selectedDay)
+                        .environmentObject(session))
+                case .schedule(let room, let selectedDay):
+                    AnyView(MeetingRoomScheduleSheet(room: room, day: selectedDay)
+                        .environmentObject(session))
+                case .mine(let selectedDay):
+                    AnyView(MyMeetingsSheet(day: selectedDay)
+                        .environmentObject(session))
+                }
             }
         }
     }
@@ -202,7 +227,7 @@ private struct MeetingRoomOrderDropDelegate: DropDelegate {
 @available(iOS 17.0, *)
 private struct MeetingRoomsHeader: View {
     @Binding var day: Date
-    @Binding var showMine: Bool
+    let onShowMine: () -> Void
 
     private var isToday: Bool {
         MeetingPresentation.calendar.isDateInToday(day)
@@ -262,7 +287,7 @@ private struct MeetingRoomsHeader: View {
                 Spacer(minLength: 0)
 
                 Button {
-                    showMine = true
+                    onShowMine()
                 } label: {
                     Image(systemName: "calendar")
                         .font(.system(size: 17, weight: .bold))
@@ -461,8 +486,7 @@ private struct MeetingRoomScheduleSheet: View {
     let room: MeetingRoom
     let day: Date
     @State private var selectedDay: Date
-    @State private var showBooking = false
-    @State private var selectedBooking: MeetingBooking?
+    @State private var presentedDestination: MeetingScheduleDestination?
 
     init(room: MeetingRoom, day: Date) {
         self.room = room
@@ -492,7 +516,9 @@ private struct MeetingRoomScheduleSheet: View {
                             .onChange(of: selectedDay) { _, value in
                                 Task { await session.refreshMeetingSchedule(date: value) }
                             }
-                        MeetingTimeline(bookings: bookings, date: selectedDay) { selectedBooking = $0 }
+                        MeetingTimeline(bookings: bookings, date: selectedDay) {
+                            presentedDestination = .detail($0)
+                        }
                     }
                 }
                 .task {
@@ -507,7 +533,7 @@ private struct MeetingRoomScheduleSheet: View {
                 Button("Đóng") { dismiss() }
             }
             .overlay(alignment: .bottomTrailing) {
-                Button { showBooking = true } label: {
+                Button { presentedDestination = .booking } label: {
                     Image(systemName: "plus")
                         .font(.title2.bold())
                         .foregroundStyle(.white)
@@ -518,12 +544,15 @@ private struct MeetingRoomScheduleSheet: View {
                 }
                 .padding(22)
             }
-            .sheet(isPresented: $showBooking) {
-                MeetingBookingSheet(room: room, day: selectedDay)
-                    .environmentObject(session)
-            }
-            .sheet(item: $selectedBooking) { booking in
-                MeetingBookingDetailSheet(booking: booking, room: room)
+            .sheet(item: $presentedDestination) { destination in
+                switch destination {
+                case .booking:
+                    AnyView(MeetingBookingSheet(room: room, day: selectedDay)
+                        .environmentObject(session))
+                case .detail(let booking):
+                    AnyView(MeetingBookingDetailSheet(booking: booking, room: room)
+                        .environmentObject(session))
+                }
             }
         }
     }
