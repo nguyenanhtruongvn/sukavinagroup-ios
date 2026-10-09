@@ -112,7 +112,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .leave: return .blue
         case .late: return .orange
         case .early: return Color(red: 0.9, green: 0.22, blue: 0.52)
-        case .overtime: return Color(red: 0.32, green: 0.4, blue: 0.96)
+        case .overtime: return Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)
         case .business: return Color(red: 0.0, green: 0.5, blue: 0.5); case .attendance: return .green; case .gate: return .purple
         }
     }
