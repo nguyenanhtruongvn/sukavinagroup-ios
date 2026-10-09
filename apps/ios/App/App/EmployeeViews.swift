@@ -2691,7 +2691,7 @@ private struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
-        .foregroundStyle((note == nil || note == "KCC") && statuses.contains("absent") ? Self.absentColor : Color.primary)
+        .foregroundStyle(note == nil && statuses.contains("absent") ? Self.absentColor : Color.primary)
         .frame(maxWidth: .infinity, minHeight: cellHeight)
         .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
@@ -2709,7 +2709,7 @@ private struct PreloadedAttendanceDayCell: View {
             return AnyView(VStack(spacing: 1) {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(isHoliday ? Self.holidayColor : Color.primary)
+                    .foregroundStyle(noteColor(note))
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -2748,9 +2748,9 @@ private struct PreloadedAttendanceDayCell: View {
             "present", "late", "early", "missing_checkin", "missing_checkout",
             "incomplete", "leave", "absent", "overtime"
         ]
-        // KCC is the visible code for an absence, so it keeps the absence
-        // colour. Other payroll/leave notes use the neutral cell background.
-        guard note == nil || note == "KCC" else {
+        // Notes are distinguished by text accent, so every note keeps the
+        // neutral cell surface, including the KCC absence code.
+        guard note == nil else {
             return AnyView(AppTheme.muted.opacity(0.1))
         }
         if statuses.contains("late") && statuses.contains("early") {
@@ -2771,6 +2771,20 @@ private struct PreloadedAttendanceDayCell: View {
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
         default: return AppTheme.muted.opacity(0.1)
+        }
+    }
+
+    private func noteColor(_ note: String) -> Color {
+        switch note {
+        case "NL": return Self.holidayColor
+        case "NVP": return .teal
+        case "KCC": return Self.absentColor
+        case "NTL", "RO", "RO/2": return Color(red: 0.85, green: 0.29, blue: 0.33)
+        case "CT": return Color(red: 0.15, green: 0.39, blue: 0.92)
+        case "NN": return Color(red: 0.49, green: 0.23, blue: 0.93)
+        case "B": return Color(red: 0.85, green: 0.47, blue: 0.02)
+        case "NP", "NP/2", "P/2": return Color(red: 0.15, green: 0.39, blue: 0.92)
+        default: return Color(red: 0.43, green: 0.36, blue: 0.91)
         }
     }
 
@@ -5400,6 +5414,7 @@ struct ModernAttendanceHistoryView: View {
         default: return AppTheme.muted.opacity(0.1)
         }
     }
+
     private func statusTitle(_ status: String?) -> String {
         switch status {
         case "present": return "Đủ công"
