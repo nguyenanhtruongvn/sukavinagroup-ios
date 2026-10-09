@@ -2657,7 +2657,12 @@ struct EmployeePortalView: View {
 /// Release builds on current Xcode toolchains to type-check reliably.
 @available(iOS 17.0, *)
 private struct PreloadedAttendanceDayCell: View {
-    private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
+    private static let absentColor = Color(red: 211.0 / 255.0, green: 47.0 / 255.0, blue: 47.0 / 255.0)
+    private static let lateColor = Color(red: 217.0 / 255.0, green: 119.0 / 255.0, blue: 6.0 / 255.0)
+    private static let forgottenPunchColor = Color(red: 8.0 / 255.0, green: 145.0 / 255.0, blue: 178.0 / 255.0)
+    private static let earlyColor = Color(red: 219.0 / 255.0, green: 39.0 / 255.0, blue: 119.0 / 255.0)
+    private static let leaveColor = Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)
+    private static let overtimeColor = Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)
     private static let holidayColor = Color(
         red: 142.0 / 255.0,
         green: 63.0 / 255.0,
@@ -2776,27 +2781,30 @@ private struct PreloadedAttendanceDayCell: View {
 
     private func dayColor(_ status: String?) -> Color {
         switch status {
-        case "present": return .green.opacity(0.32)
-        case "missing_checkin", "missing_checkout", "incomplete", "late": return .orange.opacity(0.34)
-        case "early": return EmployeeRequestKind.early.color.opacity(0.36)
-        case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
+        case "present": return Color(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0).opacity(0.32)
+        case "missing_checkin", "missing_checkout", "incomplete": return Self.forgottenPunchColor.opacity(0.34)
+        case "late": return Self.lateColor.opacity(0.34)
+        case "early": return Self.earlyColor.opacity(0.36)
+        case "leave": return Self.leaveColor.opacity(0.32)
         case "absent": return Self.absentColor.opacity(0.46)
-        case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
+        case "overtime": return Self.overtimeColor.opacity(0.36)
         default: return AppTheme.muted.opacity(0.1)
         }
     }
 
     private func noteColor(_ note: String) -> Color {
         switch note {
-        case "NL": return Self.holidayColor
-        case "NVP": return .teal
+        case "NL": return Color(red: 109.0 / 255.0, green: 40.0 / 255.0, blue: 217.0 / 255.0)
+        case "NVP": return Color(red: 15.0 / 255.0, green: 118.0 / 255.0, blue: 110.0 / 255.0)
         case "KCC": return Self.absentColor
-        case "NTL", "RO", "RO/2": return Color(red: 0.85, green: 0.29, blue: 0.33)
-        case "CT": return Color(red: 0.15, green: 0.39, blue: 0.92)
-        case "NN": return Color(red: 0.49, green: 0.23, blue: 0.93)
-        case "B": return Color(red: 0.85, green: 0.47, blue: 0.02)
-        case "NP", "NP/2", "P/2": return Color(red: 0.15, green: 0.39, blue: 0.92)
-        default: return Color(red: 0.43, green: 0.36, blue: 0.91)
+        case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
+        case "RO", "RO/2": return Color(red: 154.0 / 255.0, green: 52.0 / 255.0, blue: 18.0 / 255.0)
+        case "CT": return Color(red: 3.0 / 255.0, green: 105.0 / 255.0, blue: 161.0 / 255.0)
+        case "NN": return Color(red: 162.0 / 255.0, green: 28.0 / 255.0, blue: 175.0 / 255.0)
+        case "B": return Color(red: 161.0 / 255.0, green: 98.0 / 255.0, blue: 7.0 / 255.0)
+        case "NP", "NP/2": return Color(red: 29.0 / 255.0, green: 78.0 / 255.0, blue: 216.0 / 255.0)
+        case "P/2": return Color(red: 79.0 / 255.0, green: 70.0 / 255.0, blue: 229.0 / 255.0)
+        default: return Color(red: 71.0 / 255.0, green: 85.0 / 255.0, blue: 105.0 / 255.0)
         }
     }
 
@@ -4953,13 +4961,13 @@ struct ModernAttendanceHistoryView: View {
             .dynamicTypeSize(.xSmall ... .accessibility1)
         } else {
             let values: [(String, Int, Color)] = [
-                ("Đủ công", AttendanceMetrics.paidDayCount(data), .green),
-                ("Đi trễ", preloadedCount("late", in: data), EmployeeRequestKind.late.color),
-                ("Về sớm", preloadedCount("early", in: data), EmployeeRequestKind.early.color),
-                ("Quên chấm công", AttendanceMetrics.missingPunchCount(data), .orange),
-                ("Nghỉ phép", preloadedCount("leave", in: data), EmployeeRequestKind.leave.color),
+                ("Đủ công", AttendanceMetrics.paidDayCount(data), Color(red: 22.0 / 255.0, green: 163.0 / 255.0, blue: 74.0 / 255.0)),
+                ("Đi trễ", preloadedCount("late", in: data), Color(red: 217.0 / 255.0, green: 119.0 / 255.0, blue: 6.0 / 255.0)),
+                ("Về sớm", preloadedCount("early", in: data), Color(red: 219.0 / 255.0, green: 39.0 / 255.0, blue: 119.0 / 255.0)),
+                ("Quên chấm công", AttendanceMetrics.missingPunchCount(data), Color(red: 8.0 / 255.0, green: 145.0 / 255.0, blue: 178.0 / 255.0)),
+                ("Nghỉ phép", preloadedCount("leave", in: data), Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)),
                 ("Vắng", AttendanceMetrics.absenceCount(data), Self.absentColor),
-                ("Làm thêm", preloadedCount("overtime", in: data), EmployeeRequestKind.overtime.color),
+                ("Làm thêm", preloadedCount("overtime", in: data), Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)),
             ].filter { $0.1 > 0 }
             if !values.isEmpty {
                 HStack(spacing: 5) {
@@ -5405,8 +5413,8 @@ struct ModernAttendanceHistoryView: View {
         let statuses = dayStatuses(day)
         if statuses.contains("late") && statuses.contains("early") {
             HStack(spacing: 0) {
-                EmployeeRequestKind.late.color.opacity(0.34)
-                EmployeeRequestKind.early.color.opacity(0.36)
+                Self.lateColor.opacity(0.34)
+                Self.earlyColor.opacity(0.36)
             }
         } else {
             dayColor(statuses.first)
