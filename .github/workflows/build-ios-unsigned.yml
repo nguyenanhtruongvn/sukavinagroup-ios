@@ -653,9 +653,9 @@ jobs:
             git commit \
               -m "release: Sukavina ${APP_VERSION} (${APP_BUILD})"
 
-            git push \
-              origin \
-              main
+            # Git push is safe to retry: after a remote success the next
+            # attempt simply reports that the branch is up to date.
+            github_retry git push origin main
 
           else
 
