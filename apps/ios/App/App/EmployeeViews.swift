@@ -2663,11 +2663,13 @@ private struct PreloadedAttendanceDayCell: View {
     private static let earlyColor = Color(red: 219.0 / 255.0, green: 39.0 / 255.0, blue: 119.0 / 255.0)
     private static let leaveColor = Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)
     private static let overtimeColor = Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)
-    private static let holidayColor = Color(
-        red: 142.0 / 255.0,
-        green: 63.0 / 255.0,
-        blue: 197.0 / 255.0
-    )
+    @Environment(\.colorScheme) private var colorScheme
+    // Holiday is lime (distinct from purple overtime, blue leave and green present).
+    private var holidayColor: Color {
+        colorScheme == .dark
+            ? Color(red: 183.0 / 255.0, green: 219.0 / 255.0, blue: 78.0 / 255.0)
+            : Color(red: 85.0 / 255.0, green: 124.0 / 255.0, blue: 15.0 / 255.0)
+    }
 
     let day: AttendanceDay
     let month: AttendanceMonth
@@ -2721,7 +2723,7 @@ private struct PreloadedAttendanceDayCell: View {
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Self.holidayColor)
+                        .foregroundStyle(holidayColor)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center))
@@ -2794,7 +2796,7 @@ private struct PreloadedAttendanceDayCell: View {
 
     private func noteColor(_ note: String) -> Color {
         switch note {
-        case "NL": return Color(red: 109.0 / 255.0, green: 40.0 / 255.0, blue: 217.0 / 255.0)
+        case "NL": return holidayColor
         case "NVP": return Color(red: 15.0 / 255.0, green: 118.0 / 255.0, blue: 110.0 / 255.0)
         case "KCC": return Self.absentColor
         case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
@@ -4760,9 +4762,13 @@ private struct AttendanceCodeLegend: View {
 @available(iOS 17.0, *)
 struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
-    // Match Android's dedicated holiday violet (#8E3FC5). Keep it separate
-    // from leave/overtime colors without drawing a special cell border.
-    private static let holidayColor = Color(red: 142.0 / 255.0, green: 63.0 / 255.0, blue: 197.0 / 255.0)
+    // Lime holiday hue has its own dark-mode variant; overtime remains violet.
+    @Environment(\.colorScheme) private var colorScheme
+    private var holidayColor: Color {
+        colorScheme == .dark
+            ? Color(red: 183.0 / 255.0, green: 219.0 / 255.0, blue: 78.0 / 255.0)
+            : Color(red: 85.0 / 255.0, green: 124.0 / 255.0, blue: 15.0 / 255.0)
+    }
 
 
 
@@ -5138,11 +5144,11 @@ struct ModernAttendanceHistoryView: View {
             return AnyView(VStack(spacing: 1) {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(isHoliday ? Self.holidayColor : Color.primary)
+                    .foregroundStyle(isHoliday ? holidayColor : Color.primary)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text("\(AttendanceMetrics.hourText(metrics.overtimeHours))h")
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Self.holidayColor)
+                        .foregroundStyle(holidayColor)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center))
@@ -5435,7 +5441,7 @@ struct ModernAttendanceHistoryView: View {
         case "leave": return EmployeeRequestKind.leave.color.opacity(0.32)
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return EmployeeRequestKind.overtime.color.opacity(0.36)
-        case "holiday": return Self.holidayColor.opacity(0.38)
+        case "holiday": return holidayColor.opacity(0.38)
         case "office_day_off": return .teal.opacity(0.24)
         case "weekend": return .gray.opacity(0.13)
         case "not-started": return .gray.opacity(0.18)
