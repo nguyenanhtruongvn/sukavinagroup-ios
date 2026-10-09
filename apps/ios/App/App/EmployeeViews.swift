@@ -4169,6 +4169,7 @@ private enum AttendanceMetrics {
         _ day: AttendanceDay, showWorkMetrics: Bool
     ) -> String? {
         let note = calendarNote(day)
+        if let manual = day.overrideCode, !manual.isEmpty { return note }
         if showWorkMetrics || (day.checkIn == nil && day.checkOut == nil && note != nil) {
             return note
         }
