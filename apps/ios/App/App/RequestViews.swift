@@ -346,66 +346,30 @@ struct RequestsView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 10) {
-                PortalPageTitle("Đơn từ")
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            filterButton("Tất cả", nil)
-                            ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
+            Group {
+                if #available(iOS 18.0, *) {
+                    // The native TabView already reserves the tab-bar safe area.
+                    // Avoid adding a second full-width bottom inset on iOS 18+.
+                    requestPages
+                        .overlay(alignment: .bottomTrailing) {
+                            createRequestButton
+                                .padding(.trailing, 20)
+                                .padding(.bottom, 18)
                         }
-                        .padding(.horizontal, 16)
-                    }
-                    .onChange(of: filterIndex) { _, newIndex in
-                        guard filterOptions.indices.contains(newIndex) else { return }
-                        withAnimation(.easeInOut(duration: 0.24)) {
-                            proxy.scrollTo(filterID(filterOptions[newIndex]), anchor: .center)
+                } else {
+                    // iOS 17 uses an app-owned tab bar. Keep the create button
+                    // inside the remaining safe area so the bar cannot cover it.
+                    requestPages
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            HStack {
+                                Spacer(minLength: 0)
+                                createRequestButton
+                            }
+                            .padding(.trailing, 20)
+                            .padding(.top, 8)
+                            .padding(.bottom, 18)
                         }
-                    }
                 }
-
-                // The request pager must respect the iOS 17 portal tab bar's
-                // reserved safe area instead of extending behind that bar.
-                TabView(selection: $filterIndex) {
-                    ForEach(filterOptions.indices, id: \.self) { index in
-                        requestPage(filterOptions[index])
-                            .tag(index)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.easeInOut(duration: 0.22), value: filterIndex)
-            }
-            .padding(.top, 8)
-            .onChange(of: filterIndex) { _, newIndex in
-                guard filterOptions.indices.contains(newIndex) else { return }
-                filter = filterOptions[newIndex]
-                UISelectionFeedbackGenerator().selectionChanged()
-            }
-            .onChange(of: initialFilter, initial: true) { _, value in
-                selectFilter(value, animated: false)
-            }
-            // Reserve space for the create action inside the page safe area.
-            // A bottom-aligned ZStack button can end up behind the iOS 17 tab bar.
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                HStack {
-                    Spacer(minLength: 0)
-                    Button { composing = true } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 22, weight: .bold))
-                            .frame(width: 58, height: 58)
-                            .background(AppTheme.red)
-                            .foregroundStyle(.white)
-                            .clipShape(Circle())
-                            .shadow(color: AppTheme.red.opacity(0.38), radius: 18, y: 9)
-                    }
-                    .accessibilityLabel("Tạo đơn mới")
-                }
-                .padding(.trailing, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 18)
             }
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
@@ -438,6 +402,72 @@ struct RequestsView: View {
             .refreshable { await store.load(session.token, force: true) }
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
+    }
+
+    // Share the same pager, filters and state between iOS 17 and 18+.
+    private var requestPages: some View {
+        VStack(spacing: 10) {
+            PortalPageTitle("Đơn từ")
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        filterButton("Tất cả", nil)
+                        ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .onChange(of: filterIndex) { _, newIndex in
+                    guard filterOptions.indices.contains(newIndex) else { return }
+                    withAnimation(.easeInOut(duration: 0.24)) {
+                        proxy.scrollTo(filterID(filterOptions[newIndex]), anchor: .center)
+                    }
+                }
+            }
+
+            // The request pager must respect the iOS 17 portal tab bar's
+            // reserved safe area instead of extending behind that bar.
+            TabView(selection: $filterIndex) {
+                ForEach(filterOptions.indices, id: \.self) { index in
+                    requestPage(filterOptions[index])
+                        .tag(index)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .animation(.easeInOut(duration: 0.22), value: filterIndex)
+        }
+        .padding(.top, 8)
+        .onChange(of: filterIndex) { _, newIndex in
+            guard filterOptions.indices.contains(newIndex) else { return }
+            filter = filterOptions[newIndex]
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
+        .onChange(of: initialFilter, initial: true) { _, value in
+            selectFilter(value, animated: false)
+        }
+    }
+
+    private var createRequestButton: some View {
+        Button { composing = true } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 22, weight: .bold))
+                .frame(width: 58, height: 58)
+                .background(AppTheme.red)
+                .foregroundStyle(.white)
+                .clipShape(Circle())
+                .shadow(color: AppTheme.red.opacity(0.38), radius: 18, y: 9)
+        }
+        .accessibilityLabel("Tạo đơn mới")
+        .buttonStyle(.plain)
+    }
+
+    private var requestListBottomPadding: CGFloat {
+        // Keep the last request card scrollable above the floating button on
+        // iOS 18+. The iOS 17 safe-area inset already provides this clearance.
+        if #available(iOS 18.0, *) { return 92 }
+        return 0
     }
 
     private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
@@ -494,6 +524,7 @@ struct RequestsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
+                .padding(.bottom, requestListBottomPadding)
             }
         }
         .scrollIndicators(.hidden)
