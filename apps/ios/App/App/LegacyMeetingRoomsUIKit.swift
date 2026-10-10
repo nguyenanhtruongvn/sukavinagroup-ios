@@ -249,7 +249,11 @@ private final class LegacyMeetingBookingController: UIViewController {
         let calendar = MeetingPresentation.calendar
         let dateStart = calendar.startOfDay(for: day)
         start.minimumDate = max(dateStart, Date())
-        start.maximumDate = calendar.date(byAdding: .day, value: 1, to: dateStart)?.addingTimeInterval(-60)
+        // Prevent an invalid minimum > maximum date range if the user opens
+        // this form at the very end of the selected day.
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: dateStart)?.addingTimeInterval(-60)
+            ?? dateStart
+        start.maximumDate = max(start.minimumDate ?? dateStart, endOfDay)
         start.date = max(start.minimumDate ?? dateStart,
                          calendar.date(bySettingHour: 9, minute: 0, second: 0, of: dateStart) ?? dateStart)
         fields.addArrangedSubview(start)
