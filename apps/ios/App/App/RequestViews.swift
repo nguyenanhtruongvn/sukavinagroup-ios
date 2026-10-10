@@ -346,62 +346,65 @@ struct RequestsView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottomTrailing) {
-                VStack(spacing: 10) {
-                    PortalPageTitle("Đơn từ")
-                        .padding(.horizontal, 20)
-                        .padding(.top, 12)
-                    ScrollViewReader { proxy in
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                filterButton("Tất cả", nil)
-                                ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
-                            }
-                            .padding(.horizontal, 16)
+            VStack(spacing: 10) {
+                PortalPageTitle("Đơn từ")
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            filterButton("Tất cả", nil)
+                            ForEach(EmployeeRequestStatus.allCases, id: \.self) { filterButton($0.title, $0) }
                         }
-                        .onChange(of: filterIndex) { _, newIndex in
-                            guard filterOptions.indices.contains(newIndex) else { return }
-                            withAnimation(.easeInOut(duration: 0.24)) {
-                                proxy.scrollTo(filterID(filterOptions[newIndex]), anchor: .center)
-                            }
+                        .padding(.horizontal, 16)
+                    }
+                    .onChange(of: filterIndex) { _, newIndex in
+                        guard filterOptions.indices.contains(newIndex) else { return }
+                        withAnimation(.easeInOut(duration: 0.24)) {
+                            proxy.scrollTo(filterID(filterOptions[newIndex]), anchor: .center)
                         }
                     }
+                }
 
-                    TabView(selection: $filterIndex) {
-                        ForEach(filterOptions.indices, id: \.self) { index in
-                            requestPage(filterOptions[index])
-                                .tag(index)
-                        }
+                // The request pager must respect the iOS 17 portal tab bar's
+                // reserved safe area instead of extending behind that bar.
+                TabView(selection: $filterIndex) {
+                    ForEach(filterOptions.indices, id: \.self) { index in
+                        requestPage(filterOptions[index])
+                            .tag(index)
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.easeInOut(duration: 0.22), value: filterIndex)
-                    // The outer portal TabView reserves its tab-bar safe area
-                    // for every child.  Let only the request pager extend
-                    // through that area so cards can scroll beneath the menu;
-                    // the floating compose button stays in the parent safe area.
-                    .ignoresSafeArea(.container, edges: .bottom)
                 }
-                .padding(.top, 8)
-                .onChange(of: filterIndex) { _, newIndex in
-                    guard filterOptions.indices.contains(newIndex) else { return }
-                    filter = filterOptions[newIndex]
-                    UISelectionFeedbackGenerator().selectionChanged()
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .animation(.easeInOut(duration: 0.22), value: filterIndex)
+            }
+            .padding(.top, 8)
+            .onChange(of: filterIndex) { _, newIndex in
+                guard filterOptions.indices.contains(newIndex) else { return }
+                filter = filterOptions[newIndex]
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
+            .onChange(of: initialFilter, initial: true) { _, value in
+                selectFilter(value, animated: false)
+            }
+            // Reserve space for the create action inside the page safe area.
+            // A bottom-aligned ZStack button can end up behind the iOS 17 tab bar.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                HStack {
+                    Spacer(minLength: 0)
+                    Button { composing = true } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 22, weight: .bold))
+                            .frame(width: 58, height: 58)
+                            .background(AppTheme.red)
+                            .foregroundStyle(.white)
+                            .clipShape(Circle())
+                            .shadow(color: AppTheme.red.opacity(0.38), radius: 18, y: 9)
+                    }
+                    .accessibilityLabel("Tạo đơn mới")
                 }
-                .onChange(of: initialFilter, initial: true) { _, value in
-                    selectFilter(value, animated: false)
-                }
-
-                Button { composing = true } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .bold))
-                        .frame(width: 58, height: 58)
-                        .background(AppTheme.red)
-                        .foregroundStyle(.white)
-                        .clipShape(Circle())
-                        .shadow(color: AppTheme.red.opacity(0.38), radius: 18, y: 9)
-                }
-                .accessibilityLabel("Tạo đơn mới")
                 .padding(.trailing, 20)
+                .padding(.top, 8)
                 .padding(.bottom, 18)
             }
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
@@ -493,7 +496,7 @@ struct RequestsView: View {
                 .padding(.top, 6)
             }
         }
-        .hidesPortalBottomScrollEdgeEffect()
+        .scrollIndicators(.hidden)
         .refreshable { await store.load(session.token, force: true) }
     }
 }
