@@ -618,17 +618,9 @@ struct AiAssistantChatBody: Encodable {
     let contextId: String?
 }
 
-struct AiAssistantChatSource: Decodable {
-    let documentId: String
-    let title: String
-    let chunkIds: [String]?
-}
-
 struct AiAssistantChatResponse: Decodable {
     let answer: String
     let contextId: String?
-    // Optional for compatibility with older Sukavina API versions.
-    let sources: [AiAssistantChatSource]?
 }
 
 struct AiAssistantHistoryItem: Decodable {
