@@ -163,7 +163,7 @@ final class APIClient {
             // The server may perform document lookup plus a local LLM request.
             // Give that single user-initiated call enough time to finish while
             // keeping ordinary API requests on the tighter transport timeout.
-            urlRequest.timeoutInterval = 75
+            urlRequest.timeoutInterval = 85
         } else {
             urlRequest.timeoutInterval = 20
         }
