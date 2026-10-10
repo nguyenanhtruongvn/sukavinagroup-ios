@@ -14,6 +14,7 @@
 		D40000000000000000000005 /* AuthenticationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000105 /* AuthenticationViews.swift */; };
 		D40000000000000000000006 /* MealViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000106 /* MealViews.swift */; };
 		D40000000000000000000007 /* EmployeeViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000107 /* EmployeeViews.swift */; };
+		E17000000000000000000001 /* LegacyMeetingRoomsUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = E17000000000000000000101 /* LegacyMeetingRoomsUIKit.swift */; };
 		D40000000000000000000008 /* RequestViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000108 /* RequestViews.swift */; };
 		D40000000000000000000009 /* NotificationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000109 /* NotificationViews.swift */; };
 		D4000000000000000000000A /* ProfileViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4000000000000000000010A /* ProfileViews.swift */; };
@@ -84,6 +85,7 @@
 		D40000000000000000000105 /* AuthenticationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationViews.swift; sourceTree = "<group>"; };
 		D40000000000000000000106 /* MealViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MealViews.swift; sourceTree = "<group>"; };
 		D40000000000000000000107 /* EmployeeViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmployeeViews.swift; sourceTree = "<group>"; };
+		E17000000000000000000101 /* LegacyMeetingRoomsUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyMeetingRoomsUIKit.swift; sourceTree = "<group>"; };
 		D40000000000000000000108 /* RequestViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestViews.swift; sourceTree = "<group>"; };
 		D40000000000000000000109 /* NotificationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationViews.swift; sourceTree = "<group>"; };
 		D4000000000000000000010A /* ProfileViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileViews.swift; sourceTree = "<group>"; };
@@ -156,6 +158,7 @@
 				D40000000000000000000105 /* AuthenticationViews.swift */,
 				D40000000000000000000106 /* MealViews.swift */,
 				D40000000000000000000107 /* EmployeeViews.swift */,
+				E17000000000000000000101 /* LegacyMeetingRoomsUIKit.swift */,
 				D40000000000000000000108 /* RequestViews.swift */,
 				D40000000000000000000109 /* NotificationViews.swift */,
 				D4000000000000000000010A /* ProfileViews.swift */,
@@ -306,6 +309,7 @@
 				D40000000000000000000005 /* AuthenticationViews.swift in Sources */,
 				D40000000000000000000006 /* MealViews.swift in Sources */,
 				D40000000000000000000007 /* EmployeeViews.swift in Sources */,
+				E17000000000000000000001 /* LegacyMeetingRoomsUIKit.swift in Sources */,
 				D40000000000000000000008 /* RequestViews.swift in Sources */,
 				D40000000000000000000009 /* NotificationViews.swift in Sources */,
 				D4000000000000000000000A /* ProfileViews.swift in Sources */,
