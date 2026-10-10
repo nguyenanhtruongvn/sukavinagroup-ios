@@ -429,7 +429,7 @@ private final class LegacyMeetingDetailController: UIViewController {
         if meeting.isOwner == true {
             if let start = LegacyMeetingUI.date(meeting.startsAt), start > Date() {
                 fields.addArrangedSubview(button("Hủy lịch họp", #selector(cancel)))
-            } else if let end = LegacyMeetingUI.date(meeting.endsAt), end > Date() {
+            } else if let meetingEndDate = LegacyMeetingUI.date(meeting.endsAt), meetingEndDate > Date() {
                 fields.addArrangedSubview(button("Gia hạn 5 phút", #selector(extend)))
                 fields.addArrangedSubview(button("Kết thúc cuộc họp", #selector(end)))
             }
