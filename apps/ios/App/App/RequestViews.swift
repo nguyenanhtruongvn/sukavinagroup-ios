@@ -478,13 +478,6 @@ struct RequestsView: View {
         .buttonStyle(.plain)
     }
 
-    private var requestListBottomPadding: CGFloat {
-        // Keep the last request card scrollable above the floating button on
-        // iOS 18+. The iOS 17 safe-area inset already provides this clearance.
-        if #available(iOS 18.0, *) { return 92 }
-        return 0
-    }
-
     private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
         Button(title) {
             selectFilter(value)
@@ -539,7 +532,6 @@ struct RequestsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
-                .padding(.bottom, requestListBottomPadding)
             }
         }
         .scrollIndicators(.hidden)
