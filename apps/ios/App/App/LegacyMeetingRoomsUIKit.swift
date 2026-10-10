@@ -265,10 +265,10 @@ private final class LegacyMeetingBookingController: UIViewController {
         durationButton.setTitle("Thời lượng: 30 phút ▾", for: .normal)
         durationButton.contentHorizontalAlignment = .leading
         durationButton.showsMenuAsPrimaryAction = true
-        durationButton.menu = UIMenu(children: durations.map { minutes, label in
-            UIAction(title: label) { [weak self] _ in
-                self?.durationMinutes = minutes
-                self?.durationButton.setTitle("Thời lượng: \(label) ▾", for: .normal)
+        durationButton.menu = UIMenu(children: durations.map { option in
+            UIAction(title: option.1) { [weak self] _ in
+                self?.durationMinutes = option.0
+                self?.durationButton.setTitle("Thời lượng: \(option.1) ▾", for: .normal)
             }
         })
         fields.addArrangedSubview(durationButton)
