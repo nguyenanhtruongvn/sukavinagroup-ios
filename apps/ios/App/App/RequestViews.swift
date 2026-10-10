@@ -351,6 +351,19 @@ struct RequestsView: View {
                     // The native TabView already reserves the tab-bar safe area.
                     // Avoid adding a second full-width bottom inset on iOS 18+.
                     requestPages
+                        // On the native translucent/floating tab bar, a paged
+                        // ScrollView can continue painting request cards under
+                        // the bar. Clip just its last 32pt instead of creating
+                        // another safe-area inset or a background panel.
+                        // Keep this mask BEFORE the button overlay so the
+                        // action remains fully visible and tappable.
+                        .mask {
+                            GeometryReader { geometry in
+                                Rectangle()
+                                    .frame(height: max(0, geometry.size.height - 32))
+                                    .frame(maxHeight: .infinity, alignment: .top)
+                            }
+                        }
                         .overlay(alignment: .bottomTrailing) {
                             createRequestButton
                                 .padding(.trailing, 20)
