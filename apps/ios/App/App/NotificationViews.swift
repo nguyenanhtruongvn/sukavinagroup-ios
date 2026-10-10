@@ -218,7 +218,9 @@ struct NotificationsView: View {
                 ) {
                     if let month = attendanceReportMonth {
                         NavigationStack {
-                            ModernAttendanceHistoryView(initialMonth: month, restrictToInitialMonth: true)
+                            // The notification selects its month, but the statement pager
+                            // can also browse other published months from cache/API.
+                            ModernAttendanceHistoryView(initialMonth: month, releasedStatementMonths: [month])
                                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { attendanceReportMonth = nil } } }
                         }
                     }
