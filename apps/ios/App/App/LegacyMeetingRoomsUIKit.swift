@@ -194,7 +194,8 @@ private final class LegacyMeetingBookingController: UIViewController {
     private let topic = UITextField()
     private let kind = UISegmentedControl(items: ["Nội bộ", "Tiếp khách"])
     private let start = UIDatePicker()
-    private let duration = UISegmentedControl(items: ["15 phút", "30 phút", "1 giờ", "2 giờ"])
+    private let durationButton = UIButton(type: .system)
+    private var durationMinutes = 30
     private let inviteButton = UIButton(type: .system)
     private let confirm = UIButton(type: .system)
     private var invited = Set<String>()
@@ -253,8 +254,24 @@ private final class LegacyMeetingBookingController: UIViewController {
                          calendar.date(bySettingHour: 9, minute: 0, second: 0, of: dateStart) ?? dateStart)
         fields.addArrangedSubview(start)
         fields.addArrangedSubview(label("Thời lượng"))
-        duration.selectedSegmentIndex = 1
-        fields.addArrangedSubview(duration)
+        // Preserve the original SwiftUI booking form's complete time choices.
+        let durations: [(Int, String)] = [
+            (5, "5 phút"), (10, "10 phút"), (15, "15 phút"),
+            (20, "20 phút"), (30, "30 phút"), (45, "45 phút"),
+            (60, "1 giờ"), (90, "90 phút"), (120, "2 giờ"),
+            (180, "3 giờ"), (240, "4 giờ"), (300, "5 giờ"),
+            (360, "6 giờ"), (420, "7 giờ"), (480, "8 giờ")
+        ]
+        durationButton.setTitle("Thời lượng: 30 phút ▾", for: .normal)
+        durationButton.contentHorizontalAlignment = .leading
+        durationButton.showsMenuAsPrimaryAction = true
+        durationButton.menu = UIMenu(children: durations.map { minutes, label in
+            UIAction(title: label) { [weak self] _ in
+                self?.durationMinutes = minutes
+                self?.durationButton.setTitle("Thời lượng: \(label) ▾", for: .normal)
+            }
+        })
+        fields.addArrangedSubview(durationButton)
         inviteButton.contentHorizontalAlignment = .leading
         inviteButton.setTitle("Mời người tham gia (0)", for: .normal)
         inviteButton.addTarget(self, action: #selector(invite), for: .touchUpInside)
@@ -288,7 +305,7 @@ private final class LegacyMeetingBookingController: UIViewController {
         let category = kind.selectedSegmentIndex == 1 ? "Tiếp khách" : "Nội bộ"
         let text = topic.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let title = text.isEmpty ? category : "\(category) · \(text)"
-        let minutes = [15, 30, 60, 120][max(0, duration.selectedSegmentIndex)]
+        let minutes = durationMinutes
         Task { [weak self] in
             guard let self else { return }
             let error = await session.createMeeting(
