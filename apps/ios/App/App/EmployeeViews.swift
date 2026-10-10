@@ -2719,7 +2719,10 @@ struct EmployeePortalView: View {
         case 1:
             RequestsView(initialFilter: requestInitialFilter)
         case 2:
-            MeetingRoomsView(isActive: true)
+            // TestFlight 109 and 110 abort in SwiftUI's iOS 17 type metadata
+            // construction. The iOS 17 route must not instantiate any of
+            // MeetingRoomsView's complex SwiftUI generic view tree.
+            LegacyMeetingRoomsUIKitView(session: session)
         case 3:
             NotificationsView()
         case 4:
