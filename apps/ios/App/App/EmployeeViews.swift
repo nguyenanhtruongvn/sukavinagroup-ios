@@ -4532,7 +4532,7 @@ private struct AttendanceStatementListView: View {
                     .frame(maxWidth: .infinity, minHeight: 260)
                 } else {
                     ForEach(displayedReports.sorted { $0.month > $1.month }) { report in
-                        NavigationLink(destination: ModernAttendanceHistoryView(initialMonth: report.month, restrictToInitialMonth: true)) {
+                        NavigationLink(destination: ModernAttendanceHistoryView(initialMonth: report.month, releasedStatementMonths: displayedReports.map(\.month))) {
                             HStack(spacing: 14) {
                                 Image(systemName: "calendar")
                                     .font(.title3.weight(.semibold))
@@ -4905,6 +4905,7 @@ struct ModernAttendanceHistoryView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let initialMonth: String?
     let restrictToInitialMonth: Bool
+    let releasedStatementMonths: [String]?
     @State private var selectedMonth: String
     @State private var cache: [String: AttendanceMonth] = [:]
     @State private var errors: [String: String] = [:]
@@ -4914,9 +4915,10 @@ struct ModernAttendanceHistoryView: View {
     @State private var releasedMonths = Set<String>()
     @State private var workMetricMonths = Set<String>()
 
-    init(initialMonth: String? = nil, restrictToInitialMonth: Bool = false) {
+    init(initialMonth: String? = nil, restrictToInitialMonth: Bool = false, releasedStatementMonths: [String]? = nil) {
         self.initialMonth = initialMonth
         self.restrictToInitialMonth = restrictToInitialMonth
+        self.releasedStatementMonths = releasedStatementMonths
         _selectedMonth = State(initialValue: initialMonth ?? Self.monthValue(Date()))
     }
 
@@ -5530,6 +5532,10 @@ struct ModernAttendanceHistoryView: View {
 
 
     private var options: [String] {
+        if let releasedStatementMonths {
+            // Use only published statement months instead of adjacent calendar months.
+            return Array(Set(releasedStatementMonths)).sorted()
+        }
         if restrictToInitialMonth, let initialMonth {
             return [initialMonth]
         }
