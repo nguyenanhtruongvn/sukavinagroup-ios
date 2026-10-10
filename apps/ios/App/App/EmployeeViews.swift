@@ -3325,6 +3325,7 @@ private struct AiAssistantMessage: Identifiable {
     let role: String
     let content: String
     let contextID: String?
+    var sourceTitles: [String] = []
 
     var isUser: Bool { role.lowercased() == "user" }
 }
@@ -3784,6 +3785,13 @@ private struct AiAssistantChatView: View {
 
                 if !message.isUser { Spacer(minLength: 54) }
             }
+            if !message.isUser && !message.sourceTitles.isEmpty {
+                Text("Nguồn: \(message.sourceTitles.joined(separator: ", "))")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.muted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 14)
+            }
             if !message.isUser && message.id == latestAssistantMessageID && !isSending {
                 Text("Trợ lý AI có thể mắc lỗi. Hãy kiểm tra thông tin quan trọng.")
                     .font(.system(size: 9))
@@ -3843,7 +3851,8 @@ private struct AiAssistantChatView: View {
                 AiAssistantMessage(
                     role: "assistant",
                     content: response.answer,
-                    contextID: response.contextId
+                    contextID: response.contextId,
+                    sourceTitles: response.sources?.map(\.title) ?? []
                 )
             )
         } catch {
