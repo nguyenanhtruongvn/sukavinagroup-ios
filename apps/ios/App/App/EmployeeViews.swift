@@ -4978,7 +4978,18 @@ struct ModernAttendanceHistoryView: View {
             guard options.indices.contains(newIndex) else { return }
             selectedMonth = options[newIndex]
             UISelectionFeedbackGenerator().selectionChanged()
-            Task { await preloadMonth(options[newIndex]) }
+            if releasedStatementMonths != nil {
+                Task { await preloadAdjacentMonths() }
+            } else {
+                Task { await preloadMonth(options[newIndex]) }
+            }
+        }
+        .onChange(of: releasedMonths) { _, _ in
+            // Adding months after a report refresh must not move the reader away
+            // from the month that was opened through its notification.
+            guard releasedStatementMonths != nil,
+                  let index = options.firstIndex(of: selectedMonth) else { return }
+            if monthIndex != index { monthIndex = index }
         }
         .task {
             // Hydrate the on-disk month snapshots before the first network await.
@@ -5533,8 +5544,13 @@ struct ModernAttendanceHistoryView: View {
 
     private var options: [String] {
         if let releasedStatementMonths {
-            // Use only published statement months instead of adjacent calendar months.
-            return Array(Set(releasedStatementMonths)).sorted()
+            // Published statements can be opened from a notification before the
+            // reports list has been viewed. Merge the notification month with
+            // cached and freshly fetched published months only.
+            let cachedMonths = session.cachedAttendanceReports().map(\.month)
+            return Array(Set(releasedStatementMonths)
+                .union(cachedMonths)
+                .union(releasedMonths)).sorted()
         }
         if restrictToInitialMonth, let initialMonth {
             return [initialMonth]
@@ -5627,7 +5643,16 @@ struct ModernAttendanceHistoryView: View {
     private func preloadAdjacentMonths(forceNetwork: Bool = false) async {
         // Always hydrate the visible month first. A missing neighbouring month
         // must never block it behind a slow or offline network request.
-        let orderedMonths = [selectedMonth] + options.filter { $0 != selectedMonth }
+        let orderedMonths: [String]
+        if releasedStatementMonths != nil, let index = options.firstIndex(of: selectedMonth) {
+            // Published history can span years; revalidate only this page and
+            // adjacent pages, then load more as the employee swipes.
+            orderedMonths = [index, index - 1, index + 1]
+                .filter { options.indices.contains($0) }
+                .map { options[$0] }
+        } else {
+            orderedMonths = [selectedMonth] + options.filter { $0 != selectedMonth }
+        }
         for month in orderedMonths {
             await preloadMonth(month, forceNetwork: forceNetwork)
         }
