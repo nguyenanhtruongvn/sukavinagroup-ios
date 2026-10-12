@@ -4280,6 +4280,9 @@ private enum AttendanceMetrics {
     static func calendarNote(_ day: AttendanceDay) -> String? {
         let values = displayStatuses(day)
         if let manual = day.overrideCode, !manual.isEmpty { return manual }
+        // CT is confirmed by an approved business-trip request, so it is
+        // meaningful before the day starts or ends (unlike an automatic KCC).
+        if day.workdayCode == "CT" { return "CT" }
         if values.contains("holiday") { return "NL" }
         if values.contains("office_day_off") { return "NVP" }
         // Do not show a stale KCC for a workday that has not yet ended.
