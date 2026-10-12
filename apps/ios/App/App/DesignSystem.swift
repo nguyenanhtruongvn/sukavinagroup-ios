@@ -131,6 +131,58 @@ struct AttendanceScrollInsetNeutralizer: UIViewRepresentable {
     func updateUIView(_ uiView: AttendanceScrollInsetNeutralizingView, context: Context) {}
 }
 
+/// SwiftUI may recreate its backing scroll view after the UIAppearance proxy
+/// has been applied, then enable the indicator again while it is being dragged.
+/// Keep this invisible bridge at the portal root so every existing and newly
+/// presented scroll container in the app window is corrected after layout.
+final class PortalScrollIndicatorSuppressingView: UIView {
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        suppressIndicatorsNowAndAfterLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        suppressIndicatorsNow()
+    }
+
+    func suppressIndicatorsNowAndAfterLayout() {
+        suppressIndicatorsNow()
+        // SwiftUI often creates a sheet's backing UIScrollView on the next
+        // main-loop turn, after the sheet content itself has appeared.
+        DispatchQueue.main.async { [weak self] in
+            self?.suppressIndicatorsNow()
+        }
+    }
+
+    private func suppressIndicatorsNow() {
+        guard let window else { return }
+        suppressIndicators(in: window)
+    }
+
+    private func suppressIndicators(in view: UIView) {
+        if let scrollView = view as? UIScrollView {
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.showsHorizontalScrollIndicator = false
+        }
+        view.subviews.forEach(suppressIndicators(in:))
+    }
+}
+
+@available(iOS 17.0, *)
+struct PortalScrollIndicatorSuppressor: UIViewRepresentable {
+    func makeUIView(context: Context) -> PortalScrollIndicatorSuppressingView {
+        let view = PortalScrollIndicatorSuppressingView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.isAccessibilityElement = false
+        return view
+    }
+
+    func updateUIView(_ uiView: PortalScrollIndicatorSuppressingView, context: Context) {
+        uiView.suppressIndicatorsNowAndAfterLayout()
+    }
+}
+
 @available(iOS 17.0, *)
 struct PortalPageTitle: View {
     let text: String

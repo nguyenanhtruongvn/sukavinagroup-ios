@@ -376,8 +376,13 @@ private final class NativeAppContainerViewController: UIViewController {
         // UIKit appearance is only a creation-time default. SwiftUI can
         // replace it when it creates a scroll host later (particularly in
         // sheets on iOS 18+), so set the SwiftUI environment at the app root
-        // as well. It is inherited by every ScrollView and List in the portal.
-        let host = UIHostingController(rootView: AnyView(rootView.scrollIndicators(.hidden)))
+        // and continuously suppress indicators on the concrete UIKit views.
+        let hostedRoot = AnyView(
+            rootView
+                .scrollIndicators(.hidden)
+                .overlay { PortalScrollIndicatorSuppressor().allowsHitTesting(false) }
+        )
+        let host = UIHostingController(rootView: hostedRoot)
         host.view.backgroundColor = .clear
         addChild(host)
         view.addSubview(host.view)
