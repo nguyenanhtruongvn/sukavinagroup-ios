@@ -553,7 +553,6 @@ final class SessionStore: ObservableObject {
             // Fetch the tab/icon count immediately. Previously it waited for
             // the profile and dashboard refreshes to finish first.
             async let notificationCountRefresh: Void = self.refreshRequestNotificationCount()
-            await self.refreshProfile()
             if self.profile?.accountType == "CANTEEN" {
                 self.startSessionRefresh()
                 return
@@ -1333,7 +1332,6 @@ final class SessionStore: ObservableObject {
                       path.status == .satisfied,
                       wasStatus != .satisfied || wasCellular != isCellular,
                       self.token != nil else { return }
-                await self.refreshProfile()
                 await self.refreshAiAssistantAvailability()
                 await self.syncPushBadgeReset()
                 if self.profile?.accountType == "CANTEEN" { return }
@@ -2015,7 +2013,12 @@ final class SessionStore: ObservableObject {
             return
         }
         if event.contains("attendance_changed") { pendingRealtimeEvents.insert("attendance_changed") }
-        if event.contains("employee_changed") { pendingRealtimeEvents.insert("employee_changed") }
+        if event.contains("employee_changed") {
+            pendingRealtimeEvents.insert("employee_changed")
+            if employeeProfileEventTargetsCurrentEmployee(event) {
+                pendingRealtimeEvents.insert("own_profile_changed")
+            }
+        }
         if event.contains("request_changed") { pendingRealtimeEvents.insert("request_changed") }
         if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }
         if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
@@ -2045,7 +2048,7 @@ final class SessionStore: ObservableObject {
                 self.invalidateAttendanceCacheForRealtimeUpdate()
                 self.attendanceRevision &+= 1
             }
-            if events.contains("employee_changed") {
+            if events.contains("own_profile_changed") {
                 await self.refreshProfile()
             }
             if events.contains("attendance_changed") ||
@@ -2062,6 +2065,21 @@ final class SessionStore: ObservableObject {
                 await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
             }
         }
+    }
+
+    /// Employee broadcasts are normally company-wide.  A profile refresh is
+    /// permitted only for an event explicitly addressed to the signed-in
+    /// employee, keeping the direct-manager field stable during unrelated
+    /// website changes.
+    private func employeeProfileEventTargetsCurrentEmployee(_ event: String) -> Bool {
+        guard let employeeCode = profile?.employeeCode.nilIfEmpty,
+              let marker = event.range(of: "employee_changed:") else { return false }
+        let payload = String(event[marker.upperBound...])
+        let target = payload.components(
+            separatedBy: CharacterSet(charactersIn: ",; \r\n ")
+        ).first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return target?.caseInsensitiveCompare(employeeCode) == .orderedSame
     }
 
     func confirmForgotPassword(employeeCode: String, code: String, newPassword: String) async -> Bool {
