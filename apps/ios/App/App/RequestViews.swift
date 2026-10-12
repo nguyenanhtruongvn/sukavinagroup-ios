@@ -381,6 +381,9 @@ struct RequestsView: View {
                     Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense) }
                 }
                     .presentationDetents([.large])
+                    // Let a downward pull dismiss the composer sheet instead
+                    // of being retained by its form scroll view.
+                    .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
             }
             .sheet(item: $reviewing) { request in
