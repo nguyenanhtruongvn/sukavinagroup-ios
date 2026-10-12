@@ -3117,7 +3117,6 @@ struct TodayMenuView: View {
             .task {
                 await session.refreshTodayMenu()
             }
-            .refreshable { await session.refreshTodayMenu(force: true) }
             .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
@@ -3177,7 +3176,9 @@ struct TodayMenuView: View {
                     mealSheetHeight = min(max(height + 8, 300), UIScreen.main.bounds.height * 0.82)
                 }
                 .fittedMealSheetSizing(fallbackHeight: mealSheetHeight)
-                .presentationContentInteraction(.scrolls)
+                // In the menu card, a downward pull is a sheet-dismiss gesture;
+                // refreshing remains available from the dashboard itself.
+                .presentationContentInteraction(.resizes)
                 .presentationDragIndicator(.hidden)
                 .attachedMealSheetCorners()
                 .solidMealSheetBackground()
