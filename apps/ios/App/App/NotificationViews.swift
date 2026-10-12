@@ -576,7 +576,7 @@ private struct MeetingNotificationDetail: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(alignment: .top) {
@@ -819,7 +819,7 @@ private struct MeetingNotificationDetail: View {
 struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
-    var body: some View { NavigationStack { ScrollView { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
+    var body: some View { NavigationStack { ScrollView(showsIndicators: false) { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
 }
 
 @available(iOS 17.0, *)
@@ -835,7 +835,7 @@ struct NewsView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 14) {
                     ForEach(items) { item in
                         NavigationLink(destination: ArticleDetailView(item: item)) {
@@ -894,7 +894,7 @@ struct ArticleRow: View {
 struct ArticleDetailView: View {
     let item: ContentItem
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 18) {
                 Text(item.createdAt.formatted(date: .long, time: .shortened))
                     .font(.caption.weight(.semibold))

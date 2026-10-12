@@ -117,7 +117,7 @@ struct MeetingRoomsView: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
 
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 16) {
                         MeetingRoomsHeader(day: $day, onShowMine: {
                             presentedDestination = .mine(day: day)
@@ -145,6 +145,7 @@ struct MeetingRoomsView: View {
                     .padding(.top, 14)
                     .padding(.bottom, 24)
                 }
+                .scrollIndicators(.hidden)
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 24)
                         .onEnded { switchMeetingDay(for: $0.translation) }
@@ -568,7 +569,7 @@ private struct MeetingRoomScheduleSheet: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         DatePicker("Ngày", selection: $selectedDay, displayedComponents: .date)
                             .datePickerStyle(.compact)
@@ -584,6 +585,7 @@ private struct MeetingRoomScheduleSheet: View {
                         })
                     }
                 }
+                    .scrollIndicators(.hidden)
                 .task {
                     await session.refreshMeetingSchedule(date: selectedDay)
                     if isToday {
@@ -1344,7 +1346,7 @@ struct MeetingBookingDetailSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 15) {
                         HStack(alignment: .top) {
@@ -1717,7 +1719,7 @@ private struct MeetingBookingSheet: View {
                     .ignoresSafeArea()
 
                 ScrollViewReader { proxy in
-                    ScrollView {
+                    ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 18) {
                             // Limit the generic type metadata resolved in one
                             // pass by iOS 17 while retaining the same native form.
@@ -1729,6 +1731,7 @@ private struct MeetingBookingSheet: View {
                         .padding(.top, 12)
                         .padding(.bottom, 110)
                     }
+                    .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: focusedInviteeField) { _, field in
                         guard field != nil else { return }
@@ -2456,7 +2459,7 @@ private struct MyMeetingsSheet: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
 
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 18) {
                         header
                         scheduleFilter
@@ -2992,7 +2995,7 @@ struct TodayMenuView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 5) {
                         PortalPageTitle("Thực đơn")
@@ -3562,7 +3565,7 @@ private struct AiAssistantChatView: View {
             Divider()
 
             ScrollViewReader { proxy in
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 12) {
                         if isLoadingHistory {
                             ProgressView("Đang tải cuộc trò chuyện…")
@@ -3876,7 +3879,7 @@ struct DashboardView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     PortalPageTitle("Trang chủ")
                     VStack(alignment: .leading, spacing: 6) {
@@ -3971,6 +3974,7 @@ struct DashboardView: View {
                 guard isActive else { return }
                 await session.refreshDashboard()
             }
+                .scrollIndicators(.hidden)
             .refreshable {
                 await session.refreshDashboard()
                 await session.refreshTodayMenu(force: true)
@@ -4520,7 +4524,7 @@ private struct AttendanceStatementListView: View {
         // SwiftUI starts the asynchronous refresh task. This avoids a visible
         // loading flash when the employee has already opened this screen.
         let displayedReports = reports.isEmpty ? session.cachedAttendanceReports() : reports
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 12) {
                 if isLoading && displayedReports.isEmpty {
                     ProgressView("Đang tải bảng công...")
@@ -4589,7 +4593,7 @@ private struct AttendanceStatementDetailView: View {
 
     var body: some View {
         let displayedReport = report ?? session.cachedAttendanceMonth(month)
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             Group {
                 if let displayedReport {
                     AttendanceStatementReportView(
@@ -5044,7 +5048,7 @@ struct ModernAttendanceHistoryView: View {
         let visibleReleasedMonths = releasedMonths.isEmpty
             ? Set(session.cachedAttendanceReports().map(\.month))
             : releasedMonths
-        return ScrollView {
+        return ScrollView(showsIndicators: false) {
             VStack(spacing: 14) {
                 if let data {
                     preloadedSummaryCards(data, showWorkMetrics: showWorkMetrics)

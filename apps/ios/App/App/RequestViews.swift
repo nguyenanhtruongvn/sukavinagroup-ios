@@ -513,7 +513,7 @@ struct RequestsView: View {
 
     @ViewBuilder private func requestPage(_ status: EmployeeRequestStatus?) -> some View {
         let requests = status.map { value in combinedRequests.filter { $0.status == value } } ?? combinedRequests
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             if requests.isEmpty {
                 ContentUnavailableView(
                     "Chưa có đơn",
@@ -710,7 +710,7 @@ struct RequestDecisionView: View {
             VStack(alignment: .leading, spacing: 18) {
                 RequestCard(request: request, canCancel: false, cancel: {})
                 Text(rejecting ? "Lý do từ chối" : "Ghi chú cho nhân viên (tùy chọn)").font(.headline)
-                TextEditor(text: $note).scrollContentBackground(.hidden).padding(12).frame(minHeight: 130)
+                TextEditor(text: $note).scrollIndicators(.hidden).scrollContentBackground(.hidden).padding(12).frame(minHeight: 130)
                     .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
                 if rejecting { Text("Lý do từ chối là bắt buộc, tối thiểu 5 ký tự.").font(.caption).foregroundStyle(AppTheme.red) }
                 HStack(spacing: 12) {
@@ -950,7 +950,7 @@ struct RequestComposer: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 7) {
                         ZStack {
@@ -1156,6 +1156,7 @@ struct RequestComposer: View {
                 .padding(.top, 18)
                 .padding(.bottom, 120)
                 }
+                .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: focusedInput) { _, field in
                     guard field != nil else { return }

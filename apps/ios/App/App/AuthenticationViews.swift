@@ -140,7 +140,7 @@ struct AuthenticationView: View {
                     endPoint: .bottomTrailing
                 ).ignoresSafeArea()
 
-                ScrollView {
+                ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
                         Image("LoginBrand")
                             .resizable()
@@ -335,7 +335,7 @@ private struct ForgotPasswordView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     Image(systemName: completed ? "checkmark.shield.fill" : "key.horizontal.fill")
                         .font(.system(size: 25, weight: .semibold))

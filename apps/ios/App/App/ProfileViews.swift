@@ -30,7 +30,7 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
                     PortalPageTitle("Tài khoản")
                     ZStack {
@@ -303,7 +303,7 @@ struct NativeLegalView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -405,7 +405,7 @@ struct PasswordChangeView: View {
 
     var body: some View {
         NavigationView {
-            ScrollView {
+            ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
                         ZStack {
