@@ -33,6 +33,8 @@ private struct GrowingRequestReasonEditor: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.isScrollEnabled = false
         textView.alwaysBounceVertical = false
+        textView.showsVerticalScrollIndicator = false
+        textView.showsHorizontalScrollIndicator = false
         return textView
     }
 

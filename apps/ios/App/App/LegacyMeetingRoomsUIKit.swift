@@ -211,6 +211,8 @@ private final class LegacyMeetingBookingController: UIViewController {
         title = "Đặt phòng · \(room.name)"
         view.backgroundColor = .systemGroupedBackground
         let scroll = UIScrollView()
+        scroll.showsVerticalScrollIndicator = false
+        scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         let fields = UIStackView()
@@ -405,6 +407,8 @@ private final class LegacyMeetingDetailController: UIViewController {
         title = "Chi tiết cuộc họp"
         view.backgroundColor = .systemGroupedBackground
         let scroll = UIScrollView()
+        scroll.showsVerticalScrollIndicator = false
+        scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         let fields = UIStackView()

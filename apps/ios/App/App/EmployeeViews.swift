@@ -3511,6 +3511,8 @@ private struct AiAssistantInputField: UIViewRepresentable {
         view.textContainerInset = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
         view.textContainer.lineFragmentPadding = 0
         view.isScrollEnabled = false
+        view.showsVerticalScrollIndicator = false
+        view.showsHorizontalScrollIndicator = false
         view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return view
     }
