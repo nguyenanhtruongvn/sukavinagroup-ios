@@ -96,6 +96,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     ) -> Bool {
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
+        // SwiftUI may host List in either UIKit class depending on iOS release.
+        // Configure both explicitly so no portal page re-enables an indicator.
+        UITableView.appearance().showsVerticalScrollIndicator = false
+        UITableView.appearance().showsHorizontalScrollIndicator = false
+        UICollectionView.appearance().showsVerticalScrollIndicator = false
+        UICollectionView.appearance().showsHorizontalScrollIndicator = false
         let tabBarAppearance = UITabBarAppearance()
         tabBarAppearance.configureWithTransparentBackground()
         tabBarAppearance.backgroundColor = .clear
