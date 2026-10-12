@@ -933,11 +933,41 @@ struct RequestComposer: View {
             && (kind != .business || (destination.count >= 2 && (transport != "personal_vehicle" || localizedDecimal(distanceKm) ?? 0 > 0)))
     }
 
+    private var requestStartBinding: Binding<Date> {
+        Binding(
+            get: { from },
+            set: { updateRequestStart($0) }
+        )
+    }
+
+    private func updateRequestStart(_ selected: Date) {
+        let calendar = Calendar.current
+        let previousFrom = from
+        let previousTo = to
+
+        guard !calendar.isDate(selected, inSameDayAs: previousFrom) else {
+            from = selected
+            if to < selected {
+                to = calendar.date(byAdding: .hour, value: 1, to: selected) ?? selected
+            }
+            return
+        }
+
+        // A new start date creates a same-day request by default. Preserve the
+        // chosen start/end clock times rather than adopting a picker or shift
+        // default while the user changes only the calendar date.
+        let day = calendar.startOfDay(for: selected)
+        let startTime = calendar.dateComponents([.hour, .minute, .second], from: previousFrom)
+        let endTime = calendar.dateComponents([.hour, .minute, .second], from: previousTo)
+        from = calendar.date(byAdding: startTime, to: day) ?? selected
+        to = calendar.date(byAdding: endTime, to: day) ?? selected
+    }
+
     private func requestTimeRange(title: String, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             composerLabel(title, icon: icon)
             VStack(spacing: 10) {
-                dateRow("Bắt đầu", selection: $from)
+                dateRow("Bắt đầu", selection: requestStartBinding)
                 dateRow("Kết thúc", selection: $to, range: from...)
             }
             .padding(.horizontal, 14)
