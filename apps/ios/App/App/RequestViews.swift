@@ -405,7 +405,6 @@ struct RequestsView: View {
                 store.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
                 await store.load(session.token)
             }
-            .refreshable { await store.load(session.token, force: true) }
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
     }
