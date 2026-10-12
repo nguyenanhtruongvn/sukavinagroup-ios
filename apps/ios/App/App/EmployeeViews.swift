@@ -4300,6 +4300,10 @@ private enum AttendanceMetrics {
         _ day: AttendanceDay, showWorkMetrics: Bool
     ) -> String? {
         let note = calendarNote(day)
+        // CT marks a business trip only when there is no attendance on that
+        // date. A recorded punch must keep the normal coefficient/overtime
+        // display (or 0/0 when the punch pair is incomplete).
+        if note == "CT", day.checkIn != nil || day.checkOut != nil { return nil }
         if let manual = day.overrideCode, !manual.isEmpty { return note }
         if showWorkMetrics || (day.checkIn == nil && day.checkOut == nil && note != nil) {
             return note
