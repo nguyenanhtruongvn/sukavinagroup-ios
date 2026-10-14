@@ -226,6 +226,48 @@ enum SessionCache {
         let suffix = employeeCode + "-" + day
         UserDefaults.standard.set(data, forKey: meetingSchedulePrefix + suffix)
         UserDefaults.standard.set(Date(), forKey: meetingScheduleSavedAtPrefix + suffix)
+        pruneMeetingSchedulesOnce()
+    }
+
+    private static var didPruneMeetingSchedules = false
+
+    /// One pair of keys is written per viewed day and nothing removed them.
+    /// Once per launch, drop days more than 7 days in the past or 60 days in
+    /// the future. Mirrors the Android meeting cache pruning.
+    private static func pruneMeetingSchedulesOnce() {
+        guard !didPruneMeetingSchedules else { return }
+        didPruneMeetingSchedules = true
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let now = Date()
+        let oldest = now.addingTimeInterval(-7 * 24 * 60 * 60)
+        let newest = now.addingTimeInterval(60 * 24 * 60 * 60)
+        let defaults = UserDefaults.standard
+        for key in defaults.dictionaryRepresentation().keys
+            where key.hasPrefix(meetingSchedulePrefix) || key.hasPrefix(meetingScheduleSavedAtPrefix) {
+            // Keys end with "-yyyy-MM-dd".
+            guard key.count > 10, let day = formatter.date(from: String(key.suffix(10))) else { continue }
+            if day < oldest || day > newest {
+                defaults.removeObject(forKey: key)
+            }
+        }
+    }
+
+    /// Removes the account's cached room catalogue and day schedules. The
+    /// personal room order is a device preference and is kept.
+    static func clearAccount(employeeCode: String) {
+        let defaults = UserDefaults.standard
+        let dayPrefixes = [
+            meetingSchedulePrefix + employeeCode + "-",
+            meetingScheduleSavedAtPrefix + employeeCode + "-",
+        ]
+        for key in defaults.dictionaryRepresentation().keys
+            where key == meetingRoomsPrefix + employeeCode || dayPrefixes.contains(where: { key.hasPrefix($0) }) {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     static func loadMeetingSchedule(day: String, employeeCode: String) -> MeetingScheduleResponse? {

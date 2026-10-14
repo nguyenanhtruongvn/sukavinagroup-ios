@@ -1,4 +1,5 @@
 import UIKit
+import os
 import SwiftUI
 import Security
 import UserNotifications
@@ -79,22 +80,59 @@ extension Notification.Name {
     /// Any HTTP response proves that URLSession has a working transport path,
     /// even when NWPathMonitor is briefly stale during Wi-Fi/cellular handoff.
     static let sukavinaTransportReachable = Notification.Name("net.sukavinagroup.transport-reachable")
+    /// Posted with the new `LoginResponse` as `object` after APIClient renewed
+    /// an expired access token, so SessionStore uses it for later requests.
+    static let sukavinaSessionRefreshed = Notification.Name("net.sukavinagroup.session-refreshed")
 }
 
+/// Connection diagnostics for debugging transport problems.
+///
+/// Entries were previously appended to UserDefaults several times per HTTP
+/// request. Nothing read them back, every write rewrote the whole array and
+/// posted `UserDefaults.didChangeNotification` (which re-applies the app
+/// appearance). They now go to the unified log, with details redacted outside
+/// a debugger, plus a small in-memory ring buffer.
 enum ConnectionDiagnostics {
-    private static let key = "connection-diagnostics-v1"
+    private static let legacyKey = "connection-diagnostics-v1"
     private static let lock = NSLock()
     private static let maximumEntries = 160
+    private static let logger = Logger(subsystem: "net.sukavinagroup.user", category: "connection")
+    private static var entries: [String] = []
+    private static var removedLegacyEntries = false
 
     static func record(_ message: String) {
+        logger.debug("\(message, privacy: .private)")
         lock.lock()
         defer { lock.unlock() }
-        var entries = UserDefaults.standard.stringArray(forKey: key) ?? []
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        entries.append("[\(timestamp)] \(message)")
-        UserDefaults.standard.set(Array(entries.suffix(maximumEntries)), forKey: key)
+        if !removedLegacyEntries {
+            removedLegacyEntries = true
+            UserDefaults.standard.removeObject(forKey: legacyKey)
+        }
+        entries.append(message)
+        if entries.count > maximumEntries {
+            entries.removeFirst(entries.count - maximumEntries)
+        }
+    }
+}
+
+/// Monotonic sign-out counter. A token refresh that started before a sign-out
+/// must not persist its result afterwards, or the signed-out account would be
+/// restored on the next launch.
+enum SessionGeneration {
+    private static let lock = NSLock()
+    private static var value = 0
+
+    static var current: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 
+    static func invalidate() {
+        lock.lock()
+        value &+= 1
+        lock.unlock()
+    }
 }
 
 actor SessionRefreshCoordinator {
@@ -114,19 +152,27 @@ final class APIClient {
     static let shared = APIClient()
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")
     private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")
+    // ISO8601DateFormatter is thread-safe; creating two per decoded date
+    // field was the most expensive part of decoding large responses.
+    private static let fractionalDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let standardDateFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { value in
             let container = try value.singleValueContainer()
             let raw = try container.decode(String.self)
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = fractional.date(from: raw) {
+            if let date = APIClient.fractionalDateFormatter.date(from: raw) {
                 return date
             }
-            let standard = ISO8601DateFormatter()
-            standard.formatOptions = [.withInternetDateTime]
-            if let date = standard.date(from: raw) {
+            if let date = APIClient.standardDateFormatter.date(from: raw) {
                 return date
             }
             throw DecodingError.dataCorruptedError(
@@ -251,6 +297,7 @@ final class APIClient {
                allowSessionRefresh,
                http.statusCode == 401,
                let refreshToken = KeychainStore.loadRefreshToken() {
+                let generation = SessionGeneration.current
                 let refreshed = try await refreshCoordinator.run {
                     try await self.request(
                         "auth/refresh",
@@ -259,6 +306,10 @@ final class APIClient {
                         allowSessionRefresh: false
                     )
                 }
+                // The user signed out while the refresh was in flight.
+                guard generation == SessionGeneration.current else {
+                    throw NetworkError.unauthorized
+                }
                 KeychainStore.save(token: refreshed.accessToken)
                 if !refreshed.refreshToken.isEmpty {
                     KeychainStore.save(refreshToken: refreshed.refreshToken)
@@ -266,6 +317,9 @@ final class APIClient {
                 if !refreshed.widgetToken.isEmpty {
                     AttendanceWidgetBridge.configure(token: refreshed.widgetToken)
                 }
+                // Without this, SessionStore kept sending the expired token and
+                // every later request paid for a 401 plus a refresh.
+                NotificationCenter.default.post(name: .sukavinaSessionRefreshed, object: refreshed)
                 return try await request(
                     path,
                     method: method,

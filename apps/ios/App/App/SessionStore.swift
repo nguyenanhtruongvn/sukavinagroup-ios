@@ -214,6 +214,14 @@ final class SessionStore: ObservableObject {
     // cleanup or an account switch on the same iPhone.
     private var registeredAPNsIdentity: String?
     private var transportReachabilityObserver: NSObjectProtocol?
+    private var sessionRefreshedObserver: NSObjectProtocol?
+    private var backgroundObserver: NSObjectProtocol?
+    // Foreground activation also fires after Control Center, the notification
+    // shade and system sheets. Throttle the work it triggers.
+    private var lastForegroundRefreshAt: Date?
+    private var lastSessionRefreshAt: Date?
+    private let foregroundRefreshInterval: TimeInterval = 60
+    private let sessionRefreshInterval: TimeInterval = 60 * 60
     // Suppress duplicate Internet-loss alerts from concurrent API calls.
     // Reset only after a real HTTP response proves connectivity is back.
     private var hasPresentedOfflineAlertForCurrentOutage = false
@@ -228,10 +236,44 @@ final class SessionStore: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                self.isNetworkAvailable = true
+                // Posted after every HTTP response. Assigning an unchanged
+                // @Published value still redraws every observing view.
+                if !self.isNetworkAvailable { self.isNetworkAvailable = true }
                 self.hasPresentedOfflineAlertForCurrentOutage = false
-                self.offlineNoticeTask?.cancel()
-                self.isOfflineNoticeVisible = false
+                if self.offlineNoticeTask != nil {
+                    self.offlineNoticeTask?.cancel()
+                    self.offlineNoticeTask = nil
+                }
+                if self.isOfflineNoticeVisible { self.isOfflineNoticeVisible = false }
+            }
+        }
+        sessionRefreshedObserver = NotificationCenter.default.addObserver(
+            forName: .sukavinaSessionRefreshed,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let response = notification.object as? LoginResponse else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.state == .signedIn else { return }
+                // APIClient renewed an expired token for a request; use it from
+                // now on instead of paying for a 401 + refresh on every call.
+                self.token = response.accessToken
+                self.lastSessionRefreshAt = Date()
+                if self.biometricsEnabled, !response.refreshToken.isEmpty {
+                    _ = BiometricKeychain.save(refreshToken: response.refreshToken)
+                }
+            }
+        }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                // The realtime stream only refreshes visible UI; APNs covers the
+                // background. It is reopened in appBecameActive().
+                self?.eventStreamTask?.cancel()
+                self?.eventStreamTask = nil
             }
         }
         apnsTokenObserver = NotificationCenter.default.addObserver(
@@ -270,6 +312,12 @@ final class SessionStore: ObservableObject {
         offlineNoticeTask?.cancel()
         if let transportReachabilityObserver {
             NotificationCenter.default.removeObserver(transportReachabilityObserver)
+        }
+        if let sessionRefreshedObserver {
+            NotificationCenter.default.removeObserver(sessionRefreshedObserver)
+        }
+        if let backgroundObserver {
+            NotificationCenter.default.removeObserver(backgroundObserver)
         }
         if let apnsTokenObserver {
             NotificationCenter.default.removeObserver(apnsTokenObserver)
@@ -588,16 +636,31 @@ final class SessionStore: ObservableObject {
 
     func appBecameActive() {
         guard state == .signedIn else { return }
-        foregroundRefreshTask?.cancel()
+        // Reopen the realtime stream closed when the app went to background.
+        if eventStreamTask == nil, profile?.accountType != "CANTEEN" {
+            startRealTimeUpdates()
+        }
+        let now = Date()
+        // An in-flight refresh is left to finish: cancelling it could drop a
+        // response the server has already issued.
+        guard foregroundRefreshTask == nil else { return }
+        if let lastForegroundRefreshAt, now.timeIntervalSince(lastForegroundRefreshAt) < foregroundRefreshInterval {
+            return
+        }
+        lastForegroundRefreshAt = now
+        let shouldRefreshSession = lastSessionRefreshAt.map { now.timeIntervalSince($0) >= sessionRefreshInterval } ?? true
         foregroundRefreshTask = Task { [weak self] in
             guard let self else { return }
-            do {
-                try await self.refreshSession()
-            } catch NetworkError.unauthorized {
-                self.signOut()
-                return
-            } catch {
-                ConnectionDiagnostics.record("Foreground session refresh deferred: \(error.localizedDescription)")
+            defer { self.foregroundRefreshTask = nil }
+            if shouldRefreshSession {
+                do {
+                    try await self.refreshSession()
+                } catch NetworkError.unauthorized {
+                    self.signOut()
+                    return
+                } catch {
+                    ConnectionDiagnostics.record("Foreground session refresh deferred: \(error.localizedDescription)")
+                }
             }
             guard !Task.isCancelled else { return }
             // Fetch the tab/icon count immediately. Previously it waited for
@@ -612,7 +675,7 @@ final class SessionStore: ObservableObject {
             await self.refreshTodayMenu()
             _ = await notificationCountRefresh
             _ = await aiSettingsRefresh
-            self.startRealTimeUpdates()
+            if self.eventStreamTask == nil { self.startRealTimeUpdates() }
             self.startSessionRefresh()
         }
     }
@@ -997,19 +1060,26 @@ final class SessionStore: ObservableObject {
 
     func signOut() {
         sessionRestoreLogger.notice("Sign-out requested")
+        // A refresh still in flight must not persist new tokens afterwards.
+        SessionGeneration.invalidate()
         activeRestoreAttempt = nil
         let logoutToken = token
         let deviceToken = APNsRegistration.deviceToken
         if let logoutToken, let deviceToken {
             Task {
+                // Best effort with the current token only: refreshing here would
+                // re-save credentials for the account being signed out.
                 let _: MessageResponse? = try? await APIClient.shared.request(
                     "auth/push-token",
                     method: "DELETE",
                     token: logoutToken,
-                    body: PushTokenRegistrationBody(token: deviceToken, platform: "ios")
+                    body: PushTokenRegistrationBody(token: deviceToken, platform: "ios"),
+                    allowSessionRefresh: false
                 )
             }
         }
+        lastForegroundRefreshAt = nil
+        lastSessionRefreshAt = nil
         eventStreamTask?.cancel()
         eventStreamTask = nil
         realtimeRefreshTask?.cancel()
@@ -1053,7 +1123,9 @@ final class SessionStore: ObservableObject {
             UserDefaults.standard.removeObject(
                 forKey: "native-employee-requests-cache-" + employeeCode
             )
+            purgeAccountCaches(employeeCode: employeeCode)
         }
+        attendanceMemoryCache.removeAll()
 
         SessionCache.clear()
         token = nil
@@ -1076,6 +1148,26 @@ final class SessionStore: ObservableObject {
         Task.detached(priority: .utility) {
             KeychainStore.clear(accessToken: logoutToken)
         }
+    }
+
+    /// Removes every cached document that belongs to the signed-out account
+    /// (dashboard, attendance, meetings) so a shared device keeps none of the
+    /// previous user's data. Device-level preferences such as the personal
+    /// meeting-room order are kept. Mirrors the Android sign-out cleanup.
+    private func purgeAccountCaches(employeeCode: String) {
+        let defaults = UserDefaults.standard
+        let exactKeys = [
+            dashboardCachePrefix + employeeCode,
+            knownAttendancePrefix + employeeCode,
+            attendanceReportsCachePrefix + employeeCode,
+            attendanceMonthCacheOwnerKey,
+        ]
+        let prefixes = [attendanceMonthCachePrefix + employeeCode + "-"]
+        let keys = defaults.dictionaryRepresentation().keys.filter { key in
+            exactKeys.contains(key) || prefixes.contains { key.hasPrefix($0) }
+        }
+        keys.forEach { defaults.removeObject(forKey: $0) }
+        SessionCache.clearAccount(employeeCode: employeeCode)
     }
 
     private func hydrateSignedInSession(isCanteen: Bool) async {
@@ -1170,11 +1262,14 @@ final class SessionStore: ObservableObject {
         guard let refreshToken = KeychainStore.loadRefreshToken() else {
             throw NetworkError.unauthorized
         }
+        let generation = SessionGeneration.current
         let response: LoginResponse = try await APIClient.shared.request(
             "auth/refresh",
             method: "POST",
             body: RefreshSessionBody(refreshToken: refreshToken)
         )
+        guard generation == SessionGeneration.current, state != .signedOut else { return }
+        lastSessionRefreshAt = Date()
         applySession(response)
         if biometricsEnabled, !response.refreshToken.isEmpty {
             _ = BiometricKeychain.save(refreshToken: response.refreshToken)
@@ -1330,6 +1425,8 @@ final class SessionStore: ObservableObject {
         eventStreamTask = Task { [weak self] in
             guard let self else { return }
             guard let eventsURL = URL(string: "https://sukavinagroup.net/api/public/news/events") else { return }
+            // Consecutive failures without receiving data; drives the backoff.
+            var failures = 0
             while !Task.isCancelled {
                 do {
                     var request = URLRequest(url: eventsURL)
@@ -1348,17 +1445,30 @@ final class SessionStore: ObservableObject {
 
                     for try await line in bytes.lines {
                         if Task.isCancelled { return }
+                        failures = 0
                         if line.hasPrefix("data:") && line.contains("_changed") {
                             scheduleRealtimeRefresh(for: line)
                         }
                     }
+                    // The server closed the stream cleanly: still wait before
+                    // reconnecting instead of looping immediately.
                 } catch {
                     if Task.isCancelled { return }
-                    let reconnectDelay = UInt64.random(in: 2_000_000_000...5_000_000_000)
-                    try? await Task.sleep(nanoseconds: reconnectDelay)
                 }
+                failures += 1
+                try? await Task.sleep(nanoseconds: SessionStore.realtimeReconnectDelay(failures: failures))
             }
         }
+    }
+
+    /// 2-5 s after the first failure, doubling up to about five minutes, with
+    /// jitter so many devices do not reconnect at the same moment. Mirrors the
+    /// Android SSE backoff.
+    nonisolated static func realtimeReconnectDelay(failures: Int) -> UInt64 {
+        let exponent = min(max(failures - 1, 0), 7)
+        let base: UInt64 = 2_000_000_000 << UInt64(exponent)
+        let jitter = UInt64.random(in: 0...(base / 2 + 1_000_000_000))
+        return min(base + jitter, 300_000_000_000)
     }
 
     private func startNetworkMonitoring() {

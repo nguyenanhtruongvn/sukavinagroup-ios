@@ -407,6 +407,11 @@ struct RequestsView: View {
                 store.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
                 await store.load(session.token)
             }
+            // A realtime request_changed event (another device, a manager's
+            // decision) bumps requestRevision; reload like Android does.
+            .onChange(of: session.requestRevision) { _, _ in
+                Task { await store.load(session.token, force: true) }
+            }
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
     }

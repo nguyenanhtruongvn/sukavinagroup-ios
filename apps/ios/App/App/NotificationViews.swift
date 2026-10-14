@@ -204,6 +204,7 @@ struct NotificationsView: View {
                 }
                 .onAppear { Task { await openPendingAPNsRouteIfNeeded() } }
                 .onChange(of: session.attendanceRevision) { _, _ in Task { await reloadNotifications() } }
+                .onChange(of: session.requestRevision) { _, _ in Task { await reloadNotifications() } }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }

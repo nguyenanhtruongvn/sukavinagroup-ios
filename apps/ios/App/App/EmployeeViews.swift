@@ -27,11 +27,17 @@ enum MeetingPresentation {
         return formatter
     }()
 
+    // Called for every booking on every redraw of the room cards and the
+    // timeline; ISO8601DateFormatter is thread-safe, so build each one once.
+    private static let fractionalISO8601: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+    private static let standardISO8601 = ISO8601DateFormatter()
+
     static func date(from value: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: value) { return date }
-        return ISO8601DateFormatter().date(from: value)
+        fractionalISO8601.date(from: value) ?? standardISO8601.date(from: value)
     }
 
     static func time(_ value: String) -> String {
