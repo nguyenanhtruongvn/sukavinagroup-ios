@@ -4232,12 +4232,7 @@ private enum AttendanceReportValueStyle {
 }
 
 private enum AttendanceMetrics {
-    static let vietnamTimeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
-    private static let vietnamCalendar: Calendar = {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = vietnamTimeZone
-        return calendar
-    }()
+    private static var vietnamCalendar: Calendar { VietnamTime.calendar }
     // A public holiday takes precedence over Sunday. These categories are
     // mutually exclusive, so every minute is added to the monthly total once.
     private static func overtimeCategory(_ day: AttendanceDay) -> String {

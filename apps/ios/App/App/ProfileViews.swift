@@ -244,9 +244,7 @@ struct ProfileView: View {
     private var passwordChangedThisMonth: Bool {
         if isAdminAccount { return false }
         guard let changedAt = session.profile?.passwordChangedAt else { return false }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
-        return calendar.isDate(changedAt, equalTo: Date(), toGranularity: .month)
+        return VietnamTime.calendar.isDate(changedAt, equalTo: Date(), toGranularity: .month)
     }
     private var isAdminAccount: Bool {
         session.profile?.accountType == "ADMIN" || session.profile?.accountType == "SUPER_ADMIN"
@@ -283,10 +281,8 @@ struct ProfileView: View {
         .frame(minHeight: 52)
     }
     private var nextPasswordChangeMonth: String {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
-        let next = calendar.date(byAdding: .month, value: 1, to: Date()) ?? Date()
-        return next.formatted(.dateTime.month(.twoDigits).year())
+        let next = VietnamTime.calendar.date(byAdding: .month, value: 1, to: Date()) ?? Date()
+        return VietnamTime.monthYear.string(from: next)
     }
 }
 

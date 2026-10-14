@@ -33,7 +33,6 @@ private func receiveMeetingLiveActivityStateChanged(
     }
 }
 
-private extension DateFormatter { static let meetingDay: DateFormatter = { let value = DateFormatter(); value.calendar = Calendar(identifier: .gregorian); value.locale = Locale(identifier: "en_US_POSIX"); value.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh"); value.dateFormat = "yyyy-MM-dd"; return value }() }
 private let sessionRestoreLogger = Logger(
     subsystem: "net.sukavinagroup.user",
     category: "session-restore"
@@ -516,7 +515,7 @@ final class SessionStore: ObservableObject {
            cached.savedAt < staleBefore {
             return true
         }
-        let currentMonth = String(DateFormatter.meetingDay.string(from: Date()).prefix(7))
+        let currentMonth = String(VietnamTime.dayKey.string(from: Date()).prefix(7))
         let ttl: TimeInterval = month == currentMonth ? 90 : 12 * 60 * 60
         return Date().timeIntervalSince(cached.savedAt) >= ttl
     }
@@ -647,7 +646,7 @@ final class SessionStore: ObservableObject {
         guard let employeeCode = cacheEmployeeCode,
               let data = UserDefaults.standard.data(forKey: todayMenuCachePrefix + employeeCode),
               let cached = try? JSONDecoder().decode(CachedValue<TodayMenu>.self, from: data),
-              cached.value.date == DateFormatter.meetingDay.string(from: Date()),
+              cached.value.date == VietnamTime.dayKey.string(from: Date()),
               Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
         todayMenu = cached.value
         todayMenuLoadedAt = cached.savedAt
@@ -1856,7 +1855,7 @@ final class SessionStore: ObservableObject {
     /// Realtime/APNs events and explicit user refreshes bypass the freshness window.
     func refreshMeetingSchedule(date: Date = .now, force: Bool = false) async {
         activeMeetingScheduleDate = date
-        let day = DateFormatter.meetingDay.string(from: date)
+        let day = VietnamTime.dayKey.string(from: date)
         displayCachedMeetingScheduleIfNeeded(for: day)
 
         guard let token else { return }
@@ -1892,7 +1891,7 @@ final class SessionStore: ObservableObject {
               let savedAt = SessionCache.meetingScheduleSavedAt(day: day, employeeCode: employeeCode)
         else { return true }
 
-        let today = DateFormatter.meetingDay.string(from: Date())
+        let today = VietnamTime.dayKey.string(from: Date())
         let ttl: TimeInterval = day == today ? 60 : 5 * 60
         return Date().timeIntervalSince(savedAt) >= ttl
     }
@@ -2112,7 +2111,7 @@ final class SessionStore: ObservableObject {
     /// while the schedule endpoint or real-time stream catches up.
     fileprivate func applyLiveActivityMeetingChangeImmediately() async {
         applyEndedMeetingLiveActivityResultIfAvailable()
-        let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
+        let day = VietnamTime.dayKey.string(from: activeMeetingScheduleDate)
         saveMeetingSchedule(
             MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
             for: day
@@ -2199,7 +2198,7 @@ final class SessionStore: ObservableObject {
         }
 
         meetingBookings = normalizedMeetingBookings(updated)
-        let day = DateFormatter.meetingDay.string(from: activeMeetingScheduleDate)
+        let day = VietnamTime.dayKey.string(from: activeMeetingScheduleDate)
         saveMeetingSchedule(
             MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
             for: day

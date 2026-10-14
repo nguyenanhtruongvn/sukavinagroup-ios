@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FA0000000000000000000120 /* VietnamTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0000000000000000000110 /* VietnamTime.swift */; };
+		FA0000000000000000000130 /* VietnamTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0000000000000000000110 /* VietnamTime.swift */; };
 		D40000000000000000000001 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000101 /* DesignSystem.swift */; };
 		D40000000000000000000002 /* Networking.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000102 /* Networking.swift */; };
 		D40000000000000000000003 /* PortalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000103 /* PortalModels.swift */; };
@@ -78,6 +80,7 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXFileReference section */
+		FA0000000000000000000110 /* VietnamTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VietnamTime.swift; sourceTree = "<group>"; };
 		D40000000000000000000101 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		D40000000000000000000102 /* Networking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Networking.swift; sourceTree = "<group>"; };
 		D40000000000000000000103 /* PortalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalModels.swift; sourceTree = "<group>"; };
@@ -158,6 +161,7 @@
 				D40000000000000000000105 /* AuthenticationViews.swift */,
 				D40000000000000000000106 /* MealViews.swift */,
 				D40000000000000000000107 /* EmployeeViews.swift */,
+				FA0000000000000000000110 /* VietnamTime.swift */,
 				E17000000000000000000101 /* LegacyMeetingRoomsUIKit.swift */,
 				D40000000000000000000108 /* RequestViews.swift */,
 				D40000000000000000000109 /* NotificationViews.swift */,
@@ -309,6 +313,7 @@
 				D40000000000000000000005 /* AuthenticationViews.swift in Sources */,
 				D40000000000000000000006 /* MealViews.swift in Sources */,
 				D40000000000000000000007 /* EmployeeViews.swift in Sources */,
+				FA0000000000000000000120 /* VietnamTime.swift in Sources */,
 				E17000000000000000000001 /* LegacyMeetingRoomsUIKit.swift in Sources */,
 				D40000000000000000000008 /* RequestViews.swift in Sources */,
 				D40000000000000000000009 /* NotificationViews.swift in Sources */,
@@ -326,6 +331,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000001 /* AttendanceWidget.swift in Sources */,
+				FA0000000000000000000130 /* VietnamTime.swift in Sources */,
 				D60000000000000000000003 /* MeetingLiveActivityAttributes.swift in Sources */,
 				D70000000000000000000002 /* MeetingLiveActivityActionIntent.swift in Sources */,
 			);

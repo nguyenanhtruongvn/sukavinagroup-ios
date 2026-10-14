@@ -144,10 +144,7 @@ enum MeetingLiveActivityManager {
     }
 
     private static func date(_ value: String?) -> Date? {
-        guard let value else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        value.flatMap(VietnamTime.date(fromISO8601:))
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

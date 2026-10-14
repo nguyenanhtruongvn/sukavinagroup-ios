@@ -228,7 +228,7 @@ private enum MeetingLiveActivityAction {
         extensionMinutes: Int = 0,
         isChoosingExtension: Bool = false
     ) async {
-        guard let endDate = meetingDate(endsAt) else { return }
+        guard let endDate = VietnamTime.date(fromISO8601: endsAt) else { return }
         for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
             if endNow {
                 await activity.end(nil, dismissalPolicy: .immediate)
@@ -373,12 +373,6 @@ private enum MeetingLiveActivityAction {
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
-    }
-
-    private static func meetingDate(_ value: String) -> Date? {
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 }
 

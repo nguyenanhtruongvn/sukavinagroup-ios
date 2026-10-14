@@ -683,20 +683,9 @@ struct RequestCard: View {
     }
 }
 
-private enum RequestDateTimeDisplay {
-    static let formatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        formatter.dateFormat = "HH:mm dd/MM/yyyy"
-        return formatter
-    }()
-}
-
 extension Date {
     var requestDateTimeText: String {
-        RequestDateTimeDisplay.formatter.string(from: self)
+        VietnamTime.clockDate.string(from: self)
     }
 }
 

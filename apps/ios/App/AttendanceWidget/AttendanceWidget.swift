@@ -386,17 +386,11 @@ private struct AttendanceWidgetView: View {
     }
 
     private var monthTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        formatter.dateFormat = "'Tháng' M • yyyy"
-        return formatter.string(from: entry.date)
+        VietnamTime.monthTitleBullet.string(from: entry.date)
     }
 
     private var monthDays: [MonthDay] {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "vi_VN")
-        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let calendar = VietnamTime.calendar
         let today = calendar.startOfDay(for: entry.date)
         let components = calendar.dateComponents([.year, .month], from: today)
         guard let firstDay = calendar.date(from: components) else { return [] }
@@ -414,8 +408,9 @@ private struct AttendanceWidgetView: View {
     }
 
     private var weekDays: [WeekDay] {
+        // ISO weeks start on Monday, like the T2…CN labels below.
         var calendar = Calendar(identifier: .iso8601)
-        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        calendar.timeZone = VietnamTime.timeZone
         let today = calendar.startOfDay(for: entry.date)
         let interval = calendar.dateInterval(of: .weekOfYear, for: today)
         let monday = interval?.start ?? today
@@ -425,7 +420,7 @@ private struct AttendanceWidgetView: View {
             return WeekDay(
                 id: date,
                 label: label,
-                number: date.formatted(.dateTime.day()),
+                number: String(calendar.component(.day, from: date)),
                 isToday: calendar.isDate(date, inSameDayAs: today)
             )
         }
@@ -458,11 +453,9 @@ private struct AttendanceWidgetView: View {
     }
 
     private func timeLabel(_ value: String?) -> String {
-        guard let value else { return "--:--" }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) else { return "--:--" }
-        return date.formatted(date: .omitted, time: .shortened)
+        // Punch times are company (Vietnam) time, whatever the device time zone is.
+        guard let value, let date = VietnamTime.date(fromISO8601: value) else { return "--:--" }
+        return VietnamTime.clock.string(from: date)
     }
 }
 
@@ -538,7 +531,7 @@ private struct MeetingLiveActivityWidget: Widget {
                         }
 
                         HStack(spacing: 8) {
-                            Text(Self.clockFormatter.string(from: context.attributes.startsAt))
+                            Text(VietnamTime.clock.string(from: context.attributes.startsAt))
                                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                                 .monospacedDigit()
                                 .foregroundStyle(accent)
@@ -586,14 +579,6 @@ private struct MeetingLiveActivityWidget: Widget {
             .keylineTint(accent.opacity(0.9))
         }
     }
-
-    private static let clockFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
 }
 
 @available(iOS 17.0, *)

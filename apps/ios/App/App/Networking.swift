@@ -152,27 +152,14 @@ final class APIClient {
     static let shared = APIClient()
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")
     private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")
-    // ISO8601DateFormatter is thread-safe; creating two per decoded date
-    // field was the most expensive part of decoding large responses.
-    private static let fractionalDateFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let standardDateFormatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { value in
             let container = try value.singleValueContainer()
             let raw = try container.decode(String.self)
-            if let date = APIClient.fractionalDateFormatter.date(from: raw) {
-                return date
-            }
-            if let date = APIClient.standardDateFormatter.date(from: raw) {
+            // Shared, thread-safe formatters: creating them per decoded date
+            // field was the most expensive part of decoding large responses.
+            if let date = VietnamTime.date(fromISO8601: raw) {
                 return date
             }
             throw DecodingError.dataCorruptedError(
