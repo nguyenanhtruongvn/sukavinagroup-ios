@@ -90,7 +90,9 @@ enum MeetingLiveActivityStartRegistration {
         }
     }
 
-    private static var installationID: String {
+    /// Stable per-installation id; also sent at sign-out so the server drops
+    /// this device's push-to-start registration for the signed-out account.
+    static var installationID: String {
         if let value = UserDefaults.standard.string(forKey: installationIDKey),
            !value.isEmpty {
             return value

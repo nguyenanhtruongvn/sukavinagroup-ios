@@ -674,6 +674,13 @@ struct AiAssistantHistoryItem: Decodable {
 
 struct LoginBody: Encodable { let loginId: String; let password: String }
 struct PushTokenRegistrationBody: Encodable { let token: String; let platform: String }
+/// `POST auth/logout`: revokes this device's server session and detaches its
+/// APNs and Live Activity push-to-start registrations. Nil fields are omitted.
+struct LogoutBody: Encodable {
+    let refreshToken: String?
+    let pushToken: String?
+    let liveActivityInstallationId: String?
+}
 struct PushBadgeResetBody: Encodable { let token: String; let acknowledgedAt: Date }
 struct ForgotPasswordRequestBody: Encodable { let employeeCode: String }
 struct ForgotPasswordConfirmBody: Encodable {

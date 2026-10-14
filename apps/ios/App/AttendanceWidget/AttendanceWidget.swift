@@ -24,10 +24,26 @@ private enum WidgetStorage {
         return try? JSONDecoder().decode(State.self, from: data)
     }
 
+    // One session for every timeline request instead of a new URLSession
+    // (and its connection pool) per refresh.
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.waitsForConnectivity = false
+        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        configuration.urlCache = nil
+        configuration.timeoutIntervalForRequest = 15
+        configuration.timeoutIntervalForResource = 20
+        return URLSession(configuration: configuration)
+    }()
+
     static func fetchLatest() async -> State? {
         let defaults = UserDefaults(suiteName: appGroup)
-        guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty,
-              var components = URLComponents(string: Self.endpoint) else { return load() }
+        guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty else {
+            // Signed out: never keep showing the previous account's punches.
+            defaults?.removeObject(forKey: stateKey)
+            return nil
+        }
+        guard var components = URLComponents(string: Self.endpoint) else { return load() }
         components.queryItems = [URLQueryItem(name: "refresh", value: String(Int(Date().timeIntervalSince1970)))]
         guard let endpoint = components.url else { return load() }
         var request = URLRequest(url: endpoint)
@@ -39,17 +55,21 @@ private enum WidgetStorage {
         request.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
         request.httpBody = try? JSONEncoder().encode(TokenBody(widgetToken: token))
         do {
-            let configuration = URLSessionConfiguration.ephemeral
-            configuration.waitsForConnectivity = false
-            configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-            configuration.urlCache = nil
-            configuration.timeoutIntervalForRequest = 15
-            configuration.timeoutIntervalForResource = 20
-            let (data, response) = try await URLSession(configuration: configuration).data(for: request)
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
+                // The session behind this widget token was signed out or
+                // revoked. Stop showing its data.
+                if defaults?.string(forKey: tokenKey) == token {
+                    defaults?.removeObject(forKey: stateKey)
+                }
+                return nil
+            }
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
                   let payload = try? JSONDecoder().decode(AttendancePayload.self, from: data) else {
                 return load()
             }
+            // The user may have signed out while the request was in flight.
+            guard defaults?.string(forKey: tokenKey) == token else { return nil }
             let records = payload.attendanceRecords.sorted { $0.punchedAt < $1.punchedAt }
             let state: State
             if payload.attendanceClassification != nil {
@@ -117,7 +137,9 @@ private struct AttendanceProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<AttendanceEntry>) -> Void) {
         Task {
             let entry = AttendanceEntry(date: Date(), state: await WidgetStorage.fetchLatest())
-            let nextRefresh = Calendar.current.date(byAdding: .minute, value: 1, to: Date()) ?? Date().addingTimeInterval(60)
+            // WidgetKit throttles frequent timeline reloads anyway; the app
+            // reloads this widget itself whenever attendance changes.
+            let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(15 * 60)
             completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
         }
     }
@@ -736,8 +758,6 @@ private struct SukavinaLiveActivityLogo: View {
 struct SukavinaAttendanceWidgetBundle: WidgetBundle {
     var body: some Widget {
         SukavinaAttendanceWidget()
-        if #available(iOS 17.0, *) {
-            MeetingLiveActivityWidget()
-        }
+        MeetingLiveActivityWidget()
     }
 }

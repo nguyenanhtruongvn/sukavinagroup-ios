@@ -179,9 +179,24 @@ private enum MeetingLiveActivityAction {
     private static let endedMeetingKey = "meeting-live-activity-ended-booking"
 
     static func request(bookingID: String, action: Action) async throws -> Response {
-        guard !bookingID.isEmpty, let token = accessToken() else {
+        guard !bookingID.isEmpty, let token = keychainValue(account: "access-token") else {
             throw MeetingLiveActivityActionError.noSession
         }
+        do {
+            return try await send(bookingID: bookingID, action: action, token: token)
+        } catch MeetingLiveActivityActionError.expiredToken {
+            // The activity appears near the end of a meeting, often hours after
+            // the app last ran, so the access token may have expired. Renew it
+            // once, as the app does, then retry. (This file is also compiled
+            // into the widget extension, so it cannot use APIClient.)
+            guard let renewed = await renewAccessToken() else {
+                throw MeetingLiveActivityActionError.noSession
+            }
+            return try await send(bookingID: bookingID, action: action, token: renewed)
+        }
+    }
+
+    private static func send(bookingID: String, action: Action, token: String) async throws -> Response {
         let path: String
         switch action {
         case .end: path = "me/meeting-bookings/\(bookingID)/end"
@@ -198,6 +213,7 @@ private enum MeetingLiveActivityAction {
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw MeetingLiveActivityActionError.unavailable }
+        if http.statusCode == 401 { throw MeetingLiveActivityActionError.expiredToken }
         guard (200..<300).contains(http.statusCode) else {
             let message = (try? JSONDecoder().decode(ErrorPayload.self, from: data))?.message.text
             throw MeetingLiveActivityActionError.rejected(message)
@@ -317,11 +333,38 @@ private enum MeetingLiveActivityAction {
         }
     }
 
-    private static func accessToken() -> String? {
+    private struct RefreshBody: Encodable { let refreshToken: String }
+    private struct RefreshedSession: Decodable { let accessToken: String }
+
+    /// Exchanges the stored refresh token for a new access token and stores
+    /// it where the app reads it. Returns nil when signed out or rejected.
+    private static func renewAccessToken() async -> String? {
+        guard let refreshToken = keychainValue(account: "refresh-token") else { return nil }
+        var request = URLRequest(url: URL(string: "auth/refresh", relativeTo: baseURL)!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 20
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(RefreshBody(refreshToken: refreshToken))
+        guard let result = try? await URLSession.shared.data(for: request),
+              let http = result.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let session = try? JSONDecoder().decode(RefreshedSession.self, from: result.0) else { return nil }
+        // Only update the existing item: if the user signed out meanwhile the
+        // item is gone and must not be recreated.
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "net.sukavinagroup.user",
             kSecAttrAccount as String: "access-token",
+        ]
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: Data(session.accessToken.utf8)] as CFDictionary)
+        return status == errSecSuccess ? session.accessToken : nil
+    }
+
+    private static func keychainValue(account: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "net.sukavinagroup.user",
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
@@ -373,11 +416,11 @@ enum MeetingLiveActivityExpiry {
 
 @available(iOS 17.0, *)
 private enum MeetingLiveActivityActionError: LocalizedError {
-    case noSession, unavailable, rejected(String?)
+    case noSession, unavailable, rejected(String?), expiredToken
 
     var errorDescription: String? {
         switch self {
-        case .noSession: "Không có phiên đăng nhập hợp lệ."
+        case .noSession, .expiredToken: "Phiên đăng nhập đã hết hạn. Hãy mở ứng dụng để đăng nhập lại."
         case .unavailable: "Không thể kết nối máy chủ."
         case .rejected(let message): message ?? "Không thể gia hạn vì có cuộc họp kế tiếp hoặc lịch đã thay đổi."
         }

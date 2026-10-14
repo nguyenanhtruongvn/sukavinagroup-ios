@@ -3306,10 +3306,8 @@ private extension View {
     func attachedMealSheetCorners() -> some View {
         if #available(iOS 26.0, *) {
             self
-        } else if #available(iOS 16.4, *) {
-            presentationCornerRadius(28)
         } else {
-            self
+            presentationCornerRadius(28)
         }
     }
 
@@ -3320,11 +3318,7 @@ private extension View {
 
     @ViewBuilder
     func fittedMealSheetSizing(fallbackHeight: CGFloat) -> some View {
-        if #available(iOS 16.0, *) {
-            presentationDetents([.height(fallbackHeight)])
-        } else {
-            self
-        }
+        presentationDetents([.height(fallbackHeight)])
     }
 }
 

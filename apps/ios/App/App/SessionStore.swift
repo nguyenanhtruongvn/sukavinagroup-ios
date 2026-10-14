@@ -60,6 +60,94 @@ final class MenuStore: ObservableObject {
     @Published var todayMenu: TodayMenu?
 }
 
+/// Ends this device's server session at sign-out: revokes its refresh,
+/// access and widget tokens and detaches the APNs and push-to-start
+/// registrations (`POST auth/logout`). With biometric sign-in enabled it first
+/// obtains a separate session for it, so Face ID / Touch ID sign-in keeps
+/// working after signing out. Mirrors Android `SessionTokens.signOutInBackground`.
+@available(iOS 17.0, *)
+enum ServerSignOut {
+    static func run(
+        accessToken: String?,
+        refreshToken: String?,
+        pushToken: String?,
+        installationID: String?,
+        keepBiometric: Bool
+    ) async {
+        guard accessToken != nil || refreshToken != nil else { return }
+        if keepBiometric {
+            guard let dedicated = await biometricSession(accessToken: accessToken, refreshToken: refreshToken),
+                  BiometricKeychain.save(refreshToken: dedicated) else {
+                // Revoking now would also end the biometric sign-in kept on
+                // this device. Fall back to detaching the APNs token only.
+                if let accessToken, let pushToken {
+                    let _: MessageResponse? = try? await APIClient.shared.request(
+                        "auth/push-token",
+                        method: "DELETE",
+                        token: accessToken,
+                        body: PushTokenRegistrationBody(token: pushToken, platform: "ios"),
+                        allowSessionRefresh: false
+                    )
+                }
+                return
+            }
+        }
+        // The user may have signed in again meanwhile (biometric sign-in
+        // reuses this session); never revoke a session that is in use.
+        guard KeychainStore.loadRefreshToken() == nil else { return }
+        let _: MessageResponse? = try? await APIClient.shared.request(
+            "auth/logout",
+            method: "POST",
+            token: accessToken,
+            body: LogoutBody(
+                refreshToken: refreshToken,
+                pushToken: pushToken,
+                liveActivityInstallationId: installationID
+            ),
+            allowSessionRefresh: false
+        )
+    }
+
+    /// A new, separate session's refresh token for biometric sign-in.
+    private static func biometricSession(accessToken: String?, refreshToken: String?) async -> String? {
+        if let accessToken {
+            do {
+                let upgraded: LoginResponse = try await APIClient.shared.request(
+                    "auth/session/upgrade",
+                    method: "POST",
+                    token: accessToken,
+                    body: EmptyBody(),
+                    allowSessionRefresh: false
+                )
+                return upgraded.refreshToken.isEmpty ? nil : upgraded.refreshToken
+            } catch NetworkError.unauthorized {
+                // The access token expired; renew it within the same session.
+            } catch {
+                return nil
+            }
+        }
+        guard let refreshToken else { return nil }
+        do {
+            let renewed: LoginResponse = try await APIClient.shared.request(
+                "auth/refresh",
+                method: "POST",
+                body: RefreshSessionBody(refreshToken: refreshToken),
+                allowSessionRefresh: false
+            )
+            let upgraded: LoginResponse = try await APIClient.shared.request(
+                "auth/session/upgrade",
+                method: "POST",
+                token: renewed.accessToken,
+                body: EmptyBody(),
+                allowSessionRefresh: false
+            )
+            return upgraded.refreshToken.isEmpty ? nil : upgraded.refreshToken
+        } catch {
+            return nil
+        }
+    }
+}
+
 @available(iOS 17.0, *)
 extension View {
     /// Injects the session and its feature stores. Use this wherever a view
@@ -166,6 +254,13 @@ final class SessionStore: ObservableObject {
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
     private let attendanceReportsCachePrefix = "native-attendance-reports-"
+    // Realtime attendance events mark every cached month stale by time instead
+    // of decoding and re-encoding each month on the main thread.
+    private let attendanceStaleBeforePrefix = "native-attendance-stale-before-"
+    // Decoded statement list; the attendance pager reads it for every page.
+    private var attendanceReportsMemory: (key: String, value: [AttendanceReport])?
+    // Serialises background cache writes so an older dashboard never lands last.
+    private var dashboardCacheWrite: Task<Void, Never>?
     // Keep decoded month snapshots in RAM as well as UserDefaults. The disk
     // layer survives launches; the memory layer makes repeated opens/swipes
     // avoid JSON decoding and disk reads on the main actor.
@@ -363,6 +458,11 @@ final class SessionStore: ObservableObject {
             attendanceMemoryCache[cacheKey] = disk
             cached = disk
         }
+        if let employeeCode = attendanceCacheEmployeeCode(),
+           let staleBefore = UserDefaults.standard.object(forKey: attendanceStaleBeforePrefix + employeeCode) as? Date,
+           cached.savedAt < staleBefore {
+            return true
+        }
         let currentMonth = String(DateFormatter.meetingDay.string(from: Date()).prefix(7))
         let ttl: TimeInterval = month == currentMonth ? 90 : 12 * 60 * 60
         return Date().timeIntervalSince(cached.savedAt) >= ttl
@@ -397,11 +497,13 @@ final class SessionStore: ObservableObject {
     /// Released attendance statements are immutable, so show this disk-backed
     /// snapshot immediately and refresh it from the server in the background.
     func cachedAttendanceReports() -> [AttendanceReport] {
-        guard let cacheKey = attendanceReportsCacheKey(),
-              let data = UserDefaults.standard.data(forKey: cacheKey),
+        guard let cacheKey = attendanceReportsCacheKey() else { return [] }
+        if let memory = attendanceReportsMemory, memory.key == cacheKey { return memory.value }
+        guard let data = UserDefaults.standard.data(forKey: cacheKey),
               let cached = try? JSONDecoder().decode(CachedValue<[AttendanceReport]>.self, from: data) else {
             return []
         }
+        attendanceReportsMemory = (cacheKey, cached.value)
         return cached.value
     }
 
@@ -425,6 +527,7 @@ final class SessionStore: ObservableObject {
         guard let cacheKey = attendanceReportsCacheKey(),
               let employeeCode = profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty,
               let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: reports)) else { return }
+        attendanceReportsMemory = (cacheKey, reports)
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
         UserDefaults.standard.set(data, forKey: cacheKey)
     }
@@ -443,29 +546,20 @@ final class SessionStore: ObservableObject {
         // Preserve snapshots for instant paint, but persistently mark them stale.
         // This survives leaving the attendance screen or restarting the app after
         // an admin/attendance realtime event, matching Android's cache semantics.
-        let defaults = UserDefaults.standard
-        let employeeCode = profile?.employeeCode.nilIfEmpty
-            ?? dashboard?.employeeCode.nilIfEmpty
-            ?? defaults.string(forKey: attendanceMonthCacheOwnerKey)?.nilIfEmpty
-        guard let employeeCode else { return }
-
+        // A single timestamp replaces decoding and re-encoding every cached
+        // month on the main thread for each company-wide event.
+        guard let employeeCode = attendanceCacheEmployeeCode() else { return }
+        UserDefaults.standard.set(Date(), forKey: attendanceStaleBeforePrefix + employeeCode)
         let prefix = attendanceMonthCachePrefix + employeeCode + "-"
-        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
-            guard let data = defaults.data(forKey: key) else { continue }
-            let value: AttendanceMonth
-            if let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) {
-                value = cached.value
-            } else if let legacy = try? JSONDecoder().decode(AttendanceMonth.self, from: data) {
-                value = legacy
-            } else {
-                continue
-            }
-            let stale = CachedAttendanceMonth(savedAt: .distantPast, value: value)
-            attendanceMemoryCache[key] = stale
-            if let encoded = try? JSONEncoder().encode(stale) {
-                defaults.set(encoded, forKey: key)
-            }
+        for (key, cached) in attendanceMemoryCache where key.hasPrefix(prefix) {
+            attendanceMemoryCache[key] = CachedAttendanceMonth(savedAt: .distantPast, value: cached.value)
         }
+    }
+
+    private func attendanceCacheEmployeeCode() -> String? {
+        profile?.employeeCode.nilIfEmpty
+            ?? dashboard?.employeeCode.nilIfEmpty
+            ?? UserDefaults.standard.string(forKey: attendanceMonthCacheOwnerKey)?.nilIfEmpty
     }
 
     private func restoreCachedDashboard() {
@@ -478,9 +572,18 @@ final class SessionStore: ObservableObject {
 
     private func saveDashboardCache(_ value: Dashboard) {
         let employeeCode = value.employeeCode.nilIfEmpty ?? profile?.employeeCode.nilIfEmpty
-        guard let employeeCode,
-              let data = try? JSONEncoder().encode(CachedDashboard(savedAt: Date(), value: value)) else { return }
-        UserDefaults.standard.set(data, forKey: dashboardCachePrefix + employeeCode)
+        guard let employeeCode else { return }
+        let key = dashboardCachePrefix + employeeCode
+        let cached = CachedDashboard(savedAt: Date(), value: value)
+        let previous = dashboardCacheWrite
+        // The dashboard includes article HTML; encoding and writing it on the
+        // main thread on every refresh caused visible hitches.
+        dashboardCacheWrite = Task.detached(priority: .utility) {
+            await previous?.value
+            // Cancelled at sign-out: never write the previous account back.
+            guard !Task.isCancelled, let data = try? JSONEncoder().encode(cached) else { return }
+            UserDefaults.standard.set(data, forKey: key)
+        }
     }
 
     private var cacheEmployeeCode: String? {
@@ -1065,18 +1168,12 @@ final class SessionStore: ObservableObject {
         activeRestoreAttempt = nil
         let logoutToken = token
         let deviceToken = APNsRegistration.deviceToken
-        if let logoutToken, let deviceToken {
-            Task {
-                // Best effort with the current token only: refreshing here would
-                // re-save credentials for the account being signed out.
-                let _: MessageResponse? = try? await APIClient.shared.request(
-                    "auth/push-token",
-                    method: "DELETE",
-                    token: logoutToken,
-                    body: PushTokenRegistrationBody(token: deviceToken, platform: "ios"),
-                    allowSessionRefresh: false
-                )
-            }
+        let keepBiometric = biometricsEnabled
+        let installationID: String?
+        if #available(iOS 17.2, *) {
+            installationID = MeetingLiveActivityStartRegistration.installationID
+        } else {
+            installationID = nil
         }
         lastForegroundRefreshAt = nil
         lastSessionRefreshAt = nil
@@ -1126,6 +1223,9 @@ final class SessionStore: ObservableObject {
             purgeAccountCaches(employeeCode: employeeCode)
         }
         attendanceMemoryCache.removeAll()
+        attendanceReportsMemory = nil
+        dashboardCacheWrite?.cancel()
+        dashboardCacheWrite = nil
 
         SessionCache.clear()
         token = nil
@@ -1146,7 +1246,17 @@ final class SessionStore: ObservableObject {
         state = .signedOut
         sessionRestoreLogger.notice("Sign-out completed: showing authentication")
         Task.detached(priority: .utility) {
+            // Read the refresh token before the local clear; the server
+            // sign-out runs afterwards so the UI never waits on the network.
+            let logoutRefreshToken = KeychainStore.loadRefreshToken()
             KeychainStore.clear(accessToken: logoutToken)
+            await ServerSignOut.run(
+                accessToken: logoutToken,
+                refreshToken: logoutRefreshToken,
+                pushToken: deviceToken,
+                installationID: installationID,
+                keepBiometric: keepBiometric
+            )
         }
     }
 
@@ -1161,6 +1271,7 @@ final class SessionStore: ObservableObject {
             knownAttendancePrefix + employeeCode,
             attendanceReportsCachePrefix + employeeCode,
             attendanceMonthCacheOwnerKey,
+            attendanceStaleBeforePrefix + employeeCode,
         ]
         let prefixes = [attendanceMonthCachePrefix + employeeCode + "-"]
         let keys = defaults.dictionaryRepresentation().keys.filter { key in
@@ -2066,9 +2177,7 @@ final class SessionStore: ObservableObject {
                 // revalidation runs afterwards and no longer blocks button UI.
                 savePendingEndedMeetingLiveActivityResult(ended)
                 replaceMeetingInCurrentSchedule(ended)
-                if #available(iOS 17.0, *) {
-                    MeetingLiveActivityManager.end(bookingID: bookingID)
-                }
+                MeetingLiveActivityManager.end(bookingID: bookingID)
 
             case "extend":
                 let extended: MeetingBooking = try await APIClient.shared.request(
@@ -2076,8 +2185,7 @@ final class SessionStore: ObservableObject {
                     body: ExtendMeetingBookingBody(minutes: extensionMinutes)
                 )
                 replaceMeetingInCurrentSchedule(extended)
-                if #available(iOS 17.0, *),
-                   let endsAt = MeetingPresentation.date(from: extended.endsAt) {
+                if let endsAt = MeetingPresentation.date(from: extended.endsAt) {
                     MeetingLiveActivityManager.update(
                         bookingID: bookingID,
                         endsAt: endsAt
