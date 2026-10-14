@@ -1233,18 +1233,11 @@ final class SessionStore: ObservableObject {
     }
 
     private func attendanceNotificationTime(_ value: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
-        guard let date else {
+        guard let date = VietnamTime.date(fromISO8601: value) else {
             let parts = value.split(separator: "T")
             return parts.count > 1 ? String(parts[1].prefix(5)) : "vừa xong"
         }
-        let output = DateFormatter()
-        output.locale = Locale(identifier: "vi_VN")
-        output.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        output.dateFormat = "HH:mm"
-        return output.string(from: date)
+        return VietnamTime.clock.string(from: date)
     }
 
     func signOut() {
@@ -2314,8 +2307,8 @@ final class SessionStore: ObservableObject {
             let end = start.addingTimeInterval(Double(duration) * 60)
             let body = CreateMeetingBookingBody(
                 roomId: room.id,
-                startsAt: ISO8601DateFormatter().string(from: start),
-                endsAt: ISO8601DateFormatter().string(from: end),
+                startsAt: VietnamTime.iso8601String(from: start),
+                endsAt: VietnamTime.iso8601String(from: end),
                 title: title,
                 attendeeCount: participants.count + 1,
                 participantIds: participants

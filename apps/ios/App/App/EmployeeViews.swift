@@ -13,12 +13,8 @@ import WebKit
 import UniformTypeIdentifiers
 
 enum MeetingPresentation {
-    static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
-    static let calendar: Calendar = {
-        var value = Calendar(identifier: .gregorian)
-        value.timeZone = timezone
-        return value
-    }()
+    static let timezone = VietnamTime.timeZone
+    static let calendar = VietnamTime.calendar
     static let clock: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "vi_VN")
@@ -27,17 +23,8 @@ enum MeetingPresentation {
         return formatter
     }()
 
-    // Called for every booking on every redraw of the room cards and the
-    // timeline; ISO8601DateFormatter is thread-safe, so build each one once.
-    private static let fractionalISO8601: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
-    private static let standardISO8601 = ISO8601DateFormatter()
-
     static func date(from value: String) -> Date? {
-        fractionalISO8601.date(from: value) ?? standardISO8601.date(from: value)
+        VietnamTime.date(fromISO8601: value)
     }
 
     static func time(_ value: String) -> String {
@@ -1340,11 +1327,7 @@ struct MeetingBookingDetailSheet: View {
 
     private var dateTitle: String {
         guard let start = startDate else { return "Chưa xác định" }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.timeZone = MeetingPresentation.timezone
-        formatter.dateFormat = "EEEE, dd 'tháng' MM, yyyy"
-        return formatter.string(from: start).capitalized
+        return VietnamTime.weekdayLongDate.string(from: start).capitalized
     }
     private var durationTitle: String {
         guard let start = startDate, let end = endDate else { return "—" }
@@ -1757,10 +1740,7 @@ private struct MeetingBookingSheet: View {
     }
 
     private var dayLabel: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.dateFormat = "EEEE, dd/MM/yyyy"
-        return formatter.string(from: day).capitalized
+        VietnamTime.weekdayDate.string(from: day).capitalized
     }
 
     var body: some View {
@@ -2501,11 +2481,7 @@ private struct MyMeetingsSheet: View {
     }
 
     private var dateLabel: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.timeZone = MeetingPresentation.timezone
-        formatter.dateFormat = "EEEE, dd 'tháng' MM"
-        return formatter.string(from: day).capitalized
+        return VietnamTime.weekdayLongDayMonth.string(from: day).capitalized
     }
 
     var body: some View {
@@ -3017,13 +2993,8 @@ private struct PreloadedAttendanceDayCell: View {
     }
 
     private func time(_ value: String?) -> String {
-        guard let value else { return "--:--" }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value) else {
-            return "--:--"
-        }
-        return date.formatted(date: .omitted, time: .shortened)
+        guard let value, let date = VietnamTime.date(fromISO8601: value) else { return "--:--" }
+        return VietnamTime.clock.string(from: date)
     }
 }
 
@@ -4207,12 +4178,8 @@ struct DashboardView: View {
 
 
     private func attendanceTime(_ value: String) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value) else {
-            return value
-        }
-        return date.formatted(date: .omitted, time: .standard)
+        guard let date = VietnamTime.date(fromISO8601: value) else { return value }
+        return VietnamTime.clockWithSeconds.string(from: date)
     }
 
 
@@ -4534,31 +4501,19 @@ private enum AttendanceMetrics {
     }
 
     static func monthTitle(_ month: String) -> String {
-        let parser = DateFormatter()
-        parser.locale = Locale(identifier: "en_US_POSIX")
-        parser.dateFormat = "yyyy-MM"
-        guard let date = parser.date(from: month) else { return month }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.dateFormat = "'Tháng' M/yyyy"
-        return formatter.string(from: date)
+        guard let date = VietnamTime.monthKey.date(from: month) else { return month }
+        return VietnamTime.monthTitle.string(from: date)
     }
 
     private static func instant(_ value: String?) -> Date? {
         guard let value else { return nil }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        return VietnamTime.date(fromISO8601: value)
     }
 
     private static func scheduledDate(_ day: String, time: String?) -> Date? {
         guard let time, !time.isEmpty else { return nil }
-        for format in ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm"] {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = vietnamTimeZone
-            formatter.dateFormat = format
-            if let value = formatter.date(from: "\(day) \(time)") { return value }
+        for parser in VietnamTime.scheduleParsers {
+            if let value = parser.date(from: "\(day) \(time)") { return value }
         }
         return nil
     }
@@ -5638,8 +5593,7 @@ struct ModernAttendanceHistoryView: View {
 
     private func monthTitle(for month: String) -> String {
         guard let date = Self.monthParser.date(from: month) else { return month }
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "vi_VN")
-        formatter.dateFormat = "'Tháng' M / yyyy"; return formatter.string(from: date)
+        return VietnamTime.monthTitleSpaced.string(from: date)
     }
     private func dayStatuses(_ day: AttendanceDay) -> [String] {
         AttendanceMetrics.displayStatuses(day)
@@ -5695,15 +5649,12 @@ struct ModernAttendanceHistoryView: View {
         }
     }
     private func time(_ value: String?) -> String {
-        guard let value else { return "--:--" }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        guard let date = formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value) else { return "--:--" }
-        return date.formatted(date: .omitted, time: .shortened)
+        guard let value, let date = VietnamTime.date(fromISO8601: value) else { return "--:--" }
+        return VietnamTime.clock.string(from: date)
     }
     private func displayDate(_ value: String) -> String {
         guard let date = Self.dayParser.date(from: value) else { return value }
-        let formatter = DateFormatter(); formatter.dateFormat = "dd/MM/yyyy"; return formatter.string(from: date)
+        return VietnamTime.shortDate.string(from: date)
     }
     private func preloadAdjacentMonths(forceNetwork: Bool = false) async {
         // Always hydrate the visible month first. A missing neighbouring month
@@ -5722,19 +5673,10 @@ struct ModernAttendanceHistoryView: View {
             await preloadMonth(month, forceNetwork: forceNetwork)
         }
     }
-    private static func monthValue(_ date: Date) -> String {
-        let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM"; return formatter.string(from: date)
-    }
+    private static func monthValue(_ date: Date) -> String { VietnamTime.monthKey.string(from: date) }
     private static func dayValue(_ date: Date) -> String { dayParser.string(from: date) }
-    private static let monthParser: DateFormatter = {
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM"; return formatter
-    }()
-    private static let dayParser: DateFormatter = {
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        formatter.dateFormat = "yyyy-MM-dd"; return formatter
-    }()
+    private static let monthParser = VietnamTime.monthKey
+    private static let dayParser = VietnamTime.dayKey
 }
 
 

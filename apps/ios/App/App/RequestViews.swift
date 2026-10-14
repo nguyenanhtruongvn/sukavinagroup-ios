@@ -748,9 +748,9 @@ struct RequestComposer: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var kind = EmployeeRequestKind.leave
     @State private var from = Date()
-    @State private var to = Calendar.current.date(byAdding: .hour, value: 8, to: Date()) ?? Date()
+    @State private var to = VietnamTime.calendar.date(byAdding: .hour, value: 8, to: Date()) ?? Date()
     @State private var reason = ""
-    @State private var attendanceDate = Calendar.current.startOfDay(for: Date())
+    @State private var attendanceDate = VietnamTime.calendar.startOfDay(for: Date())
     @State private var attendanceDay: AttendanceDay?
     @State private var destination = ""
     @State private var transport = "personal_vehicle"
@@ -787,14 +787,14 @@ struct RequestComposer: View {
 
     private func applyInitialLeaveSchedule() {
         guard kind == .leave, !leaveScheduleWasInitialized else { return }
-        let leaveDay = Calendar.current.startOfDay(for: from)
+        let leaveDay = VietnamTime.calendar.startOfDay(for: from)
         from = scheduledAttendanceTime(workStartTime, on: leaveDay, fallbackHour: 7, fallbackMinute: 30)
         to = scheduledAttendanceTime(workEndTime, on: leaveDay, fallbackHour: 16, fallbackMinute: 30)
         leaveScheduleWasInitialized = true
     }
 
     private var scheduledRequestDates: (from: Date, to: Date) {
-        let calendar = Calendar.current
+        let calendar = VietnamTime.calendar
         let requestDay = calendar.startOfDay(for: from)
         let shiftStart = scheduledAttendanceTime(workStartTime, on: requestDay, fallbackHour: 7, fallbackMinute: 30)
         let shiftEnd = scheduledAttendanceTime(workEndTime, on: requestDay, fallbackHour: 16, fallbackMinute: 30)
@@ -811,15 +811,13 @@ struct RequestComposer: View {
     }
 
     private var scheduledRequestPreview: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.dateFormat = "HH:mm"
+        let formatter = VietnamTime.clock
         let dates = scheduledRequestDates
         return "Khung giờ theo ca làm: \(formatter.string(from: dates.from)) – \(formatter.string(from: dates.to))."
     }
 
     private var submissionDates: (from: Date, to: Date) {
-        let calendar = Calendar.current
+        let calendar = VietnamTime.calendar
         switch kind {
         case .late, .early, .overtime:
             return scheduledRequestDates
@@ -860,14 +858,7 @@ struct RequestComposer: View {
         }
         .id(scrollID)
     }
-    private func attendanceDateKey(_ date: Date, format: String) -> String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
-        formatter.dateFormat = format
-        return formatter.string(from: date)
-    }
+
     @ViewBuilder private func attendanceTimeCard(title: String, value: String?, missingPrompt: String, selection: Binding<Date>) -> some View {
         let compact = dynamicTypeSize <= .large
         VStack(alignment: .leading, spacing: compact ? 4 : 6) {
@@ -914,20 +905,15 @@ struct RequestComposer: View {
         .buttonStyle(.plain)
     }
     private func attendanceTime(_ value: String?) -> String {
-        guard let value else { return "Thiếu" }
-        let parser = ISO8601DateFormatter()
-        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let date = parser.date(from: value) ?? ISO8601DateFormatter().date(from: value)
-        guard let date else { return "Thiếu" }
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "vi_VN"); formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        guard let value, let date = VietnamTime.date(fromISO8601: value) else { return "Thiếu" }
+        return VietnamTime.clock.string(from: date)
     }
 
     private func scheduledAttendanceTime(_ time: String?, on date: Date, fallbackHour: Int, fallbackMinute: Int) -> Date {
         let parts = time?.split(separator: ":").compactMap { Int($0) } ?? []
         let hour = parts.count == 2 && (0...23).contains(parts[0]) ? parts[0] : fallbackHour
         let minute = parts.count == 2 && (0...59).contains(parts[1]) ? parts[1] : fallbackMinute
-        return Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
+        return VietnamTime.calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
     }
 
     private var canSubmit: Bool {
@@ -945,7 +931,7 @@ struct RequestComposer: View {
     }
 
     private func updateRequestStart(_ selected: Date) {
-        let calendar = Calendar.current
+        let calendar = VietnamTime.calendar
         let previousFrom = from
         let previousTo = to
 
@@ -1221,16 +1207,16 @@ struct RequestComposer: View {
             }
             .task(id: kind.rawValue + String(attendanceDate.timeIntervalSince1970)) {
                 guard kind == .attendance, let token = session.token else { return }
-                let month = attendanceDateKey(attendanceDate, format: "yyyy-MM")
-                let selectedKey = attendanceDateKey(attendanceDate, format: "yyyy-MM-dd")
+                let month = VietnamTime.monthKey.string(from: attendanceDate)
+                let selectedKey = VietnamTime.dayKey.string(from: attendanceDate)
 
                 func apply(_ data: AttendanceMonth) {
                     attendanceDay = data.days.first { $0.date == selectedKey }
                     let scheduleStart = attendanceDay?.startTime ?? data.startTime
                     let scheduleEnd = attendanceDay?.endTime ?? data.endTime
-                    from = attendanceDay?.checkIn.flatMap { ISO8601DateFormatter().date(from: $0) }
+                    from = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:))
                         ?? scheduledAttendanceTime(scheduleStart, on: attendanceDate, fallbackHour: 7, fallbackMinute: 30)
-                    to = attendanceDay?.checkOut.flatMap { ISO8601DateFormatter().date(from: $0) }
+                    to = attendanceDay?.checkOut.flatMap(VietnamTime.date(fromISO8601:))
                         ?? scheduledAttendanceTime(scheduleEnd, on: attendanceDate, fallbackHour: 16, fallbackMinute: 30)
                 }
 
@@ -1298,11 +1284,16 @@ struct RequestComposer: View {
                 } else if [.late, .early, .overtime].contains(newKind) {
                     durationValue = 30
                     durationUnit = .minutes
-                    from = Calendar.current.startOfDay(for: now)
+                    from = VietnamTime.calendar.startOfDay(for: now)
                     to = from.addingTimeInterval(30 * 60)
                 }
             }
         }
+        // Pickers show and select Vietnam time on any device time zone;
+        // requests are sent as instants, so the server receives the time the
+        // employee meant.
+        .environment(\.timeZone, VietnamTime.timeZone)
+        .environment(\.calendar, VietnamTime.calendar)
     }
 
     private func keepActiveInputVisible(using proxy: ScrollViewProxy) {
