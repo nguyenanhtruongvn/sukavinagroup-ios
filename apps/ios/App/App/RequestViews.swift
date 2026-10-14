@@ -705,7 +705,6 @@ struct RequestDecisionView: View {
     let request: EmployeeRequest
     let decide: (Bool, String) async -> Bool
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var session: SessionStore
     @State private var note = ""
     @State private var working = false
     @State private var rejecting = false

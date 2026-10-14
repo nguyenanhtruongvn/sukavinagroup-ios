@@ -58,7 +58,9 @@ struct MealQRCodeCard: View {
 
 @available(iOS 17.0, *)
 struct MealQRCodeAccessCard: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @State private var issued: MealQrIssueResponse?
     @State private var secondsRemaining = 0
     // Expiry on the continuous clock. Decrementing a counter after each

@@ -164,15 +164,47 @@ enum ServerSignOut {
     }
 }
 
+/// Non-observing access to `SessionStore` for views that only call its
+/// methods. `@EnvironmentObject` would redraw such a view on every session
+/// change (working flag, errors, badge counts) although it shows none of it;
+/// these views observe their feature store or local state instead.
+@available(iOS 17.0, *)
+struct SessionActions {
+    fileprivate weak var weakStore: SessionStore?
+
+    @MainActor
+    var store: SessionStore {
+        guard let weakStore else {
+            preconditionFailure("SessionStore was not injected; use sessionEnvironment(_:)")
+        }
+        return weakStore
+    }
+}
+
+@available(iOS 17.0, *)
+private struct SessionActionsKey: EnvironmentKey {
+    static let defaultValue = SessionActions(weakStore: nil)
+}
+
+@available(iOS 17.0, *)
+extension EnvironmentValues {
+    var sessionActions: SessionActions {
+        get { self[SessionActionsKey.self] }
+        set { self[SessionActionsKey.self] = newValue }
+    }
+}
+
 @available(iOS 17.0, *)
 extension View {
-    /// Injects the session and its feature stores. Use this wherever a view
-    /// hierarchy needs `SessionStore`, so feature views can observe their store.
+    /// Injects the session, its feature stores and the non-observing
+    /// `SessionActions` handle. Use this wherever a view hierarchy needs
+    /// `SessionStore`, so feature views can observe only their store.
     @MainActor
     func sessionEnvironment(_ session: SessionStore) -> some View {
         environmentObject(session)
             .environmentObject(session.meetings)
             .environmentObject(session.menu)
+            .environment(\.sessionActions, SessionActions(weakStore: session))
     }
 }
 

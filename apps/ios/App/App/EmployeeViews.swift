@@ -84,7 +84,9 @@ private enum MeetingScheduleDestination: Identifiable {
 
 @available(iOS 17.0, *)
 struct MeetingRoomsView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.scenePhase) private var scenePhase
     let isActive: Bool
@@ -579,7 +581,9 @@ private struct MeetingRoomImage: View {
 
 @available(iOS 17.0, *)
 private struct MeetingRoomScheduleSheet: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let room: MeetingRoom
@@ -1297,7 +1301,9 @@ private struct MeetingScheduleLabel: View {
 
 @available(iOS 17.0, *)
 struct MeetingBookingDetailSheet: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let booking: MeetingBooking
@@ -1659,7 +1665,9 @@ struct MeetingBookingDetailSheet: View {
 
 @available(iOS 17.0, *)
 private struct MeetingBookingSheet: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let room: MeetingRoom
@@ -2473,7 +2481,9 @@ private struct MeetingBookingErrorNotice: View {
 
 @available(iOS 17.0, *)
 private struct MyMeetingsSheet: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let day: Date
