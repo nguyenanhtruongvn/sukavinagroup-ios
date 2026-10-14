@@ -973,10 +973,16 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    var biometricName: String {
+    // The sensor type never changes while the app runs; views read this on
+    // every redraw, so query LocalAuthentication once.
+    private lazy var biometryType: LABiometryType = {
         let context = LAContext()
         _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-        return context.biometryType == .touchID ? "Touch ID" : "Face ID"
+        return context.biometryType
+    }()
+
+    var biometricName: String {
+        biometryType == .touchID ? "Touch ID" : "Face ID"
     }
 
     var biometricIcon: String {

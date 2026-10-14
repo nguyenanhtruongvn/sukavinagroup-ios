@@ -12,13 +12,18 @@ import WebKit
 @available(iOS 17.0, *)
 struct MealQRCodeCard: View {
     let token: String
+    // Rendered once per token. As a computed property the QR code (and a new
+    // CIContext) was regenerated on every redraw, i.e. every countdown second.
+    @State private var image: UIImage?
 
-    private var image: UIImage? {
+    private static let renderContext = CIContext()
+
+    private static func makeImage(for token: String) -> UIImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(token.utf8)
         filter.correctionLevel = "M"
         guard let output = filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 9, y: 9)),
-              let cgImage = CIContext().createCGImage(output, from: output.extent) else { return nil }
+              let cgImage = renderContext.createCGImage(output, from: output.extent) else { return nil }
         return UIImage(cgImage: cgImage)
     }
 
@@ -26,16 +31,21 @@ struct MealQRCodeCard: View {
         VStack(spacing: 10) {
             Text("MÃ QR NHẬN MÓN")
                 .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-            if let image {
-                Image(uiImage: image)
-                    .interpolation(.none)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 210, height: 210)
-                    .padding(12)
-                    .background(Color.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            Group {
+                if let image {
+                    Image(uiImage: image)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                } else {
+                    Color.white
+                }
             }
+            .frame(width: 210, height: 210)
+            .padding(12)
+            .background(Color.white)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .task(id: token) { image = Self.makeImage(for: token) }
             Text("Đưa mã này cho nhân viên nhà ăn quét. Mã chỉ dùng cho suất ăn hôm nay.")
                 .font(.caption).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
         }
@@ -51,6 +61,10 @@ struct MealQRCodeAccessCard: View {
     @EnvironmentObject private var session: SessionStore
     @State private var issued: MealQrIssueResponse?
     @State private var secondsRemaining = 0
+    // Expiry on the continuous clock. Decrementing a counter after each
+    // one-second sleep drifted and stopped in the background, so the code
+    // could stay on screen after the server had already expired it.
+    @State private var deadline: ContinuousClock.Instant?
     @State private var isLoading = false
 
     var body: some View {
@@ -86,12 +100,18 @@ struct MealQRCodeAccessCard: View {
             }
         }
         .task(id: issued?.token) {
-            guard issued != nil else { return }
-            while secondsRemaining > 0 {
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                if Task.isCancelled { return }
-                secondsRemaining -= 1
+            guard issued != nil, let deadline else { return }
+            let clock = ContinuousClock()
+            while !Task.isCancelled {
+                let remaining = clock.now.duration(to: deadline)
+                guard remaining > .zero else { break }
+                let (wholeSeconds, attoseconds) = remaining.components
+                secondsRemaining = Int(wholeSeconds) + (attoseconds > 0 ? 1 : 0)
+                // Wake when the displayed whole second changes.
+                try? await Task.sleep(until: deadline - .seconds(secondsRemaining - 1), clock: clock)
             }
+            guard !Task.isCancelled else { return }
+            secondsRemaining = 0
             issued = nil
         }
     }
@@ -101,8 +121,10 @@ struct MealQRCodeAccessCard: View {
         isLoading = true
         defer { isLoading = false }
         guard let response = await session.issueMealQRCode() else { return }
+        let lifetime = max(1, response.expiresInSeconds)
+        deadline = ContinuousClock.now + .seconds(lifetime)
+        secondsRemaining = lifetime
         issued = response
-        secondsRemaining = max(1, response.expiresInSeconds)
     }
 }
 
