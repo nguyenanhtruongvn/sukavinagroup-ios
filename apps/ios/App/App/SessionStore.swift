@@ -274,6 +274,11 @@ final class SessionStore: ObservableObject {
     private var attendanceReportsMemory: (key: String, value: [AttendanceReport])?
     // Serialises background cache writes so an older dashboard never lands last.
     private var dashboardCacheWrite: Task<Void, Never>?
+    // Single-flight dashboard refresh, see refreshDashboard().
+    private var dashboardRefreshTask: Task<Void, Never>?
+    private var dashboardRefreshRequested = false
+    // Days whose schedule must be fetched again after the in-flight request.
+    private var meetingScheduleRerunDays: Set<String> = []
     // Keep decoded month snapshots in RAM as well as UserDefaults. The disk
     // layer survives launches; the memory layer makes repeated opens/swipes
     // avoid JSON decoding and disk reads on the main actor.
@@ -878,7 +883,7 @@ final class SessionStore: ObservableObject {
 
         todayMenuRefreshTask = task
         await task.value
-        todayMenuRefreshTask = nil
+        if todayMenuRefreshTask == task { todayMenuRefreshTask = nil }
     }
 
     func scanMealQRCode(_ qrToken: String) async -> MealScanResponse? {
@@ -1092,19 +1097,46 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// Refreshes the dashboard from realtime events, foreground, network
+    /// changes, pull-to-refresh and tab tasks. Callers share one in-flight
+    /// request; a call that arrives meanwhile schedules exactly one more pass,
+    /// so a change made after the first request started is still fetched and
+    /// an older response can never be applied after a newer one.
     func refreshDashboard(shouldRefreshRequestNotificationCount: Bool = true) async {
+        if let running = dashboardRefreshTask {
+            dashboardRefreshRequested = true
+            await running.value
+        } else {
+            let task = Task { @MainActor [weak self] in
+                guard let self else { return }
+                repeat {
+                    self.dashboardRefreshRequested = false
+                    await self.fetchDashboard()
+                } while self.dashboardRefreshRequested && !Task.isCancelled
+            }
+            dashboardRefreshTask = task
+            await task.value
+            if dashboardRefreshTask == task { dashboardRefreshTask = nil }
+        }
+        if shouldRefreshRequestNotificationCount, state == .signedIn {
+            await refreshRequestNotificationCount()
+        }
+    }
+
+    private func fetchDashboard() async {
         guard let token, profile?.accountType != "CANTEEN" else { return }
+        let generation = SessionGeneration.current
         do {
             let fresh: Dashboard = try await APIClient.shared.request("me/dashboard", token: token)
+            // Signed out (or into another account) while the request ran:
+            // never apply, cache or show the previous account's dashboard.
+            guard generation == SessionGeneration.current, state == .signedIn else { return }
             processNewAttendance(fresh)
             processNewArticles(fresh.contentItems)
             dashboard = fresh
             saveDashboardCache(fresh)
             attendanceRevision &+= 1
             AttendanceWidgetBridge.update(from: fresh)
-            if shouldRefreshRequestNotificationCount {
-                await refreshRequestNotificationCount()
-            }
         } catch is CancellationError {
             // URLSession cancellation is a normal task-lifecycle event, not
             // evidence that the device has lost Internet access.
@@ -1203,6 +1235,10 @@ final class SessionStore: ObservableObject {
         pendingRealtimeEvents.removeAll()
         meetingScheduleRefreshTasks.values.forEach { $0.cancel() }
         meetingScheduleRefreshTasks.removeAll()
+        meetingScheduleRerunDays.removeAll()
+        dashboardRefreshTask?.cancel()
+        dashboardRefreshTask = nil
+        dashboardRefreshRequested = false
         displayedMeetingScheduleDay = nil
         sessionRefreshTask?.cancel()
         sessionRefreshTask = nil
@@ -1803,17 +1839,24 @@ final class SessionStore: ObservableObject {
         // Tab activation, foreground changes and SwiftUI lifecycle callbacks can
         // arrive together. Coalesce them into one request per day.
         if let existing = meetingScheduleRefreshTasks[day] {
+            // A forced refresh (after a mutation or realtime event) must not
+            // be satisfied by an older in-flight request: run once more.
+            if force { meetingScheduleRerunDays.insert(day) }
             await existing.value
             return
         }
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.fetchMeetingSchedule(day: day, token: token)
+            repeat {
+                self.meetingScheduleRerunDays.remove(day)
+                guard let token = self.token else { return }
+                await self.fetchMeetingSchedule(day: day, token: token)
+            } while self.meetingScheduleRerunDays.contains(day) && !Task.isCancelled
         }
         meetingScheduleRefreshTasks[day] = task
         await task.value
-        meetingScheduleRefreshTasks[day] = nil
+        if meetingScheduleRefreshTasks[day] == task { meetingScheduleRefreshTasks[day] = nil }
     }
 
     private func shouldRevalidateMeetingSchedule(day: String) -> Bool {
@@ -1931,7 +1974,7 @@ final class SessionStore: ObservableObject {
 
         meetingInviteesRefreshTask = task
         let result = await task.value
-        meetingInviteesRefreshTask = nil
+        if meetingInviteesRefreshTask == task { meetingInviteesRefreshTask = nil }
         return result
     }
 
@@ -1984,7 +2027,7 @@ final class SessionStore: ObservableObject {
 
         meetingDetailsRefreshTasks[id] = task
         let result = await task.value
-        meetingDetailsRefreshTasks[id] = nil
+        if meetingDetailsRefreshTasks[id] == task { meetingDetailsRefreshTasks[id] = nil }
         return result
     }
 
