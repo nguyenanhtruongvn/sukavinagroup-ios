@@ -524,6 +524,8 @@ struct PasswordChangeView: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
             .alert("Đổi mật khẩu thành công", isPresented: $completed) {
                 Button("Hoàn tất") { dismiss() }
+            } message: {
+                Text("Các thiết bị khác đang đăng nhập tài khoản này đã được đăng xuất; thiết bị này vẫn tiếp tục sử dụng bình thường.")
             }
         }.navigationViewStyle(.stack)
     }

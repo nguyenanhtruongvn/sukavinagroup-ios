@@ -14,7 +14,7 @@ import UniformTypeIdentifiers
 
 enum MeetingPresentation {
     static let timezone = TimeZone(identifier: "Asia/Ho_Chi_Minh")!
-    static var calendar: Calendar = {
+    static let calendar: Calendar = {
         var value = Calendar(identifier: .gregorian)
         value.timeZone = timezone
         return value
@@ -128,11 +128,15 @@ struct MeetingRoomsView: View {
                             presentedDestination = .mine(day: day)
                         })
 
+                        // "Trống" / "Đang họp" must change when a meeting starts
+                        // or ends, not only when something else redraws.
+                        TimelineView(.everyMinute) { clock in
                         ForEach(meetingStore.rooms) { room in
                             MeetingRoomCard(
                                 room: room,
                                 bookings: meetingStore.bookingsByRoom[room.id] ?? [],
                                 day: day,
+                                now: clock.date,
                                 onBook: { presentedDestination = .booking(room: room, day: day) },
                                 onSchedule: { presentedDestination = .schedule(room: room, day: day) }
                             )
@@ -144,6 +148,7 @@ struct MeetingRoomsView: View {
                                 draggingRoom: $draggingRoom,
                                 saveOrder: { session.reorderMeetingRooms($0) }
                             ))
+                        }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -406,11 +411,12 @@ private struct MeetingRoomCard: View {
     let room: MeetingRoom
     let bookings: [MeetingBooking]
     let day: Date
+    /// Supplied by the list's minute timeline so the status stays current.
+    let now: Date
     let onBook: () -> Void
     let onSchedule: () -> Void
 
     private var currentBooking: MeetingBooking? {
-        let now = Date()
         guard MeetingPresentation.calendar.isDate(day, inSameDayAs: now) else { return nil }
         return bookings.first {
             guard let start = MeetingPresentation.date(from: $0.startsAt),
@@ -420,7 +426,7 @@ private struct MeetingRoomCard: View {
     }
 
     private var nextBooking: MeetingBooking? {
-        let point = MeetingPresentation.calendar.isDate(day, inSameDayAs: .now) ? Date() : day
+        let point = MeetingPresentation.calendar.isDate(day, inSameDayAs: now) ? now : day
         return bookings.first {
             guard let start = MeetingPresentation.date(from: $0.startsAt) else { return false }
             return start > point
@@ -588,13 +594,12 @@ private struct MeetingRoomScheduleSheet: View {
     }
 
     private var bookings: [MeetingBooking] {
-        meetingStore.bookings
-            .filter { $0.roomId == room.id }
-            .sorted { $0.startsAt < $1.startsAt }
+        meetingStore.bookingsByRoom[room.id] ?? []
     }
 
+    // Meeting days are Vietnam days (AGENTS.md), not the device's time zone.
     private var isToday: Bool {
-        Calendar.current.isDateInToday(selectedDay)
+        MeetingPresentation.calendar.isDateInToday(selectedDay)
     }
 
     var body: some View {
@@ -620,7 +625,7 @@ private struct MeetingRoomScheduleSheet: View {
                 .task {
                     await session.refreshMeetingSchedule(date: selectedDay)
                     if isToday {
-                        proxy.scrollTo(Calendar.current.component(.hour, from: Date()), anchor: .center)
+                        proxy.scrollTo(MeetingPresentation.calendar.component(.hour, from: .now), anchor: .center)
                     }
                 }
             }
@@ -759,22 +764,28 @@ private struct MeetingTimeline: View {
                 .frame(height: timelineHeight)
                 .zIndex(2)
 
-                if let currentOffset {
-                    Rectangle()
-                        .fill(.red)
-                        .frame(height: 2)
-                        .offset(y: currentOffset)
-                        .zIndex(4)
+                // The marker and its time label advance every minute instead
+                // of only when the timeline happens to redraw.
+                TimelineView(.everyMinute) { clock in
+                    if let currentOffset = currentOffset(at: clock.date) {
+                        ZStack(alignment: .topLeading) {
+                            Rectangle()
+                                .fill(.red)
+                                .frame(height: 2)
+                                .offset(y: currentOffset)
 
-                    Text(MeetingPresentation.clock.string(from: Date()))
-                        .font(.caption2.bold().monospacedDigit())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(.red)
-                        .offset(y: currentOffset - 13)
-                        .zIndex(5)
+                            Text(MeetingPresentation.clock.string(from: clock.date))
+                                .font(.caption2.bold().monospacedDigit())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 4)
+                                .background(.red)
+                                .offset(y: currentOffset - 13)
+                        }
+                    }
                 }
+                .allowsHitTesting(false)
+                .zIndex(4)
             }
             .frame(
                 maxWidth: .infinity,
@@ -947,9 +958,8 @@ private struct MeetingTimeline: View {
         return result
     }
 
-    private var currentOffset: CGFloat? {
-        guard MeetingPresentation.calendar.isDateInToday(date) else { return nil }
-        let now = Date()
+    private func currentOffset(at now: Date) -> CGFloat? {
+        guard MeetingPresentation.calendar.isDate(date, inSameDayAs: now) else { return nil }
         let hour = MeetingPresentation.calendar.component(.hour, from: now)
         guard hour >= firstHour && hour <= lastHour else { return nil }
         let minute = MeetingPresentation.calendar.component(.minute, from: now)
@@ -2392,26 +2402,27 @@ private struct MeetingBookingSheet: View {
         .disabled(!canConfirmBooking)
     }
 
+    // Booking times are Vietnam times (AGENTS.md), whatever the device time zone.
     private var initialStartTime: Date {
         let now = Date()
-        let time = Calendar.current.dateComponents([.hour, .minute], from: now)
-        return Calendar.current.date(bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day) ?? day
+        let time = MeetingPresentation.calendar.dateComponents([.hour, .minute], from: now)
+        return MeetingPresentation.calendar.date(bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day) ?? day
     }
 
     private var startHourBinding: Binding<Int> {
         Binding(
-            get: { Calendar.current.component(.hour, from: start) },
+            get: { MeetingPresentation.calendar.component(.hour, from: start) },
             set: { hour in
-                start = Calendar.current.date(bySettingHour: hour, minute: Calendar.current.component(.minute, from: start), second: 0, of: start) ?? start
+                start = MeetingPresentation.calendar.date(bySettingHour: hour, minute: MeetingPresentation.calendar.component(.minute, from: start), second: 0, of: start) ?? start
             }
         )
     }
 
     private var startMinuteBinding: Binding<Int> {
         Binding(
-            get: { Calendar.current.component(.minute, from: start) },
+            get: { MeetingPresentation.calendar.component(.minute, from: start) },
             set: { minute in
-                start = Calendar.current.date(bySettingHour: Calendar.current.component(.hour, from: start), minute: minute, second: 0, of: start) ?? start
+                start = MeetingPresentation.calendar.date(bySettingHour: MeetingPresentation.calendar.component(.hour, from: start), minute: minute, second: 0, of: start) ?? start
             }
         )
     }

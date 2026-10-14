@@ -60,7 +60,10 @@ final class MeetingStore: ObservableObject {
     @Published var invitees: [MeetingInvitee] = []
 
     func replaceBookings(_ newValue: [MeetingBooking]) {
-        let live = newValue.filter { $0.status != "cancelled" }
+        // Sorted once here; views used to sort on every body evaluation.
+        let live = newValue
+            .filter { $0.status != "cancelled" }
+            .sorted { $0.startsAt < $1.startsAt }
         bookingsByRoom = Dictionary(grouping: live, by: \.roomId)
         bookings = live
     }
