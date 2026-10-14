@@ -117,8 +117,6 @@ struct MeetingRoomsView: View {
     }
 
     var body: some View {
-        let bookingsByRoom = Dictionary(grouping: meetingStore.bookings, by: \.roomId)
-
         NavigationStack {
             ZStack {
                 Color(uiColor: .systemGroupedBackground)
@@ -133,7 +131,7 @@ struct MeetingRoomsView: View {
                         ForEach(meetingStore.rooms) { room in
                             MeetingRoomCard(
                                 room: room,
-                                bookings: bookingsByRoom[room.id] ?? [],
+                                bookings: meetingStore.bookingsByRoom[room.id] ?? [],
                                 day: day,
                                 onBook: { presentedDestination = .booking(room: room, day: day) },
                                 onSchedule: { presentedDestination = .schedule(room: room, day: day) }
@@ -157,6 +155,7 @@ struct MeetingRoomsView: View {
                     DragGesture(minimumDistance: 24)
                         .onEnded { switchMeetingDay(for: $0.translation) }
                 )
+                .modifier(MeetingRoomDragResetModifier(draggingRoom: $draggingRoom))
             }
             .navigationBarTitleDisplayMode(.inline)
             .task(id: isActive) {
@@ -199,8 +198,9 @@ struct MeetingRoomsView: View {
 }
 
 // Keep the iOS 17 room card's SwiftUI type small and its navigation gestures
-// predictable. Reordering remains possible with context-menu buttons on 17,
-// while native drag/drop continues unchanged on iOS 18 and later.
+// predictable. The context-menu move buttons exist on every version (they are
+// also the accessible, non-drag way to reorder); iOS 18 and later add native
+// drag and drop on top of them.
 @available(iOS 17.0, *)
 private struct MeetingRoomOrderingModifier: ViewModifier {
     let room: MeetingRoom
@@ -211,9 +211,10 @@ private struct MeetingRoomOrderingModifier: ViewModifier {
     private var roomIndex: Int? { rooms.firstIndex(where: { $0.id == room.id }) }
 
     func body(content: Content) -> AnyView {
+        let reorderable = content.contextMenu { moveMenu }
         if #available(iOS 18.0, *) {
             return AnyView(
-                content
+                reorderable
                     .opacity(draggingRoom?.id == room.id ? 0.72 : 1)
                     .onDrag {
                         draggingRoom = room
@@ -232,23 +233,24 @@ private struct MeetingRoomOrderingModifier: ViewModifier {
         }
         // The iOS 17 runtime sees only AnyView rather than the unavailable
         // drag/drop view's nested generic metadata.
-        return AnyView(
-            content.contextMenu {
-                Button {
-                    move(by: -1)
-                } label: {
-                    Label("Chuyển phòng lên trên", systemImage: "arrow.up")
-                }
-                .disabled((roomIndex ?? 0) <= 0)
+        return AnyView(reorderable)
+    }
 
-                Button {
-                    move(by: 1)
-                } label: {
-                    Label("Chuyển phòng xuống dưới", systemImage: "arrow.down")
-                }
-                .disabled((roomIndex ?? (rooms.count - 1)) >= rooms.count - 1)
-            }
-        )
+    @ViewBuilder
+    private var moveMenu: some View {
+        Button {
+            move(by: -1)
+        } label: {
+            Label("Chuyển phòng lên trên", systemImage: "arrow.up")
+        }
+        .disabled((roomIndex ?? 0) <= 0)
+
+        Button {
+            move(by: 1)
+        } label: {
+            Label("Chuyển phòng xuống dưới", systemImage: "arrow.down")
+        }
+        .disabled((roomIndex ?? (rooms.count - 1)) >= rooms.count - 1)
     }
 
     private func move(by offset: Int) {
@@ -256,6 +258,27 @@ private struct MeetingRoomOrderingModifier: ViewModifier {
         var reordered = rooms
         reordered.swapAt(index, index + offset)
         withAnimation(.snappy) { saveOrder(reordered) }
+    }
+}
+
+/// Card drop targets reset the drag state themselves. A room released between
+/// or outside the cards lands on this list-wide target instead, so the dragged
+/// card never stays faded. Drag and drop exists only on iOS 18+, and the iOS 17
+/// runtime must not see drop-target generics (see MeetingRoomOrderingModifier).
+@available(iOS 17.0, *)
+private struct MeetingRoomDragResetModifier: ViewModifier {
+    @Binding var draggingRoom: MeetingRoom?
+
+    func body(content: Content) -> AnyView {
+        if #available(iOS 18.0, *) {
+            return AnyView(
+                content.onDrop(of: [UTType.plainText.identifier], isTargeted: nil) { _ in
+                    draggingRoom = nil
+                    return false
+                }
+            )
+        }
+        return AnyView(content)
     }
 }
 

@@ -49,8 +49,21 @@ private let sessionRestoreLogger = Logger(
 @available(iOS 17.0, *)
 final class MeetingStore: ObservableObject {
     @Published var rooms: [MeetingRoom] = []
-    @Published var bookings: [MeetingBooking] = []
+    /// Live bookings only. The API returns confirmed bookings; a booking
+    /// cancelled on this device must disappear from every screen at once, so
+    /// the rule lives here instead of in each view (the iOS 17 UIKit list and
+    /// the SwiftUI cards used to disagree). Mirrors Android `MeetingStore`.
+    @Published private(set) var bookings: [MeetingBooking] = []
+    /// Bookings grouped by room, computed once per change instead of in
+    /// every room-list body evaluation.
+    @Published private(set) var bookingsByRoom: [String: [MeetingBooking]] = [:]
     @Published var invitees: [MeetingInvitee] = []
+
+    func replaceBookings(_ newValue: [MeetingBooking]) {
+        let live = newValue.filter { $0.status != "cancelled" }
+        bookingsByRoom = Dictionary(grouping: live, by: \.roomId)
+        bookings = live
+    }
 }
 
 /// Canteen menu feature state (Android: `MenuStore`).
@@ -223,7 +236,7 @@ final class SessionStore: ObservableObject {
     }
     var meetingBookings: [MeetingBooking] {
         get { meetings.bookings }
-        set { meetings.bookings = newValue }
+        set { meetings.replaceBookings(newValue) }
     }
     var meetingInvitees: [MeetingInvitee] {
         get { meetings.invitees }

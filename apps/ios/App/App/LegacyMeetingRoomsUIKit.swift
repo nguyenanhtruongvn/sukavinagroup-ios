@@ -94,7 +94,7 @@ private final class LegacyMeetingRoomsController: UITableViewController {
             guard booking.roomId == room.id, LegacyMeetingUI.sameDay(booking, day),
                   let start = LegacyMeetingUI.date(booking.startsAt),
                   let end = LegacyMeetingUI.date(booking.endsAt) else { return false }
-            return booking.status != "cancelled" && start <= now && now < end
+            return start <= now && now < end
         }
         cell.textLabel?.text = room.name
         cell.textLabel?.font = .preferredFont(forTextStyle: .headline)
@@ -134,7 +134,7 @@ private final class LegacyMeetingScheduleController: UITableViewController {
     private var cancellable: AnyCancellable?
     private var bookings: [MeetingBooking] {
         session.meetingBookings.filter { meeting in
-            meeting.status != "cancelled" && LegacyMeetingUI.sameDay(meeting, day)
+            LegacyMeetingUI.sameDay(meeting, day)
                 && (room == nil ? (meeting.isMine ?? false) : meeting.roomId == room?.id)
         }.sorted { $0.startsAt < $1.startsAt }
     }
