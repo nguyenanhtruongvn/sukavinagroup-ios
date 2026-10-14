@@ -15,21 +15,32 @@ apps/ios/App/
 ├── App.xcodeproj/
 │   └── project.pbxproj
 ├── App/
+│   ├── AiAssistantViews.swift
 │   ├── AppDelegate.swift
 │   ├── AppPreviews.swift
+│   ├── AttendanceHistoryView.swift
+│   ├── AttendanceStatementViews.swift
 │   ├── AuthenticationViews.swift
 │   ├── DesignSystem.swift
 │   ├── EmployeeViews.swift
+│   ├── LegacyMeetingRoomsUIKit.swift
 │   ├── MealViews.swift
+│   ├── MeetingBookingDetailViews.swift
+│   ├── MeetingBookingSheet.swift
 │   ├── MeetingLiveActivityActionIntent.swift
 │   ├── MeetingLiveActivityAttributes.swift
 │   ├── MeetingLiveActivityManager.swift
+│   ├── MeetingLiveActivityStartRegistration.swift
+│   ├── MeetingRoomsView.swift
+│   ├── MeetingScheduleTimeline.swift
 │   ├── Networking.swift
 │   ├── NotificationViews.swift
 │   ├── PortalModels.swift
 │   ├── ProfileViews.swift
 │   ├── RequestViews.swift
 │   ├── SessionStore.swift
+│   ├── TodayMenuView.swift
+│   ├── VietnamTime.swift
 │   ├── Info.plist
 │   ├── App.entitlements
 │   ├── PrivacyInfo.xcprivacy
@@ -127,11 +138,23 @@ Owns authentication UI and related flows:
 - verification/registration support
 - root signed-in/signed-out SwiftUI switching helpers
 
-### `EmployeeViews.swift`
+### Employee portal views
 
-Contains the main employee portal UI and several major employee-facing features, including the meeting room schedule/timeline.
+The employee UI is split by feature (each file stays well under 1,000 lines):
 
-When changing meeting schedule rendering, inspect the complete flow in this file before editing isolated views.
+- `EmployeeViews.swift`: portal shell (`EmployeePortalView`), home dashboard, shared cards
+- `AttendanceHistoryView.swift`, `AttendanceStatementViews.swift`: monthly attendance and statements
+- `TodayMenuView.swift`: today's meal menu sheet
+- `AiAssistantViews.swift`: AI assistant orb and chat
+- `MeetingRoomsView.swift`: room list, ordering, room schedule sheet
+- `MeetingScheduleTimeline.swift`: the meeting room schedule/timeline and its label layout
+- `MeetingBookingSheet.swift`, `MeetingBookingDetailViews.swift`: booking form, booking details, my meetings
+
+Types shared between these files are internal (no `private`); keep their names unique in the App target.
+
+`VietnamTime.swift` is compiled into both the app and the widget extension and may only import Foundation.
+
+When changing meeting schedule rendering, inspect the complete flow (`MeetingRoomsView.swift` → `MeetingScheduleTimeline.swift`) before editing isolated views.
 
 Current meeting timeline behavior includes:
 
@@ -193,7 +216,7 @@ SessionStore.refreshMeetingSchedule()
   ↓
 meetingRooms / meetingBookings
   ↓
-meeting schedule views in EmployeeViews.swift
+meeting schedule views in MeetingScheduleTimeline.swift
 ```
 
 `SessionStore.refreshMeetingSchedule(date:)`:
@@ -467,7 +490,7 @@ Examples:
 ### Meeting schedule issue
 
 ```text
-PortalModels → APIClient → SessionStore.refreshMeetingSchedule → EmployeeViews timeline
+PortalModels → APIClient → SessionStore.refreshMeetingSchedule → MeetingScheduleTimeline
 ```
 
 ### Meeting end/extend issue

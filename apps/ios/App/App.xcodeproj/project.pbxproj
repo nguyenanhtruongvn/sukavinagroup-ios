@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FB0000000000000000000820 /* MeetingRoomsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000810 /* MeetingRoomsView.swift */; };
+		FB0000000000000000000720 /* MeetingScheduleTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000710 /* MeetingScheduleTimeline.swift */; };
+		FB0000000000000000000620 /* MeetingBookingDetailViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000610 /* MeetingBookingDetailViews.swift */; };
+		FB0000000000000000000520 /* MeetingBookingSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000510 /* MeetingBookingSheet.swift */; };
+		FB0000000000000000000420 /* TodayMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000410 /* TodayMenuView.swift */; };
+		FB0000000000000000000320 /* AiAssistantViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000310 /* AiAssistantViews.swift */; };
+		FB0000000000000000000220 /* AttendanceStatementViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000210 /* AttendanceStatementViews.swift */; };
+		FB0000000000000000000120 /* AttendanceHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000110 /* AttendanceHistoryView.swift */; };
 		FA0000000000000000000120 /* VietnamTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0000000000000000000110 /* VietnamTime.swift */; };
 		FA0000000000000000000130 /* VietnamTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA0000000000000000000110 /* VietnamTime.swift */; };
 		D40000000000000000000001 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = D40000000000000000000101 /* DesignSystem.swift */; };
@@ -80,6 +88,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXFileReference section */
+		FB0000000000000000000810 /* MeetingRoomsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRoomsView.swift; sourceTree = "<group>"; };
+		FB0000000000000000000710 /* MeetingScheduleTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingScheduleTimeline.swift; sourceTree = "<group>"; };
+		FB0000000000000000000610 /* MeetingBookingDetailViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingBookingDetailViews.swift; sourceTree = "<group>"; };
+		FB0000000000000000000510 /* MeetingBookingSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingBookingSheet.swift; sourceTree = "<group>"; };
+		FB0000000000000000000410 /* TodayMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayMenuView.swift; sourceTree = "<group>"; };
+		FB0000000000000000000310 /* AiAssistantViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiAssistantViews.swift; sourceTree = "<group>"; };
+		FB0000000000000000000210 /* AttendanceStatementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceStatementViews.swift; sourceTree = "<group>"; };
+		FB0000000000000000000110 /* AttendanceHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceHistoryView.swift; sourceTree = "<group>"; };
 		FA0000000000000000000110 /* VietnamTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VietnamTime.swift; sourceTree = "<group>"; };
 		D40000000000000000000101 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		D40000000000000000000102 /* Networking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Networking.swift; sourceTree = "<group>"; };
@@ -161,6 +177,14 @@
 				D40000000000000000000105 /* AuthenticationViews.swift */,
 				D40000000000000000000106 /* MealViews.swift */,
 				D40000000000000000000107 /* EmployeeViews.swift */,
+				FB0000000000000000000810 /* MeetingRoomsView.swift */,
+				FB0000000000000000000710 /* MeetingScheduleTimeline.swift */,
+				FB0000000000000000000610 /* MeetingBookingDetailViews.swift */,
+				FB0000000000000000000510 /* MeetingBookingSheet.swift */,
+				FB0000000000000000000410 /* TodayMenuView.swift */,
+				FB0000000000000000000310 /* AiAssistantViews.swift */,
+				FB0000000000000000000210 /* AttendanceStatementViews.swift */,
+				FB0000000000000000000110 /* AttendanceHistoryView.swift */,
 				FA0000000000000000000110 /* VietnamTime.swift */,
 				E17000000000000000000101 /* LegacyMeetingRoomsUIKit.swift */,
 				D40000000000000000000108 /* RequestViews.swift */,
@@ -313,6 +337,14 @@
 				D40000000000000000000005 /* AuthenticationViews.swift in Sources */,
 				D40000000000000000000006 /* MealViews.swift in Sources */,
 				D40000000000000000000007 /* EmployeeViews.swift in Sources */,
+				FB0000000000000000000820 /* MeetingRoomsView.swift in Sources */,
+				FB0000000000000000000720 /* MeetingScheduleTimeline.swift in Sources */,
+				FB0000000000000000000620 /* MeetingBookingDetailViews.swift in Sources */,
+				FB0000000000000000000520 /* MeetingBookingSheet.swift in Sources */,
+				FB0000000000000000000420 /* TodayMenuView.swift in Sources */,
+				FB0000000000000000000320 /* AiAssistantViews.swift in Sources */,
+				FB0000000000000000000220 /* AttendanceStatementViews.swift in Sources */,
+				FB0000000000000000000120 /* AttendanceHistoryView.swift in Sources */,
 				FA0000000000000000000120 /* VietnamTime.swift in Sources */,
 				E17000000000000000000001 /* LegacyMeetingRoomsUIKit.swift in Sources */,
 				D40000000000000000000008 /* RequestViews.swift in Sources */,
