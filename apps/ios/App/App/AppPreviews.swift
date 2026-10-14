@@ -40,8 +40,8 @@ struct SukavinaPreviewContainer: View {
         Group {
             switch mode {
             case .restoring: NativeLaunchView()
-            case .signedOut: AuthenticationView().environmentObject(session)
-            case .signedIn: EmployeePortalView().environmentObject(session)
+            case .signedOut: AuthenticationView().sessionEnvironment(session)
+            case .signedIn: EmployeePortalView().sessionEnvironment(session)
             }
         }
     }

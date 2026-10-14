@@ -197,7 +197,7 @@ struct ProfileView: View {
         }
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showPasswordChange) {
-            PasswordChangeView().environmentObject(session)
+            PasswordChangeView().sessionEnvironment(session)
         }
         .sheet(item: $legalPage) { page in
             NativeLegalView(page: {

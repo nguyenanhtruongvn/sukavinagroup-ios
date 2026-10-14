@@ -79,6 +79,7 @@ private enum MeetingScheduleDestination: Identifiable {
 @available(iOS 17.0, *)
 struct MeetingRoomsView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.scenePhase) private var scenePhase
     let isActive: Bool
     @State private var day = Date()
@@ -110,7 +111,7 @@ struct MeetingRoomsView: View {
     }
 
     var body: some View {
-        let bookingsByRoom = Dictionary(grouping: session.meetingBookings, by: \.roomId)
+        let bookingsByRoom = Dictionary(grouping: meetingStore.bookings, by: \.roomId)
 
         NavigationStack {
             ZStack {
@@ -123,7 +124,7 @@ struct MeetingRoomsView: View {
                             presentedDestination = .mine(day: day)
                         })
 
-                        ForEach(session.meetingRooms) { room in
+                        ForEach(meetingStore.rooms) { room in
                             MeetingRoomCard(
                                 room: room,
                                 bookings: bookingsByRoom[room.id] ?? [],
@@ -135,7 +136,7 @@ struct MeetingRoomsView: View {
                             // drag/drop generic tree by the iOS 17 SwiftUI runtime.
                             .modifier(MeetingRoomOrderingModifier(
                                 room: room,
-                                rooms: session.meetingRooms,
+                                rooms: meetingStore.rooms,
                                 draggingRoom: $draggingRoom,
                                 saveOrder: { session.reorderMeetingRooms($0) }
                             ))
@@ -178,13 +179,13 @@ struct MeetingRoomsView: View {
                 switch destination {
                 case .booking(let room, let selectedDay):
                     AnyView(MeetingBookingSheet(room: room, day: selectedDay)
-                        .environmentObject(session))
+                        .sessionEnvironment(session))
                 case .schedule(let room, let selectedDay):
                     AnyView(MeetingRoomScheduleSheet(room: room, day: selectedDay)
-                        .environmentObject(session))
+                        .sessionEnvironment(session))
                 case .mine(let selectedDay):
                     AnyView(MyMeetingsSheet(day: selectedDay)
-                        .environmentObject(session))
+                        .sessionEnvironment(session))
                 }
             }
         }
@@ -544,6 +545,7 @@ private struct MeetingRoomImage: View {
 @available(iOS 17.0, *)
 private struct MeetingRoomScheduleSheet: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let room: MeetingRoom
     let day: Date
@@ -557,7 +559,7 @@ private struct MeetingRoomScheduleSheet: View {
     }
 
     private var bookings: [MeetingBooking] {
-        session.meetingBookings
+        meetingStore.bookings
             .filter { $0.roomId == room.id }
             .sorted { $0.startsAt < $1.startsAt }
     }
@@ -613,10 +615,10 @@ private struct MeetingRoomScheduleSheet: View {
                 switch destination {
                 case .booking:
                     AnyView(MeetingBookingSheet(room: room, day: selectedDay)
-                        .environmentObject(session))
+                        .sessionEnvironment(session))
                 case .detail(let booking):
                     AnyView(MeetingBookingDetailSheet(booking: booking, room: room)
-                        .environmentObject(session))
+                        .sessionEnvironment(session))
                 }
             }
         }
@@ -1257,6 +1259,7 @@ private struct MeetingScheduleLabel: View {
 @available(iOS 17.0, *)
 struct MeetingBookingDetailSheet: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let booking: MeetingBooking
     let room: MeetingRoom
@@ -1283,7 +1286,7 @@ struct MeetingBookingDetailSheet: View {
     // Read the live schedule copy first so an end/extension redraws this sheet
     // immediately after the mutation endpoint responds.
     private var currentBooking: MeetingBooking {
-        session.meetingBookings.first(where: { $0.id == booking.id }) ?? booking
+        meetingStore.bookings.first(where: { $0.id == booking.id }) ?? booking
     }
     private var startDate: Date? { MeetingPresentation.date(from: currentBooking.startsAt) }
     private var endDate: Date? { MeetingPresentation.date(from: currentBooking.endsAt) }
@@ -1317,7 +1320,7 @@ struct MeetingBookingDetailSheet: View {
     }
     private var nextBooking: MeetingBooking? {
         guard let endDate else { return nil }
-        return session.meetingBookings
+        return meetingStore.bookings
             .filter { $0.roomId == currentBooking.roomId && $0.id != currentBooking.id }
             .filter { candidate in
                 guard let start = MeetingPresentation.date(from: candidate.startsAt) else { return false }
@@ -1618,6 +1621,7 @@ struct MeetingBookingDetailSheet: View {
 @available(iOS 17.0, *)
 private struct MeetingBookingSheet: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let room: MeetingRoom
     let day: Date
@@ -1647,7 +1651,7 @@ private struct MeetingBookingSheet: View {
     private var people: [MeetingInvitee] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty || !selectedDepartments.isEmpty else { return [] }
-        return session.meetingInvitees.filter {
+        return meetingStore.invitees.filter {
             (selectedDepartments.isEmpty || selectedDepartments.contains($0.department))
                 && (trimmedQuery.isEmpty
                     || $0.fullName.localizedCaseInsensitiveContains(trimmedQuery)
@@ -1656,13 +1660,13 @@ private struct MeetingBookingSheet: View {
     }
 
     private var departments: [String] {
-        Array(Set(session.meetingInvitees.map(\.department)
+        Array(Set(meetingStore.invitees.map(\.department)
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }))
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var selectedInvitees: [MeetingInvitee] {
-        session.meetingInvitees.filter { selected.contains($0.id) }
+        meetingStore.invitees.filter { selected.contains($0.id) }
     }
 
     private var matchingDepartments: [String] {
@@ -1673,7 +1677,7 @@ private struct MeetingBookingSheet: View {
 
     private var unselectedDepartmentInvitees: [MeetingInvitee] {
         guard !selectedDepartments.isEmpty else { return [] }
-        return session.meetingInvitees.filter {
+        return meetingStore.invitees.filter {
             selectedDepartments.contains($0.department) && !selected.contains($0.id)
         }
     }
@@ -2430,13 +2434,14 @@ private struct MeetingBookingErrorNotice: View {
 @available(iOS 17.0, *)
 private struct MyMeetingsSheet: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let day: Date
     @State private var showsUpcoming = true
     @State private var selectedMeeting: MeetingBooking?
 
     private var meetings: [MeetingBooking] {
-        session.meetingBookings
+        meetingStore.bookings
             .filter { $0.isMine ?? false }
             .filter { meeting in
                 guard let end = MeetingPresentation.date(from: meeting.endsAt) else { return showsUpcoming }
@@ -2472,7 +2477,7 @@ private struct MyMeetingsSheet: View {
                                     Button { selectedMeeting = meeting } label: {
                                         MeetingSummaryCard(
                                             meeting: meeting,
-                                            roomName: session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp",
+                                            roomName: meetingStore.rooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp",
                                             color: showsUpcoming ? Self.cardColors[index % Self.cardColors.count] : .gray
                                         )
                                     }
@@ -2509,7 +2514,7 @@ private struct MyMeetingsSheet: View {
             }
             .task { await session.refreshMeetingSchedule(date: day) }
             .sheet(item: $selectedMeeting) { meeting in
-                if let room = session.meetingRooms.first(where: { $0.id == meeting.roomId }) {
+                if let room = meetingStore.rooms.first(where: { $0.id == meeting.roomId }) {
                     MeetingBookingDetailSheet(booking: meeting, room: room)
                 } else {
                     ContentUnavailableView("Không tìm thấy thông tin phòng", systemImage: "building.2.crop.circle")
@@ -2982,6 +2987,7 @@ private struct PreloadedAttendanceDayCell: View {
 @available(iOS 17.0, *)
 struct TodayMenuView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var menuStore: MenuStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var pendingChoice: String?
     @State private var mealSheetHeight: CGFloat = 420
@@ -3005,7 +3011,7 @@ struct TodayMenuView: View {
                             .foregroundColor(AppTheme.red)
                         Text("Thực đơn hôm nay")
                             .font(.headline)
-                        Text(session.todayMenu?.day.dayName ?? "Đang cập nhật")
+                        Text(menuStore.todayMenu?.day.dayName ?? "Đang cập nhật")
                             .foregroundColor(AppTheme.muted)
                     }
 
@@ -3017,18 +3023,18 @@ struct TodayMenuView: View {
 
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 11) {
-                        menuGroup("Món nước", icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, lines: [session.todayMenu?.day.featured])
+                        menuGroup("Món nước", icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, lines: [menuStore.todayMenu?.day.featured])
                         menuGroup("Món thường", icon: "fork.knife", color: .orange, lines: [
-                            session.todayMenu?.day.savoryMain,
-                            session.todayMenu?.day.savorySide,
-                            session.todayMenu?.day.vegetable,
-                            session.todayMenu?.day.soup
+                            menuStore.todayMenu?.day.savoryMain,
+                            menuStore.todayMenu?.day.savorySide,
+                            menuStore.todayMenu?.day.vegetable,
+                            menuStore.todayMenu?.day.soup
                         ])
                         menuGroup("Món chay", icon: "leaf.fill", color: .green, lines: [
-                            session.todayMenu?.day.vegetarianMain,
-                            session.todayMenu?.day.vegetarianSide
+                            menuStore.todayMenu?.day.vegetarianMain,
+                            menuStore.todayMenu?.day.vegetarianSide
                         ])
-                        menuGroup("Tăng ca", icon: "moon.stars.fill", color: .purple, lines: [session.todayMenu?.day.overtime])
+                        menuGroup("Tăng ca", icon: "moon.stars.fill", color: .purple, lines: [menuStore.todayMenu?.day.overtime])
                     }
 
 
@@ -3039,7 +3045,7 @@ struct TodayMenuView: View {
 
 
                     VStack(alignment: .leading, spacing: 12) {
-                        if let selection = session.todayMenu?.selection {
+                        if let selection = menuStore.todayMenu?.selection {
                             let isWater = selection == "water"
                             Text("MÓN ĂN ĐÃ ĐẶT").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                             HStack(spacing: 14) {
@@ -3055,7 +3061,7 @@ struct TodayMenuView: View {
                                         .font(.subheadline).foregroundColor(AppTheme.muted).lineLimit(2)
                                 }
                             }
-                            if session.todayMenu?.receivedAt == nil {
+                            if menuStore.todayMenu?.receivedAt == nil {
                                 MealQRCodeAccessCard()
                             } else {
                                 Label("Đã nhận món", systemImage: "checkmark.seal.fill")
@@ -3064,7 +3070,7 @@ struct TodayMenuView: View {
                                     .background(Color.green.opacity(0.11))
                                     .clipShape(RoundedRectangle(cornerRadius: 16))
                             }
-                            if session.todayMenu?.receivedAt == nil {
+                            if menuStore.todayMenu?.receivedAt == nil {
                                 Button {
                                     pendingChoice = "cancel"
                                 } label: {
@@ -3075,12 +3081,12 @@ struct TodayMenuView: View {
                                         .padding(.vertical, 12)
                                 }
                                 .buttonStyle(.plain)
-                                .disabled(session.todayMenu?.orderingOpen == false)
+                                .disabled(menuStore.todayMenu?.orderingOpen == false)
                             }
                         } else {
                             Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                             Text("Bạn muốn dùng món nào?").font(.title3.bold())
-                            if session.todayMenu?.orderingOpen == false {
+                            if menuStore.todayMenu?.orderingOpen == false {
                                 HStack(spacing: 12) {
                                     Image(systemName: "clock.badge.exclamationmark.fill")
                                         .font(.title3.bold())
@@ -3090,7 +3096,7 @@ struct TodayMenuView: View {
                                         .clipShape(RoundedRectangle(cornerRadius: 13))
                                     VStack(alignment: .leading, spacing: 3) {
                                         Text("Đã khóa đặt món").font(.headline).foregroundColor(.orange)
-                                        Text("Vui lòng đặt món trước \(session.todayMenu?.orderingCutoff ?? "09:00").")
+                                        Text("Vui lòng đặt món trước \(menuStore.todayMenu?.orderingCutoff ?? "09:00").")
                                             .font(.caption).foregroundColor(AppTheme.muted)
                                     }
                                 }
@@ -3099,8 +3105,8 @@ struct TodayMenuView: View {
                                 .background(Color.orange.opacity(0.08))
                                 .clipShape(RoundedRectangle(cornerRadius: 16))
                             } else {
-                                mealButton("Món nước", detail: session.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
-                                mealButton("Món chay", detail: [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
+                                mealButton("Món nước", detail: menuStore.todayMenu?.day.featured, icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan, choice: "water")
+                                mealButton("Món chay", detail: [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
                             }
                         }
                     }
@@ -3126,8 +3132,8 @@ struct TodayMenuView: View {
                 let receiving = choice == "received"
                 let title = choice == "water" ? "Món nước" : "Món chay"
                 let detail = choice == "water"
-                    ? (session.todayMenu?.day.featured ?? "...")
-                    : [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                    ? (menuStore.todayMenu?.day.featured ?? "...")
+                    : [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
                 VStack(spacing: 18) {
                     Capsule().fill(AppTheme.muted.opacity(0.35)).frame(width: 42, height: 5)
                     Image(systemName: cancelling ? "xmark.circle.fill" : (receiving ? "checkmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill")))
@@ -3198,9 +3204,9 @@ struct TodayMenuView: View {
 
     private func selectedMealDetail(_ selection: String) -> String {
         if selection == "water" {
-            return session.todayMenu?.day.featured ?? "..."
+            return menuStore.todayMenu?.day.featured ?? "..."
         }
-        let detail = [session.todayMenu?.day.vegetarianMain, session.todayMenu?.day.vegetarianSide]
+        let detail = [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide]
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         return detail.isEmpty ? "..." : detail
     }
@@ -3238,11 +3244,11 @@ struct TodayMenuView: View {
 
 
     private func mealButton(_ title: String, detail: String?, icon: String, color: Color, choice: String) -> some View {
-        let selected = session.todayMenu?.selection == choice
+        let selected = menuStore.todayMenu?.selection == choice
         let fallbackAvailable = !(detail?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         let available = choice == "water"
-            ? (session.todayMenu?.availableChoices?.water ?? fallbackAvailable)
-            : (session.todayMenu?.availableChoices?.vegetarian ?? fallbackAvailable)
+            ? (menuStore.todayMenu?.availableChoices?.water ?? fallbackAvailable)
+            : (menuStore.todayMenu?.availableChoices?.vegetarian ?? fallbackAvailable)
         return Button {
             if available { pendingChoice = choice }
         } label: {
@@ -3862,6 +3868,7 @@ private struct AiAssistantChatView: View {
 @available(iOS 17.0, *)
 struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var menuStore: MenuStore
     @State private var showTodayMenu = false
     @State private var showAttendanceHistory = false
     @State private var showAttendanceStatement = false
@@ -4026,7 +4033,7 @@ struct DashboardView: View {
             .animation(.easeInOut(duration: 0.20), value: session.aiAssistantMobileEnabled)
             .sheet(isPresented: $showTodayMenu) {
                 TodayMenuView()
-                    .environmentObject(session)
+                    .sessionEnvironment(session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
@@ -4034,7 +4041,7 @@ struct DashboardView: View {
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showAiAssistant) {
             AiAssistantChatView()
-                .environmentObject(session)
+                .sessionEnvironment(session)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
         }
@@ -4069,7 +4076,7 @@ struct DashboardView: View {
     }
 
     private var todayMenuCard: some View {
-        let menu = session.todayMenu
+        let menu = menuStore.todayMenu
         let mainDishes = [menu?.day.savoryMain, menu?.day.savorySide, menu?.day.vegetable, menu?.day.soup]
             .compactMap { $0 }
             .filter { !$0.isEmpty }

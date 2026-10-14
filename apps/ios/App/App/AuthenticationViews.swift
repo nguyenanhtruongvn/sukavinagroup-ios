@@ -303,7 +303,7 @@ struct LoginForm: View {
         }
         .sheet(isPresented: $showsForgotPassword) {
             ForgotPasswordView(initialEmployeeCode: loginId)
-                .environmentObject(session)
+                .sessionEnvironment(session)
         }
     }
 }

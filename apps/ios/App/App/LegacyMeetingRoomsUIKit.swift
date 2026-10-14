@@ -58,7 +58,7 @@ private final class LegacyMeetingRoomsController: UITableViewController {
             image: UIImage(systemName: "calendar"),
             style: .plain, target: self, action: #selector(openMyMeetings)
         )
-        session.$meetingRooms.combineLatest(session.$meetingBookings)
+        session.meetings.$rooms.combineLatest(session.meetings.$bookings)
             .receive(on: RunLoop.main)
             .sink { [weak self] _, _ in self?.tableView.reloadData() }
             .store(in: &cancellables)
@@ -151,7 +151,7 @@ private final class LegacyMeetingScheduleController: UITableViewController {
                 title: "Đặt phòng", style: .plain, target: self, action: #selector(book)
             )
         }
-        cancellable = session.$meetingBookings.receive(on: RunLoop.main)
+        cancellable = session.meetings.$bookings.receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.tableView.reloadData() }
     }
     override func viewWillAppear(_ animated: Bool) {
@@ -355,7 +355,7 @@ private final class LegacyMeetingInviteesController: UITableViewController, UISe
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.placeholder = "Tên, mã nhân viên hoặc phòng ban"
         navigationItem.searchController = search
-        cancellable = session.$meetingInvitees.receive(on: RunLoop.main)
+        cancellable = session.meetings.$invitees.receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.tableView.reloadData() }
         Task {
             if let error = await session.refreshMeetingInvitees() {

@@ -39,6 +39,39 @@ private let sessionRestoreLogger = Logger(
     category: "session-restore"
 )
 
+/// Meeting rooms feature state (Android: `MeetingStore`).
+///
+/// `SessionStore` publishes authentication and app-wide state. Feature data
+/// lives in its own observable object so a view only redraws for the feature
+/// it renders: meeting refreshes no longer redraw the dashboard, profile or
+/// request screens, and session changes no longer redraw meeting timelines.
+@MainActor
+@available(iOS 17.0, *)
+final class MeetingStore: ObservableObject {
+    @Published var rooms: [MeetingRoom] = []
+    @Published var bookings: [MeetingBooking] = []
+    @Published var invitees: [MeetingInvitee] = []
+}
+
+/// Canteen menu feature state (Android: `MenuStore`).
+@MainActor
+@available(iOS 17.0, *)
+final class MenuStore: ObservableObject {
+    @Published var todayMenu: TodayMenu?
+}
+
+@available(iOS 17.0, *)
+extension View {
+    /// Injects the session and its feature stores. Use this wherever a view
+    /// hierarchy needs `SessionStore`, so feature views can observe their store.
+    @MainActor
+    func sessionEnvironment(_ session: SessionStore) -> some View {
+        environmentObject(session)
+            .environmentObject(session.meetings)
+            .environmentObject(session.menu)
+    }
+}
+
 @MainActor
 @available(iOS 17.0, *)
 final class SessionStore: ObservableObject {
@@ -87,10 +120,27 @@ final class SessionStore: ObservableObject {
     @Published var passwordChangeRequiresEmail = false
     @Published var passwordChangeError: String?
     @Published var forgotPasswordError: String?
-    @Published var todayMenu: TodayMenu?
-    @Published var meetingRooms: [MeetingRoom] = []
-    @Published var meetingBookings: [MeetingBooking] = []
-    @Published var meetingInvitees: [MeetingInvitee] = []
+    /// Feature stores. Views that render this data observe the store itself;
+    /// the forwarding properties below keep the session's networking code
+    /// unchanged while no longer publishing feature changes from the session.
+    let meetings = MeetingStore()
+    let menu = MenuStore()
+    var todayMenu: TodayMenu? {
+        get { menu.todayMenu }
+        set { menu.todayMenu = newValue }
+    }
+    var meetingRooms: [MeetingRoom] {
+        get { meetings.rooms }
+        set { meetings.rooms = newValue }
+    }
+    var meetingBookings: [MeetingBooking] {
+        get { meetings.bookings }
+        set { meetings.bookings = newValue }
+    }
+    var meetingInvitees: [MeetingInvitee] {
+        get { meetings.invitees }
+        set { meetings.invitees = newValue }
+    }
     @Published private(set) var aiAssistantMobileEnabled = true
     @Published private(set) var attendanceRevision = 0
     @Published private(set) var requestRevision = 0

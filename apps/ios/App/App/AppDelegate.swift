@@ -260,7 +260,7 @@ private final class NativeAppContainerViewController: UIViewController {
         // host replacement and is immediate on iOS 17 and newer.
         mountRootView(AnyView(
             AuthenticationView()
-                .environmentObject(session)
+                .sessionEnvironment(session)
                 .environmentObject(notificationRouter)
         ))
         renderedScreenKind = .signedOut
@@ -457,12 +457,12 @@ private final class NativeAppContainerViewController: UIViewController {
         case .restoring:
             return AnyView(NativeLaunchView())
         case .signedOut:
-            return AnyView(AuthenticationView().environmentObject(session).environmentObject(notificationRouter))
+            return AnyView(AuthenticationView().sessionEnvironment(session).environmentObject(notificationRouter))
         case .signedIn:
             if session.profile?.accountType == "CANTEEN" && session.profile?.employeeCode != "DEMO" {
-                return AnyView(CanteenScannerView().environmentObject(session).environmentObject(notificationRouter))
+                return AnyView(CanteenScannerView().sessionEnvironment(session).environmentObject(notificationRouter))
             }
-            return AnyView(EmployeePortalView().environmentObject(session).environmentObject(notificationRouter))
+            return AnyView(EmployeePortalView().sessionEnvironment(session).environmentObject(notificationRouter))
         }
     }
 

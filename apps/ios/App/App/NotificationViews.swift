@@ -498,6 +498,7 @@ struct NotificationsView: View {
 @available(iOS 17.0, *)
 private struct MeetingNotificationDetail: View {
     @EnvironmentObject private var session: SessionStore
+    @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let notification: RequestNotification
     @State private var details: MeetingBookingDetails?
@@ -534,7 +535,7 @@ private struct MeetingNotificationDetail: View {
     }
     private var currentScheduleBooking: MeetingBooking? {
         guard let id = details?.id else { return nil }
-        return session.meetingBookings.first(where: { $0.id == id })
+        return meetingStore.bookings.first(where: { $0.id == id })
     }
     private var effectiveEndsAt: String? {
         currentScheduleBooking?.endsAt ?? details?.endsAt
@@ -549,7 +550,7 @@ private struct MeetingNotificationDetail: View {
     }
     private var nextBooking: MeetingBooking? {
         guard let details, let endDate else { return nil }
-        return session.meetingBookings
+        return meetingStore.bookings
             .filter { $0.roomId == details.roomId && $0.id != details.id }
             .filter { booking in
                 guard let start = MeetingPresentation.date(from: booking.startsAt) else { return false }
