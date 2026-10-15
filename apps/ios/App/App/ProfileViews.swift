@@ -25,7 +25,6 @@ struct ProfileView: View {
     @State private var showPasswordChangeLimit = false
     @State private var legalPage: LegalPage?
     @State private var showSignOutConfirmation = false
-    @State private var displayedManagerName = "Chưa cập nhật"
 
     var body: some View {
         NavigationView {
@@ -187,13 +186,6 @@ struct ProfileView: View {
                 Text("Thao tác này không thể hoàn tác. Tài khoản, dữ liệu cá nhân, đơn từ, lựa chọn món và dữ liệu ứng dụng liên quan sẽ bị xóa. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.")
             }
         }
-        .onAppear { synchronizeDisplayedManagerName(session.profile?.managerFullName) }
-        .onChange(of: session.profile?.employeeCode) { _, _ in
-            synchronizeDisplayedManagerName(session.profile?.managerFullName)
-        }
-        .onChange(of: session.profile?.managerFullName) { _, managerName in
-            synchronizeDisplayedManagerName(managerName)
-        }
         .navigationViewStyle(.stack)
         .sheet(isPresented: $showPasswordChange) {
             PasswordChangeView().sessionEnvironment(session)
@@ -231,13 +223,11 @@ struct ProfileView: View {
         default: return "Nhân viên"
         }
     }
-    private func synchronizeDisplayedManagerName(_ managerName: String?) {
-        let normalizedName = managerName?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let nextValue = normalizedName.isEmpty ? "Chưa cập nhật" : normalizedName
-        if displayedManagerName != nextValue {
-            displayedManagerName = nextValue
-        }
+    /// The session keeps the full profile (auth/me) for the signed-in account
+    /// (a token renewal no longer blanks it), so read it directly.
+    private var displayedManagerName: String {
+        let name = session.profile?.managerFullName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? "Chưa cập nhật" : name
     }
 
     private var passwordChangedThisMonth: Bool {
