@@ -84,7 +84,6 @@ enum APNsRegistration {
     }
 }
 
-@UIApplicationMain
 /// SwiftUI only drives `scenePhase` for apps built on the SwiftUI `App`
 /// lifecycle. This app hosts SwiftUI in a UIHostingController, where the value
 /// stayed at its default (.background) forever: the AI orb, which pauses
@@ -110,6 +109,7 @@ struct ScenePhaseBridge<Content: View>: View {
     }
 }
 
+@UIApplicationMain
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var window: UIWindow?
     private let notificationRouter = APNsNotificationRouter()
