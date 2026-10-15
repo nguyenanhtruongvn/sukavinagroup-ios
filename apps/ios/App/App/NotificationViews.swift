@@ -139,7 +139,7 @@ struct NotificationsView: View {
                         .listRowInsets(notificationRowInsets)
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let isUnread = index < session.unreadCount
+                        let isUnread = session.unreadArticleIDs.contains(item.id)
                         NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -164,7 +164,7 @@ struct NotificationsView: View {
                             .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
                             .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
                             .overlay(alignment: .bottom) { legacyNotificationSeparator }
-                        }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticlesRead() })
+                        }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticleRead(item.id) })
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
                                 hideArticle(item)

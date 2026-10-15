@@ -267,6 +267,8 @@ final class SessionStore: ObservableObject {
     @Published var errorOffersSettings = false
     @Published var isWorking = false
     @Published var unreadCount = 0
+    /// News articles not opened yet, by id (the "Mới" badge). Mirrors Android.
+    @Published private(set) var unreadArticleIDs: Set<String> = []
     @Published var requestUnreadCount = 0
     let badge = NotificationBadgeState()
     /// Stored in `badge`, so only the tab bar redraws when it changes.
@@ -315,6 +317,7 @@ final class SessionStore: ObservableObject {
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
+    private let unreadArticlesKey = "unread-native-article-ids"
     /// Written by older versions (local attendance inbox); only ever removed now.
     private let legacyAttendanceKeyPrefixes = [
         "known-native-attendance-ids-",
@@ -1354,6 +1357,8 @@ final class SessionStore: ObservableObject {
         meetingInvitees = []
         AttendanceWidgetBridge.clear()
         unreadCount = 0
+        unreadArticleIDs = []
+        UserDefaults.standard.removeObject(forKey: unreadArticlesKey)
         requestUnreadCount = 0
         notificationBadgeCount = 0
         articleBadgeCount = 0
@@ -1854,6 +1859,8 @@ final class SessionStore: ObservableObject {
         guard let items = dashboard?.contentItems else { return }
         knownArticleIDs.formUnion(items.map(\.id))
         persistKnownArticles()
+        unreadArticleIDs = []
+        persistUnreadArticles()
         unreadCount = 0
         notificationBadgeCount = max(0, notificationBadgeCount - articleBadgeCount)
         articleBadgeCount = 0
@@ -1863,6 +1870,24 @@ final class SessionStore: ObservableObject {
     private func loadKnownArticles() {
         let stored = UserDefaults.standard.stringArray(forKey: knownArticlesKey) ?? []
         knownArticleIDs = Set(stored)
+        unreadArticleIDs = Set(UserDefaults.standard.stringArray(forKey: unreadArticlesKey) ?? [])
+        unreadCount = unreadArticleIDs.count
+    }
+
+    /// Opening one article marks only that article as read.
+    func markArticleRead(_ id: String) {
+        guard unreadArticleIDs.remove(id) != nil else { return }
+        persistUnreadArticles()
+        unreadCount = unreadArticleIDs.count
+        if articleBadgeCount > 0 {
+            articleBadgeCount -= 1
+            notificationBadgeCount = max(0, notificationBadgeCount - 1)
+            syncApplicationBadge()
+        }
+    }
+
+    private func persistUnreadArticles() {
+        UserDefaults.standard.set(Array(unreadArticleIDs), forKey: unreadArticlesKey)
     }
 
     private func processNewArticles(_ items: [ContentItem]) {
@@ -1873,7 +1898,9 @@ final class SessionStore: ObservableObject {
         }
         let newItems = items.filter { !knownArticleIDs.contains($0.id) }
         if !newItems.isEmpty {
-            unreadCount += newItems.count
+            unreadArticleIDs.formUnion(newItems.map(\.id))
+            persistUnreadArticles()
+            unreadCount = unreadArticleIDs.count
             articleBadgeCount += newItems.count
             notificationBadgeCount += newItems.count
             syncApplicationBadge()

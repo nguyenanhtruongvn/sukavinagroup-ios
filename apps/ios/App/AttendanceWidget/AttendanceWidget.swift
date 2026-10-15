@@ -511,7 +511,7 @@ private struct MeetingLiveActivityWidget: Widget {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .layoutPriority(1)
 
-                            Text(context.state.endsAt, style: .timer)
+                            Text(timerInterval: meetingCountdown(context), countsDown: true)
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                                 .monospacedDigit()
                                 .foregroundStyle(accent)
@@ -553,7 +553,7 @@ private struct MeetingLiveActivityWidget: Widget {
                     .padding(.leading, 2)
             } compactTrailing: {
                 // Keep the countdown complete while avoiding unnecessary width.
-                Text(context.state.endsAt, style: .timer)
+                Text(timerInterval: meetingCountdown(context), countsDown: true)
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .monospacedDigit()
                     .foregroundStyle(accent)
@@ -598,6 +598,13 @@ private struct MeetingLiveActivityView: View {
                 .fill(.black)
         }
     }
+}
+
+/// Counts down to the meeting end and stops at 0:00. `Text(date, style: .timer)`
+/// counted up again once the end time had passed.
+private func meetingCountdown(_ context: ActivityViewContext<MeetingLiveActivityAttributes>) -> ClosedRange<Date> {
+    let end = context.state.endsAt
+    return min(context.attributes.startsAt, end)...end
 }
 
 private struct MeetingLiveActivityControls: View {
@@ -731,7 +738,7 @@ private struct MeetingLiveActivityTimeline: View {
                 .tint(.red)
                 .scaleEffect(x: 1, y: 1.45, anchor: .center)
                 .padding(.vertical, 3)
-            Text("Còn \(context.state.endsAt, style: .timer)")
+            (Text("Còn ") + Text(timerInterval: meetingCountdown(context), countsDown: true))
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .foregroundStyle(.red)
                 .monospacedDigit()

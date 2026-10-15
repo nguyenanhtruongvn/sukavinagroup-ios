@@ -191,7 +191,12 @@ struct MeetingRoomsView: View {
             .refreshable {
                 await session.refreshMeetingSchedule(date: day, force: true)
             }
-            .sheet(item: $presentedDestination) { destination in
+            .sheet(item: $presentedDestination, onDismiss: {
+                // The schedule sheet can switch to another date and a booking can
+                // be made for another day; both reload the one shared schedule.
+                // Show this list's own day again.
+                Task { await session.refreshMeetingSchedule(date: day) }
+            }) { destination in
                 // Erase the concrete destination type at the sheet boundary.
                 // Only the selected destination is mounted (iOS 17 safe).
                 switch destination {
@@ -610,7 +615,8 @@ struct MeetingRoomScheduleSheet: View {
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
-                        DatePicker("Ngày", selection: $selectedDay, displayedComponents: .date)
+                        // Past days cannot be booked; showing them only confused the list.
+                        DatePicker("Ngày", selection: $selectedDay, in: VietnamTime.calendar.startOfDay(for: .now)..., displayedComponents: .date)
                             .datePickerStyle(.compact)
                             .padding(.horizontal)
                             .padding(.bottom, 12)
