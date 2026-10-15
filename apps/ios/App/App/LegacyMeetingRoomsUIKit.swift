@@ -79,8 +79,9 @@ final class LegacyEmployeePortalController: UITabBarController, UITabBarControll
     }
 
     private func updateBadge(_ count: Int) {
-        guard let pages = viewControllers, pages.indices.contains(3) else { return }
-        let notificationItem = pages[3].tabBarItem
+        guard let pages = viewControllers,
+              pages.indices.contains(3),
+              let notificationItem = pages[3].tabBarItem else { return }
         notificationItem.badgeValue = count > 0 ? (count > 99 ? "99+" : String(count)) : nil
     }
 }
