@@ -137,11 +137,58 @@ struct EmployeeRequest: Codable, Identifiable {
     let decisionNote: String?
     let autoApproved: Bool
     let employee: EmployeeSummary?
+    // Business-trip details, used to prefill a resubmitted request.
+    let businessDestination: String?
+    let businessTransport: String?
+    let businessDistanceKm: Double?
+    let businessExpense: Double?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
+        case businessDestination, businessTransport, businessDistanceKm, businessExpense
         case from = "startsAt"
         case to = "endsAt"
+    }
+}
+
+/// Composer state rebuilt from a submitted request. Late / early / overtime
+/// requests were sent with the duration prepended to the reason
+/// ("Đi trễ: 30 phút. Kẹt xe"); that prefix becomes the duration again so a
+/// resubmitted reason does not repeat it. Mirrors Android `requestPrefill`.
+struct RequestPrefill {
+    let reason: String
+    let durationValue: Int?
+    let durationIsHours: Bool
+
+    init(_ request: EmployeeRequest) {
+        let reason = request.reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let prefix = request.kind.title + ": "
+        guard [.late, .early, .overtime].contains(request.kind), reason.hasPrefix(prefix) else {
+            self.init(reason: reason, durationValue: nil, durationIsHours: false)
+            return
+        }
+        let rest = reason.dropFirst(prefix.count)
+        let parts = rest.split(separator: " ", maxSplits: 1)
+        let unitAndReason = parts.count == 2 ? String(parts[1]) : ""
+        let value = parts.first.flatMap { Int($0) }
+        let isHours = unitAndReason.hasPrefix("giờ.")
+        guard let value, isHours || unitAndReason.hasPrefix("phút."),
+              value >= 1, value <= (isHours ? 24 : 60) else {
+            self.init(reason: reason, durationValue: nil, durationIsHours: false)
+            return
+        }
+        let text = unitAndReason.drop(while: { $0 != "." }).dropFirst()
+        self.init(
+            reason: text.trimmingCharacters(in: .whitespacesAndNewlines),
+            durationValue: value,
+            durationIsHours: isHours
+        )
+    }
+
+    private init(reason: String, durationValue: Int?, durationIsHours: Bool) {
+        self.reason = reason
+        self.durationValue = durationValue
+        self.durationIsHours = durationIsHours
     }
 }
 
@@ -162,6 +209,7 @@ final class EmployeeRequestStore: ObservableObject {
     /// screens that show them (they redraw far more often than data changes).
     private var byID: [String: EmployeeRequest] = [:]
     private var pendingApprovalIDs: Set<String> = []
+    private var ownIDs: Set<String> = []
     /// Approvals and own requests, de-duplicated, newest first.
     private(set) var combined: [EmployeeRequest] = []
     private var combinedByStatus: [EmployeeRequestStatus: [EmployeeRequest]] = [:]
@@ -177,10 +225,17 @@ final class EmployeeRequestStore: ObservableObject {
     /// An approval assigned to this user that still awaits a decision.
     func isPendingApproval(_ id: String) -> Bool { pendingApprovalIDs.contains(id) }
 
+    /// The user's own rejected request, which can be sent again. A request this
+    /// user rejected as an approver belongs to someone else.
+    func canResubmit(_ request: EmployeeRequest) -> Bool {
+        request.status == .rejected && ownIDs.contains(request.id)
+    }
+
     private func rebuildIndex() {
         byID = Dictionary(requests.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             .merging(approvals.map { ($0.id, $0) }, uniquingKeysWith: { mine, _ in mine })
         pendingApprovalIDs = Set(approvals.lazy.filter { $0.status == .pending }.map(\.id))
+        ownIDs = Set(requests.lazy.map(\.id))
         var seen = Set<String>()
         combined = (approvals + requests)
             .filter { seen.insert($0.id).inserted }
@@ -382,6 +437,8 @@ struct RequestsView: View {
     let initialFilter: EmployeeRequestStatus?
     @State private var filter: EmployeeRequestStatus?
     @State private var composing = false
+    /// A rejected request being sent again.
+    @State private var resubmitting: EmployeeRequest?
     @State private var reviewing: EmployeeRequest?
     @State private var cancelling: EmployeeRequest?
     @State private var filterIndex = 0
@@ -425,6 +482,14 @@ struct RequestsView: View {
                     .presentationDetents([.large])
                     // Let a downward pull dismiss the composer sheet instead
                     // of being retained by its form scroll view.
+                    .presentationContentInteraction(.resizes)
+                    .presentationDragIndicator(.hidden)
+            }
+            .sheet(item: $resubmitting) { request in
+                RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
+                    Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense) }
+                }
+                    .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
             }
@@ -574,6 +639,11 @@ struct RequestsView: View {
                                 RequestCard(request: request, canCancel: false, cancel: {})
                             }
                             .buttonStyle(.plain)
+                        } else if store.canResubmit(request) {
+                            Button { resubmitting = request } label: {
+                                RequestCard(request: request, canCancel: false, resubmittable: true, cancel: {})
+                            }
+                            .buttonStyle(.plain)
                         } else {
                             RequestCard(request: request) { cancelling = request }
                         }
@@ -591,6 +661,8 @@ struct RequestsView: View {
 struct RequestCard: View {
     let request: EmployeeRequest
     var canCancel = true
+    /// The user's rejected request: tapping the card opens it to send again.
+    var resubmittable = false
     let cancel: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -610,6 +682,12 @@ struct RequestCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             if let note = request.decisionNote, !note.isEmpty { Label(note, systemImage: "text.bubble").font(.caption).foregroundStyle(AppTheme.muted) }
             if canCancel && request.status == .pending { Button("Hủy đơn", role: .destructive, action: cancel).font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .trailing) }
+            if resubmittable {
+                Label("Tạo lại đơn", systemImage: "arrow.clockwise")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(AppTheme.red)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous)).shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
     }
 
@@ -795,6 +873,41 @@ struct RequestComposer: View {
         case expense
     }
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
+    /// A rejected request this form starts from; nil for a new request.
+    let template: EmployeeRequest?
+    /// The first attendance lookup must not replace the template's times.
+    @State private var keepTemplateAttendanceTimes = false
+
+    init(
+        template: EmployeeRequest? = nil,
+        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
+    ) {
+        self.template = template
+        self.submit = submit
+        guard let template else { return }
+        let prefill = RequestPrefill(template)
+        _kind = State(initialValue: template.kind)
+        _from = State(initialValue: template.from)
+        _to = State(initialValue: template.to)
+        _reason = State(initialValue: prefill.reason)
+        _attendanceDate = State(initialValue: VietnamTime.calendar.startOfDay(for: template.from))
+        _destination = State(initialValue: template.businessDestination ?? "")
+        _transport = State(initialValue: template.businessTransport.flatMap { $0.isEmpty ? nil : $0 } ?? "personal_vehicle")
+        _distanceKm = State(initialValue: template.businessDistanceKm.map(Self.plainNumber) ?? "")
+        _expense = State(initialValue: template.businessExpense.map(Self.plainNumber) ?? "")
+        if let value = prefill.durationValue {
+            _durationValue = State(initialValue: value)
+            _durationUnit = State(initialValue: prefill.durationIsHours ? .hours : .minutes)
+        }
+        // Keep the template's own times on the first render.
+        _leaveScheduleWasInitialized = State(initialValue: true)
+        _keepTemplateAttendanceTimes = State(initialValue: template.kind == .attendance)
+    }
+
+    /// 12 -> "12", 12.5 -> "12.5" for the numeric text fields.
+    private static func plainNumber(_ value: Double) -> String {
+        value.rounded() == value ? String(Int(value)) : String(value)
+    }
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// `.decimalPad` follows the device locale, so Vietnamese keyboards enter `,`.
     private func localizedDecimal(_ value: String) -> Double? {
@@ -1008,9 +1121,11 @@ struct RequestComposer: View {
                         }
                         .frame(width: 52, height: 52)
 
-                        Text("Tạo đơn mới")
+                        Text(template == nil ? "Tạo đơn mới" : "Tạo lại đơn")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
-                        Text("Điền thông tin rõ ràng để đơn được xử lý nhanh hơn.")
+                        Text(template == nil
+                             ? "Điền thông tin rõ ràng để đơn được xử lý nhanh hơn."
+                             : "Nội dung lấy từ đơn bị từ chối. Sửa lại nếu cần rồi gửi.")
                             .font(.subheadline)
                             .foregroundStyle(AppTheme.muted)
                     }
@@ -1235,9 +1350,14 @@ struct RequestComposer: View {
                 guard kind == .attendance, let token = session.token else { return }
                 let month = VietnamTime.monthKey.string(from: attendanceDate)
                 let selectedKey = VietnamTime.dayKey.string(from: attendanceDate)
+                // A resubmitted request keeps its own times for this first
+                // lookup (cached and network); later day changes fill as usual.
+                let keepTimes = keepTemplateAttendanceTimes
+                keepTemplateAttendanceTimes = false
 
                 func apply(_ data: AttendanceMonth) {
                     attendanceDay = data.days.first { $0.date == selectedKey }
+                    guard !keepTimes else { return }
                     let scheduleStart = attendanceDay?.startTime ?? data.startTime
                     let scheduleEnd = attendanceDay?.endTime ?? data.endTime
                     from = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:))
