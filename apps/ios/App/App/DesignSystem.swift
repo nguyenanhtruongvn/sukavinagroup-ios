@@ -174,9 +174,11 @@ struct PortalPageTitle: View {
 }
 
 /// The header of a tab page that stays in place while only the page's
-/// content scrolls beneath it. Same position as the "Đơn từ" header (title
-/// 12 pt below the safe area, 20 pt from the edges) on every tab and iOS
-/// version, instead of per-tab paddings inside scroll views and lists.
+/// content scrolls beneath it. The title sits where the scrolling tabs put
+/// theirs ("Trang chủ", "Tài khoản": 20 pt below the safe area and from the
+/// edges), so every tab title has the same size and position. 12 pt, the
+/// "Đơn từ" value, left it ~7 pt higher: that page gains extra top space
+/// from its container, a pinned inset does not.
 struct PortalPinnedHeader<Accessory: View>: View {
     let title: String
     let background: Color
@@ -194,7 +196,7 @@ struct PortalPinnedHeader<Accessory: View>: View {
             accessory()
         }
         .padding(.horizontal, 20)
-        .padding(.top, 12)
+        .padding(.top, 20)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         // Opaque, so rows scrolled underneath do not show through.
