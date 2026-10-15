@@ -26,91 +26,100 @@ struct AiAssistantOrbView: View {
     var size: CGFloat = 64
 
     var body: some View {
-        // With Reduce Motion the orb is static, and it cannot be seen while
-        // the app is inactive: stop the 24 fps redraw in both cases.
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: reduceMotion || scenePhase != .active)) { timeline in
-            let seconds = timeline.date.timeIntervalSinceReferenceDate
-            let coreAngle = reduceMotion ? 0 : (seconds.truncatingRemainder(dividingBy: 5.4) / 5.4) * Double.pi * 2
-            let orbitAngle = reduceMotion ? 0 : (seconds.truncatingRemainder(dividingBy: 10.8) / 10.8) * 360
-            let reverseAngle = reduceMotion ? 0 : -(seconds.truncatingRemainder(dividingBy: 14.8) / 14.8) * 360
-            let pulse = CGFloat(
-                reduceMotion ? 1.0 : 0.96 + (sin(seconds * 2.0 * Double.pi / 2.45) + 1.0) * 0.02
-            )
-            let coreRadius = size * 0.065
-
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                Color(red: 0.98, green: 1.0, blue: 1.0),
-                                Color(red: 0.77, green: 0.93, blue: 1.0),
-                                Color(red: 0.42, green: 0.67, blue: 0.91),
-                                Color(red: 0.31, green: 0.39, blue: 0.69),
-                                Color(red: 0.14, green: 0.20, blue: 0.43)
-                            ],
-                            center: .topLeading,
-                            startRadius: 0,
-                            endRadius: size * 0.56
-                        )
-                    )
-                    .frame(width: size * 0.80, height: size * 0.80)
-                    .overlay {
-                        Circle()
-                            .stroke(Color.cyan.opacity(0.34), lineWidth: max(0.7, size * 0.006))
-                            .padding(size * 0.10)
-                    }
-                    .shadow(color: Color.cyan.opacity(0.22), radius: size * 0.13)
-
-                Ellipse()
-                    .stroke(Color.blue.opacity(0.42), lineWidth: max(0.8, size * 0.012))
-                    .frame(width: size * 0.92, height: size * 0.43)
-                    .rotationEffect(.degrees(orbitAngle))
-
-                Ellipse()
-                    .stroke(Color.cyan.opacity(0.34), lineWidth: max(0.7, size * 0.009))
-                    .frame(width: size * 0.80, height: size * 0.58)
-                    .rotationEffect(.degrees(56 + reverseAngle))
-
-                Ellipse()
-                    .stroke(Color.white.opacity(0.20), lineWidth: max(0.6, size * 0.006))
-                    .frame(width: size * 0.46, height: size * 0.78)
-                    .rotationEffect(.degrees(18 + orbitAngle * 0.35))
-
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                .white,
-                                Color(red: 0.78, green: 0.96, blue: 1.0),
-                                Color(red: 0.36, green: 0.84, blue: 0.98),
-                                Color(red: 0.38, green: 0.50, blue: 0.86).opacity(0.46),
-                                .clear
-                            ],
-                            center: .topLeading,
-                            startRadius: 0,
-                            endRadius: size * 0.12
-                        )
-                    )
-                    .frame(width: size * 0.22 * pulse, height: size * 0.22 * pulse)
-                    .offset(
-                        x: CGFloat(cos(coreAngle)) * coreRadius,
-                        y: CGFloat(sin(coreAngle)) * coreRadius
-                    )
-                    .shadow(color: Color.cyan.opacity(0.50), radius: size * 0.07)
-
-                Circle()
-                    .fill(Color.white.opacity(0.92))
-                    .frame(width: size * 0.032, height: size * 0.032)
-                    .offset(
-                        x: CGFloat(cos(coreAngle)) * coreRadius - size * 0.012,
-                        y: CGFloat(sin(coreAngle)) * coreRadius - size * 0.014
-                    )
+        ZStack {
+            sphere
+            // Only the moving layers are redrawn each frame. The timeline
+            // stops with Reduce Motion and whenever the app is not active
+            // (scenePhase is fed by ScenePhaseBridge in AppDelegate).
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion || scenePhase != .active)) { timeline in
+                motionLayers(seconds: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate)
             }
-            .frame(width: size, height: size)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+
+    /// Static glass sphere with its glow, drawn once.
+    private var sphere: some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    colors: [
+                        Color(red: 0.98, green: 1.0, blue: 1.0),
+                        Color(red: 0.77, green: 0.93, blue: 1.0),
+                        Color(red: 0.42, green: 0.67, blue: 0.91),
+                        Color(red: 0.31, green: 0.39, blue: 0.69),
+                        Color(red: 0.14, green: 0.20, blue: 0.43)
+                    ],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: size * 0.56
+                )
+            )
+            .frame(width: size * 0.80, height: size * 0.80)
+            .overlay {
+                Circle()
+                    .stroke(Color.cyan.opacity(0.34), lineWidth: max(0.7, size * 0.006))
+                    .padding(size * 0.10)
+            }
+            .shadow(color: Color.cyan.opacity(0.22), radius: size * 0.13)
+    }
+
+    private func motionLayers(seconds: Double) -> some View {
+        let turn = { (period: Double) in seconds.truncatingRemainder(dividingBy: period) / period }
+        let coreAngle = turn(5.4) * Double.pi * 2
+        let orbitAngle = turn(10.8) * 360
+        let reverseAngle = -turn(14.8) * 360
+        // Gentle breathing of the core and of the rings' brightness.
+        let breath = (sin(turn(2.45) * Double.pi * 2) + 1) / 2
+        let pulse = CGFloat(0.94 + breath * 0.08)
+        let coreRadius = size * 0.065
+        let coreOffset = CGSize(
+            width: CGFloat(cos(coreAngle)) * coreRadius,
+            height: CGFloat(sin(coreAngle)) * coreRadius
+        )
+
+        return ZStack {
+            Ellipse()
+                .stroke(Color.blue.opacity(0.36 + breath * 0.12), lineWidth: max(0.8, size * 0.012))
+                .frame(width: size * 0.92, height: size * 0.43)
+                .rotationEffect(.degrees(orbitAngle))
+
+            Ellipse()
+                .stroke(Color.cyan.opacity(0.28 + breath * 0.12), lineWidth: max(0.7, size * 0.009))
+                .frame(width: size * 0.80, height: size * 0.58)
+                .rotationEffect(.degrees(56 + reverseAngle))
+
+            Ellipse()
+                .stroke(Color.white.opacity(0.20), lineWidth: max(0.6, size * 0.006))
+                .frame(width: size * 0.46, height: size * 0.78)
+                .rotationEffect(.degrees(18 + orbitAngle * 0.35))
+
+            // Core with its glow baked into the gradient (no per-frame shadow).
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            .white,
+                            Color(red: 0.78, green: 0.96, blue: 1.0),
+                            Color(red: 0.36, green: 0.84, blue: 0.98),
+                            Color.cyan.opacity(0.32),
+                            .clear
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: size * 0.17
+                    )
+                )
+                .frame(width: size * 0.34 * pulse, height: size * 0.34 * pulse)
+                .offset(coreOffset)
+
+            Circle()
+                .fill(Color.white.opacity(0.92))
+                .frame(width: size * 0.032, height: size * 0.032)
+                .offset(x: coreOffset.width - size * 0.012, y: coreOffset.height - size * 0.014)
+        }
+        .frame(width: size, height: size)
     }
 }
 

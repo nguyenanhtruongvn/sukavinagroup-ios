@@ -85,6 +85,31 @@ enum APNsRegistration {
 }
 
 @UIApplicationMain
+/// SwiftUI only drives `scenePhase` for apps built on the SwiftUI `App`
+/// lifecycle. This app hosts SwiftUI in a UIHostingController, where the value
+/// stayed at its default (.background) forever: the AI orb, which pauses
+/// unless the scene is active, never moved, and MeetingRoomsView's
+/// reload-on-return never ran. This bridge feeds the real application state in.
+struct ScenePhaseBridge<Content: View>: View {
+    let content: Content
+    @State private var phase: ScenePhase
+
+    init(content: Content) {
+        self.content = content
+        let state = UIApplication.shared.applicationState
+        _phase = State(initialValue: state == .active ? .active : (state == .background ? .background : .inactive))
+    }
+
+    var body: some View {
+        content
+            .environment(\.scenePhase, phase)
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in phase = .active }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in phase = .inactive }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in phase = .background }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in phase = .inactive }
+    }
+}
+
 final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     var window: UIWindow?
     private let notificationRouter = APNsNotificationRouter()
@@ -371,7 +396,7 @@ private final class NativeAppContainerViewController: UIViewController {
     private func mountRootView(_ rootView: AnyView) {
         // This is the native SwiftUI default for any child scroll container.
         // Screens with their own scroll host also declare this directly.
-        let host = UIHostingController(rootView: AnyView(rootView.scrollIndicators(.hidden)))
+        let host = UIHostingController(rootView: AnyView(ScenePhaseBridge(content: rootView.scrollIndicators(.hidden))))
         host.view.backgroundColor = .clear
         addChild(host)
         view.addSubview(host.view)
