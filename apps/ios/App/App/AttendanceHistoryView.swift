@@ -209,6 +209,7 @@ struct ModernAttendanceHistoryView: View {
                     .orange
                 )
             }
+            .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity)
             .dynamicTypeSize(.xSmall ... .accessibility1)
         } else {
@@ -227,6 +228,8 @@ struct ModernAttendanceHistoryView: View {
                         summary(item.1, item.0, item.2)
                     }
                 }
+                // Size the row to its tallest cell so every cell matches it.
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity)
                 .dynamicTypeSize(.xSmall ... .accessibility1)
             }
@@ -541,20 +544,27 @@ struct ModernAttendanceHistoryView: View {
     }
 
     private func summary(_ value: Int, _ label: String, _ color: Color) -> some View {
-        VStack(spacing: 5) {
-            Text("\(value)").font(.title3.bold()).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 13)
-        .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
+        summaryCell(Text("\(value)"), label, color)
     }
 
     private func metricSummary(_ value: String, _ label: String, _ color: Color) -> some View {
+        summaryCell(Text(value), label, color)
+    }
+
+    /// A long label ("Quên chấm công") wraps to a second line instead of being
+    /// cut off; the row stretches every cell to the tallest one so they stay even.
+    private func summaryCell(_ value: Text, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
-            Text(value).font(.title3.bold()).foregroundStyle(color)
-            Text(label).font(.caption2).foregroundStyle(AppTheme.muted).lineLimit(1)
+            value.font(.title3.bold()).foregroundStyle(color)
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(AppTheme.muted)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity).padding(.vertical, 13)
+        .padding(.horizontal, 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity).padding(.vertical, 13)
         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
     }
 
