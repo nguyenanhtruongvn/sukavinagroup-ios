@@ -136,3 +136,20 @@ jobs:
             weak && $1 == "name" && $2 ~ /SwiftUICore\\.framework/ { print "SwiftUICore linkage: weak"; found = 1 }
             END { if (!found) print "SwiftUICore linkage: absent" }
           '
+
+  shared-logic-tests:
+    # Unit tests for the Foundation-only logic in apps/ios/App/App/Shared
+    # (realtime events, request prefill, Vietnam time, meeting de-duplication).
+    # Runs on macOS with SwiftPM: no simulator, signing or IPA.
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run shared logic unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          swift --version
+          swift test --package-path apps/ios/App

@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		FC0000000000000000000320 /* Shared/RealtimeEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000310 /* Shared/RealtimeEvent.swift */; };
+		FC0000000000000000000220 /* Shared/RequestReasonPrefill.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000210 /* Shared/RequestReasonPrefill.swift */; };
+		FC0000000000000000000120 /* Shared/MeetingBookingDeduplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */; };
 		FB0000000000000000000820 /* MeetingRoomsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000810 /* MeetingRoomsView.swift */; };
 		FB0000000000000000000720 /* MeetingScheduleTimeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000710 /* MeetingScheduleTimeline.swift */; };
 		FB0000000000000000000620 /* MeetingBookingDetailViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000610 /* MeetingBookingDetailViews.swift */; };
@@ -87,6 +90,9 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXFileReference section */
+		FC0000000000000000000310 /* Shared/RealtimeEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/RealtimeEvent.swift; sourceTree = "<group>"; };
+		FC0000000000000000000210 /* Shared/RequestReasonPrefill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/RequestReasonPrefill.swift; sourceTree = "<group>"; };
+		FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingBookingDeduplication.swift; sourceTree = "<group>"; };
 		FB0000000000000000000810 /* MeetingRoomsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRoomsView.swift; sourceTree = "<group>"; };
 		FB0000000000000000000710 /* MeetingScheduleTimeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingScheduleTimeline.swift; sourceTree = "<group>"; };
 		FB0000000000000000000610 /* MeetingBookingDetailViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingBookingDetailViews.swift; sourceTree = "<group>"; };
@@ -95,7 +101,7 @@
 		FB0000000000000000000310 /* AiAssistantViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AiAssistantViews.swift; sourceTree = "<group>"; };
 		FB0000000000000000000210 /* AttendanceStatementViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceStatementViews.swift; sourceTree = "<group>"; };
 		FB0000000000000000000110 /* AttendanceHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttendanceHistoryView.swift; sourceTree = "<group>"; };
-		FA0000000000000000000110 /* VietnamTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VietnamTime.swift; sourceTree = "<group>"; };
+		FA0000000000000000000110 /* VietnamTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/VietnamTime.swift; sourceTree = "<group>"; };
 		D40000000000000000000101 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
 		D40000000000000000000102 /* Networking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Networking.swift; sourceTree = "<group>"; };
 		D40000000000000000000103 /* PortalModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PortalModels.swift; sourceTree = "<group>"; };
@@ -175,6 +181,9 @@
 				D40000000000000000000105 /* AuthenticationViews.swift */,
 				D40000000000000000000106 /* MealViews.swift */,
 				D40000000000000000000107 /* EmployeeViews.swift */,
+				FC0000000000000000000310 /* Shared/RealtimeEvent.swift */,
+				FC0000000000000000000210 /* Shared/RequestReasonPrefill.swift */,
+				FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */,
 				FB0000000000000000000810 /* MeetingRoomsView.swift */,
 				FB0000000000000000000710 /* MeetingScheduleTimeline.swift */,
 				FB0000000000000000000610 /* MeetingBookingDetailViews.swift */,
@@ -333,6 +342,9 @@
 				D40000000000000000000005 /* AuthenticationViews.swift in Sources */,
 				D40000000000000000000006 /* MealViews.swift in Sources */,
 				D40000000000000000000007 /* EmployeeViews.swift in Sources */,
+				FC0000000000000000000320 /* Shared/RealtimeEvent.swift in Sources */,
+				FC0000000000000000000220 /* Shared/RequestReasonPrefill.swift in Sources */,
+				FC0000000000000000000120 /* Shared/MeetingBookingDeduplication.swift in Sources */,
 				FB0000000000000000000820 /* MeetingRoomsView.swift in Sources */,
 				FB0000000000000000000720 /* MeetingScheduleTimeline.swift in Sources */,
 				FB0000000000000000000620 /* MeetingBookingDetailViews.swift in Sources */,

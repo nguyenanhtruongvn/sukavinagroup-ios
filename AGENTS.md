@@ -40,7 +40,7 @@ apps/ios/App/
 │   ├── RequestViews.swift
 │   ├── SessionStore.swift
 │   ├── TodayMenuView.swift
-│   ├── VietnamTime.swift
+│   ├── Shared/ (Foundation-only logic, unit-tested)
 │   ├── Info.plist
 │   ├── App.entitlements
 │   ├── PrivacyInfo.xcprivacy
@@ -151,7 +151,9 @@ The employee UI is split by feature (each file stays well under 1,000 lines):
 
 Types shared between these files are internal (no `private`); keep their names unique in the App target.
 
-`VietnamTime.swift` is compiled into both the app and the widget extension and may only import Foundation.
+`App/Shared/` holds Foundation-only logic (`VietnamTime`, `RealtimeEvent`, `RequestReasonPrefill`, `MeetingBookingDeduplication`). These files are compiled into the App target and also by `apps/ios/App/Package.swift`, whose tests in `apps/ios/App/SharedTests/` run in CI (`swift test --package-path apps/ios/App`, job `shared-logic-tests`). Keep logic that can be tested without UIKit/SwiftUI there and add a test with it.
+
+`App/Shared/VietnamTime.swift` is compiled into both the app and the widget extension and may only import Foundation.
 
 When changing meeting schedule rendering, inspect the complete flow (`MeetingRoomsView.swift` → `MeetingScheduleTimeline.swift`) before editing isolated views.
 

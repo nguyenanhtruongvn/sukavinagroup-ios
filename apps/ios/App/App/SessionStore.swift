@@ -363,6 +363,9 @@ final class SessionStore: ObservableObject {
     private var hasViewedMeetingSchedule = false
     /// A badge reset the server has not confirmed yet.
     private var badgeResetPending = false
+    /// The live update stream connected at least once in this session; a
+    /// later connection follows a gap in which events may have been missed.
+    private var realtimeConnectedBefore = false
     private var displayedMeetingScheduleDay: String?
     private var meetingScheduleRefreshTasks: [String: Task<Void, Never>] = [:]
     private var meetingInviteesLoadedAt: Date?
@@ -1269,6 +1272,7 @@ final class SessionStore: ObservableObject {
         // sign-out, so the next sign-in must upload them again.
         LiveActivityTokenLedger.reset()
         hasViewedMeetingSchedule = false
+        realtimeConnectedBefore = false
         lastForegroundRefreshAt = nil
         lastSessionRefreshAt = nil
         eventStreamTask?.cancel()
@@ -1676,6 +1680,19 @@ final class SessionStore: ObservableObject {
                     // This closes the tiny gap where an Admin toggle happened
                     // while the stream was disconnected without adding polling.
                     await self.refreshAiAssistantAvailability()
+
+                    // After a gap (app in the background, network loss) an
+                    // attendance change made meanwhile, e.g. an HR attendance-code
+                    // override, was not announced: mark cached months stale (an
+                    // open attendance screen reloads) and revalidate the dashboard
+                    // within its freshness window. Mirrors Android.
+                    let resumed = self.realtimeConnectedBefore
+                    self.realtimeConnectedBefore = true
+                    if resumed {
+                        self.invalidateAttendanceCacheForRealtimeUpdate()
+                        self.revisions.attendance &+= 1
+                        await self.ensureDashboardFresh()
+                    }
 
                     for try await line in bytes.lines {
                         if Task.isCancelled { return }
@@ -2253,21 +2270,10 @@ final class SessionStore: ObservableObject {
         )
     }
 
-    /// Drops an anonymous (optimistic) booking once the identified one for
-    /// the same room and start time exists. Indexed by room and second, so it
-    /// is linear in the number of bookings.
+    /// See `MeetingBookingDeduplication`.
     private func normalizedMeetingBookings(_ bookings: [MeetingBooking]) -> [MeetingBooking] {
-        var identifiedStarts = Set<String>()
-        for known in bookings where !known.id.isEmpty {
-            guard let start = known.startDate else { continue }
-            let second = Int(start.timeIntervalSince1970.rounded())
-            // Neighbouring seconds cover the previous "< 1 s apart" tolerance.
-            for offset in -1...1 { identifiedStarts.insert("\(known.roomId)|\(second + offset)") }
-        }
-        return bookings.filter { booking in
-            guard booking.id.isEmpty, let start = booking.startDate else { return true }
-            return !identifiedStarts.contains("\(booking.roomId)|\(Int(start.timeIntervalSince1970.rounded()))")
-        }
+        let entries = bookings.map { MeetingBookingDeduplication.Entry(id: $0.id, roomId: $0.roomId, start: $0.startDate) }
+        return MeetingBookingDeduplication.keptIndices(entries).map { bookings[$0] }
     }
 
     private func applyMeetingRoomOrder(_ rooms: [MeetingRoom]) -> [MeetingRoom] {
@@ -2410,41 +2416,15 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private struct RealtimePayload: Decodable {
-        let type: String?
-        let employeeCodes: [String]?
-    }
-
-    /// `line` is one SSE line: `data: {"type": ..., "employeeCodes": [...]}`.
-    /// `employeeCodes` (optional) scopes a change to those employees; other
-    /// devices ignore it instead of all refetching at once.
+    /// `line` is one SSE line; see `RealtimeEvent` for the format and the
+    /// employee scope (events for other employees are ignored).
     private func scheduleRealtimeRefresh(for line: String) {
-        let body = line.hasPrefix("data:") ? String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces) : line
-        let payload = body.data(using: .utf8).flatMap { try? JSONDecoder().decode(RealtimePayload.self, from: $0) }
-        if let scope = payload?.employeeCodes {
-            guard let employeeCode = profile?.employeeCode.nilIfEmpty,
-                  scope.contains(where: { $0.caseInsensitiveCompare(employeeCode) == .orderedSame }) else { return }
-        }
-        let event = payload?.type ?? body
-        if event.contains("ai_assistant_settings_changed_disabled") {
-            applyAiAssistantAvailability(false)
+        guard let event = RealtimeEvent(line: line, employeeCode: profile?.employeeCode.nilIfEmpty) else { return }
+        if let enabled = event.aiAssistantEnabled {
+            applyAiAssistantAvailability(enabled)
             return
         }
-        if event.contains("ai_assistant_settings_changed_enabled") {
-            applyAiAssistantAvailability(true)
-            return
-        }
-        if event.contains("attendance_changed") { pendingRealtimeEvents.insert("attendance_changed") }
-        if event.contains("employee_changed") {
-            pendingRealtimeEvents.insert("employee_changed")
-            if employeeProfileEventTargetsCurrentEmployee(event) {
-                pendingRealtimeEvents.insert("own_profile_changed")
-            }
-        }
-        if event.contains("request_changed") { pendingRealtimeEvents.insert("request_changed") }
-        if event.contains("meal_changed") { pendingRealtimeEvents.insert("meal_changed") }
-        if event.contains("meeting_changed") { pendingRealtimeEvents.insert("meeting_changed") }
-        if event.contains("content_changed") { pendingRealtimeEvents.insert("content_changed") }
+        pendingRealtimeEvents.formUnion(event.changes.map(\.rawValue))
         guard !pendingRealtimeEvents.isEmpty, realtimeRefreshTask == nil else { return }
         realtimeRefreshTask = Task { [weak self] in
             guard let self else { return }
@@ -2489,23 +2469,6 @@ final class SessionStore: ObservableObject {
                 await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
             }
         }
-    }
-
-    /// Employee broadcasts are normally company-wide.  A profile refresh is
-    /// permitted only for an event explicitly addressed to the signed-in
-    /// employee, keeping the direct-manager field stable during unrelated
-    /// website changes.
-    private func employeeProfileEventTargetsCurrentEmployee(_ event: String) -> Bool {
-        guard let employeeCode = profile?.employeeCode.nilIfEmpty,
-              let marker = event.range(of: "employee_changed:") else { return false }
-        // `event` is the decoded type. Cutting the code out of the raw JSON
-        // line used to keep a trailing quote, so this never matched.
-        let payload = String(event[marker.upperBound...])
-        let target = payload.components(
-            separatedBy: CharacterSet(charactersIn: ",; \r\n\"}")
-        ).first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return target?.caseInsensitiveCompare(employeeCode) == .orderedSame
     }
 
     func confirmForgotPassword(employeeCode: String, code: String, newPassword: String) async -> Bool {

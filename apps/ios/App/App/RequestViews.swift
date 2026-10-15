@@ -151,47 +151,6 @@ struct EmployeeRequest: Codable, Identifiable {
     }
 }
 
-/// Composer state rebuilt from a submitted request. Late / early / overtime
-/// requests were sent with the duration prepended to the reason
-/// ("Đi trễ: 30 phút. Kẹt xe"); that prefix becomes the duration again so a
-/// resubmitted reason does not repeat it. Mirrors Android `requestPrefill`.
-struct RequestPrefill {
-    let reason: String
-    let durationValue: Int?
-    let durationIsHours: Bool
-
-    init(_ request: EmployeeRequest) {
-        let reason = request.reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        let prefix = request.kind.title + ": "
-        guard [.late, .early, .overtime].contains(request.kind), reason.hasPrefix(prefix) else {
-            self.init(reason: reason, durationValue: nil, durationIsHours: false)
-            return
-        }
-        let rest = reason.dropFirst(prefix.count)
-        let parts = rest.split(separator: " ", maxSplits: 1)
-        let unitAndReason = parts.count == 2 ? String(parts[1]) : ""
-        let value = parts.first.flatMap { Int($0) }
-        let isHours = unitAndReason.hasPrefix("giờ.")
-        guard let value, isHours || unitAndReason.hasPrefix("phút."),
-              value >= 1, value <= (isHours ? 24 : 60) else {
-            self.init(reason: reason, durationValue: nil, durationIsHours: false)
-            return
-        }
-        let text = unitAndReason.drop(while: { $0 != "." }).dropFirst()
-        self.init(
-            reason: text.trimmingCharacters(in: .whitespacesAndNewlines),
-            durationValue: value,
-            durationIsHours: isHours
-        )
-    }
-
-    private init(reason: String, durationValue: Int?, durationIsHours: Bool) {
-        self.reason = reason
-        self.durationValue = durationValue
-        self.durationIsHours = durationIsHours
-    }
-}
-
 struct RequestBody: Encodable { let kind: String; let startsAt: Date; let endsAt: Date; let reason: String; let businessDestination: String?; let businessTransport: String?; let businessDistanceKm: Double?; let businessExpense: Double? }
 struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 
@@ -885,7 +844,11 @@ struct RequestComposer: View {
         self.template = template
         self.submit = submit
         guard let template else { return }
-        let prefill = RequestPrefill(template)
+        let prefill = RequestReasonPrefill(
+            reason: template.reason,
+            kindTitle: template.kind.title,
+            usesDuration: [.late, .early, .overtime].contains(template.kind)
+        )
         _kind = State(initialValue: template.kind)
         _from = State(initialValue: template.from)
         _to = State(initialValue: template.to)
