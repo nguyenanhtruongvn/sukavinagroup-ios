@@ -26,7 +26,8 @@ struct UpdateCount: Decodable { let count: Int }
 struct NotificationsView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
-    @StateObject private var requestStore = EmployeeRequestStore()
+    // Shared with the Requests tab: one cache decode and one request per refresh.
+    @EnvironmentObject private var requestStore: EmployeeRequestStore
     @State private var requestNotifications: [RequestNotification] = []
     @State private var reviewing: EmployeeRequest?
     @State private var viewing: EmployeeRequest?
@@ -333,7 +334,7 @@ struct NotificationsView: View {
                let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) {
                 reviewing = request
             } else {
-                viewing = (requestStore.requests + requestStore.approvals).first(where: { $0.id == id })
+                viewing = requestStore.request(id: id)
             }
         }
         await reloadNotifications()
@@ -411,7 +412,7 @@ struct NotificationsView: View {
 
     private func linkedRequest(_ item: RequestNotification) -> EmployeeRequest? {
         guard let id = item.requestId else { return nil }
-        return (requestStore.requests + requestStore.approvals).first { $0.id == id }
+        return requestStore.request(id: id)
     }
     private func notificationIcon(_ item: RequestNotification) -> String {
         let type = item.type
@@ -814,6 +815,9 @@ struct RequestNotificationDetail: View {
 @available(iOS 17.0, *)
 struct ArticleDetailView: View {
     let item: ContentItem
+    /// Parsed once when the article opens, not on every redraw.
+    @State private var blocks: [ArticleBlock] = []
+
     var body: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 18) {
@@ -823,13 +827,14 @@ struct ArticleDetailView: View {
                 Text(item.title)
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                 Divider().overlay(Color.white.opacity(0.12))
-                ForEach(item.articleBlocks) { block in
+                ForEach(blocks) { block in
                     ArticleBlockView(block: block)
                 }
             }
             .padding(22)
             .padding(.bottom, 90)
         }
+        .task(id: item.id) { blocks = item.parseArticleBlocks() }
         .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)

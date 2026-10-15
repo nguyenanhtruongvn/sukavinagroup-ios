@@ -239,6 +239,11 @@ final class MealScannerViewController: UIViewController, AVCaptureMetadataOutput
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var configured = false
     private var handlingCode = false
+    /// startRunning/stopRunning block for a noticeable time. Apple requires a
+    /// single serial queue for them: never the main thread (a scan used to
+    /// stop the session there) and never a concurrent queue (start and stop
+    /// could race).
+    private let sessionQueue = DispatchQueue(label: "net.sukavinagroup.canteen-scanner.session")
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -278,14 +283,13 @@ final class MealScannerViewController: UIViewController, AVCaptureMetadataOutput
         view.layer.insertSublayer(preview, at: 0)
         previewLayer = preview
         configured = true
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in self?.captureSession.startRunning() }
+        sessionQueue.async { [captureSession] in captureSession.startRunning() }
     }
 
     func setScanning(_ active: Bool) {
         handlingCode = !active
         guard configured else { return }
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
+        sessionQueue.async { [captureSession] in
             if active && !captureSession.isRunning { captureSession.startRunning() }
             if !active && captureSession.isRunning { captureSession.stopRunning() }
         }
@@ -296,7 +300,7 @@ final class MealScannerViewController: UIViewController, AVCaptureMetadataOutput
               let object = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               let value = object.stringValue else { return }
         handlingCode = true
-        captureSession.stopRunning()
+        sessionQueue.async { [captureSession] in captureSession.stopRunning() }
         onCode?(value)
     }
 

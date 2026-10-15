@@ -157,8 +157,18 @@ final class EmployeeRequestStore: ObservableObject {
         let approvals: [EmployeeRequest]
     }
 
-    @Published private(set) var requests: [EmployeeRequest] = []
-    @Published private(set) var approvals: [EmployeeRequest] = []
+    @Published private(set) var requests: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
+    @Published private(set) var approvals: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
+    /// Requests and approvals by id. Notification rows look their request up
+    /// several times per redraw; scanning both arrays each time was O(n).
+    private var byID: [String: EmployeeRequest] = [:]
+
+    func request(id: String) -> EmployeeRequest? { byID[id] }
+
+    private func rebuildIndex() {
+        byID = Dictionary(requests.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            .merging(approvals.map { ($0.id, $0) }, uniquingKeysWith: { mine, _ in mine })
+    }
     @Published var message: String?
     private let cachePrefix = "native-employee-requests-cache-"
     private var cacheEmployeeCode: String?
@@ -172,6 +182,9 @@ final class EmployeeRequestStore: ObservableObject {
     func restoreCache(employeeCode: String?) {
         guard let employeeCode = employeeCode?.trimmingCharacters(in: .whitespacesAndNewlines),
               !employeeCode.isEmpty else { return }
+        // Shared by the Requests and Notifications tabs: once this account's
+        // lists are in memory, the disk copy is never newer.
+        if cacheEmployeeCode == employeeCode, lastLoadedAt != nil { return }
         cacheEmployeeCode = employeeCode
         guard let data = UserDefaults.standard.data(forKey: cachePrefix + employeeCode),
               let cached = try? JSONDecoder().decode(CachedRequests.self, from: data),
@@ -179,6 +192,18 @@ final class EmployeeRequestStore: ObservableObject {
         requests = cached.requests
         approvals = cached.approvals
         lastLoadedAt = cached.savedAt
+    }
+
+    /// Sign-out: the next account must not see these lists.
+    func reset() {
+        loadTask?.cancel()
+        loadTask = nil
+        loadTaskID = nil
+        requests = []
+        approvals = []
+        message = nil
+        cacheEmployeeCode = nil
+        lastLoadedAt = nil
     }
 
     private func saveCache() {
@@ -331,7 +356,8 @@ final class EmployeeRequestStore: ObservableObject {
 @available(iOS 17.0, *)
 struct RequestsView: View {
     @EnvironmentObject private var session: SessionStore
-    @StateObject private var store = EmployeeRequestStore()
+    // One store per session, shared with the Notifications tab.
+    @EnvironmentObject private var store: EmployeeRequestStore
     let initialFilter: EmployeeRequestStatus?
     @State private var filter: EmployeeRequestStatus?
     @State private var composing = false

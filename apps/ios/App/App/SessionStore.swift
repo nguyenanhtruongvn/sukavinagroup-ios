@@ -203,6 +203,7 @@ extension View {
         environmentObject(session)
             .environmentObject(session.meetings)
             .environmentObject(session.menu)
+            .environmentObject(session.requests)
             .environment(\.sessionActions, SessionActions(weakStore: session))
     }
 }
@@ -260,6 +261,8 @@ final class SessionStore: ObservableObject {
     /// unchanged while no longer publishing feature changes from the session.
     let meetings = MeetingStore()
     let menu = MenuStore()
+    /// Own requests and approvals, shared by the Requests and Notifications tabs.
+    let requests = EmployeeRequestStore()
     var todayMenu: TodayMenu? {
         get { menu.todayMenu }
         set { menu.todayMenu = newValue }
@@ -753,7 +756,7 @@ final class SessionStore: ObservableObject {
                     profile = try await APIClient.shared.request("auth/me", token: savedToken)
                     profileFetched = true
                     if let profile { SessionCache.save(profile: profile) }
-                    if KeychainStore.loadRefreshToken() == nil {
+                    if await Self.storedRefreshToken() == nil {
                         let upgraded: LoginResponse = try await APIClient.shared.request(
                             "auth/session/upgrade",
                             method: "POST",
@@ -1297,6 +1300,7 @@ final class SessionStore: ObservableObject {
         todayMenuRefreshTask = nil
         todayMenuLoadedAt = nil
         latestRequestNotifications = []
+        requests.reset()
         if let employeeCode = cacheEmployeeCode {
             UserDefaults.standard.removeObject(
                 forKey: "native-employee-requests-cache-" + employeeCode
@@ -1459,11 +1463,18 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// Keychain reads can block on the security daemon; keep them off the
+    /// main actor (restore and token renewal run on it).
+    private nonisolated static func storedRefreshToken() async -> String? {
+        await Task.detached(priority: .userInitiated) { KeychainStore.loadRefreshToken() }.value
+    }
+
     private func refreshSession() async throws {
-        guard let refreshToken = KeychainStore.loadRefreshToken() else {
+        // Captured before any suspension so a sign-out meanwhile is detected.
+        let generation = SessionGeneration.current
+        guard let refreshToken = await Self.storedRefreshToken() else {
             throw NetworkError.unauthorized
         }
-        let generation = SessionGeneration.current
         let response: LoginResponse = try await APIClient.shared.request(
             "auth/refresh",
             method: "POST",

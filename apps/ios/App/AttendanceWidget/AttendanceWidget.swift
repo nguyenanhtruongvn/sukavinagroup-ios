@@ -6,6 +6,11 @@ import ActivityKit
 private enum WidgetStorage {
     private static let originalAppGroup = "group.net.sukavinagroup.user"
     static let stateKey = "attendance-widget-state"
+    /// When the state was last written (by the app or by this widget).
+    private static let savedAtKey = "attendance-widget-state-saved-at"
+    /// The app writes fresh state and then reloads this widget; within this
+    /// window the timeline uses that state instead of fetching it again.
+    private static let freshness: TimeInterval = 120
     private static let tokenKey = "attendance-widget-token"
     private static let endpoint = "https://sukavinagroup.net/api/public/widget/attendance"
 
@@ -42,6 +47,11 @@ private enum WidgetStorage {
             // Signed out: never keep showing the previous account's punches.
             defaults?.removeObject(forKey: stateKey)
             return nil
+        }
+        if let savedAt = defaults?.object(forKey: savedAtKey) as? Date,
+           Date().timeIntervalSince(savedAt) < freshness,
+           let state = load() {
+            return state
         }
         guard var components = URLComponents(string: Self.endpoint) else { return load() }
         components.queryItems = [URLQueryItem(name: "refresh", value: String(Int(Date().timeIntervalSince1970)))]
@@ -90,7 +100,7 @@ private enum WidgetStorage {
             }
             if let encoded = try? JSONEncoder().encode(state) {
                 defaults?.set(encoded, forKey: stateKey)
-                defaults?.synchronize()
+                defaults?.set(Date(), forKey: savedAtKey)
             }
             return state
         } catch {

@@ -291,8 +291,7 @@ struct ContentItem: Codable, Identifiable {
     let sortOrder: Int
     let published: Bool
     let createdAt: Date
-    let plainBody: String
-    let articleBlocks: [ArticleBlock]
+    /// Short plain-text teaser for lists.
     let preview: String
 
     private enum CodingKeys: String, CodingKey {
@@ -310,11 +309,16 @@ struct ContentItem: Codable, Identifiable {
         published = try values.decode(Bool.self, forKey: .published)
         createdAt = try values.decode(Date.self, forKey: .createdAt)
 
+        // Only the teaser is needed for lists. The article's blocks are parsed
+        // when it is opened; parsing every article on every dashboard decode
+        // (including the launch cache restore) was wasted work.
         let text = body.safeHTMLText
-        plainBody = text
-        articleBlocks = HTMLArticleParser.parse(body)
         preview = text.count > 145 ? String(text.prefix(145)) + "…" : text
     }
+
+    /// The article body as display blocks. Parses the HTML on each call;
+    /// keep the result (ArticleDetailView parses once per article).
+    func parseArticleBlocks() -> [ArticleBlock] { HTMLArticleParser.parse(body) }
 }
 
 struct MenuDay: Codable {
@@ -544,6 +548,8 @@ enum AttendanceWidgetBridge {
     private static let originalAppGroup = "group.net.sukavinagroup.user"
     static let kind = "SukavinaAttendanceWidget"
     private static let stateKey = "attendance-widget-state"
+    /// Read by the widget: state this recent is used without a network request.
+    private static let savedAtKey = "attendance-widget-state-saved-at"
     private static let tokenKey = "attendance-widget-token"
 
     private static var appGroup: String {
@@ -571,7 +577,7 @@ enum AttendanceWidgetBridge {
             return
         }
         defaults?.set(data, forKey: stateKey)
-        defaults?.synchronize()
+        defaults?.set(Date(), forKey: savedAtKey)
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
@@ -589,8 +595,8 @@ enum AttendanceWidgetBridge {
         let hasToken = defaults?.object(forKey: tokenKey) != nil
         guard hasState || hasToken else { return }
         defaults?.removeObject(forKey: stateKey)
+        defaults?.removeObject(forKey: savedAtKey)
         defaults?.removeObject(forKey: tokenKey)
-        defaults?.synchronize()
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 }

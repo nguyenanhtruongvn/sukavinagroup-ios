@@ -14,13 +14,8 @@ import UniformTypeIdentifiers
 enum MeetingPresentation {
     static let timezone = VietnamTime.timeZone
     static let calendar = VietnamTime.calendar
-    static let clock: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "vi_VN")
-        formatter.timeZone = timezone
-        formatter.dateFormat = "HH:mm"
-        return formatter
-    }()
+    /// The shared Vietnam-time "HH:mm" formatter.
+    static var clock: DateFormatter { VietnamTime.clock }
 
     static func date(from value: String) -> Date? {
         VietnamTime.date(fromISO8601: value)
