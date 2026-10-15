@@ -59,6 +59,8 @@ struct ElegantAppAlert: View {
                         .frame(width: 30, height: 30)
                         .background(AppTheme.field)
                         .clipShape(Circle())
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Đóng")
@@ -230,8 +232,11 @@ struct LoginForm: View {
                 .onSubmit(submitLogin)
                 Button { passwordVisible.toggle() } label: {
                     Image(systemName: passwordVisible ? "eye.slash" : "eye")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .foregroundColor(AppTheme.muted)
+                .accessibilityLabel(passwordVisible ? "Ẩn mật khẩu" : "Hiện mật khẩu")
             }
             .padding(.horizontal, 16)
             .frame(minHeight: 52)

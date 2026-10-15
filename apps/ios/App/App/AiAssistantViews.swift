@@ -340,6 +340,8 @@ struct AiAssistantChatView: View {
                     .foregroundStyle(Color.primary)
                     .frame(width: 36, height: 36)
                     .background(Color.primary.opacity(0.07), in: Circle())
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Đóng Trợ lý AI")

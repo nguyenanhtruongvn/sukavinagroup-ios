@@ -93,7 +93,7 @@ struct MealQRCodeAccessCard: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isLoading)
-                Text("Mỗi mã chỉ có hiệu lực trong 30 giây và sẽ thay đổi ở lần lấy tiếp theo.")
+                Text("Mỗi mã chỉ có hiệu lực trong thời gian ngắn và sẽ thay đổi ở lần lấy tiếp theo.")
                     .font(.caption)
                     .foregroundColor(AppTheme.muted)
                     .multilineTextAlignment(.center)

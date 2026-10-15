@@ -652,6 +652,7 @@ struct MeetingRoomScheduleSheet: View {
                         .clipShape(Circle())
                         .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
                 }
+                .accessibilityLabel("Đặt phòng \(room.name)")
                 .padding(22)
             }
             .sheet(item: $presentedDestination) { destination in

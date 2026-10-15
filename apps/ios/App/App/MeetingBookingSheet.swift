@@ -415,8 +415,11 @@ struct MeetingBookingSheet: View {
                             Button { selected.remove(person.id) } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Bỏ mời \(person.fullName)")
                         }
                     }
                 }

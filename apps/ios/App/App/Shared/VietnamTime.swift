@@ -76,11 +76,6 @@ enum VietnamTime {
     static let monthTitleSpaced = formatter("'Tháng' M / yyyy")
     /// Tháng 10 • 2026 (widget header)
     static let monthTitleBullet = formatter("'Tháng' M • yyyy")
-    /// System date/time styles (e.g. "14 thg 10, 2026, 08:30") in Vietnam time;
-    /// `Date.formatted(date:time:)` would use the device time zone.
-    static func format(_ value: Date, date: Date.FormatStyle.DateStyle, time: Date.FormatStyle.TimeStyle) -> String {
-        value.formatted(Date.FormatStyle(date: date, time: time, locale: locale, calendar: calendar, timeZone: timeZone))
-    }
     /// API schedule timestamps: "2026-10-14 08:30:00" or "2026-10-14 08:30".
     static let scheduleParsers = [
         formatter("yyyy-MM-dd HH:mm:ss", locale: Locale(identifier: "en_US_POSIX")),

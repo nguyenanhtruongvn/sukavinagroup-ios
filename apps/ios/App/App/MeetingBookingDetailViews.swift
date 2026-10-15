@@ -452,6 +452,8 @@ struct MyMeetingsSheet: View {
                             .frame(width: 34, height: 34)
                             .background(Color(uiColor: .secondarySystemBackground))
                             .clipShape(Circle())
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Đóng lịch của tôi")
                 }

@@ -107,7 +107,7 @@ struct NotificationsView: View {
                                     .foregroundStyle(AppTheme.muted)
                                 }
                                 Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
-                                Text(VietnamTime.format(item.createdAt, date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.redText)
+                                Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
                             }
                             Spacer()
                             if !item.read {
@@ -146,7 +146,7 @@ struct NotificationsView: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(item.title).font(.headline).multilineTextAlignment(.leading)
                                     Text(item.preview).font(.subheadline).foregroundStyle(AppTheme.muted).lineLimit(2).multilineTextAlignment(.leading)
-                                    Text(VietnamTime.format(item.createdAt, date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.redText)
+                                    Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
                                 }
                                 Spacer(minLength: 0)
                                 if isUnread {
@@ -860,7 +860,7 @@ struct ArticleDetailView: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             LazyVStack(alignment: .leading, spacing: 18) {
-                Text(VietnamTime.format(item.createdAt, date: .long, time: .shortened))
+                Text(VietnamTime.dateTime.string(from: item.createdAt))
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppTheme.redText)
                 Text(item.title)

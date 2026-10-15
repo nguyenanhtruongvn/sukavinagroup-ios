@@ -104,7 +104,8 @@ struct ProfileView: View {
                                 .foregroundColor(AppTheme.muted)
                         }
                         Spacer(minLength: 8)
-                        Toggle("", isOn: Binding(
+                        // Named for VoiceOver; the visible text sits beside it.
+                        Toggle("Đăng nhập bằng \(session.biometricName)", isOn: Binding(
                             get: { session.biometricsEnabled },
                             set: { enabled in
                                 Task { await session.setBiometricLogin(enabled: enabled) }
@@ -600,7 +601,10 @@ struct NativeSecureField: View {
             }
             Button { visible.toggle() } label: {
                 Image(systemName: visible ? "eye.slash" : "eye")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }.foregroundColor(AppTheme.muted)
+            .accessibilityLabel(visible ? "Ẩn mật khẩu" : "Hiện mật khẩu")
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 52)

@@ -154,6 +154,8 @@ struct EmployeePortalView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+        // The badge is drawn as a separate number; read it with the tab.
+        .accessibilityValue(badge > 0 ? "\(badge) mục mới" : "")
         .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
     }
 }
@@ -383,18 +385,17 @@ struct DashboardView: View {
                             .foregroundColor(AppTheme.redText)
                     }
 
-                    HStack(spacing: 12) {
-                        NavigationLink(
-                            destination: AttendanceStatementListView(),
-                            isActive: $showAttendanceStatement
-                        ) {
-                            MetricCard(value: "Xem", label: "Bảng công", icon: "calendar")
-                        }
-                        .buttonStyle(.plain)
-                        .frame(maxWidth: .infinity)
-                        .accessibilityLabel("Xem bảng công")
-                        MetricCard(value: "—", label: "Bảng lương", icon: "banknote")
+                    // A "Bảng lương" tile sat here with no destination. Placeholder
+                    // features read as broken and App Review 2.1 rejects them, so
+                    // it returns with the payslip feature itself.
+                    NavigationLink(
+                        destination: AttendanceStatementListView(),
+                        isActive: $showAttendanceStatement
+                    ) {
+                        AttendanceStatementShortcut()
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Xem bảng công")
 
                     NavigationLink(
                         destination: ModernAttendanceHistoryView()
@@ -647,16 +648,25 @@ struct DashboardView: View {
     }
 }
 
-struct MetricCard: View {
-    let value: String
-    let label: String
-    let icon: String
-
+/// Home shortcut to the monthly attendance statement. Mirrors Android.
+struct AttendanceStatementShortcut: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: icon).foregroundColor(AppTheme.red)
-            Text(value).font(.title2.bold()).lineLimit(1).minimumScaleFactor(0.65)
-            Text(label).font(.caption).foregroundColor(AppTheme.muted)
+        HStack(spacing: 12) {
+            Image(systemName: "calendar")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(AppTheme.red)
+                .frame(width: 40, height: 40)
+                .background(AppTheme.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Bảng công").font(.headline)
+                Text("Ngày công, tăng ca và phép theo tháng")
+                    .font(.subheadline)
+                    .foregroundStyle(AppTheme.muted)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(AppTheme.muted)
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)

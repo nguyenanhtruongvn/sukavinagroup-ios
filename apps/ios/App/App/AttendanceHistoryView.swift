@@ -88,7 +88,7 @@ struct ModernAttendanceHistoryView: View {
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .ignoresSafeArea(.container, edges: .bottom)
-        .navigationTitle("Bảng chấm công")
+        .navigationTitle("Lịch chấm công")
         .navigationBarTitleDisplayMode(.inline)
         .adaptivePortalTabBarBackground()
         .onChange(of: monthIndex) { _, newIndex in
