@@ -446,14 +446,23 @@ struct MyMeetingsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(Color(uiColor: .label))
-                            .frame(width: 34, height: 34)
-                            .background(Color(uiColor: .secondarySystemBackground))
-                            .clipShape(Circle())
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
+                        if #available(iOS 26.0, *) {
+                            // iOS 26 draws every toolbar button as one round
+                            // Liquid Glass control; a circle of our own showed
+                            // up as a second layer inside it.
+                            Image(systemName: "xmark")
+                                .font(.subheadline.weight(.bold))
+                        } else {
+                            // Earlier toolbars have no button background.
+                            Image(systemName: "xmark")
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(Color(uiColor: .label))
+                                .frame(width: 34, height: 34)
+                                .background(Color(uiColor: .secondarySystemBackground))
+                                .clipShape(Circle())
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
                     }
                     .accessibilityLabel("Đóng lịch của tôi")
                 }
