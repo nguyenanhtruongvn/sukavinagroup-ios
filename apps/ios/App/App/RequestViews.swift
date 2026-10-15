@@ -680,7 +680,7 @@ struct RequestCard: View {
             if resubmittable {
                 Label("Tạo lại đơn", systemImage: "arrow.clockwise")
                     .font(.subheadline.bold())
-                    .foregroundStyle(AppTheme.red)
+                    .foregroundStyle(AppTheme.redText)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous)).shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
@@ -830,12 +830,12 @@ struct RequestDecisionView: View {
                     TextEditor(text: $note).scrollIndicators(.hidden).scrollContentBackground(.hidden).padding(12).frame(minHeight: 130)
                         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
                     if rejecting && trimmedNote.count < 5 {
-                        Text("Lý do từ chối là bắt buộc, tối thiểu 5 ký tự.").font(.caption).foregroundStyle(AppTheme.red)
+                        Text("Lý do từ chối là bắt buộc, tối thiểu 5 ký tự.").font(.caption).foregroundStyle(AppTheme.redText)
                     }
                     if let error {
                         Label(error, systemImage: "exclamationmark.triangle.fill")
                             .font(.footnote.weight(.semibold))
-                            .foregroundStyle(AppTheme.red)
+                            .foregroundStyle(AppTheme.redText)
                     }
                     Button {
                         working = true
@@ -1212,15 +1212,15 @@ struct RequestComposer: View {
                             if attendanceDay?.classification == "checkout_only" {
                                 Text("Đã nhận diện lượt chấm công buổi chiều. Chỉ cần bổ sung giờ vào.")
                                     .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.red)
+                                    .foregroundStyle(AppTheme.redText)
                             } else if attendanceDay?.classification == "checkin_only" {
                                 Text("Đã nhận diện lượt chấm công buổi sáng. Chỉ cần bổ sung giờ ra.")
                                     .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.red)
+                                    .foregroundStyle(AppTheme.redText)
                             } else if attendanceDay?.classification == "ambiguous" {
                                 Text("Lượt chấm công ở giữa ca; hãy xác nhận lại giờ vào và giờ ra trước khi gửi.")
                                     .font(.footnote.weight(.medium))
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(AppTheme.text(.orange))
                             }
                             Text("Giờ thiếu chỉ được cập nhật sau khi đơn được duyệt.").font(.footnote).foregroundStyle(AppTheme.muted)
                         }
@@ -1338,7 +1338,7 @@ struct RequestComposer: View {
                         .background(AppTheme.card)
                         .overlay {
                             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(reasonFocused ? AppTheme.red.opacity(0.78) : Color.white.opacity(0.08), lineWidth: 1)
+                                .stroke(reasonFocused ? AppTheme.red.opacity(0.78) : AppTheme.fieldBorder, lineWidth: 1)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .id("request-reason-editor")
@@ -1430,7 +1430,7 @@ struct RequestComposer: View {
                 if let submitError {
                     Label(submitError, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppTheme.red)
+                        .foregroundStyle(AppTheme.redText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
                 }

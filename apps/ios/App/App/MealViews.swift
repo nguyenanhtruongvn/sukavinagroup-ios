@@ -139,13 +139,13 @@ struct CanteenScannerView: View {
             VStack(spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("NHÀ ĂN SUKAVINA").font(.caption.bold()).tracking(1.4).foregroundColor(AppTheme.red)
+                        Text("NHÀ ĂN SUKAVINA").font(.caption.bold()).tracking(1.4).foregroundColor(AppTheme.redText)
                         Text("Quét mã nhận món").font(.title2.bold())
                     }
                     Spacer()
                     if (session.profile?.employeeCode ?? "").uppercased() != "DEMO" {
                         Button("Đăng xuất") { session.signOut() }
-                            .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.red)
+                            .font(.subheadline.weight(.semibold)).foregroundColor(AppTheme.redText)
                     }
                 }
 

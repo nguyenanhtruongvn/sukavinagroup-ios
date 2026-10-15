@@ -354,7 +354,7 @@ struct AiAssistantChatView: View {
             if let inlineError {
                 Text(inlineError)
                     .font(.caption)
-                    .foregroundStyle(AppTheme.red)
+                    .foregroundStyle(AppTheme.redText)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
 
@@ -478,8 +478,8 @@ struct AiAssistantChatView: View {
             }
             if !message.isUser && message.id == latestAssistantMessageID && !isSending {
                 Text("Trợ lý AI có thể mắc lỗi. Hãy kiểm tra thông tin quan trọng.")
-                    .font(.system(size: 9))
-                    .foregroundStyle(AppTheme.muted.opacity(0.42))
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.muted)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
                     .padding(.top, 1)

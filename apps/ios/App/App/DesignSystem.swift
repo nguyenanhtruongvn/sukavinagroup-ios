@@ -75,6 +75,33 @@ enum AppTheme {
     static let biometricForeground = Color(UIColor { traits in
         traits.userInterfaceStyle == .dark ? UIColor.white : UIColor(red: 0.68, green: 0.07, blue: 0.10, alpha: 1)
     })
+
+    /// Brand red for text: `red` itself is about 4:1 on white. Icons and
+    /// fills keep `red`.
+    static let redText = text(red)
+
+    /// `base` used as text, readable (4.5:1) on both the card and the page
+    /// background in the current appearance. Pass `chipAlpha` when the text
+    /// sits on a pill tinted with the same colour. Mirrors Android `asText()`.
+    static func text(_ base: Color, chipAlpha: Double = 0) -> Color {
+        let baseColor = UIColor(base), cardColor = UIColor(card), inkColor = UIColor(ink)
+        return Color(UIColor { traits in
+            let hue = SRGB(baseColor.resolvedColor(with: traits))
+            let readable = [cardColor, inkColor].reduce(hue) { result, background in
+                let backdrop = hue.composited(over: SRGB(background.resolvedColor(with: traits)), alpha: chipAlpha)
+                return result.readable(on: backdrop)
+            }
+            return UIColor(red: readable.red, green: readable.green, blue: readable.blue, alpha: 1)
+        })
+    }
+}
+
+extension SRGB {
+    init(_ color: UIColor) {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        self.init(red: Double(red), green: Double(green), blue: Double(blue))
+    }
 }
 
 /// This UIKit bridge corrects the extra bottom inset introduced by the native

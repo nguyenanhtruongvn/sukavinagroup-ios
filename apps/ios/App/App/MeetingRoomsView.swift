@@ -488,7 +488,7 @@ struct MeetingRoomCard: View {
                             Text(isAvailable ? "Trống" : "Đang họp")
                                 .font(.caption.weight(.bold))
                         }
-                        .foregroundStyle(statusColor)
+                        .foregroundStyle(AppTheme.text(statusColor, chipAlpha: 0.12))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 5)
                         .background(statusColor.opacity(0.12))
@@ -502,7 +502,7 @@ struct MeetingRoomCard: View {
 
                     Text(availabilityText)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(statusColor)
+                        .foregroundStyle(AppTheme.text(statusColor))
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

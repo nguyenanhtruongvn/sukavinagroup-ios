@@ -213,7 +213,7 @@ struct PreloadedAttendanceDayCell: View {
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(holidayColor)
+                        .foregroundStyle(AppTheme.text(holidayColor))
                         .frame(height: 18, alignment: .top)
                 } else {
                     Color.clear.frame(height: 18)
@@ -365,7 +365,7 @@ struct DashboardView: View {
                             .font(.title2.bold())
                         Text(session.dashboard?.employeeCode ?? session.profile?.employeeCode ?? "")
                             .font(.subheadline.monospaced())
-                            .foregroundColor(AppTheme.red)
+                            .foregroundColor(AppTheme.redText)
                     }
 
                     HStack(spacing: 12) {
@@ -392,10 +392,10 @@ struct DashboardView: View {
                                 Spacer()
                                 Image(systemName: "chevron.right").foregroundColor(AppTheme.red)
                             }
-                            Divider().overlay(Color.white.opacity(0.08))
+                            Divider().overlay(AppTheme.cardBorder)
                             HStack(spacing: 0) {
                                 attendanceMetric(title: "Giờ vào", value: checkInTime, color: .green)
-                                Divider().frame(height: 38).overlay(Color.white.opacity(0.08))
+                                Divider().frame(height: 38).overlay(AppTheme.cardBorder)
                                 attendanceMetric(title: "Giờ ra", value: checkOutTime, color: AppTheme.red)
                             }
                         }
@@ -569,7 +569,7 @@ struct DashboardView: View {
                     Spacer(minLength: 0)
                     Text("Thử lại")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(AppTheme.red)
+                        .foregroundStyle(AppTheme.redText)
                 }
             } else if menu == nil {
                 HStack(spacing: 9) {

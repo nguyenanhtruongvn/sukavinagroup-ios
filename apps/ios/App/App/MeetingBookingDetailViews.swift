@@ -246,7 +246,7 @@ struct MeetingBookingDetailSheet: View {
                 systemImage: meetingEnded ? "checkmark.circle.fill" : "slider.horizontal.3"
             )
             .font(.headline.weight(.bold))
-            .foregroundStyle(.green)
+            .foregroundStyle(AppTheme.text(.green))
 
             if meetingEnded {
                 Text("Cuộc họp đã kết thúc. Bạn không thể gia hạn hoặc kết thúc lại.")
@@ -266,7 +266,7 @@ struct MeetingBookingDetailSheet: View {
                 if maximumExtensionMinutes >= 5 {
                     Text("Gia hạn thêm \(extensionMinutes) phút")
                         .font(.subheadline.weight(.bold))
-                        .foregroundStyle(.green)
+                        .foregroundStyle(AppTheme.text(.green, chipAlpha: 0.08))
 
                     HStack(spacing: 10) {
                         Button("− 5 phút") {

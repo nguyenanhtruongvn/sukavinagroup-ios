@@ -277,23 +277,23 @@ private struct AttendanceWidgetView: View {
                         .frame(maxWidth: .infinity)
                     Text(day.number)
                         .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(day.isToday ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
+                        .foregroundStyle(day.isToday && renderingMode == .fullColor ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
                         .frame(width: 28, height: 28)
                         .background {
                             if day.isToday {
-                                Circle()
-                                    .fill(
-                                        renderingMode == .fullColor
-                                            ? Color(red: 0.92, green: 0.12, blue: 0.18)
-                                            : Color.white.opacity(0.92)
-                                    )
-                                    .overlay {
-                                        Circle()
-                                            .stroke(Color.white.opacity(0.95), lineWidth: 2)
-                                    }
-                                    .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
+                                if renderingMode == .fullColor {
+                                    Circle()
+                                        .fill(Color(red: 0.92, green: 0.12, blue: 0.18))
+                                        .overlay {
+                                            Circle()
+                                                .stroke(Color.white.opacity(0.95), lineWidth: 2)
+                                        }
+                                        .shadow(color: .black.opacity(0.26), radius: 6, y: 2)
+                                } else {
+                                    tintedTodayRing(lineWidth: 2)
+                                }
                             }
                         }
                 }
@@ -346,19 +346,24 @@ private struct AttendanceWidgetView: View {
                     Text(day.number)
                         .font(.system(size: 13, weight: day.isToday ? .bold : .medium, design: .rounded).monospacedDigit())
                         .foregroundStyle(
-                            day.isToday
+                            day.isToday && renderingMode == .fullColor
                                 ? Color.white
                                 : Color(red: 0.12, green: 0.16, blue: 0.20).opacity(day.isInMonth ? 1 : 0.28)
                         )
                         .frame(maxWidth: .infinity, minHeight: 28)
                         .background {
                             if day.isToday {
-                                Circle()
-                                    .fill(Color(red: 0.92, green: 0.12, blue: 0.18))
-                                    .frame(width: 28, height: 28)
-                                    .overlay {
-                                        Circle().stroke(Color.white.opacity(0.95), lineWidth: 1.5)
-                                    }
+                                if renderingMode == .fullColor {
+                                    Circle()
+                                        .fill(Color(red: 0.92, green: 0.12, blue: 0.18))
+                                        .frame(width: 28, height: 28)
+                                        .overlay {
+                                            Circle().stroke(Color.white.opacity(0.95), lineWidth: 1.5)
+                                        }
+                                } else {
+                                    tintedTodayRing(lineWidth: 1.5)
+                                        .frame(width: 28, height: 28)
+                                }
                             }
                         }
                 }
@@ -375,6 +380,17 @@ private struct AttendanceWidgetView: View {
                     }
             }
         }
+    }
+
+    /// Today's marker on a tinted or clear Home Screen. The system draws the
+    /// whole widget in one tint there, so the full-colour treatment (white
+    /// number on a filled circle) became tint on tint and the number vanished.
+    /// An accented ring keeps the number in the content tint, legible in
+    /// every rendering mode.
+    private func tintedTodayRing(lineWidth: CGFloat) -> some View {
+        Circle()
+            .strokeBorder(Color.white, lineWidth: lineWidth)
+            .widgetAccentable()
     }
 
     private var monthTitle: String {

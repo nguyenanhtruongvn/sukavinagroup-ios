@@ -107,7 +107,7 @@ struct NotificationsView: View {
                                     .foregroundStyle(AppTheme.muted)
                                 }
                                 Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
-                                Text(VietnamTime.format(item.createdAt, date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
+                                Text(VietnamTime.format(item.createdAt, date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.redText)
                             }
                             Spacer()
                             if !item.read {
@@ -146,13 +146,13 @@ struct NotificationsView: View {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(item.title).font(.headline).multilineTextAlignment(.leading)
                                     Text(item.preview).font(.subheadline).foregroundStyle(AppTheme.muted).lineLimit(2).multilineTextAlignment(.leading)
-                                    Text(VietnamTime.format(item.createdAt, date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.red)
+                                    Text(VietnamTime.format(item.createdAt, date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(AppTheme.redText)
                                 }
                                 Spacer(minLength: 0)
                                 if isUnread {
                                     Text("Mới")
                                         .font(.caption2.bold())
-                                        .foregroundStyle(AppTheme.red)
+                                        .foregroundStyle(AppTheme.redText)
                                         .padding(.horizontal, 9)
                                         .padding(.vertical, 5)
                                         .background(AppTheme.red.opacity(0.18))
@@ -747,7 +747,7 @@ private struct MeetingNotificationDetail: View {
                 }
                 if maximumExtensionMinutes >= 5 {
                     Text("Gia hạn thêm \(extensionMinutes) phút")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(.green)
+                        .font(.subheadline.weight(.bold)).foregroundStyle(AppTheme.text(.green))
                     HStack(spacing: 10) {
                         Button("− 5 phút") { extensionMinutes = max(5, extensionMinutes - 5); actionError = nil }
                             .buttonStyle(.bordered).disabled(isSubmitting)
@@ -862,7 +862,7 @@ struct ArticleDetailView: View {
             LazyVStack(alignment: .leading, spacing: 18) {
                 Text(VietnamTime.format(item.createdAt, date: .long, time: .shortened))
                     .font(.caption.weight(.semibold))
-                    .foregroundColor(AppTheme.red)
+                    .foregroundColor(AppTheme.redText)
                 Text(item.title)
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                 Divider().overlay(Color.white.opacity(0.12))
@@ -891,7 +891,7 @@ struct ArticleBlockView: View {
                 Text(block.text)
                     .font(headingFont(level))
                     .fontWeight(.bold)
-                    .foregroundColor(level <= 1 ? .white : Color(red: 0.52, green: 0.86, blue: 0.68))
+                    .foregroundColor(level <= 1 ? .white : AppTheme.text(Color(red: 0.52, green: 0.86, blue: 0.68)))
                     .frame(maxWidth: .infinity, alignment: level == 1 ? .center : .leading)
                 if level == 2 {
                     Rectangle()
@@ -968,8 +968,9 @@ struct ArticleBlockView: View {
             HStack(alignment: .top, spacing: 12) {
                 Text("Q")
                     .font(.caption.bold())
+                    .foregroundStyle(.white)
                     .frame(width: 28, height: 28)
-                    .background(Color(red: 0.18, green: 0.54, blue: 0.35))
+                    .background(Color(red: 0.13, green: 0.45, blue: 0.29))
                     .clipShape(Circle())
                 Text(block.text).font(.headline)
                 Spacer(minLength: 0)

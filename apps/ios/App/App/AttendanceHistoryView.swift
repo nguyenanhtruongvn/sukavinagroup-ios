@@ -383,7 +383,7 @@ struct ModernAttendanceHistoryView: View {
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(holidayColor)
+                        .foregroundStyle(AppTheme.text(holidayColor))
                         .frame(height: 18, alignment: .top)
                 } else {
                     Color.clear.frame(height: 18)

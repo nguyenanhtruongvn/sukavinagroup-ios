@@ -27,7 +27,7 @@ struct TodayMenuView: View {
                         Text("BẾP ĂN SUKAVINA")
                             .font(.caption.bold())
                             .tracking(1.5)
-                            .foregroundColor(AppTheme.red)
+                            .foregroundColor(AppTheme.redText)
                         Text("Thực đơn hôm nay")
                             .font(.headline)
                         Text(menuStore.todayMenu?.day.dayName ?? "Đang cập nhật")
@@ -70,7 +70,7 @@ struct TodayMenuView: View {
                                 MealQRCodeAccessCard()
                             } else {
                                 Label("Đã nhận món", systemImage: "checkmark.seal.fill")
-                                    .font(.headline).foregroundColor(.green)
+                                    .font(.headline).foregroundColor(AppTheme.text(.green))
                                     .frame(maxWidth: .infinity).padding(.vertical, 13)
                                     .background(Color.green.opacity(0.11))
                                     .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -100,7 +100,7 @@ struct TodayMenuView: View {
                                         .background(Color.orange.opacity(0.13))
                                         .clipShape(RoundedRectangle(cornerRadius: 13))
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text("Đã khóa đặt món").font(.headline).foregroundColor(.orange)
+                                        Text("Đã khóa đặt món").font(.headline).foregroundColor(AppTheme.text(.orange, chipAlpha: 0.13))
                                         Text("Vui lòng đặt món trước \(menuStore.todayMenu?.orderingCutoff ?? "09:00").")
                                             .font(.caption).foregroundColor(AppTheme.muted)
                                     }

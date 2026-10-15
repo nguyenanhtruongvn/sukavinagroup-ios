@@ -267,7 +267,7 @@ struct LoginForm: View {
                         .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(AppTheme.red)
+                .foregroundColor(AppTheme.redText)
             }
 
             if session.biometricsEnabled {
@@ -355,7 +355,7 @@ private struct ForgotPasswordView: View {
                             if let maskedEmail {
                                 Label("OTP đã gửi tới \(maskedEmail)", systemImage: "envelope.badge.fill")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundColor(AppTheme.red)
+                                    .foregroundColor(AppTheme.redText)
                             }
                             NativeField(title: "Mã OTP gồm 6 số", text: $otp, icon: "number", keyboard: .numberPad)
                                 .onChange(of: otp) { _, value in
@@ -441,7 +441,7 @@ private struct ForgotPasswordView: View {
     private func passwordRuleMessage(_ message: String) -> some View {
         Label(message, systemImage: "exclamationmark.circle.fill")
             .font(.caption)
-            .foregroundColor(AppTheme.red)
+            .foregroundColor(AppTheme.redText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }

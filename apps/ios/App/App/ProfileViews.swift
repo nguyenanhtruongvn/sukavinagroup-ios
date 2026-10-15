@@ -33,7 +33,7 @@ struct ProfileView: View {
                     PortalPageTitle("Tài khoản")
                     ZStack {
                         Circle().fill(AppTheme.red.opacity(0.18)).frame(width: 96, height: 96)
-                        Text(initials).font(.title.bold()).foregroundColor(AppTheme.red)
+                        Text(initials).font(.title.bold()).foregroundColor(AppTheme.redText)
                     }
                     Text(session.profile?.name ?? "Nhân viên").font(.title2.bold())
                     Text(session.profile?.employeeCode ?? "").font(.subheadline.monospaced()).foregroundColor(AppTheme.muted)
@@ -157,7 +157,7 @@ struct ProfileView: View {
                     } label: {
                         Label("Đăng xuất", systemImage: "rectangle.portrait.and.arrow.right")
                             .font(.headline)
-                            .foregroundColor(AppTheme.red)
+                            .foregroundColor(AppTheme.redText)
                     }
                         .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: 52)
@@ -330,7 +330,7 @@ struct NativeLegalView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Đóng") { dismiss() }
                         .fontWeight(.semibold)
-                        .foregroundColor(AppTheme.red)
+                        .foregroundColor(AppTheme.redText)
                 }
             }
         }
@@ -411,7 +411,7 @@ struct PasswordChangeView: View {
 
                     if !isDemoAccount { VStack(alignment: .leading, spacing: 14) {
                         Label(otpSent ? "OTP đã gửi tới \(email)" : (isDemoAccount ? "Xác minh qua Thông báo" : "Xác minh qua email"), systemImage: isDemoAccount ? "bell.badge.fill" : "envelope.badge.fill")
-                            .font(.headline).foregroundColor(AppTheme.red)
+                            .font(.headline).foregroundColor(AppTheme.redText)
                         Text(otpSent
                              ? "Mã gồm 6 số và có hiệu lực trong 10 phút."
                              : (isDemoAccount
@@ -433,7 +433,7 @@ struct PasswordChangeView: View {
                                 }
                                 if let currentPasswordError {
                                     Label(currentPasswordError, systemImage: "exclamationmark.circle.fill")
-                                        .font(.caption).foregroundColor(AppTheme.red).frame(maxWidth: .infinity, alignment: .leading)
+                                        .font(.caption).foregroundColor(AppTheme.redText).frame(maxWidth: .infinity, alignment: .leading)
                                 }
                             } else {
                                 NativeField(title: "Mã OTP gồm 6 số", text: $code, icon: "number", keyboard: .numberPad, textContentType: .oneTimeCode)
@@ -449,7 +449,7 @@ struct PasswordChangeView: View {
                                 .onChange(of: newPassword) { _ in session.clearPasswordChangeError() }
                             if let reusedPasswordError {
                                 Label(reusedPasswordError, systemImage: "exclamationmark.circle.fill")
-                                    .font(.caption).foregroundColor(AppTheme.red).frame(maxWidth: .infinity, alignment: .leading)
+                                    .font(.caption).foregroundColor(AppTheme.redText).frame(maxWidth: .infinity, alignment: .leading)
                             }
                             NativeSecureField(title: "Nhập lại mật khẩu mới", text: $confirmPassword)
                             if attemptedSubmit && newPassword != confirmPassword {
@@ -460,7 +460,7 @@ struct PasswordChangeView: View {
                             }
                             if let regularAccountError {
                                 Label(regularAccountError, systemImage: "exclamationmark.circle.fill")
-                                    .font(.caption).foregroundColor(AppTheme.red).frame(maxWidth: .infinity, alignment: .leading)
+                                    .font(.caption).foregroundColor(AppTheme.redText).frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
                         .padding(18).background(AppTheme.card)
@@ -534,7 +534,7 @@ struct PasswordChangeView: View {
     private func validationMessage(_ message: String) -> some View {
         Label(message, systemImage: "exclamationmark.circle.fill")
             .font(.caption)
-            .foregroundColor(AppTheme.red)
+            .foregroundColor(AppTheme.redText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
     }
