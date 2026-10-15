@@ -173,6 +173,35 @@ struct PortalPageTitle: View {
     }
 }
 
+/// The header of a tab page that stays in place while only the page's
+/// content scrolls beneath it. Same position as the "Đơn từ" header (title
+/// 12 pt below the safe area, 20 pt from the edges) on every tab and iOS
+/// version, instead of per-tab paddings inside scroll views and lists.
+struct PortalPinnedHeader<Accessory: View>: View {
+    let title: String
+    let background: Color
+    @ViewBuilder var accessory: () -> Accessory
+
+    init(_ title: String, background: Color = AppTheme.ink, @ViewBuilder accessory: @escaping () -> Accessory) {
+        self.title = title
+        self.background = background
+        self.accessory = accessory
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            PortalPageTitle(title)
+            accessory()
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Opaque, so rows scrolled underneath do not show through.
+        .background(background.ignoresSafeArea(edges: .top))
+    }
+}
+
 struct AdaptiveGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
     var tint: Color? = nil

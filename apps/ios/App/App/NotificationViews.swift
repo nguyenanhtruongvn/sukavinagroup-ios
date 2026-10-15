@@ -54,39 +54,9 @@ struct NotificationsView: View {
         }
         return EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
     }
-    private var notificationTitleInsets: EdgeInsets {
-        if #available(iOS 26.0, *) {
-            return EdgeInsets(top: 20, leading: 20, bottom: 2, trailing: 20)
-        }
-        return EdgeInsets(top: 32, leading: 20, bottom: 2, trailing: 20)
-    }
-
-    @ViewBuilder
-    private var legacyTopSafeAreaSpacer: some View {
-        if #unavailable(iOS 26.0) {
-            // With the navigation bar hidden, older List implementations may
-            // place a zero-margin first row under the status-area clipping
-            // boundary. This inset is relative to the real safe area, unlike
-            // a device-specific top padding.
-            Color.clear
-                .frame(height: 8)
-                .background(notificationPageBackground)
-        }
-    }
     var body: some View {
         NavigationStack {
             List {
-                    PortalPageTitle("Thông báo")
-                        .listRowBackground(notificationPageBackground)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(notificationTitleInsets)
-                    HStack {
-                        Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
-                        Spacer()
-                        if !inboxRequestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
-                    }
-                    .listRowBackground(notificationPageBackground)
-                    .listRowSeparator(.hidden)
                     ForEach(inboxRequestNotifications) { item in
                         Button { Task { await open(item) } } label: {
                           HStack(alignment: .top, spacing: 14) {
@@ -190,9 +160,17 @@ struct NotificationsView: View {
                         .accessibilityHidden(true)
             }
             .listStyle(.plain)
-            .contentMargins(.top, 0, for: .scrollContent)
+            .contentMargins(.top, 4, for: .scrollContent)
+            // Title, unread count and "Xóa tất cả" stay put; only the
+            // notifications scroll.
             .safeAreaInset(edge: .top, spacing: 0) {
-                legacyTopSafeAreaSpacer
+                PortalPinnedHeader("Thông báo", background: notificationPageBackground) {
+                    HStack {
+                        Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
+                        Spacer()
+                        if !inboxRequestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
+                    }
+                }
             }
             .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)

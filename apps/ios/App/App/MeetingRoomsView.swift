@@ -104,10 +104,6 @@ struct MeetingRoomsView: View {
 
                 ScrollView(showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 16) {
-                        MeetingRoomsHeader(day: $day, onShowMine: {
-                            presentedDestination = .mine(day: day)
-                        })
-
                         // "No rooms configured" only once the schedule is known;
                         // before that show loading, or the failure with a retry.
                         if meetingStore.rooms.isEmpty {
@@ -160,17 +156,24 @@ struct MeetingRoomsView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
+                    .padding(.top, 6)
                     .padding(.bottom, 24)
                 }
                 .scrollIndicators(.hidden)
+                // Title and day buttons stay put; only the rooms scroll.
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    MeetingRoomsHeader(day: $day, onShowMine: {
+                        presentedDestination = .mine(day: day)
+                    })
+                }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 24)
                         .onEnded { switchMeetingDay(for: $0.translation) }
                 )
                 .modifier(MeetingRoomDragResetModifier(draggingRoom: $draggingRoom))
             }
-            .navigationBarTitleDisplayMode(.inline)
+            // Like every other tab: no navigation bar above the page header.
+            .toolbar(.hidden, for: .navigationBar)
             .task(id: isActive) {
                 guard isActive else { return }
                 await session.refreshMeetingSchedule(date: day)
@@ -347,10 +350,7 @@ struct MeetingRoomsHeader: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Keep this tab aligned with the shared 30 pt page headers.
-            PortalPageTitle("Phòng họp")
-
+        PortalPinnedHeader("Phòng họp", background: Color(uiColor: .systemGroupedBackground)) {
             HStack(spacing: 10) {
                 Button {
                     day = .now
