@@ -221,6 +221,7 @@ private final class LegacyMeetingBookingController: UIViewController {
         let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
         scroll.showsHorizontalScrollIndicator = false
+        scroll.keyboardDismissMode = .interactive
         scroll.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         let fields = UIStackView()
@@ -231,7 +232,9 @@ private final class LegacyMeetingBookingController: UIViewController {
             scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            // Follows the keyboard: pinned to the safe area this form left
+            // "Xác nhận đặt phòng" under the keyboard after typing the topic.
+            scroll.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
             fields.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 18),
             fields.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -18),
             fields.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 16),
@@ -251,21 +254,25 @@ private final class LegacyMeetingBookingController: UIViewController {
         fields.addArrangedSubview(label("Nội dung cuộc họp"))
         topic.placeholder = "Ví dụ: Họp kế hoạch tuần"
         topic.borderStyle = .roundedRect
+        topic.returnKeyType = .done
+        topic.addTarget(topic, action: #selector(UIResponder.resignFirstResponder), for: .editingDidEndOnExit)
         fields.addArrangedSubview(topic)
         fields.addArrangedSubview(label("Bắt đầu"))
         start.datePickerMode = .dateAndTime
         start.preferredDatePickerStyle = .compact
         start.locale = Locale(identifier: "vi_VN")
+        start.timeZone = MeetingPresentation.timezone
+        start.minuteInterval = MeetingBookingTime.minuteStep
         let calendar = MeetingPresentation.calendar
         let dateStart = calendar.startOfDay(for: day)
-        start.minimumDate = max(dateStart, Date())
+        let firstStart = MeetingBookingTime.defaultStart(on: day, now: Date(), calendar: calendar)
+        start.minimumDate = calendar.isDate(day, inSameDayAs: Date()) ? firstStart : dateStart
         // Prevent an invalid minimum > maximum date range if the user opens
         // this form at the very end of the selected day.
         let endOfDay = calendar.date(byAdding: .day, value: 1, to: dateStart)?.addingTimeInterval(-60)
             ?? dateStart
         start.maximumDate = max(start.minimumDate ?? dateStart, endOfDay)
-        start.date = max(start.minimumDate ?? dateStart,
-                         calendar.date(bySettingHour: 9, minute: 0, second: 0, of: dateStart) ?? dateStart)
+        start.date = max(start.minimumDate ?? dateStart, firstStart)
         fields.addArrangedSubview(start)
         fields.addArrangedSubview(label("Thời lượng"))
         // Preserve the original SwiftUI booking form's complete time choices.
@@ -298,6 +305,34 @@ private final class LegacyMeetingBookingController: UIViewController {
         confirm.heightAnchor.constraint(equalToConstant: 52).isActive = true
         confirm.addTarget(self, action: #selector(submit), for: .touchUpInside)
         fields.addArrangedSubview(confirm)
+        // Leaving with a typed topic or invitees asks first; the swipe-back
+        // gesture is turned off on this screen for the same reason.
+        navigationItem.hidesBackButton = true
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Hủy", style: .plain, target: self, action: #selector(close))
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+    }
+
+    @objc private func close() {
+        let typed = !(topic.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard typed || !invited.isEmpty else {
+            navigationController?.popViewController(animated: true)
+            return
+        }
+        let alert = UIAlertController(title: "Bỏ lịch đang đặt?", message: "Nội dung và người được mời bạn đã chọn sẽ không được lưu.", preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Tiếp tục đặt", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Bỏ lịch", style: .destructive) { [weak self] _ in
+            self?.navigationController?.popViewController(animated: true)
+        })
+        present(alert, animated: true)
     }
 
     @objc private func invite() {
@@ -310,8 +345,11 @@ private final class LegacyMeetingBookingController: UIViewController {
     }
     @objc private func submit() {
         guard !submitting else { return }
-        guard invited.count + 1 <= room.capacity else {
-            LegacyMeetingUI.message("Vượt sức chứa", "Hãy giảm số người tham gia.", from: self)
+        if let reason = MeetingBookingTime.blockReason(
+            start: start.date, now: Date(), attendeeCount: invited.count + 1,
+            capacity: room.capacity, calendar: MeetingPresentation.calendar
+        ) {
+            LegacyMeetingUI.message("Chưa thể đặt phòng", reason, from: self)
             return
         }
         submitting = true

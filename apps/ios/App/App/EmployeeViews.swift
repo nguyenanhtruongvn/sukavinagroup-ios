@@ -19,6 +19,10 @@ struct EmployeePortalView: View {
     @EnvironmentObject private var badge: NotificationBadgeState
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     @State private var selectedTab = 0
+    /// iOS 17 tab bar: pages opened so far. They stay alive (hidden) so a
+    /// tab switch keeps scroll position, filters and pushed screens, as the
+    /// system TabView does on iOS 18+.
+    @State private var visitedTabs: Set<Int> = [0]
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
     var body: AnyView {
@@ -72,8 +76,17 @@ struct EmployeePortalView: View {
         // Reserve real bottom safe-area space rather than overlaying the tab
         // bar on the page. An overlay obscures bottom-trailing controls such
         // as the Requests screen's "Tạo đơn mới" button on iOS 17.
-        selectedPortalPage
+        ZStack {
+            ForEach(visitedTabs.union([selectedTab]).sorted(), id: \.self) { tab in
+                portalPage(tab)
+                    .opacity(selectedTab == tab ? 1 : 0)
+                    .allowsHitTesting(selectedTab == tab)
+                    .accessibilityHidden(selectedTab != tab)
+                    .zIndex(selectedTab == tab ? 1 : 0)
+            }
+        }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: selectedTab) { _, tab in visitedTabs.insert(tab) }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 HStack(spacing: 0) {
                     portalTabButton(title: "Trang chủ", image: "house.fill", tab: 0)
@@ -92,22 +105,24 @@ struct EmployeePortalView: View {
             }
     }
 
-    @ViewBuilder
-    private var selectedPortalPage: some View {
-        switch selectedTab {
+    /// Type-erased so the iOS 17 page container stays a shallow generic tree.
+    private func portalPage(_ tab: Int) -> AnyView {
+        switch tab {
         case 1:
-            RequestsView(initialFilter: requestInitialFilter)
+            return AnyView(RequestsView(initialFilter: requestInitialFilter))
         case 2:
             // TestFlight 109 and 110 abort in SwiftUI's iOS 17 type metadata
             // construction. The iOS 17 route must not instantiate any of
             // MeetingRoomsView's complex SwiftUI generic view tree.
-            LegacyMeetingRoomsUIKitView(session: session)
+            return AnyView(LegacyMeetingRoomsUIKitView(session: session))
         case 3:
-            NotificationsView()
+            return AnyView(NotificationsView())
         case 4:
-            ProfileView()
+            return AnyView(ProfileView())
         default:
-            DashboardView(isActive: true)
+            // Hidden pages stay alive; only the visible dashboard runs its
+            // clock and refresh loop.
+            return AnyView(DashboardView(isActive: selectedTab == 0))
         }
     }
 

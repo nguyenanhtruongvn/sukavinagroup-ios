@@ -909,6 +909,10 @@ struct RequestComposer: View {
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) async -> String?
     @State private var isSubmitting = false
     @State private var submitError: String?
+    /// Typed content when the form opened; closing after changing it asks
+    /// first (Hủy or swipe down) instead of silently losing the text.
+    @State private var initialInput: [String]?
+    @State private var confirmingDiscard = false
     /// A rejected request this form starts from; nil for a new request.
     let template: EmployeeRequest?
     /// The first attendance lookup must not replace the template's times.
@@ -1095,11 +1099,30 @@ struct RequestComposer: View {
         return VietnamTime.calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
     }
 
-    private var canSubmit: Bool {
+    /// What still blocks "Gửi đơn", so a disabled button is never a riddle.
+    /// Mirrors Android RequestComposer.
+    private var missingRequirement: String? {
+        let place = destination.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind == .business && place.count < 2 { return "Nhập nơi công tác để gửi đơn." }
+        if kind == .business && transport == "personal_vehicle" && !(localizedDecimal(distanceKm) ?? 0 > 0) {
+            return "Nhập quãng đường khi đi bằng xe cá nhân."
+        }
+        if cleanReason.count < 10 { return "Lý do cần tối thiểu 10 ký tự (đã nhập \(cleanReason.count))." }
         let dates = submissionDates
-        return cleanReason.count >= 10
-            && dates.to >= dates.from
-            && (kind != .business || (destination.count >= 2 && (transport != "personal_vehicle" || localizedDecimal(distanceKm) ?? 0 > 0)))
+        if dates.to < dates.from { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
+        return nil
+    }
+
+    private var canSubmit: Bool {
+        missingRequirement == nil
+    }
+
+    private var currentInput: [String] {
+        [reason, destination, distanceKm, expense].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
+    private var hasUnsavedInput: Bool {
+        initialInput.map { $0 != currentInput } ?? false
     }
 
     private var requestStartBinding: Binding<Date> {
@@ -1420,9 +1443,19 @@ struct RequestComposer: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Hủy") { dismiss() }
+                    Button("Hủy") {
+                        if hasUnsavedInput { confirmingDiscard = true } else { dismiss() }
+                    }
                         .foregroundStyle(AppTheme.muted)
                 }
+            }
+            .onAppear { if initialInput == nil { initialInput = currentInput } }
+            .interactiveDismissDisabled(hasUnsavedInput || isSubmitting)
+            .confirmationDialog("Bỏ đơn đang soạn?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+                Button("Bỏ đơn", role: .destructive) { dismiss() }
+                Button("Tiếp tục soạn", role: .cancel) {}
+            } message: {
+                Text("Nội dung bạn đã nhập sẽ không được lưu.")
             }
             .safeAreaInset(edge: .bottom) {
                 // The form closes only after the server accepted the request; a
@@ -1431,6 +1464,12 @@ struct RequestComposer: View {
                     Label(submitError, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(AppTheme.redText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                } else if let missingRequirement, !isSubmitting {
+                    Label(missingRequirement, systemImage: "info.circle")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppTheme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 20)
                 }

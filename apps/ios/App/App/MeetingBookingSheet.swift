@@ -35,6 +35,7 @@ struct MeetingBookingSheet: View {
     @State private var isSubmittingBooking = false
     @State private var bookingErrorMessage: String?
     @State private var bookingErrorRevision = 0
+    @State private var confirmingDiscard = false
     @FocusState private var focusedInviteeField: InviteeSearchField?
 
     private enum InviteeSearchField: Hashable {
@@ -84,8 +85,21 @@ struct MeetingBookingSheet: View {
         durationUnit == "giờ" ? durationValue * 60 : durationValue
     }
 
+    /// Why "Xác nhận đặt phòng" is disabled (past start, over capacity).
+    private var blockReason: String? {
+        MeetingBookingTime.blockReason(
+            start: start, now: Date(), attendeeCount: selected.count + 1,
+            capacity: room.capacity, calendar: MeetingPresentation.calendar
+        )
+    }
+
     private var isValid: Bool {
-        selected.count + 1 <= room.capacity
+        blockReason == nil
+    }
+
+    /// A typed title or chosen invitees would be lost by closing.
+    private var hasUnsavedInput: Bool {
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selected.isEmpty
     }
 
     private var bookingTitle: String {
@@ -190,9 +204,18 @@ struct MeetingBookingSheet: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Đóng") { dismiss() }
+                    Button("Đóng") {
+                        if hasUnsavedInput { confirmingDiscard = true } else { dismiss() }
+                    }
                         .font(.subheadline.weight(.semibold))
                 }
+            }
+            .interactiveDismissDisabled(hasUnsavedInput || isSubmittingBooking)
+            .confirmationDialog("Bỏ lịch đang đặt?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+                Button("Bỏ lịch", role: .destructive) { dismiss() }
+                Button("Tiếp tục đặt", role: .cancel) {}
+            } message: {
+                Text("Tiêu đề và người được mời bạn đã chọn sẽ không được lưu.")
             }
             .onAppear { start = initialStartTime }
             .task {
@@ -280,7 +303,7 @@ struct MeetingBookingSheet: View {
             if showStartPicker {
                 HStack(spacing: 0) {
                     pickerColumn("Giờ", selection: startHourBinding, values: Array(0...23))
-                    pickerColumn("Phút", selection: startMinuteBinding, values: Array(0...59))
+                    pickerColumn("Phút", selection: startMinuteBinding, values: Array(stride(from: 0, to: 60, by: MeetingBookingTime.minuteStep)))
                 }
                 .frame(height: 138)
                 .background(Color(uiColor: .secondarySystemBackground))
@@ -737,6 +760,19 @@ struct MeetingBookingSheet: View {
     }
 
     private var confirmButton: some View {
+        VStack(spacing: 8) {
+            if let blockReason, !isSubmittingBooking {
+                Label(blockReason, systemImage: "info.circle")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
+            }
+            confirmActionButton
+        }
+    }
+
+    private var confirmActionButton: some View {
         Button {
             createBooking()
         } label: {
@@ -762,9 +798,7 @@ struct MeetingBookingSheet: View {
 
     // Booking times are Vietnam times (AGENTS.md), whatever the device time zone.
     private var initialStartTime: Date {
-        let now = Date()
-        let time = MeetingPresentation.calendar.dateComponents([.hour, .minute], from: now)
-        return MeetingPresentation.calendar.date(bySettingHour: time.hour ?? 9, minute: time.minute ?? 0, second: 0, of: day) ?? day
+        MeetingBookingTime.defaultStart(on: day, now: Date(), calendar: MeetingPresentation.calendar)
     }
 
     private var startHourBinding: Binding<Int> {
