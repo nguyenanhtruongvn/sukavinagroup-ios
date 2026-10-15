@@ -1684,19 +1684,35 @@ final class SessionStore: ObservableObject {
         }
         eventStreamTask = Task { [weak self] in
             guard let self else { return }
-            guard let eventsURL = URL(string: "https://sukavinagroup.net/api/public/news/events") else { return }
+            // The signed-in stream: company-wide changes plus this employee's
+            // own. The anonymous public stream no longer says whose data changed.
+            guard let eventsURL = URL(string: "https://sukavinagroup.net/api/me/events") else { return }
             // Consecutive failures without receiving data; drives the backoff.
             var failures = 0
+            // One immediate token renewal per failure streak, so a revoked
+            // session cannot spin in a tight 401 loop.
+            var renewedAfterUnauthorized = false
             while !Task.isCancelled {
                 do {
+                    guard let accessToken = self.token else { return }
                     var request = URLRequest(url: eventsURL)
                     request.timeoutInterval = 60 * 60
                     request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
                     let (bytes, response) = try await NetworkSessions.events.bytes(for: request)
-                    guard let http = response as? HTTPURLResponse,
-                          (200..<300).contains(http.statusCode) else {
+                    guard let http = response as? HTTPURLResponse else {
                         throw NetworkError.invalidResponse
                     }
+                    if http.statusCode == 401, !renewedAfterUnauthorized {
+                        // Expired access token: renew it and reconnect at once.
+                        renewedAfterUnauthorized = true
+                        try await self.refreshSession()
+                        continue
+                    }
+                    guard (200..<300).contains(http.statusCode) else {
+                        throw NetworkError.invalidResponse
+                    }
+                    renewedAfterUnauthorized = false
 
                     // Revalidate once whenever SSE establishes/re-establishes.
                     // This closes the tiny gap where an Admin toggle happened
