@@ -180,12 +180,12 @@ final class EmployeeRequestStore: ObservableObject {
     private func rebuildIndex() {
         byID = Dictionary(requests.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             .merging(approvals.map { ($0.id, $0) }, uniquingKeysWith: { mine, _ in mine })
-        pendingApprovalIDs = Set(approvals.lazy.filter { $0.status == .pending }.map(.id))
+        pendingApprovalIDs = Set(approvals.lazy.filter { $0.status == .pending }.map(\.id))
         var seen = Set<String>()
         combined = (approvals + requests)
             .filter { seen.insert($0.id).inserted }
             .sorted { $0.createdAt > $1.createdAt }
-        combinedByStatus = Dictionary(grouping: combined, by: .status)
+        combinedByStatus = Dictionary(grouping: combined, by: \.status)
     }
     @Published var message: String?
     private let cachePrefix = "native-employee-requests-cache-"

@@ -46,7 +46,7 @@ private final class LegacyMeetingRoomsController: UITableViewController {
             guard LegacyMeetingUI.sameDay(booking, self.day),
                   let start = booking.startDate, let end = booking.endDate else { return false }
             return start <= now && now < end
-        }.map(.roomId))
+        }.map(\.roomId))
         tableView.reloadData()
     }
 
