@@ -2,6 +2,119 @@ import UIKit
 import SwiftUI
 import Combine
 
+/// iOS 17 can abort before `EmployeePortalView.body` gets to choose its own
+/// fallback. Keeping the complete tab container in UIKit means only the page
+/// the employee opens is hosted as SwiftUI, instead of creating a large portal
+/// type tree during application launch.
+struct LegacyEmployeePortalUIKitView: UIViewControllerRepresentable {
+    let session: SessionStore
+    let notificationRouter: APNsNotificationRouter
+
+    func makeUIViewController(context: Context) -> LegacyEmployeePortalController {
+        LegacyEmployeePortalController(session: session, notificationRouter: notificationRouter)
+    }
+
+    func updateUIViewController(_ controller: LegacyEmployeePortalController, context: Context) {}
+}
+
+@MainActor
+final class LegacyEmployeePortalController: UITabBarController, UITabBarControllerDelegate {
+    private let session: SessionStore
+    private let notificationRouter: APNsNotificationRouter
+    private var cancellables = Set<AnyCancellable>()
+
+    init(session: SessionStore, notificationRouter: APNsNotificationRouter) {
+        self.session = session
+        self.notificationRouter = notificationRouter
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        delegate = self
+        tabBar.tintColor = .systemRed
+        tabBar.unselectedItemTintColor = .secondaryLabel
+        setViewControllers([
+            page(title: "Trang chủ", image: "house.fill") { [session, notificationRouter] in
+                AnyView(DashboardView(isActive: true).sessionEnvironment(session).environmentObject(notificationRouter))
+            },
+            page(title: "Đơn từ", image: "doc.text.fill") { [session, notificationRouter] in
+                AnyView(RequestsView(initialFilter: nil).sessionEnvironment(session).environmentObject(notificationRouter))
+            },
+            page(title: "Phòng họp", image: "building.2.fill") { [session, notificationRouter] in
+                AnyView(LegacyMeetingRoomsUIKitView(session: session).sessionEnvironment(session).environmentObject(notificationRouter))
+            },
+            page(title: "Thông báo", image: "bell.fill") { [session, notificationRouter] in
+                AnyView(NotificationsView().sessionEnvironment(session).environmentObject(notificationRouter))
+            },
+            page(title: "Tài khoản", image: "person.crop.circle.fill") { [session, notificationRouter] in
+                AnyView(ProfileView().sessionEnvironment(session).environmentObject(notificationRouter))
+            }
+        ], animated: false)
+
+        session.badge.$count
+            .receive(on: RunLoop.main)
+            .sink { [weak self] count in self?.updateBadge(count) }
+            .store(in: &cancellables)
+
+        notificationRouter.$pendingRoute
+            .compactMap { $0 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.selectedIndex = 3 }
+            .store(in: &cancellables)
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+        if selectedIndex == 3 {
+            session.clearNotificationBadge()
+        }
+    }
+
+    private func page(title: String, image: String, root: @escaping () -> AnyView) -> UIViewController {
+        let controller = LegacyPortalPageController(root: root)
+        controller.tabBarItem = UITabBarItem(title: title, image: UIImage(systemName: image), tag: 0)
+        return controller
+    }
+
+    private func updateBadge(_ count: Int) {
+        guard let pages = viewControllers, pages.indices.contains(3) else { return }
+        let notificationItem = pages[3].tabBarItem
+        notificationItem.badgeValue = count > 0 ? (count > 99 ? "99+" : String(count)) : nil
+    }
+}
+
+@MainActor
+private final class LegacyPortalPageController: UIViewController {
+    private let root: () -> AnyView
+    private var host: UIHostingController<AnyView>?
+
+    init(root: @escaping () -> AnyView) {
+        self.root = root
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        let host = UIHostingController(rootView: root())
+        host.view.backgroundColor = .systemBackground
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        host.didMove(toParent: self)
+        self.host = host
+    }
+}
+
 // iOS 17.6.1 aborts in SwiftUI/AttributeGraph metadata construction when
 // entering the complex meeting-room view (TestFlight 109/110). Keep the
 // entire iOS 17 room/navigation/booking path native UIKit; iOS 18+ retains

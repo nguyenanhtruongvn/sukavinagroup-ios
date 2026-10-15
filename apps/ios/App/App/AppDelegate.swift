@@ -483,7 +483,14 @@ private final class NativeAppContainerViewController: UIViewController {
             if session.profile?.accountType == "CANTEEN" && session.profile?.employeeCode != "DEMO" {
                 return AnyView(CanteenScannerView().sessionEnvironment(session).environmentObject(notificationRouter))
             }
-            return AnyView(EmployeePortalView().sessionEnvironment(session).environmentObject(notificationRouter))
+            // `EmployeePortalView` itself can abort while iOS 17 constructs
+            // SwiftUI type metadata, before its in-view fallback is reached.
+            // Route iOS 17 through a UIKit tab host so the portal view is not
+            // instantiated at launch. iOS 18+ keeps the modern SwiftUI shell.
+            if #available(iOS 18.0, *) {
+                return AnyView(EmployeePortalView().sessionEnvironment(session).environmentObject(notificationRouter))
+            }
+            return AnyView(LegacyEmployeePortalUIKitView(session: session, notificationRouter: notificationRouter))
         }
     }
 
