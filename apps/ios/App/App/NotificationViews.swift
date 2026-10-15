@@ -31,6 +31,9 @@ struct NotificationsView: View {
     @State private var requestNotifications: [RequestNotification] = []
     @State private var reviewing: EmployeeRequest?
     @State private var viewing: EmployeeRequest?
+    /// Chosen in the request detail; the composer opens once that sheet closes.
+    @State private var pendingResubmit: EmployeeRequest?
+    @State private var resubmitting: EmployeeRequest?
     @State private var meetingNotification: RequestNotification?
     @State private var attendanceReportMonth: String?
     @State private var confirmClear = false
@@ -210,7 +213,23 @@ struct NotificationsView: View {
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
-                .sheet(item: $viewing) { request in RequestNotificationDetail(request: request) }
+                .sheet(item: $viewing, onDismiss: {
+                    resubmitting = pendingResubmit
+                    pendingResubmit = nil
+                }) { request in
+                    RequestNotificationDetail(
+                        request: request,
+                        onResubmit: requestStore.canResubmit(request) ? { pendingResubmit = request } : nil
+                    )
+                }
+                .sheet(item: $resubmitting) { request in
+                    RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
+                        Task { _ = await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense) }
+                    }
+                    .presentationDetents([.large])
+                    .presentationContentInteraction(.resizes)
+                    .presentationDragIndicator(.hidden)
+                }
                 .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification) }
                 .sheet(
                     isPresented: Binding(
@@ -806,8 +825,23 @@ private struct MeetingNotificationDetail: View {
 
 struct RequestNotificationDetail: View {
     let request: EmployeeRequest
+    /// Set for the user's own rejected request: tapping the card sends it again.
+    var onResubmit: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
-    var body: some View { NavigationStack { ScrollView(showsIndicators: false) { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
+    @ViewBuilder private var card: some View {
+        if let onResubmit {
+            Button {
+                onResubmit()
+                dismiss()
+            } label: {
+                RequestCard(request: request, canCancel: false, resubmittable: true, cancel: {})
+            }
+            .buttonStyle(.plain)
+        } else {
+            RequestCard(request: request, canCancel: false, cancel: {})
+        }
+    }
+    var body: some View { NavigationStack { ScrollView(showsIndicators: false) { VStack(alignment: .leading, spacing: 18) { card; if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
 }
 
 struct ArticleDetailView: View {
