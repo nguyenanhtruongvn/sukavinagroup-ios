@@ -9,7 +9,6 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-@available(iOS 17.0, *)
 private struct OfflineConnectionNotice: View {
     var body: some View {
         Label("Mất kết nối internet", systemImage: "wifi.slash")
@@ -23,7 +22,6 @@ private struct OfflineConnectionNotice: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct ElegantAppAlert: View {
     let title: String
     let message: String
@@ -106,7 +104,6 @@ struct ElegantAppAlert: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct NativeLaunchView: View {
     var body: some View {
         ZStack {
@@ -127,7 +124,6 @@ struct NativeLaunchView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct AuthenticationView: View {
     @EnvironmentObject private var session: SessionStore
 
@@ -180,7 +176,6 @@ struct AuthenticationView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct LoginForm: View {
     private enum LoginFocus: Hashable {
         case identifier
@@ -308,7 +303,6 @@ struct LoginForm: View {
     }
 }
 
-@available(iOS 17.0, *)
 private struct ForgotPasswordView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
@@ -453,7 +447,6 @@ private struct ForgotPasswordView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct RegistrationForm: View {
     @State private var employeeCode = ""
     @State private var fullName = ""
@@ -527,7 +520,6 @@ struct VerificationContext: Identifiable {
     var id: String { employeeCode + email }
 }
 
-@available(iOS 17.0, *)
 struct VerificationView: View {
     let context: VerificationContext
     @Environment(\.dismiss) private var dismiss

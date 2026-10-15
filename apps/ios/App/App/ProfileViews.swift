@@ -9,7 +9,6 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-@available(iOS 17.0, *)
 struct ProfileView: View {
     private enum LegalPage: String, Identifiable {
         case privacy
@@ -286,7 +285,6 @@ struct ProfileView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct NativeLegalView: View {
     enum Page {
         case privacy
@@ -363,7 +361,6 @@ struct NativeLegalView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct PasswordChangeView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
@@ -563,7 +560,6 @@ struct PasswordChangeView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct ProfileLine: View {
     let label: String
     let value: String
@@ -576,7 +572,6 @@ struct ProfileLine: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct NativeField: View {
     let title: String
     @Binding var text: String
@@ -601,7 +596,6 @@ struct NativeField: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct NativeSecureField: View {
     let title: String
     @Binding var text: String

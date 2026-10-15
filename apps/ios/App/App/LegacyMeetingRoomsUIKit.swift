@@ -6,7 +6,6 @@ import Combine
 // entering the complex meeting-room view (TestFlight 109/110). Keep the
 // entire iOS 17 room/navigation/booking path native UIKit; iOS 18+ retains
 // the existing SwiftUI implementation without any change.
-@available(iOS 17.0, *)
 struct LegacyMeetingRoomsUIKitView: UIViewControllerRepresentable {
     let session: SessionStore
 
@@ -17,13 +16,11 @@ struct LegacyMeetingRoomsUIKitView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: UINavigationController, context: Context) {}
 }
 
-@available(iOS 17.0, *)
 @MainActor
 private enum LegacyMeetingUI {
-    static func date(_ text: String) -> Date? { MeetingPresentation.date(from: text) }
     static func time(_ text: String) -> String { MeetingPresentation.time(text) }
     static func sameDay(_ booking: MeetingBooking, _ day: Date) -> Bool {
-        guard let start = date(booking.startsAt) else { return false }
+        guard let start = booking.startDate else { return false }
         return MeetingPresentation.calendar.isDate(start, inSameDayAs: day)
     }
     static func message(_ title: String, _ body: String, from controller: UIViewController) {
@@ -33,13 +30,25 @@ private enum LegacyMeetingUI {
     }
 }
 
-@available(iOS 17.0, *)
 @MainActor
 private final class LegacyMeetingRoomsController: UITableViewController {
     private let session: SessionStore
     private var cancellables = Set<AnyCancellable>()
     private let daySelector = UISegmentedControl(items: ["Hôm nay", "Ngày mai"])
     private var day = Date()
+    /// Rooms with a meeting in progress, computed once per data change
+    /// instead of scanning every booking inside each row callback.
+    private var occupiedRoomIDs = Set<String>()
+
+    private func reload() {
+        let now = Date()
+        occupiedRoomIDs = Set(session.meetingBookings.lazy.filter { booking in
+            guard LegacyMeetingUI.sameDay(booking, self.day),
+                  let start = booking.startDate, let end = booking.endDate else { return false }
+            return start <= now && now < end
+        }.map(.roomId))
+        tableView.reloadData()
+    }
 
     init(session: SessionStore) {
         self.session = session
@@ -60,7 +69,7 @@ private final class LegacyMeetingRoomsController: UITableViewController {
         )
         session.meetings.$rooms.combineLatest(session.meetings.$bookings)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _, _ in self?.tableView.reloadData() }
+            .sink { [weak self] _, _ in self?.reload() }
             .store(in: &cancellables)
     }
 
@@ -73,7 +82,7 @@ private final class LegacyMeetingRoomsController: UITableViewController {
         let shift = daySelector.selectedSegmentIndex
         day = MeetingPresentation.calendar.date(byAdding: .day, value: shift, to: Date()) ?? Date()
         Task { await session.refreshMeetingSchedule(date: day) }
-        tableView.reloadData()
+        reload()
     }
     @objc private func dayChanged() { fetch() }
 
@@ -88,14 +97,9 @@ private final class LegacyMeetingRoomsController: UITableViewController {
     }
     override func tableView(_ tableView: UITableView, cellForRowAt path: IndexPath) -> UITableViewCell {
         let room = session.meetingRooms[path.row]
-        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
-        let now = Date()
-        let occupied = session.meetingBookings.contains { booking in
-            guard booking.roomId == room.id, LegacyMeetingUI.sameDay(booking, day),
-                  let start = LegacyMeetingUI.date(booking.startsAt),
-                  let end = LegacyMeetingUI.date(booking.endsAt) else { return false }
-            return start <= now && now < end
-        }
+        let cell = tableView.dequeueReusableCell(withIdentifier: "room")
+            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "room")
+        let occupied = occupiedRoomIDs.contains(room.id)
         cell.textLabel?.text = room.name
         cell.textLabel?.font = .preferredFont(forTextStyle: .headline)
         cell.detailTextLabel?.text = "\(room.capacity) chỗ · \(occupied ? "Đang họp" : "Xem lịch phòng")"
@@ -125,18 +129,22 @@ private final class LegacyMeetingRoomsController: UITableViewController {
     }
 }
 
-@available(iOS 17.0, *)
 @MainActor
 private final class LegacyMeetingScheduleController: UITableViewController {
     private let session: SessionStore
     private let room: MeetingRoom?
     private let day: Date
     private var cancellable: AnyCancellable?
-    private var bookings: [MeetingBooking] {
-        session.meetingBookings.filter { meeting in
+    /// This room's (or my) meetings of the day, recomputed per data change;
+    /// every row callback used to filter and sort the whole schedule again.
+    private var bookings: [MeetingBooking] = []
+
+    private func reload() {
+        bookings = session.meetingBookings.filter { meeting in
             LegacyMeetingUI.sameDay(meeting, day)
                 && (room == nil ? (meeting.isMine ?? false) : meeting.roomId == room?.id)
         }.sorted { $0.startsAt < $1.startsAt }
+        tableView.reloadData()
     }
     init(session: SessionStore, room: MeetingRoom?, day: Date) {
         self.session = session; self.room = room; self.day = day
@@ -152,7 +160,7 @@ private final class LegacyMeetingScheduleController: UITableViewController {
             )
         }
         cancellable = session.meetings.$bookings.receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.tableView.reloadData() }
+            .sink { [weak self] _ in self?.reload() }
     }
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -169,7 +177,8 @@ private final class LegacyMeetingScheduleController: UITableViewController {
     }
     override func tableView(_ tableView: UITableView, cellForRowAt path: IndexPath) -> UITableViewCell {
         let meeting = bookings[path.row]
-        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
+        let cell = tableView.dequeueReusableCell(withIdentifier: "meeting")
+            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "meeting")
         cell.textLabel?.text = meeting.title.isEmpty ? "Cuộc họp" : meeting.title
         cell.detailTextLabel?.text = "\(LegacyMeetingUI.time(meeting.startsAt)) – \(LegacyMeetingUI.time(meeting.endsAt)) · \(meeting.attendeeCount) người"
         cell.accessoryType = .disclosureIndicator
@@ -185,7 +194,6 @@ private final class LegacyMeetingScheduleController: UITableViewController {
     }
 }
 
-@available(iOS 17.0, *)
 @MainActor
 private final class LegacyMeetingBookingController: UIViewController {
     private let session: SessionStore
@@ -326,7 +334,6 @@ private final class LegacyMeetingBookingController: UIViewController {
     }
 }
 
-@available(iOS 17.0, *)
 @MainActor
 private final class LegacyMeetingInviteesController: UITableViewController, UISearchResultsUpdating {
     private let session: SessionStore
@@ -390,7 +397,6 @@ private final class LegacyMeetingInviteesController: UITableViewController, UISe
     }
 }
 
-@available(iOS 17.0, *)
 @MainActor
 private final class LegacyMeetingDetailController: UIViewController {
     private let session: SessionStore
@@ -431,9 +437,9 @@ private final class LegacyMeetingDetailController: UIViewController {
         summary.text = "\(meeting.title)\n\nPhòng: \(room.name)\nThời gian: \(LegacyMeetingUI.time(meeting.startsAt)) – \(LegacyMeetingUI.time(meeting.endsAt))\nSố người: \(meeting.attendeeCount)"
         fields.addArrangedSubview(summary)
         if meeting.isOwner == true {
-            if let start = LegacyMeetingUI.date(meeting.startsAt), start > Date() {
+            if let start = meeting.startDate, start > Date() {
                 fields.addArrangedSubview(button("Hủy lịch họp", #selector(cancel)))
-            } else if let meetingEndDate = LegacyMeetingUI.date(meeting.endsAt), meetingEndDate > Date() {
+            } else if let meetingEndDate = meeting.endDate, meetingEndDate > Date() {
                 fields.addArrangedSubview(button("Gia hạn 5 phút", #selector(extend)))
                 fields.addArrangedSubview(button("Kết thúc cuộc họp", #selector(end)))
             }

@@ -11,9 +11,12 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-@available(iOS 17.0, *)
 struct EmployeePortalView: View {
-    @EnvironmentObject private var session: SessionStore
+    @Environment(\.sessionActions) private var actions
+    /// Methods and non-published values only; observing the whole session
+    /// redrew this screen on every unrelated session change.
+    private var session: SessionStore { actions.store }
+    @EnvironmentObject private var badge: NotificationBadgeState
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     @State private var selectedTab = 0
     @State private var requestInitialFilter: EmployeeRequestStatus?
@@ -52,7 +55,7 @@ struct EmployeePortalView: View {
                 .tag(2)
             NotificationsView()
                 .tabItem { Label("Thông báo", systemImage: "bell.fill") }
-                .badge(session.notificationBadgeCount)
+                .badge(badge.count)
                 .tag(3)
             ProfileView()
                 .tabItem { Label("Tài khoản", systemImage: "person.crop.circle.fill") }
@@ -76,7 +79,7 @@ struct EmployeePortalView: View {
                     portalTabButton(title: "Trang chủ", image: "house.fill", tab: 0)
                     portalTabButton(title: "Đơn từ", image: "doc.text.fill", tab: 1)
                     portalTabButton(title: "Phòng họp", image: "building.2.fill", tab: 2)
-                    portalTabButton(title: "Thông báo", image: "bell.fill", tab: 3, badge: session.notificationBadgeCount)
+                    portalTabButton(title: "Thông báo", image: "bell.fill", tab: 3, badge: badge.count)
                     portalTabButton(title: "Tài khoản", image: "person.crop.circle.fill", tab: 4)
                 }
                 .padding(.top, 8)
@@ -142,7 +145,6 @@ struct EmployeePortalView: View {
 
 /// A concrete view keeps the calendar's `ForEach` closure small enough for
 /// Release builds on current Xcode toolchains to type-check reliably.
-@available(iOS 17.0, *)
 struct PreloadedAttendanceDayCell: View {
     private static let absentColor = Color(red: 211.0 / 255.0, green: 47.0 / 255.0, blue: 47.0 / 255.0)
     private static let lateColor = Color(red: 217.0 / 255.0, green: 119.0 / 255.0, blue: 6.0 / 255.0)
@@ -340,7 +342,6 @@ struct PreloadedAttendanceDayCell: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct DashboardView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var menuStore: MenuStore
@@ -613,7 +614,6 @@ struct DashboardView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MetricCard: View {
     let value: String
     let label: String

@@ -138,7 +138,6 @@ actor SessionRefreshCoordinator {
     }
 }
 
-@available(iOS 17.0, *)
 final class APIClient {
     static let shared = APIClient()
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")

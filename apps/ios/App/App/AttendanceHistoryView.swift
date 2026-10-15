@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-@available(iOS 17.0, *)
 struct ModernAttendanceHistoryView: View {
     private static let absentColor = Color(red: 0.78, green: 0.07, blue: 0.11)
     // Lime holiday hue has its own dark-mode variant; overtime remains violet.
@@ -22,7 +21,11 @@ struct ModernAttendanceHistoryView: View {
             : Color(red: 85.0 / 255.0, green: 124.0 / 255.0, blue: 15.0 / 255.0)
     }
 
-    @EnvironmentObject private var session: SessionStore
+    @Environment(\.sessionActions) private var actions
+    /// Methods and non-published values only; observing the whole session
+    /// redrew this screen on every unrelated session change.
+    private var session: SessionStore { actions.store }
+    @EnvironmentObject private var revisions: DataRevisions
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let initialMonth: String?
     let restrictToInitialMonth: Bool
@@ -125,8 +128,8 @@ struct ModernAttendanceHistoryView: View {
             await preloadAdjacentMonths()
             releasedMonths = Set((await reportsTask).map(\.month))
         }
-        .task(id: session.attendanceRevision) {
-            guard session.attendanceRevision > 0 else { return }
+        .task(id: revisions.attendance) {
+            guard revisions.attendance > 0 else { return }
             // Keep the last rendered month visible while refreshing. Clearing
             // the in-memory cache here caused the page to flash a spinner and
             // made every realtime attendance event feel like a cold load.

@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-@available(iOS 17.0, *)
 struct MeetingBookingDetailSheet: View {
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions
@@ -45,8 +44,8 @@ struct MeetingBookingDetailSheet: View {
     private var currentBooking: MeetingBooking {
         meetingStore.bookings.first(where: { $0.id == booking.id }) ?? booking
     }
-    private var startDate: Date? { MeetingPresentation.date(from: currentBooking.startsAt) }
-    private var endDate: Date? { MeetingPresentation.date(from: currentBooking.endsAt) }
+    private var startDate: Date? { currentBooking.startDate }
+    private var endDate: Date? { currentBooking.endDate }
     private var meetingStarted: Bool { startDate.map { $0 <= Date() } ?? false }
     private var meetingEnded: Bool { endDate.map { $0 <= Date() } ?? false }
 
@@ -76,18 +75,18 @@ struct MeetingBookingDetailSheet: View {
         return meetingStore.bookings
             .filter { $0.roomId == currentBooking.roomId && $0.id != currentBooking.id }
             .filter { candidate in
-                guard let start = MeetingPresentation.date(from: candidate.startsAt) else { return false }
+                guard let start = candidate.startDate else { return false }
                 return start > endDate
             }
             .sorted { left, right in
-                (MeetingPresentation.date(from: left.startsAt) ?? .distantFuture)
-                    < (MeetingPresentation.date(from: right.startsAt) ?? .distantFuture)
+                (left.startDate ?? .distantFuture)
+                    < (right.startDate ?? .distantFuture)
             }
             .first
     }
     private var maximumExtensionMinutes: Int {
         guard let endDate else { return 0 }
-        guard let nextStart = nextBooking.flatMap({ MeetingPresentation.date(from: $0.startsAt) }) else {
+        guard let nextStart = nextBooking.flatMap({ $0.startDate }) else {
             return 120
         }
         return min(120, max(0, Int(nextStart.timeIntervalSince(endDate) / 60) - 5))
@@ -371,7 +370,6 @@ struct MeetingBookingDetailSheet: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MyMeetingsSheet: View {
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions
@@ -386,7 +384,7 @@ struct MyMeetingsSheet: View {
         meetingStore.bookings
             .filter { $0.isMine ?? false }
             .filter { meeting in
-                guard let end = MeetingPresentation.date(from: meeting.endsAt) else { return showsUpcoming }
+                guard let end = meeting.endDate else { return showsUpcoming }
                 return showsUpcoming ? end >= Date() : end < Date()
             }
             .sorted { $0.startsAt < $1.startsAt }
@@ -526,7 +524,6 @@ struct MyMeetingsSheet: View {
     private static let cardColors: [Color] = [.red, .blue, .green, .orange, .purple, .teal]
 }
 
-@available(iOS 17.0, *)
 struct MeetingSummaryCard: View {
     let meeting: MeetingBooking
     let roomName: String

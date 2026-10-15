@@ -27,7 +27,11 @@ enum VietnamTime {
 
     /// Parses API timestamps with or without fractional seconds.
     static func date(fromISO8601 value: String) -> Date? {
-        iso8601Fractional.date(from: value) ?? iso8601Standard.date(from: value)
+        // Most API timestamps carry milliseconds; try the format that matches
+        // first instead of parsing every string twice.
+        value.contains(".")
+            ? iso8601Fractional.date(from: value) ?? iso8601Standard.date(from: value)
+            : iso8601Standard.date(from: value) ?? iso8601Fractional.date(from: value)
     }
 
     /// API timestamp for a date (UTC, the format the server expects).

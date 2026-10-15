@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-@available(iOS 17.0, *)
 struct AiAssistantMessage: Identifiable {
     let id = UUID()
     let role: String
@@ -21,7 +20,6 @@ struct AiAssistantMessage: Identifiable {
     var isUser: Bool { role.lowercased() == "user" }
 }
 
-@available(iOS 17.0, *)
 struct AiAssistantOrbView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
@@ -116,7 +114,6 @@ struct AiAssistantOrbView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct AiAssistantTypingIndicator: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -146,7 +143,6 @@ struct AiAssistantTypingIndicator: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct AiAssistantInputField: UIViewRepresentable {
     @Binding var text: String
     @Binding var height: CGFloat
@@ -234,7 +230,6 @@ struct AiAssistantInputField: UIViewRepresentable {
     }
 }
 
-@available(iOS 17.0, *)
 struct AiAssistantChatView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss

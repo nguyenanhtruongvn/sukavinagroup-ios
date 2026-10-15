@@ -45,7 +45,6 @@ private let sessionRestoreLogger = Logger(
 /// it renders: meeting refreshes no longer redraw the dashboard, profile or
 /// request screens, and session changes no longer redraw meeting timelines.
 @MainActor
-@available(iOS 17.0, *)
 final class MeetingStore: ObservableObject {
     @Published var rooms: [MeetingRoom] = []
     /// Live bookings only. The API returns confirmed bookings; a booking
@@ -70,7 +69,6 @@ final class MeetingStore: ObservableObject {
 
 /// Canteen menu feature state (Android: `MenuStore`).
 @MainActor
-@available(iOS 17.0, *)
 final class MenuStore: ObservableObject {
     @Published var todayMenu: TodayMenu?
 }
@@ -80,7 +78,6 @@ final class MenuStore: ObservableObject {
 /// registrations (`POST auth/logout`). With biometric sign-in enabled it first
 /// obtains a separate session for it, so Face ID / Touch ID sign-in keeps
 /// working after signing out. Mirrors Android `SessionTokens.signOutInBackground`.
-@available(iOS 17.0, *)
 enum ServerSignOut {
     static func run(
         accessToken: String?,
@@ -167,7 +164,6 @@ enum ServerSignOut {
 /// methods. `@EnvironmentObject` would redraw such a view on every session
 /// change (working flag, errors, badge counts) although it shows none of it;
 /// these views observe their feature store or local state instead.
-@available(iOS 17.0, *)
 struct SessionActions {
     fileprivate weak var weakStore: SessionStore?
 
@@ -180,12 +176,10 @@ struct SessionActions {
     }
 }
 
-@available(iOS 17.0, *)
 private struct SessionActionsKey: EnvironmentKey {
     static let defaultValue = SessionActions(weakStore: nil)
 }
 
-@available(iOS 17.0, *)
 extension EnvironmentValues {
     var sessionActions: SessionActions {
         get { self[SessionActionsKey.self] }
@@ -193,7 +187,6 @@ extension EnvironmentValues {
     }
 }
 
-@available(iOS 17.0, *)
 extension View {
     /// Injects the session, its feature stores and the non-observing
     /// `SessionActions` handle. Use this wherever a view hierarchy needs
@@ -204,12 +197,30 @@ extension View {
             .environmentObject(session.meetings)
             .environmentObject(session.menu)
             .environmentObject(session.requests)
+            .environmentObject(session.badge)
+            .environmentObject(session.revisions)
             .environment(\.sessionActions, SessionActions(weakStore: session))
     }
 }
 
+/// Counters that tell screens to reload their data. They live outside
+/// SessionStore's own published state so those screens are not redrawn by
+/// every unrelated session change (working flag, errors, badge counts).
 @MainActor
-@available(iOS 17.0, *)
+final class DataRevisions: ObservableObject {
+    /// Today's punches changed, or a realtime event invalidated attendance.
+    @Published fileprivate(set) var attendance = 0
+    /// Requests or approvals changed on the server.
+    @Published fileprivate(set) var request = 0
+}
+
+/// The Notifications tab badge. Only the tab bar observes it.
+@MainActor
+final class NotificationBadgeState: ObservableObject {
+    @Published fileprivate(set) var count = 0
+}
+
+@MainActor
 final class SessionStore: ObservableObject {
     private struct CachedValue<Value: Codable>: Codable {
         let savedAt: Date
@@ -251,7 +262,12 @@ final class SessionStore: ObservableObject {
     @Published var isWorking = false
     @Published var unreadCount = 0
     @Published var requestUnreadCount = 0
-    @Published var notificationBadgeCount = 0
+    let badge = NotificationBadgeState()
+    /// Stored in `badge`, so only the tab bar redraws when it changes.
+    var notificationBadgeCount: Int {
+        get { badge.count }
+        set { if badge.count != newValue { badge.count = newValue } }
+    }
     @Published var biometricsEnabled = BiometricPreferences.enabled
     @Published var passwordChangeRequiresEmail = false
     @Published var passwordChangeError: String?
@@ -280,8 +296,7 @@ final class SessionStore: ObservableObject {
         set { meetings.invitees = newValue }
     }
     @Published private(set) var aiAssistantMobileEnabled = true
-    @Published private(set) var attendanceRevision = 0
-    @Published private(set) var requestRevision = 0
+    let revisions = DataRevisions()
     @Published private(set) var isOfflineNoticeVisible = false
     @Published private(set) var isNetworkAvailable = false
 
@@ -1212,7 +1227,7 @@ final class SessionStore: ObservableObject {
             } ?? false
             dashboard = fresh
             saveDashboardCache(fresh)
-            if punchesChanged { attendanceRevision &+= 1 }
+            if punchesChanged { revisions.attendance &+= 1 }
             AttendanceWidgetBridge.update(from: fresh)
         } catch is CancellationError {
             // URLSession cancellation is a normal task-lifecycle event, not
@@ -2238,18 +2253,20 @@ final class SessionStore: ObservableObject {
         )
     }
 
+    /// Drops an anonymous (optimistic) booking once the identified one for
+    /// the same room and start time exists. Indexed by room and second, so it
+    /// is linear in the number of bookings.
     private func normalizedMeetingBookings(_ bookings: [MeetingBooking]) -> [MeetingBooking] {
-        let identified = bookings.filter { !$0.id.isEmpty }
+        var identifiedStarts = Set<String>()
+        for known in bookings where !known.id.isEmpty {
+            guard let start = known.startDate else { continue }
+            let second = Int(start.timeIntervalSince1970.rounded())
+            // Neighbouring seconds cover the previous "< 1 s apart" tolerance.
+            for offset in -1...1 { identifiedStarts.insert("\(known.roomId)|\(second + offset)") }
+        }
         return bookings.filter { booking in
-            guard booking.id.isEmpty,
-                  let anonymousStart = MeetingPresentation.date(from: booking.startsAt)
-            else { return true }
-            return !identified.contains { known in
-                guard known.roomId == booking.roomId,
-                      let knownStart = MeetingPresentation.date(from: known.startsAt)
-                else { return false }
-                return abs(knownStart.timeIntervalSince(anonymousStart)) < 1
-            }
+            guard booking.id.isEmpty, let start = booking.startDate else { return true }
+            return !identifiedStarts.contains("\(booking.roomId)|\(Int(start.timeIntervalSince1970.rounded()))")
         }
     }
 
@@ -2307,7 +2324,7 @@ final class SessionStore: ObservableObject {
                     body: ExtendMeetingBookingBody(minutes: extensionMinutes)
                 )
                 replaceMeetingInCurrentSchedule(extended)
-                if let endsAt = MeetingPresentation.date(from: extended.endsAt) {
+                if let endsAt = extended.endDate {
                     MeetingLiveActivityManager.update(
                         bookingID: bookingID,
                         endsAt: endsAt
@@ -2445,13 +2462,13 @@ final class SessionStore: ObservableObject {
             self.pendingRealtimeEvents.removeAll()
             self.realtimeRefreshTask = nil
             if events.contains("request_changed") {
-                self.requestRevision &+= 1
+                self.revisions.request &+= 1
             }
             if events.contains("attendance_changed") || events.contains("employee_changed") {
                 // Employee/shift edits can change the calculated attendance
                 // status for an already cached month just like holiday edits.
                 self.invalidateAttendanceCacheForRealtimeUpdate()
-                self.attendanceRevision &+= 1
+                self.revisions.attendance &+= 1
             }
             if events.contains("own_profile_changed") {
                 await self.refreshProfile()

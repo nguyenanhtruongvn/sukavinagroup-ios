@@ -35,7 +35,6 @@ enum MeetingPresentation {
 
 // One active presentation at a time. On iOS 17 competing sheet modifiers
 // cause SwiftUI to resolve several complex generic destination trees together.
-@available(iOS 17.0, *)
 enum MeetingRoomsDestination: Identifiable {
     case booking(room: MeetingRoom, day: Date)
     case schedule(room: MeetingRoom, day: Date)
@@ -50,7 +49,6 @@ enum MeetingRoomsDestination: Identifiable {
     }
 }
 
-@available(iOS 17.0, *)
 enum MeetingScheduleDestination: Identifiable {
     case booking
     case detail(MeetingBooking)
@@ -63,7 +61,6 @@ enum MeetingScheduleDestination: Identifiable {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingRoomsView: View {
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions
@@ -189,7 +186,6 @@ struct MeetingRoomsView: View {
 // predictable. The context-menu move buttons exist on every version (they are
 // also the accessible, non-drag way to reorder); iOS 18 and later add native
 // drag and drop on top of them.
-@available(iOS 17.0, *)
 struct MeetingRoomOrderingModifier: ViewModifier {
     let room: MeetingRoom
     let rooms: [MeetingRoom]
@@ -253,7 +249,6 @@ struct MeetingRoomOrderingModifier: ViewModifier {
 /// or outside the cards lands on this list-wide target instead, so the dragged
 /// card never stays faded. Drag and drop exists only on iOS 18+, and the iOS 17
 /// runtime must not see drop-target generics (see MeetingRoomOrderingModifier).
-@available(iOS 17.0, *)
 struct MeetingRoomDragResetModifier: ViewModifier {
     @Binding var draggingRoom: MeetingRoom?
 
@@ -270,7 +265,6 @@ struct MeetingRoomDragResetModifier: ViewModifier {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingRoomOrderDropDelegate: DropDelegate {
     let target: MeetingRoom
     let rooms: [MeetingRoom]
@@ -304,7 +298,6 @@ struct MeetingRoomOrderDropDelegate: DropDelegate {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingRoomsHeader: View {
     @Binding var day: Date
     let onShowMine: () -> Void
@@ -387,7 +380,6 @@ struct MeetingRoomsHeader: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingRoomCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -402,8 +394,8 @@ struct MeetingRoomCard: View {
     private var currentBooking: MeetingBooking? {
         guard MeetingPresentation.calendar.isDate(day, inSameDayAs: now) else { return nil }
         return bookings.first {
-            guard let start = MeetingPresentation.date(from: $0.startsAt),
-                  let end = MeetingPresentation.date(from: $0.endsAt) else { return false }
+            guard let start = $0.startDate,
+                  let end = $0.endDate else { return false }
             return now >= start && now < end
         }
     }
@@ -411,7 +403,7 @@ struct MeetingRoomCard: View {
     private var nextBooking: MeetingBooking? {
         let point = MeetingPresentation.calendar.isDate(day, inSameDayAs: now) ? now : day
         return bookings.first {
-            guard let start = MeetingPresentation.date(from: $0.startsAt) else { return false }
+            guard let start = $0.startDate else { return false }
             return start > point
         }
     }
@@ -521,7 +513,6 @@ struct MeetingRoomCard: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingRoomImage: View {
     let room: MeetingRoom
 
@@ -560,7 +551,6 @@ struct MeetingRoomImage: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingRoomScheduleSheet: View {
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions

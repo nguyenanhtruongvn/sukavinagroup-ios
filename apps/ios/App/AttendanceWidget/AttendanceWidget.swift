@@ -466,7 +466,6 @@ private struct SukavinaAttendanceWidget: Widget {
     }
 }
 
-@available(iOS 17.0, *)
 private struct MeetingLiveActivityWidget: Widget {
     private let accent = Color(red: 1.0, green: 0.25, blue: 0.25)
 
@@ -573,7 +572,6 @@ private struct MeetingLiveActivityWidget: Widget {
     }
 }
 
-@available(iOS 17.0, *)
 private struct MeetingLiveActivityView: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
@@ -602,7 +600,6 @@ private struct MeetingLiveActivityView: View {
     }
 }
 
-@available(iOS 17.0, *)
 private struct MeetingLiveActivityControls: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
@@ -615,7 +612,6 @@ private struct MeetingLiveActivityControls: View {
     }
 }
 
-@available(iOS 17.0, *)
 private struct InitialMeetingControls: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
@@ -637,7 +633,6 @@ private struct InitialMeetingControls: View {
     }
 }
 
-@available(iOS 17.0, *)
 private struct ExtensionConfirmationControls: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
@@ -694,7 +689,6 @@ private extension View {
     }
 }
 
-@available(iOS 17.0, *)
 private struct MeetingLiveActivityTimeline: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 

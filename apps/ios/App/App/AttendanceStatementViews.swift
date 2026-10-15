@@ -318,9 +318,12 @@ enum AttendanceMetrics {
     }
 }
 
-@available(iOS 17.0, *)
 struct AttendanceStatementListView: View {
-    @EnvironmentObject private var session: SessionStore
+    @Environment(\.sessionActions) private var actions
+    /// Methods and non-published values only; observing the whole session
+    /// redrew this screen on every unrelated session change.
+    private var session: SessionStore { actions.store }
+    @EnvironmentObject private var revisions: DataRevisions
     @State private var reports: [AttendanceReport] = []
     @State private var isLoading = true
 
@@ -374,7 +377,7 @@ struct AttendanceStatementListView: View {
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationTitle("Bảng công")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: session.attendanceRevision) {
+        .task(id: revisions.attendance) {
             let cached = session.cachedAttendanceReports()
             if !cached.isEmpty {
                 reports = cached
@@ -390,7 +393,6 @@ struct AttendanceStatementListView: View {
 }
 
 // The overtime bar and its numeric value use the same accent.
-@available(iOS 17.0, *)
 struct AttendanceOvertimeProgressRow: View {
     let title: String
     let hours: Double
@@ -431,7 +433,6 @@ struct AttendanceOvertimeProgressRow: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct AttendanceCodeLegend: View {
     // Shared across current attendance and released monthly statements.
     // Explanations reflect the HR-approved meaning of each payroll code.

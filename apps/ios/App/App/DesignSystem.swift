@@ -131,7 +131,6 @@ struct AttendanceScrollInsetNeutralizer: UIViewRepresentable {
     func updateUIView(_ uiView: AttendanceScrollInsetNeutralizingView, context: Context) {}
 }
 
-@available(iOS 17.0, *)
 struct PortalPageTitle: View {
     let text: String
 
@@ -147,7 +146,6 @@ struct PortalPageTitle: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct AdaptiveGlassSurface: ViewModifier {
     let cornerRadius: CGFloat
     var tint: Color? = nil
@@ -172,7 +170,6 @@ struct AdaptiveGlassSurface: ViewModifier {
     }
 }
 
-@available(iOS 17.0, *)
 extension View {
     func adaptiveGlassSurface(
         cornerRadius: CGFloat,

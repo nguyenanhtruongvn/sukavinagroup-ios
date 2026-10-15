@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-@available(iOS 17.0, *)
 struct MeetingBookingSheet: View {
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions
@@ -802,7 +801,6 @@ struct MeetingBookingSheet: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingBookingErrorNotice: View {
     let message: String
 

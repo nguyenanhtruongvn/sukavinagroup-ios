@@ -2,7 +2,6 @@ import ActivityKit
 import Foundation
 import Security
 
-@available(iOS 17.0, *)
 enum MeetingLiveActivityManager {
     private static var activityUpdatesTask: Task<Void, Never>?
     static func start(from userInfo: [AnyHashable: Any]) {
@@ -195,7 +194,6 @@ enum LiveActivityTokenLedger {
 /// ActivityKit tokens are distinct from ordinary APNs device tokens and are
 /// scoped to one Live Activity.  The stream can provide a rotated token, so it
 /// remains observed for the lifetime of each active activity.
-@available(iOS 17.0, *)
 private enum MeetingLiveActivityPushRegistration {
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
     private static var observedActivityIDs = Set<String>()

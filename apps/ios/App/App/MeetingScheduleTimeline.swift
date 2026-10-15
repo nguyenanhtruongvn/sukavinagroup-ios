@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-@available(iOS 17.0, *)
 struct MeetingTimelineBookingStyle {
     let fill: Color
     let border: Color
@@ -20,12 +19,10 @@ struct MeetingTimelineBookingStyle {
     let line: Color
 }
 
-@available(iOS 17.0, *)
 enum MeetingScheduleLabelLane: Equatable {
     case center, left, right
 }
 
-@available(iOS 17.0, *)
 enum MeetingScheduleLabelMetrics {
     static let height: CGFloat = 36
     static let spacing: CGFloat = 8
@@ -35,7 +32,6 @@ enum MeetingScheduleLabelMetrics {
     static let cornerRadius: CGFloat = 5
 }
 
-@available(iOS 17.0, *)
 struct TimelineBookingItem: Identifiable {
     let sourceIndex: Int
     let booking: MeetingBooking
@@ -48,7 +44,6 @@ struct TimelineBookingItem: Identifiable {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingScheduleLabelCandidate {
     let item: TimelineBookingItem
     let startY: CGFloat
@@ -56,7 +51,6 @@ struct MeetingScheduleLabelCandidate {
     let idealTop: CGFloat
 }
 
-@available(iOS 17.0, *)
 struct MeetingScheduleLabelPlacement: Identifiable {
     let id: String
     let booking: MeetingBooking
@@ -67,7 +61,6 @@ struct MeetingScheduleLabelPlacement: Identifiable {
     var labelTop: CGFloat
 }
 
-@available(iOS 17.0, *)
 struct MeetingTimeline: View {
     let bookings: [MeetingBooking]
     let date: Date
@@ -319,8 +312,8 @@ struct MeetingTimeline: View {
     }
 
     private func bookingPosition(_ booking: MeetingBooking) -> (top: CGFloat, height: CGFloat)? {
-        guard let start = MeetingPresentation.date(from: booking.startsAt),
-              let end = MeetingPresentation.date(from: booking.endsAt) else { return nil }
+        guard let start = booking.startDate,
+              let end = booking.endDate else { return nil }
 
         let startMinute = MeetingPresentation.calendar.component(.hour, from: start) * 60
             + MeetingPresentation.calendar.component(.minute, from: start)
@@ -371,7 +364,6 @@ struct MeetingTimeline: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingScheduleLabelsOverlay: View {
     let placements: [MeetingScheduleLabelPlacement]
     let onSelect: (MeetingBooking) -> Void
@@ -456,7 +448,6 @@ struct MeetingScheduleLabelsOverlay: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingScheduleConnector: View {
     let placement: MeetingScheduleLabelPlacement
     let geometry: (left: CGFloat, width: CGFloat)
@@ -600,7 +591,6 @@ struct MeetingScheduleConnector: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MeetingScheduleLabel: View {
     let booking: MeetingBooking
     let style: MeetingTimelineBookingStyle

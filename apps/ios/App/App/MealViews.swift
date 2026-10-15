@@ -9,7 +9,6 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-@available(iOS 17.0, *)
 struct MealQRCodeCard: View {
     let token: String
     // Rendered once per token. As a computed property the QR code (and a new
@@ -56,7 +55,6 @@ struct MealQRCodeCard: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct MealQRCodeAccessCard: View {
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions
@@ -130,7 +128,6 @@ struct MealQRCodeAccessCard: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct CanteenScannerView: View {
     @EnvironmentObject private var session: SessionStore
     @State private var scanning = true
@@ -215,7 +212,6 @@ struct CanteenScannerView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct QRScannerView: UIViewControllerRepresentable {
     let isActive: Bool
     let onCode: (String) -> Void
@@ -232,7 +228,6 @@ struct QRScannerView: UIViewControllerRepresentable {
     }
 }
 
-@available(iOS 17.0, *)
 final class MealScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
     var onCode: ((String) -> Void)?
     private let captureSession = AVCaptureSession()

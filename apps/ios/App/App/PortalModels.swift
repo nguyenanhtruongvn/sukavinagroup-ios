@@ -48,6 +48,57 @@ struct MeetingBooking: Codable, Identifiable {
     let isMine: Bool?
     let isOwner: Bool?
     let organizerName: String?
+    /// `startsAt`/`endsAt` parsed once. Room cards, the timeline and the
+    /// notification sheet compare them every minute; parsing the ISO strings
+    /// there repeated the work for every booking on every redraw.
+    let startDate: Date?
+    let endDate: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, roomId, startsAt, endsAt, title, attendeeCount, status, isMine, isOwner, organizerName
+    }
+
+    init(
+        id: String,
+        roomId: String,
+        startsAt: String,
+        endsAt: String,
+        title: String,
+        attendeeCount: Int,
+        status: String,
+        isMine: Bool?,
+        isOwner: Bool?,
+        organizerName: String?
+    ) {
+        self.id = id
+        self.roomId = roomId
+        self.startsAt = startsAt
+        self.endsAt = endsAt
+        self.title = title
+        self.attendeeCount = attendeeCount
+        self.status = status
+        self.isMine = isMine
+        self.isOwner = isOwner
+        self.organizerName = organizerName
+        startDate = VietnamTime.date(fromISO8601: startsAt)
+        endDate = VietnamTime.date(fromISO8601: endsAt)
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try values.decode(String.self, forKey: .id),
+            roomId: try values.decode(String.self, forKey: .roomId),
+            startsAt: try values.decode(String.self, forKey: .startsAt),
+            endsAt: try values.decode(String.self, forKey: .endsAt),
+            title: try values.decode(String.self, forKey: .title),
+            attendeeCount: try values.decode(Int.self, forKey: .attendeeCount),
+            status: try values.decode(String.self, forKey: .status),
+            isMine: try values.decodeIfPresent(Bool.self, forKey: .isMine),
+            isOwner: try values.decodeIfPresent(Bool.self, forKey: .isOwner),
+            organizerName: try values.decodeIfPresent(String.self, forKey: .organizerName)
+        )
+    }
 }
 
 struct MeetingScheduleResponse: Codable {
@@ -83,6 +134,10 @@ struct MeetingBookingDetails: Codable, Identifiable {
     let employee: MeetingBookingPerson
     let participants: [MeetingBookingParticipant]
     let isLimitedViewer: Bool?
+
+    /// Same names as on `MeetingBooking`; details are fetched one at a time.
+    var startDate: Date? { VietnamTime.date(fromISO8601: startsAt) }
+    var endDate: Date? { VietnamTime.date(fromISO8601: endsAt) }
 }
 
 struct MeetingInvitee: Codable, Identifiable {
@@ -467,7 +522,6 @@ enum HTMLArticleParser {
     }
 }
 
-@available(iOS 17.0, *)
 final class NotificationManager {
     static let shared = NotificationManager()
 

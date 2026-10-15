@@ -6,7 +6,6 @@ import Security
 /// Runs in the app process when a Lock Screen Live Activity control is tapped.
 /// It intentionally uses the existing API routes, so older mobile clients and
 /// the server contract remain unchanged.
-@available(iOS 17.0, *)
 struct EndMeetingLiveActivityIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Kết thúc cuộc họp"
     static var openAppWhenRun = false
@@ -44,7 +43,6 @@ struct EndMeetingLiveActivityIntent: LiveActivityIntent {
     }
 }
 
-@available(iOS 17.0, *)
 struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Gia hạn cuộc họp"
     static var openAppWhenRun = false
@@ -89,7 +87,6 @@ struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
     }
 }
 
-@available(iOS 17.0, *)
 struct StartMeetingExtensionIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Chọn thời gian gia hạn"
     static var openAppWhenRun = false
@@ -105,7 +102,6 @@ struct StartMeetingExtensionIntent: LiveActivityIntent {
     }
 }
 
-@available(iOS 17.0, *)
 struct AdjustMeetingExtensionIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Điều chỉnh gia hạn"
     static var openAppWhenRun = false
@@ -129,7 +125,6 @@ struct AdjustMeetingExtensionIntent: LiveActivityIntent {
     }
 }
 
-@available(iOS 17.0, *)
 private enum MeetingLiveActivityAction {
     enum Action: Equatable { case end, extend(minutes: Int) }
 
@@ -380,7 +375,6 @@ private enum MeetingLiveActivityAction {
 /// activity.  Schedule a best-effort close while the host process remains
 /// alive, then validate the activity's *current* end time before closing so an
 /// earlier timer cannot end a meeting that was subsequently extended.
-@available(iOS 17.0, *)
 enum MeetingLiveActivityExpiry {
     static func schedule(bookingID: String, endsAt: Date) {
         let delay = max(0, endsAt.timeIntervalSinceNow)
@@ -408,7 +402,6 @@ enum MeetingLiveActivityExpiry {
     }
 }
 
-@available(iOS 17.0, *)
 private enum MeetingLiveActivityActionError: LocalizedError {
     case noSession, unavailable, rejected(String?), expiredToken
 

@@ -22,12 +22,12 @@ struct RequestNotification: Codable, Identifiable, Equatable {
 }
 struct UpdateCount: Decodable { let count: Int }
 
-@available(iOS 17.0, *)
 struct NotificationsView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     // Shared with the Requests tab: one cache decode and one request per refresh.
     @EnvironmentObject private var requestStore: EmployeeRequestStore
+    @EnvironmentObject private var revisions: DataRevisions
     @State private var requestNotifications: [RequestNotification] = []
     @State private var reviewing: EmployeeRequest?
     @State private var viewing: EmployeeRequest?
@@ -204,8 +204,8 @@ struct NotificationsView: View {
                     await openPendingAPNsRouteIfNeeded()
                 }
                 .onAppear { Task { await openPendingAPNsRouteIfNeeded() } }
-                .onChange(of: session.attendanceRevision) { _, _ in Task { await reloadNotifications() } }
-                .onChange(of: session.requestRevision) { _, _ in Task { await reloadNotifications() } }
+                .onChange(of: revisions.attendance) { _, _ in Task { await reloadNotifications() } }
+                .onChange(of: revisions.request) { _, _ in Task { await reloadNotifications() } }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
@@ -484,7 +484,6 @@ struct NotificationsView: View {
     }
 }
 
-@available(iOS 17.0, *)
 private struct MeetingNotificationDetail: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var meetingStore: MeetingStore
@@ -542,18 +541,18 @@ private struct MeetingNotificationDetail: View {
         return meetingStore.bookings
             .filter { $0.roomId == details.roomId && $0.id != details.id }
             .filter { booking in
-                guard let start = MeetingPresentation.date(from: booking.startsAt) else { return false }
+                guard let start = booking.startDate else { return false }
                 return start > endDate
             }
             .sorted { left, right in
-                (MeetingPresentation.date(from: left.startsAt) ?? .distantFuture)
-                    < (MeetingPresentation.date(from: right.startsAt) ?? .distantFuture)
+                (left.startDate ?? .distantFuture)
+                    < (right.startDate ?? .distantFuture)
             }
             .first
     }
     private var maximumExtensionMinutes: Int {
         guard let endDate else { return 0 }
-        guard let nextStart = nextBooking.flatMap({ MeetingPresentation.date(from: $0.startsAt) }) else { return 120 }
+        guard let nextStart = nextBooking.flatMap({ $0.startDate }) else { return 120 }
         return min(120, max(0, Int(nextStart.timeIntervalSince(endDate) / 60) - 5))
     }
     private var extensionBlockMessage: String {
@@ -690,7 +689,7 @@ private struct MeetingNotificationDetail: View {
 
                 if let loadedDetails = await session.meetingBookingDetails(id: id) {
                     details = loadedDetails
-                    if let meetingDate = MeetingPresentation.date(from: loadedDetails.startsAt) {
+                    if let meetingDate = loadedDetails.startDate {
                         Task {
                             await session.refreshMeetingSchedule(date: meetingDate)
                         }
@@ -805,14 +804,12 @@ private struct MeetingNotificationDetail: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
     var body: some View { NavigationStack { ScrollView(showsIndicators: false) { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
 }
 
-@available(iOS 17.0, *)
 struct ArticleDetailView: View {
     let item: ContentItem
     /// Parsed once when the article opens, not on every redraw.
@@ -841,7 +838,6 @@ struct ArticleDetailView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct ArticleBlockView: View {
     let block: ArticleBlock
 

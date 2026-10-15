@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
-@available(iOS 17.0, *)
 struct TodayMenuView: View {
     @EnvironmentObject private var session: SessionStore
     @EnvironmentObject private var menuStore: MenuStore

@@ -149,7 +149,6 @@ struct RequestBody: Encodable { let kind: String; let startsAt: Date; let endsAt
 struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 
 @MainActor
-@available(iOS 17.0, *)
 final class EmployeeRequestStore: ObservableObject {
     private struct CachedRequests: Codable {
         let savedAt: Date
@@ -159,15 +158,34 @@ final class EmployeeRequestStore: ObservableObject {
 
     @Published private(set) var requests: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
     @Published private(set) var approvals: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
-    /// Requests and approvals by id. Notification rows look their request up
-    /// several times per redraw; scanning both arrays each time was O(n).
+    /// Derived once per change of the lists, not on every redraw of the
+    /// screens that show them (they redraw far more often than data changes).
     private var byID: [String: EmployeeRequest] = [:]
+    private var pendingApprovalIDs: Set<String> = []
+    /// Approvals and own requests, de-duplicated, newest first.
+    private(set) var combined: [EmployeeRequest] = []
+    private var combinedByStatus: [EmployeeRequestStatus: [EmployeeRequest]] = [:]
 
     func request(id: String) -> EmployeeRequest? { byID[id] }
+
+    /// The combined list, optionally only one status.
+    func list(status: EmployeeRequestStatus?) -> [EmployeeRequest] {
+        guard let status else { return combined }
+        return combinedByStatus[status] ?? []
+    }
+
+    /// An approval assigned to this user that still awaits a decision.
+    func isPendingApproval(_ id: String) -> Bool { pendingApprovalIDs.contains(id) }
 
     private func rebuildIndex() {
         byID = Dictionary(requests.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
             .merging(approvals.map { ($0.id, $0) }, uniquingKeysWith: { mine, _ in mine })
+        pendingApprovalIDs = Set(approvals.lazy.filter { $0.status == .pending }.map(.id))
+        var seen = Set<String>()
+        combined = (approvals + requests)
+            .filter { seen.insert($0.id).inserted }
+            .sorted { $0.createdAt > $1.createdAt }
+        combinedByStatus = Dictionary(grouping: combined, by: .status)
     }
     @Published var message: String?
     private let cachePrefix = "native-employee-requests-cache-"
@@ -353,9 +371,12 @@ final class EmployeeRequestStore: ObservableObject {
     }
 }
 
-@available(iOS 17.0, *)
 struct RequestsView: View {
-    @EnvironmentObject private var session: SessionStore
+    @Environment(\.sessionActions) private var actions
+    /// Methods and non-published values only; observing the whole session
+    /// redrew this screen on every unrelated session change.
+    private var session: SessionStore { actions.store }
+    @EnvironmentObject private var revisions: DataRevisions
     // One store per session, shared with the Notifications tab.
     @EnvironmentObject private var store: EmployeeRequestStore
     let initialFilter: EmployeeRequestStatus?
@@ -364,13 +385,6 @@ struct RequestsView: View {
     @State private var reviewing: EmployeeRequest?
     @State private var cancelling: EmployeeRequest?
     @State private var filterIndex = 0
-    private var combinedRequests: [EmployeeRequest] {
-        var seen = Set<String>()
-        return (store.approvals + store.requests)
-            .filter { seen.insert($0.id).inserted }
-            .sorted { $0.createdAt > $1.createdAt }
-    }
-    private var visible: [EmployeeRequest] { filter.map { value in combinedRequests.filter { $0.status == value } } ?? combinedRequests }
 
     var body: some View {
         NavigationStack {
@@ -435,7 +449,7 @@ struct RequestsView: View {
             }
             // A realtime request_changed event (another device, a manager's
             // decision) bumps requestRevision; reload like Android does.
-            .onChange(of: session.requestRevision) { _, _ in
+            .onChange(of: revisions.request) { _, _ in
                 Task { await store.load(session.token, force: true) }
             }
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
@@ -543,7 +557,7 @@ struct RequestsView: View {
     }
 
     @ViewBuilder private func requestPage(_ status: EmployeeRequestStatus?) -> some View {
-        let requests = status.map { value in combinedRequests.filter { $0.status == value } } ?? combinedRequests
+        let requests = store.list(status: status)
         ScrollView(showsIndicators: false) {
             if requests.isEmpty {
                 ContentUnavailableView(
@@ -555,7 +569,7 @@ struct RequestsView: View {
             } else {
                 LazyVStack(spacing: 12) {
                     ForEach(requests) { request in
-                        if store.approvals.contains(where: { $0.id == request.id && $0.status == .pending }) {
+                        if store.isPendingApproval(request.id) {
                             Button { reviewing = request } label: {
                                 RequestCard(request: request, canCancel: false, cancel: {})
                             }
@@ -574,7 +588,6 @@ struct RequestsView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct RequestCard: View {
     let request: EmployeeRequest
     var canCancel = true
@@ -715,7 +728,6 @@ extension Date {
     }
 }
 
-@available(iOS 17.0, *)
 struct RequestDecisionView: View {
     let request: EmployeeRequest
     let decide: (Bool, String) async -> Bool
@@ -747,7 +759,6 @@ struct RequestDecisionView: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct RequestComposer: View {
     private enum DurationUnit: String, CaseIterable, Identifiable {
         case minutes

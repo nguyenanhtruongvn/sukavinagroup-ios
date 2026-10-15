@@ -10,7 +10,6 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 
 #if DEBUG
-@available(iOS 17.0, *)
 struct SukavinaPreviewContainer: View {
     @StateObject private var session: SessionStore
     private let mode: SessionStore.State
@@ -47,7 +46,6 @@ struct SukavinaPreviewContainer: View {
     }
 }
 
-@available(iOS 17.0, *)
 struct SukavinaAppPreviews: PreviewProvider {
     static var previews: some View {
         Group {
