@@ -406,7 +406,13 @@ struct DashboardView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        showTodayMenu = true
+                        // After a failed load the card retries instead of
+                        // opening an empty menu.
+                        if menuStore.todayMenu == nil, menuStore.loadError != nil {
+                            Task { await session.refreshTodayMenu(force: true) }
+                        } else {
+                            showTodayMenu = true
+                        }
                     } label: {
                         todayMenuCard
                     }
@@ -553,7 +559,19 @@ struct DashboardView: View {
 
             Divider().overlay(Color.primary.opacity(0.07))
 
-            if menu == nil {
+            if menu == nil, menuStore.loadError != nil {
+                HStack(spacing: 9) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .foregroundStyle(AppTheme.muted)
+                    Text("Không tải được thực đơn.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.muted)
+                    Spacer(minLength: 0)
+                    Text("Thử lại")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(AppTheme.red)
+                }
+            } else if menu == nil {
                 HStack(spacing: 9) {
                     ProgressView().controlSize(.small)
                     Text("Đang tải thực đơn hôm nay…")

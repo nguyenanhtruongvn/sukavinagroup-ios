@@ -224,7 +224,7 @@ struct NotificationsView: View {
                 }
                 .sheet(item: $resubmitting) { request in
                     RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
-                        Task { _ = await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense) }
+                        await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                     }
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
@@ -512,6 +512,7 @@ private struct MeetingNotificationDetail: View {
     @State private var isLoading = false
     @State private var extensionMinutes = 5
     @State private var isSubmitting = false
+    @State private var confirmingEnd = false
     @State private var submittingAction: String?
     @State private var actionError: String?
 
@@ -782,7 +783,8 @@ private struct MeetingNotificationDetail: View {
                         .font(.caption.weight(.semibold)).foregroundStyle(.red)
                 }
                 Button(role: .destructive) {
-                    Task { await submit(details, action: "end") }
+                    // Irreversible: ask first.
+                    confirmingEnd = true
                 } label: {
                     HStack(spacing: 8) {
                         if isSubmitting && submittingAction == "end" {
@@ -795,6 +797,12 @@ private struct MeetingNotificationDetail: View {
                     .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent).disabled(isSubmitting)
+                .confirmationDialog("Kết thúc cuộc họp?", isPresented: $confirmingEnd, titleVisibility: .visible) {
+                    Button("Kết thúc", role: .destructive) { Task { await submit(details, action: "end") } }
+                    Button("Tiếp tục họp", role: .cancel) {}
+                } message: {
+                    Text("Phòng sẽ được giải phóng ngay để người khác có thể đặt. Không thể hoàn tác.")
+                }
             }
         }
         .padding(18)

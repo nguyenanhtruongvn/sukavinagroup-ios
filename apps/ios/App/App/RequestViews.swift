@@ -202,6 +202,11 @@ final class EmployeeRequestStore: ObservableObject {
         combinedByStatus = Dictionary(grouping: combined, by: \.status)
     }
     @Published var message: String?
+    /** A first load is running and nothing is known yet. */
+    @Published private(set) var isLoading = false
+    /** The first load failed and nothing is cached; the lists show a retry. */
+    @Published private(set) var loadError: String?
+    var hasLoaded: Bool { lastLoadedAt != nil }
     private let cachePrefix = "native-employee-requests-cache-"
     private var cacheEmployeeCode: String?
     private var lastLoadedAt: Date?
@@ -236,6 +241,8 @@ final class EmployeeRequestStore: ObservableObject {
         message = nil
         cacheEmployeeCode = nil
         lastLoadedAt = nil
+        isLoading = false
+        loadError = nil
     }
 
     private func saveCache() {
@@ -244,12 +251,9 @@ final class EmployeeRequestStore: ObservableObject {
         UserDefaults.standard.set(data, forKey: cachePrefix + employeeCode)
     }
 
-    private func record(_ error: Error) {
-        // SwiftUI cancels obsolete .task/.refreshable work when this view is
-        // replaced or refreshed again. That is expected lifecycle behavior,
-        // not an error the employee should see in the request screen.
-        guard !(error is CancellationError) else { return }
-        message = error.localizedDescription
+    private static func actionMessage(_ error: Error, fallback: String) -> String {
+        let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? fallback : text
     }
 
     func load(_ token: String?, force: Bool = false) async {
@@ -267,8 +271,11 @@ final class EmployeeRequestStore: ObservableObject {
         }
 
         let taskID = UUID()
+        if !hasLoaded { isLoading = true }
+        loadError = nil
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            defer { self.isLoading = false }
             do {
                 async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
                 async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
@@ -283,7 +290,11 @@ final class EmployeeRequestStore: ObservableObject {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
-                self.record(error)
+                // Lists already shown (cache or an earlier load) stay a valid
+                // offline result; with nothing known the screens show a retry.
+                if !self.hasLoaded {
+                    self.loadError = Self.actionMessage(error, fallback: "Không tải được danh sách đơn.")
+                }
             }
         }
 
@@ -296,8 +307,9 @@ final class EmployeeRequestStore: ObservableObject {
         }
     }
 
-    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil) async -> Bool {
-        guard let token else { return false }
+    /// Nil on success, otherwise the message to show in the form (which stays open).
+    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil) async -> String? {
+        guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
         do {
             loadTask?.cancel()
             loadTask = nil
@@ -322,15 +334,15 @@ final class EmployeeRequestStore: ObservableObject {
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
-            return true
+            return nil
         } catch {
-            record(error)
-            return false
+            return Self.actionMessage(error, fallback: "Không gửi được đơn. Vui lòng thử lại.")
         }
     }
 
-    func cancel(token: String?, id: String) async {
-        guard let token else { return }
+    /// Nil on success, otherwise the message to show.
+    func cancel(token: String?, id: String) async -> String? {
+        guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
         do {
             loadTask?.cancel()
             loadTask = nil
@@ -349,13 +361,15 @@ final class EmployeeRequestStore: ObservableObject {
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
+            return nil
         } catch {
-            record(error)
+            return Self.actionMessage(error, fallback: "Không hủy được đơn. Vui lòng thử lại.")
         }
     }
 
-    func decide(token: String?, id: String, approved: Bool, note: String) async -> Bool {
-        guard let token else { return false }
+    /// Nil on success, otherwise the message to show in the decision sheet.
+    func decide(token: String?, id: String, approved: Bool, note: String) async -> String? {
+        guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
         do {
             loadTask?.cancel()
             loadTask = nil
@@ -377,10 +391,9 @@ final class EmployeeRequestStore: ObservableObject {
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
-            return true
+            return nil
         } catch {
-            record(error)
-            return false
+            return Self.actionMessage(error, fallback: "Không xử lý được đơn. Vui lòng thử lại.")
         }
     }
 }
@@ -436,7 +449,7 @@ struct RequestsView: View {
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $composing) {
                 RequestComposer { kind, from, to, reason, destination, transport, distance, expense in
-                    Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense) }
+                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
                     .presentationDetents([.large])
                     // Let a downward pull dismiss the composer sheet instead
@@ -446,7 +459,7 @@ struct RequestsView: View {
             }
             .sheet(item: $resubmitting) { request in
                 RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
-                    Task { _ = await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense) }
+                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
@@ -462,7 +475,13 @@ struct RequestsView: View {
                     title: Text("Hủy đơn này?"),
                     message: Text("Đơn \(request.kind.title) sẽ chuyển sang trạng thái đã hủy và người quản lý sẽ nhận được thông báo. Thao tác không thể hoàn tác."),
                     primaryButton: .destructive(Text("Xác nhận hủy")) {
-                        Task { await store.cancel(token: session.token, id: request.id) }
+                        Task {
+                            if let error = await store.cancel(token: session.token, id: request.id) {
+                                store.message = error
+                            } else {
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            }
+                        }
                     },
                     secondaryButton: .cancel(Text("Giữ lại"))
                 )
@@ -583,7 +602,24 @@ struct RequestsView: View {
     @ViewBuilder private func requestPage(_ status: EmployeeRequestStatus?) -> some View {
         let requests = store.list(status: status)
         ScrollView(showsIndicators: false) {
-            if requests.isEmpty {
+            // "No requests" only once the lists are known; before that show
+            // loading, or the failure with a retry.
+            if requests.isEmpty, let loadError = store.loadError {
+                ContentUnavailableView {
+                    Label("Không tải được danh sách đơn", systemImage: "wifi.exclamationmark")
+                } description: {
+                    Text(loadError)
+                } actions: {
+                    Button("Thử lại") { Task { await store.load(session.token, force: true) } }
+                        .buttonStyle(.borderedProminent)
+                        .tint(AppTheme.red)
+                }
+                .padding(.top, 70)
+            } else if requests.isEmpty, !store.hasLoaded {
+                ProgressView("Đang tải đơn từ…")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 90)
+            } else if requests.isEmpty {
                 ContentUnavailableView(
                     "Chưa có đơn",
                     systemImage: "doc.text",
@@ -767,32 +803,70 @@ extension Date {
 
 struct RequestDecisionView: View {
     let request: EmployeeRequest
-    let decide: (Bool, String) async -> Bool
+    /// Returns nil on success, otherwise the message to show here.
+    let decide: (Bool, String) async -> String?
     @Environment(\.dismiss) private var dismiss
     @State private var note = ""
     @State private var working = false
     @State private var rejecting = false
+    @State private var error: String?
+
+    private var trimmedNote: String { note.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 18) {
-                RequestCard(request: request, canCancel: false, cancel: {})
-                Text(rejecting ? "Lý do từ chối" : "Ghi chú cho nhân viên (tùy chọn)").font(.headline)
-                TextEditor(text: $note).scrollIndicators(.hidden).scrollContentBackground(.hidden).padding(12).frame(minHeight: 130)
-                    .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
-                if rejecting { Text("Lý do từ chối là bắt buộc, tối thiểu 5 ký tự.").font(.caption).foregroundStyle(AppTheme.red) }
-                HStack(spacing: 12) {
-                    Button("Từ chối") { rejecting = true }.buttonStyle(.bordered).tint(AppTheme.red)
-                    Button(rejecting ? "Xác nhận từ chối" : "Duyệt đơn") {
-                        Task { working = true; if await decide(!rejecting, note.trimmingCharacters(in: .whitespacesAndNewlines)) { dismiss() }; working = false }
+            // Scrolls so the note and the buttons stay reachable above the keyboard.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    RequestCard(request: request, canCancel: false, cancel: {})
+                    // A choice that can be changed back, instead of a one-way "Từ chối" button.
+                    Picker("Quyết định", selection: $rejecting) {
+                        Text("Duyệt").tag(false)
+                        Text("Từ chối").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(working)
+                    Text(rejecting ? "Lý do từ chối" : "Ghi chú cho nhân viên (tùy chọn)").font(.headline)
+                    TextEditor(text: $note).scrollIndicators(.hidden).scrollContentBackground(.hidden).padding(12).frame(minHeight: 130)
+                        .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
+                    if rejecting && trimmedNote.count < 5 {
+                        Text("Lý do từ chối là bắt buộc, tối thiểu 5 ký tự.").font(.caption).foregroundStyle(AppTheme.red)
+                    }
+                    if let error {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(AppTheme.red)
+                    }
+                    Button {
+                        working = true
+                        error = nil
+                        Task {
+                            let failure = await decide(!rejecting, trimmedNote)
+                            working = false
+                            if let failure {
+                                error = failure
+                            } else {
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                dismiss()
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            if working { ProgressView().tint(.white) }
+                            Text(working ? "Đang xử lý…" : rejecting ? "Xác nhận từ chối" : "Duyệt đơn")
+                        }
+                        .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent).tint(rejecting ? AppTheme.red : .green)
-                    .disabled(working || (rejecting && note.trimmingCharacters(in: .whitespacesAndNewlines).count < 5))
-                }.frame(maxWidth: .infinity, alignment: .trailing)
-                Spacer()
-            }.padding(20).background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Xử lý đơn")
-                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
+                    .disabled(working || (rejecting && trimmedNote.count < 5))
+                }
+                .padding(20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Xử lý đơn")
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() }.disabled(working) } }
         }
+        .interactiveDismissDisabled(working)
     }
 }
 
@@ -831,7 +905,10 @@ struct RequestComposer: View {
         case distance
         case expense
     }
-    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
+    /// Returns nil on success, otherwise the reason the server rejected it.
+    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) async -> String?
+    @State private var isSubmitting = false
+    @State private var submitError: String?
     /// A rejected request this form starts from; nil for a new request.
     let template: EmployeeRequest?
     /// The first attendance lookup must not replace the template's times.
@@ -839,7 +916,7 @@ struct RequestComposer: View {
 
     init(
         template: EmployeeRequest? = nil,
-        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) -> Void
+        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) async -> String?
     ) {
         self.template = template
         self.submit = submit
@@ -1348,14 +1425,37 @@ struct RequestComposer: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
+                // The form closes only after the server accepted the request; a
+                // failure keeps everything typed and shows the reason above.
+                if let submitError {
+                    Label(submitError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(AppTheme.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                }
                 Button {
                     let dates = submissionDates
-                    submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
-                    dismiss()
+                    isSubmitting = true
+                    submitError = nil
+                    Task {
+                        let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
+                        isSubmitting = false
+                        if let error {
+                            submitError = error
+                        } else {
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                            dismiss()
+                        }
+                    }
                 } label: {
                     HStack(spacing: 10) {
-                        Image(systemName: "paperplane.fill")
-                        Text("Gửi đơn")
+                        if isSubmitting {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "paperplane.fill")
+                        }
+                        Text(isSubmitting ? "Đang gửi…" : "Gửi đơn")
                     }
                     .font(.headline)
                     .frame(maxWidth: .infinity, minHeight: 54)

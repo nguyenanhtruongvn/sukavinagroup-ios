@@ -108,6 +108,34 @@ struct MeetingRoomsView: View {
                             presentedDestination = .mine(day: day)
                         })
 
+                        // "No rooms configured" only once the schedule is known;
+                        // before that show loading, or the failure with a retry.
+                        if meetingStore.rooms.isEmpty {
+                            if let scheduleError = meetingStore.scheduleError {
+                                ContentUnavailableView {
+                                    Label("Không tải được phòng họp", systemImage: "wifi.exclamationmark")
+                                } description: {
+                                    Text(scheduleError)
+                                } actions: {
+                                    Button("Thử lại") { Task { await session.refreshMeetingSchedule(date: day, force: true) } }
+                                        .buttonStyle(.borderedProminent)
+                                        .tint(AppTheme.red)
+                                }
+                                .padding(.top, 40)
+                            } else if !meetingStore.scheduleLoaded {
+                                ProgressView("Đang tải phòng họp…")
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.top, 60)
+                            } else {
+                                ContentUnavailableView(
+                                    "Chưa có phòng họp",
+                                    systemImage: "building.2",
+                                    description: Text("Quản trị viên cần cấu hình phòng trước khi nhân viên có thể đặt lịch.")
+                                )
+                                .padding(.top, 40)
+                            }
+                        }
+
                         // "Trống" / "Đang họp" must change when a meeting starts
                         // or ends, not only when something else redraws.
                         TimelineView(.everyMinute) { clock in

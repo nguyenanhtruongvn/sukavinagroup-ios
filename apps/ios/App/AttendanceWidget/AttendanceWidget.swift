@@ -604,7 +604,9 @@ private struct MeetingLiveActivityControls: View {
     let context: ActivityViewContext<MeetingLiveActivityAttributes>
 
     var body: some View {
-        if context.state.isChoosingExtension {
+        if context.state.isConfirmingEnd {
+            EndConfirmationControls(context: context)
+        } else if context.state.isChoosingExtension {
             ExtensionConfirmationControls(context: context)
         } else {
             InitialMeetingControls(context: context)
@@ -617,7 +619,7 @@ private struct InitialMeetingControls: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
+            Button(intent: RequestEndMeetingConfirmationIntent(bookingID: context.attributes.bookingID)) {
                 Label("Kết thúc", systemImage: "stop.fill")
                     .liveActivityActionStyle(fill: Color(red: 0.93, green: 0.17, blue: 0.23), foreground: .white)
             }
@@ -626,6 +628,32 @@ private struct InitialMeetingControls: View {
                 Button(intent: StartMeetingExtensionIntent(bookingID: context.attributes.bookingID)) {
                     Label("Gia hạn", systemImage: "clock.badge.plus")
                         .liveActivityActionStyle(fill: Color(red: 0.10, green: 0.39, blue: 0.64), foreground: .white)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+/// Shown after the first "Kết thúc" tap; only this "Kết thúc" ends the meeting.
+private struct EndConfirmationControls: View {
+    let context: ActivityViewContext<MeetingLiveActivityAttributes>
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label("Kết thúc cuộc họp? Phòng sẽ được giải phóng ngay.", systemImage: "exclamationmark.triangle.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.orange)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            HStack(spacing: 10) {
+                Button(intent: CancelEndMeetingConfirmationIntent(bookingID: context.attributes.bookingID)) {
+                    Text("Hủy").liveActivityActionStyle(fill: Color.white.opacity(0.14), foreground: .white)
+                }
+                .buttonStyle(.plain)
+                Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
+                    Label("Kết thúc", systemImage: "stop.fill")
+                        .liveActivityActionStyle(fill: Color(red: 0.93, green: 0.17, blue: 0.23), foreground: .white)
                 }
                 .buttonStyle(.plain)
             }
@@ -656,7 +684,7 @@ private struct ExtensionConfirmationControls: View {
             // confirmation controls on one row so their labels are never
             // clipped below the activity's bottom edge.
             HStack(spacing: 6) {
-                Button(intent: EndMeetingLiveActivityIntent(bookingID: context.attributes.bookingID)) {
+                Button(intent: RequestEndMeetingConfirmationIntent(bookingID: context.attributes.bookingID)) {
                     Text("Kết thúc").liveActivityActionStyle(fill: .red, foreground: .white, compact: true)
                 }
                 .buttonStyle(.plain)

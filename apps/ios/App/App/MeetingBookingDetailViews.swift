@@ -25,6 +25,7 @@ struct MeetingBookingDetailSheet: View {
     @State private var cancelError: String?
     @State private var extensionMinutes = 5
     @State private var isSubmittingControl = false
+    @State private var confirmingEnd = false
     @State private var controlAction: String?
     @State private var controlError: String?
 
@@ -311,7 +312,8 @@ struct MeetingBookingDetailSheet: View {
                 }
 
                 Button(role: .destructive) {
-                    Task { await submitMeetingControl("end") }
+                    // Irreversible: ask first.
+                    confirmingEnd = true
                 } label: {
                     HStack(spacing: 8) {
                         if isSubmittingControl && controlAction == "end" {
@@ -325,6 +327,12 @@ struct MeetingBookingDetailSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(isSubmittingControl)
+                .confirmationDialog("Kết thúc cuộc họp?", isPresented: $confirmingEnd, titleVisibility: .visible) {
+                    Button("Kết thúc", role: .destructive) { Task { await submitMeetingControl("end") } }
+                    Button("Tiếp tục họp", role: .cancel) {}
+                } message: {
+                    Text("Phòng sẽ được giải phóng ngay để người khác có thể đặt. Không thể hoàn tác.")
+                }
             }
         }
         .padding(18)

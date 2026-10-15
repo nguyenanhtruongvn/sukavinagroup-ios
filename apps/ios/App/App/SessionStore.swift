@@ -56,6 +56,10 @@ final class MeetingStore: ObservableObject {
     /// every room-list body evaluation.
     @Published private(set) var bookingsByRoom: [String: [MeetingBooking]] = [:]
     @Published var invitees: [MeetingInvitee] = []
+    /// Rooms were loaded (or restored from cache) at least once.
+    @Published var scheduleLoaded = false
+    /// The schedule could not be loaded and no rooms are known; shown with a retry.
+    @Published var scheduleError: String?
 
     func replaceBookings(_ newValue: [MeetingBooking]) {
         // Sorted once here; views used to sort on every body evaluation.
@@ -71,6 +75,8 @@ final class MeetingStore: ObservableObject {
 @MainActor
 final class MenuStore: ObservableObject {
     @Published var todayMenu: TodayMenu?
+    /// Today's menu could not be loaded and none is cached; the card offers a retry.
+    @Published var loadError: String?
 }
 
 /// Ends this device's server session at sign-out: revokes its refresh,
@@ -930,12 +936,14 @@ final class SessionStore: ObservableObject {
             return
         }
 
+        menu.loadError = nil
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let value: TodayMenu = try await APIClient.shared.request("me/menu", token: token)
                 guard !Task.isCancelled else { return }
                 self.todayMenu = value
+                self.menu.loadError = nil
                 self.todayMenuLoadedAt = Date()
                 self.saveTodayMenuCache(value)
             } catch is CancellationError {
@@ -945,7 +953,9 @@ final class SessionStore: ObservableObject {
                 // Keep a restored menu visible if revalidation is temporarily
                 // unavailable instead of replacing useful cached UI with an alert.
                 if self.todayMenu == nil {
-                    self.present(error)
+                    // Shown on the card with a retry, not as an alert over
+                    // whatever screen the user is on.
+                    self.menu.loadError = error.localizedDescription
                 } else {
                     ConnectionDiagnostics.record(
                         "Today menu refresh deferred: \(error.localizedDescription)"
@@ -1336,7 +1346,10 @@ final class SessionStore: ObservableObject {
         profile = nil
         dashboard = nil
         todayMenu = nil
+        menu.loadError = nil
         meetingRooms = []
+        meetings.scheduleLoaded = false
+        meetings.scheduleError = nil
         meetingBookings = []
         meetingInvitees = []
         AttendanceWidgetBridge.clear()
@@ -1980,6 +1993,8 @@ final class SessionStore: ObservableObject {
 
             // A slower response for a previously selected date must never replace
             // the date the user is currently looking at.
+            meetings.scheduleLoaded = true
+            meetings.scheduleError = nil
             if displayedMeetingScheduleDay == day {
                 meetingRooms = applyMeetingRoomOrder(value.rooms)
                 meetingBookings = cachedBookings
@@ -1999,6 +2014,10 @@ final class SessionStore: ObservableObject {
         } catch {
             guard !Task.isCancelled else { return }
             ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
+            // Known rooms stay usable offline; with none the list shows a retry.
+            if meetingRooms.isEmpty {
+                meetings.scheduleError = error.localizedDescription
+            }
         }
     }
 
@@ -2012,6 +2031,7 @@ final class SessionStore: ObservableObject {
         let roomIDs = Set(rooms.map(\.id))
         let bookings = SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
         meetingRooms = applyMeetingRoomOrder(rooms)
+        if !rooms.isEmpty { meetings.scheduleLoaded = true }
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
         meetingBookings = normalizedMeetingBookings(bookings.filter { roomIDs.contains($0.roomId) })
@@ -2300,7 +2320,11 @@ final class SessionStore: ObservableObject {
     /// Live Activity controls always revalidate with the server; only the
     /// organiser may end or extend an active booking.
     func handleLiveActivityAction(bookingID: String, action: String) async {
-        _ = await performMeetingControl(bookingID: bookingID, action: action, extensionMinutes: 5)
+        // No screen of its own shows the result here, so use the app alert.
+        if let message = await performMeetingControl(bookingID: bookingID, action: action, extensionMinutes: 5) {
+            errorTitle = "Chưa thể thực hiện"
+            errorMessage = message
+        }
     }
 
     /// Shared by the Live Activity and the in-app ten-minute reminder.  The
@@ -2348,7 +2372,8 @@ final class SessionStore: ObservableObject {
             }
             return nil
         } catch {
-            present(error)
+            // Callers show this next to the control that failed; presenting
+            // it globally as well showed the same error twice.
             return error.localizedDescription
         }
     }

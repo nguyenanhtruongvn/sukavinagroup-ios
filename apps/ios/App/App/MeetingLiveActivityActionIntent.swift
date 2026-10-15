@@ -87,6 +87,39 @@ struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
     }
 }
 
+/// First tap on "Kết thúc": ask for confirmation in the activity itself.
+/// Ending is irreversible and the button sits next to the extension controls.
+struct RequestEndMeetingConfirmationIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Xác nhận kết thúc cuộc họp"
+    static var openAppWhenRun = false
+
+    @Parameter(title: "Mã cuộc họp") var bookingID: String
+
+    init(bookingID: String) { self.bookingID = bookingID }
+    init() { bookingID = "" }
+
+    func perform() async throws -> some IntentResult {
+        await MeetingLiveActivityAction.setConfirmingEnd(bookingID: bookingID, true)
+        return .result()
+    }
+}
+
+/// "Hủy" on the end confirmation: back to the normal controls.
+struct CancelEndMeetingConfirmationIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Tiếp tục cuộc họp"
+    static var openAppWhenRun = false
+
+    @Parameter(title: "Mã cuộc họp") var bookingID: String
+
+    init(bookingID: String) { self.bookingID = bookingID }
+    init() { bookingID = "" }
+
+    func perform() async throws -> some IntentResult {
+        await MeetingLiveActivityAction.setConfirmingEnd(bookingID: bookingID, false)
+        return .result()
+    }
+}
+
 struct StartMeetingExtensionIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Chọn thời gian gia hạn"
     static var openAppWhenRun = false
@@ -265,6 +298,20 @@ private enum MeetingLiveActivityAction {
             nil,
             true
         )
+    }
+
+    static func setConfirmingEnd(bookingID: String, _ confirming: Bool) async {
+        for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
+            let current = activity.content.state
+            let state = MeetingLiveActivityAttributes.ContentState(
+                endsAt: current.endsAt,
+                extensionMinutes: confirming ? 0 : current.extensionMinutes,
+                isChoosingExtension: confirming ? false : current.isChoosingExtension,
+                extensionError: nil,
+                isConfirmingEnd: confirming
+            )
+            await activity.update(ActivityContent(state: state, staleDate: state.endsAt))
+        }
     }
 
     static func openExtensionChooser(bookingID: String) async {
