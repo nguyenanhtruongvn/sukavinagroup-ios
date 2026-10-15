@@ -49,8 +49,7 @@ apps/ios/App/
     ├── AttendanceWidget.swift
     ├── AttendanceWidget.entitlements
     ├── Info.plist
-    ├── PrivacyInfo.xcprivacy
-    └── WidgetBackground.jpg
+    └── PrivacyInfo.xcprivacy
 ```
 
 Main Xcode targets:

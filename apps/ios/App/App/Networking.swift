@@ -92,26 +92,17 @@ extension Notification.Name {
 /// posted `UserDefaults.didChangeNotification` (which re-applies the app
 /// appearance). They now go to the unified log, with details redacted outside
 /// a debugger, plus a small in-memory ring buffer.
+/// Connection events go to the unified log (Console.app) only. An in-memory
+/// copy used to be kept for every request but was never read.
 enum ConnectionDiagnostics {
     private static let legacyKey = "connection-diagnostics-v1"
-    private static let lock = NSLock()
-    private static let maximumEntries = 160
     private static let logger = Logger(subsystem: "net.sukavinagroup.user", category: "connection")
-    private static var entries: [String] = []
-    private static var removedLegacyEntries = false
+    /// Removes what versions that persisted diagnostics left in UserDefaults.
+    private static let removeLegacyEntries: Void = UserDefaults.standard.removeObject(forKey: legacyKey)
 
     static func record(_ message: String) {
+        _ = removeLegacyEntries
         logger.debug("\(message, privacy: .private)")
-        lock.lock()
-        defer { lock.unlock() }
-        if !removedLegacyEntries {
-            removedLegacyEntries = true
-            UserDefaults.standard.removeObject(forKey: legacyKey)
-        }
-        entries.append(message)
-        if entries.count > maximumEntries {
-            entries.removeFirst(entries.count - maximumEntries)
-        }
     }
 }
 

@@ -169,7 +169,7 @@ struct RefreshSessionBody: Encodable {
     let refreshToken: String
 }
 
-struct Profile: Codable {
+struct Profile: Codable, Equatable {
     let id: String
     let employeeCode: String
     let name: String

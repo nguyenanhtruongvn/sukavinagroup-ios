@@ -283,12 +283,6 @@ struct NotificationsView: View {
     }
 
     private func open(_ item: RequestNotification) async {
-        if session.isLocalAttendanceNotification(item) {
-            session.markLocalAttendanceNotificationRead(item.id)
-            await reloadNotifications()
-            return
-        }
-
         if item.type == "attendance_monthly_report",
            let month = item.requestId,
            month.range(of: "^[0-9]{4}-(0[1-9]|1[0-2])$", options: .regularExpression) != nil {
@@ -391,18 +385,12 @@ struct NotificationsView: View {
 
     private func clearAll() async {
         guard let token = session.token else { return }
-        session.clearLocalAttendanceNotifications()
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications", method: "DELETE", token: token)
         hiddenArticleIDs.formUnion(items.map(\.id)); UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
         session.markArticlesRead(); await reloadNotifications()
     }
 
     private func deleteNotification(_ item: RequestNotification) async {
-        if session.isLocalAttendanceNotification(item) {
-            session.deleteLocalAttendanceNotification(item.id)
-            requestNotifications.removeAll { $0.id == item.id }
-            return
-        }
         guard let token = session.token else { return }
         withAnimation(.easeInOut(duration: 0.28)) {
             requestNotifications.removeAll { $0.id == item.id }
@@ -494,7 +482,6 @@ struct NotificationsView: View {
         }
     }
 }
-
 
 @available(iOS 17.0, *)
 private struct MeetingNotificationDetail: View {
@@ -822,74 +809,6 @@ struct RequestNotificationDetail: View {
     let request: EmployeeRequest
     @Environment(\.dismiss) private var dismiss
     var body: some View { NavigationStack { ScrollView(showsIndicators: false) { VStack(alignment: .leading, spacing: 18) { RequestCard(request: request, canCancel: false, cancel: {}); if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
-}
-
-@available(iOS 17.0, *)
-struct NewsView: View {
-    @EnvironmentObject private var session: SessionStore
-    @State private var query = ""
-
-    private var items: [ContentItem] {
-        let all = session.dashboard?.contentItems ?? []
-        guard !query.isEmpty else { return all }
-        return all.filter { $0.title.localizedCaseInsensitiveContains(query) || $0.plainBody.localizedCaseInsensitiveContains(query) }
-    }
-
-    var body: some View {
-        NavigationView {
-            ScrollView(showsIndicators: false) {
-                LazyVStack(spacing: 14) {
-                    ForEach(items) { item in
-                        NavigationLink(destination: ArticleDetailView(item: item)) {
-                            ArticleRow(item: item)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if items.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "newspaper").font(.largeTitle).foregroundColor(AppTheme.muted)
-                            Text("Chưa có bài viết phù hợp").foregroundColor(AppTheme.muted)
-                        }.padding(.top, 80)
-                    }
-                }
-                .padding(18)
-                .padding(.bottom, 94)
-            }
-            .hidesPortalBottomScrollEdgeEffect()
-            .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle("Bài viết nội bộ")
-            .searchable(text: $query, prompt: "Tìm bài viết")
-            .refreshable { await session.refreshDashboard() }
-            .onAppear { session.markArticlesRead() }
-        }
-        .navigationViewStyle(.stack)
-    }
-}
-
-@available(iOS 17.0, *)
-struct ArticleRow: View {
-    let item: ContentItem
-    var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack {
-                Text(VietnamTime.format(item.createdAt, date: .abbreviated, time: .omitted))
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(AppTheme.red)
-                Spacer()
-                Image(systemName: "chevron.right").font(.caption).foregroundColor(AppTheme.muted)
-            }
-            Text(item.title).font(.headline).multilineTextAlignment(.leading)
-            Text(item.preview)
-                .font(.subheadline)
-                .foregroundColor(AppTheme.muted)
-                .lineLimit(3)
-                .multilineTextAlignment(.leading)
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppTheme.card)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-    }
 }
 
 @available(iOS 17.0, *)

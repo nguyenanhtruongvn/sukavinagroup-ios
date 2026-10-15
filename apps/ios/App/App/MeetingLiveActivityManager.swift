@@ -153,6 +153,45 @@ enum MeetingLiveActivityManager {
     }
 }
 
+/// Remembers which Live Activity tokens the server already accepted for the
+/// signed-in account, so lifecycle reconciliation does not POST the same
+/// token again on every activation. Entries older than a day are re-sent.
+enum LiveActivityTokenLedger {
+    private static let storageKey = "net.sukavinagroup.live-activity-uploaded-tokens"
+    private static let lock = NSLock()
+    private static let reassertInterval: TimeInterval = 24 * 60 * 60
+
+    /// `scope` is "start" for push-to-start or the booking id.
+    static func key(token: String, scope: String) -> String {
+        let account = SessionCache.loadProfile()?.employeeCode ?? ""
+        return "\(account)|\(scope)|\(token)"
+    }
+
+    static func needsUpload(_ key: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let uploadedAt = entries()[key] else { return true }
+        return Date().timeIntervalSince1970 - uploadedAt > reassertInterval
+    }
+
+    static func markUploaded(_ key: String) {
+        lock.lock(); defer { lock.unlock() }
+        var values = entries()
+        let cutoff = Date().timeIntervalSince1970 - 7 * reassertInterval
+        values = values.filter { $0.value > cutoff }
+        values[key] = Date().timeIntervalSince1970
+        UserDefaults.standard.set(values, forKey: storageKey)
+    }
+
+    static func reset() {
+        lock.lock(); defer { lock.unlock() }
+        UserDefaults.standard.removeObject(forKey: storageKey)
+    }
+
+    private static func entries() -> [String: Double] {
+        UserDefaults.standard.dictionary(forKey: storageKey) as? [String: Double] ?? [:]
+    }
+}
+
 /// ActivityKit tokens are distinct from ordinary APNs device tokens and are
 /// scoped to one Live Activity.  The stream can provide a rotated token, so it
 /// remains observed for the lifetime of each active activity.
@@ -184,6 +223,8 @@ private enum MeetingLiveActivityPushRegistration {
         guard !bookingID.isEmpty, let accessToken = accessToken() else { return }
         let tokenValue = token.map { String(format: "%02x", $0) }.joined()
         guard !tokenValue.isEmpty else { return }
+        let registration = LiveActivityTokenLedger.key(token: tokenValue, scope: bookingID)
+        guard LiveActivityTokenLedger.needsUpload(registration) else { return }
 
         var request = URLRequest(
             url: URL(string: "me/meeting-bookings/\(bookingID)/live-activity-token", relativeTo: baseURL)!
@@ -199,6 +240,7 @@ private enum MeetingLiveActivityPushRegistration {
                 ConnectionDiagnostics.record("Live Activity push token upload was rejected")
                 return
             }
+            LiveActivityTokenLedger.markUploaded(registration)
         } catch {
             ConnectionDiagnostics.record("Live Activity push token upload failed: \(error.localizedDescription)")
         }

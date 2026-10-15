@@ -426,7 +426,9 @@ struct DashboardView: View {
             // pull gesture makes SwiftUI's List visibly jump.
             .task(id: isActive) {
                 guard isActive else { return }
-                await session.refreshDashboard()
+                // Realtime events deliver changes; selecting the tab only
+                // needs data that is recent enough.
+                await session.ensureDashboardFresh()
             }
                 .scrollIndicators(.hidden)
             .refreshable {

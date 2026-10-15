@@ -279,7 +279,6 @@ final class SessionStore: ObservableObject {
     @Published private(set) var aiAssistantMobileEnabled = true
     @Published private(set) var attendanceRevision = 0
     @Published private(set) var requestRevision = 0
-    @Published private(set) var localAttendanceNotifications: [RequestNotification] = []
     @Published private(set) var isOfflineNoticeVisible = false
     @Published private(set) var isNetworkAvailable = false
 
@@ -292,8 +291,11 @@ final class SessionStore: ObservableObject {
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
-    private let knownAttendancePrefix = "known-native-attendance-ids-"
-    private let localAttendanceNotificationsPrefix = "local-native-attendance-notifications-"
+    /// Written by older versions (local attendance inbox); only ever removed now.
+    private let legacyAttendanceKeyPrefixes = [
+        "known-native-attendance-ids-",
+        "local-native-attendance-notifications-",
+    ]
     private let acknowledgedNotificationBadgePrefix = "acknowledged-native-notification-badge-"
     private let acknowledgedNotificationBadgeDatePrefix = "acknowledged-native-notification-badge-date-"
     private var latestRequestNotifications: [RequestNotification] = []
@@ -311,6 +313,11 @@ final class SessionStore: ObservableObject {
     // Single-flight dashboard refresh, see refreshDashboard().
     private var dashboardRefreshTask: Task<Void, Never>?
     private var dashboardRefreshRequested = false
+    /// Set by callers that also want the notification count; served once per fetch.
+    private var dashboardCountRequested = false
+    /// When the dashboard was last fetched, for `ensureDashboardFresh`.
+    private var dashboardLoadedAt: Date?
+    private let dashboardFreshness: TimeInterval = 60
     // Days whose schedule must be fetched again after the in-flight request.
     private var meetingScheduleRerunDays: Set<String> = []
     // Keep decoded month snapshots in RAM as well as UserDefaults. The disk
@@ -334,6 +341,10 @@ final class SessionStore: ObservableObject {
     private var realtimeRefreshTask: Task<Void, Never>?
     private var pendingRealtimeEvents: Set<String> = []
     fileprivate var activeMeetingScheduleDate = Date()
+    /// Network handoffs refresh the meeting schedule only once it was opened.
+    private var hasViewedMeetingSchedule = false
+    /// A badge reset the server has not confirmed yet.
+    private var badgeResetPending = false
     private var displayedMeetingScheduleDay: String?
     private var meetingScheduleRefreshTasks: [String: Task<Void, Never>] = [:]
     private var meetingInviteesLoadedAt: Date?
@@ -735,10 +746,12 @@ final class SessionStore: ObservableObject {
     }
 
     private func hydrateRestoredSession(savedToken: String?) async {
+        var profileFetched = false
         do {
             if let savedToken {
                 do {
                     profile = try await APIClient.shared.request("auth/me", token: savedToken)
+                    profileFetched = true
                     if let profile { SessionCache.save(profile: profile) }
                     if KeychainStore.loadRefreshToken() == nil {
                         let upgraded: LoginResponse = try await APIClient.shared.request(
@@ -766,8 +779,13 @@ final class SessionStore: ObservableObject {
             }
             async let aiSettings: Void = refreshAiAssistantAvailability()
             await refreshDashboard()
-            await refreshProfile()
+            // auth/me was fetched above unless the token had to be renewed.
+            if !profileFetched { await refreshProfile() }
             _ = await aiSettings
+            // The session was just validated: the next foreground does not
+            // need to repeat the same requests.
+            lastForegroundRefreshAt = Date()
+            if lastSessionRefreshAt == nil { lastSessionRefreshAt = Date() }
             startRealTimeUpdates()
             startSessionRefresh()
         } catch NetworkError.unauthorized {
@@ -826,7 +844,7 @@ final class SessionStore: ObservableObject {
                 return
             }
             async let aiSettingsRefresh: Void = self.refreshAiAssistantAvailability()
-            await self.refreshDashboard(shouldRefreshRequestNotificationCount: false)
+            await self.ensureDashboardFresh()
             await self.refreshTodayMenu()
             _ = await notificationCountRefresh
             _ = await aiSettingsRefresh
@@ -1131,30 +1149,46 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// Refreshes the dashboard from realtime events, foreground, network
-    /// changes, pull-to-refresh and tab tasks. Callers share one in-flight
-    /// request; a call that arrives meanwhile schedules exactly one more pass,
-    /// so a change made after the first request started is still fetched and
-    /// an older response can never be applied after a newer one.
+    /// Something changed (realtime event, pull-to-refresh, sign-in): fetch
+    /// the dashboard. Callers share one in-flight request; a call that arrives
+    /// meanwhile schedules exactly one more pass, so a change made after the
+    /// first request started is still fetched and an older response can never
+    /// be applied after a newer one. The notification count is refreshed once
+    /// per pass, not once per caller.
     func refreshDashboard(shouldRefreshRequestNotificationCount: Bool = true) async {
+        if shouldRefreshRequestNotificationCount { dashboardCountRequested = true }
         if let running = dashboardRefreshTask {
             dashboardRefreshRequested = true
             await running.value
-        } else {
-            let task = Task { @MainActor [weak self] in
-                guard let self else { return }
-                repeat {
-                    self.dashboardRefreshRequested = false
-                    await self.fetchDashboard()
-                } while self.dashboardRefreshRequested && !Task.isCancelled
-            }
-            dashboardRefreshTask = task
-            await task.value
-            if dashboardRefreshTask == task { dashboardRefreshTask = nil }
+            return
         }
-        if shouldRefreshRequestNotificationCount, state == .signedIn {
-            await refreshRequestNotificationCount()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            repeat {
+                self.dashboardRefreshRequested = false
+                await self.fetchDashboard()
+                if self.dashboardCountRequested, self.state == .signedIn {
+                    self.dashboardCountRequested = false
+                    await self.refreshRequestNotificationCount()
+                }
+            } while self.dashboardRefreshRequested && !Task.isCancelled
         }
+        dashboardRefreshTask = task
+        await task.value
+        if dashboardRefreshTask == task { dashboardRefreshTask = nil }
+    }
+
+    /// A screen or lifecycle event wants recent data (tab appears, app
+    /// returns, network comes back): join a fetch already running, and skip
+    /// the request entirely when the dashboard is under a minute old. Real
+    /// changes arrive through realtime events, which call `refreshDashboard`.
+    func ensureDashboardFresh() async {
+        if let running = dashboardRefreshTask {
+            await running.value
+            return
+        }
+        if let dashboardLoadedAt, Date().timeIntervalSince(dashboardLoadedAt) < dashboardFreshness { return }
+        await refreshDashboard()
     }
 
     private func fetchDashboard() async {
@@ -1165,11 +1199,17 @@ final class SessionStore: ObservableObject {
             // Signed out (or into another account) while the request ran:
             // never apply, cache or show the previous account's dashboard.
             guard generation == SessionGeneration.current, state == .signedIn else { return }
-            processNewAttendance(fresh)
+            dashboardLoadedAt = Date()
             processNewArticles(fresh.contentItems)
+            // Attendance screens reload when this revision changes. Bump it only
+            // when today's punches actually changed, not on every dashboard
+            // fetch (which made them refetch three months each time).
+            let punchesChanged = dashboard.map {
+                ($0.attendanceRecords ?? []).map(\.id) != (fresh.attendanceRecords ?? []).map(\.id)
+            } ?? false
             dashboard = fresh
             saveDashboardCache(fresh)
-            attendanceRevision &+= 1
+            if punchesChanged { attendanceRevision &+= 1 }
             AttendanceWidgetBridge.update(from: fresh)
         } catch is CancellationError {
             // URLSession cancellation is a normal task-lifecycle event, not
@@ -1180,64 +1220,18 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private func processNewAttendance(_ fresh: Dashboard) {
-        let employeeCode = fresh.employeeCode.isEmpty ? (profile?.employeeCode ?? "") : fresh.employeeCode
-        let key = knownAttendancePrefix + employeeCode
-        let defaults = UserDefaults.standard
-        let records = fresh.attendanceRecords ?? []
-
-        // Attendance alerts are delivered by APNs and must stay outside the
-        // in-app Notifications inbox. Remove the legacy local inbox bridge so
-        // upgraded installs do not keep showing old attendance rows.
-        localAttendanceNotifications = []
-        if !employeeCode.isEmpty {
-            defaults.removeObject(forKey: localAttendanceNotificationsPrefix + employeeCode)
-        }
-        defaults.set(records.map(\.id), forKey: key)
-    }
-
     func isAttendanceNotificationType(_ type: String) -> Bool {
         type == "attendance_check_in" || type == "attendance_check_out"
     }
 
+    /// Attendance alerts are delivered by APNs only and never shown in the
+    /// in-app inbox.
     func mergedRequestNotifications(_ server: [RequestNotification]) -> [RequestNotification] {
-        clearLocalAttendanceNotifications()
-        return server
+        server
             .filter { !isAttendanceNotificationType($0.type) }
             .sorted { $0.createdAt > $1.createdAt }
     }
 
-    func isLocalAttendanceNotification(_ item: RequestNotification) -> Bool { item.id.hasPrefix("local-attendance-") }
-    func markLocalAttendanceNotificationRead(_ id: String) {
-        localAttendanceNotifications = localAttendanceNotifications.map { $0.id == id ? RequestNotification(id: $0.id, type: $0.type, title: $0.title, message: $0.message, requestId: $0.requestId, read: true, createdAt: $0.createdAt) : $0 }
-        persistLocalAttendanceNotifications(profile?.employeeCode ?? dashboard?.employeeCode ?? "")
-    }
-    func deleteLocalAttendanceNotification(_ id: String) {
-        localAttendanceNotifications.removeAll { $0.id == id }
-        persistLocalAttendanceNotifications(profile?.employeeCode ?? dashboard?.employeeCode ?? "")
-    }
-    func clearLocalAttendanceNotifications() {
-        localAttendanceNotifications = []
-        persistLocalAttendanceNotifications(profile?.employeeCode ?? dashboard?.employeeCode ?? "")
-    }
-    private func loadLocalAttendanceNotifications(_ employeeCode: String) {
-        guard !employeeCode.isEmpty,
-              let data = UserDefaults.standard.data(forKey: localAttendanceNotificationsPrefix + employeeCode),
-              let items = try? JSONDecoder().decode([RequestNotification].self, from: data) else { return }
-        localAttendanceNotifications = items
-    }
-    private func persistLocalAttendanceNotifications(_ employeeCode: String) {
-        guard !employeeCode.isEmpty, let data = try? JSONEncoder().encode(Array(localAttendanceNotifications.prefix(50))) else { return }
-        UserDefaults.standard.set(data, forKey: localAttendanceNotificationsPrefix + employeeCode)
-    }
-
-    private func attendanceNotificationTime(_ value: String) -> String {
-        guard let date = VietnamTime.date(fromISO8601: value) else {
-            let parts = value.split(separator: "T")
-            return parts.count > 1 ? String(parts[1].prefix(5)) : "vừa xong"
-        }
-        return VietnamTime.clock.string(from: date)
-    }
 
     func signOut() {
         sessionRestoreLogger.notice("Sign-out requested")
@@ -1253,6 +1247,10 @@ final class SessionStore: ObservableObject {
         } else {
             installationID = nil
         }
+        // The server drops this device's Live Activity registrations at
+        // sign-out, so the next sign-in must upload them again.
+        LiveActivityTokenLedger.reset()
+        hasViewedMeetingSchedule = false
         lastForegroundRefreshAt = nil
         lastSessionRefreshAt = nil
         eventStreamTask?.cancel()
@@ -1266,6 +1264,8 @@ final class SessionStore: ObservableObject {
         dashboardRefreshTask?.cancel()
         dashboardRefreshTask = nil
         dashboardRefreshRequested = false
+        dashboardCountRequested = false
+        dashboardLoadedAt = nil
         displayedMeetingScheduleDay = nil
         sessionRefreshTask?.cancel()
         sessionRefreshTask = nil
@@ -1281,7 +1281,7 @@ final class SessionStore: ObservableObject {
         if let employeeCode = cacheEmployeeCode {
             let defaults = UserDefaults.standard
             defaults.removeObject(forKey: requestNotificationsCachePrefix + employeeCode)
-            defaults.removeObject(forKey: localAttendanceNotificationsPrefix + employeeCode)
+            legacyAttendanceKeyPrefixes.forEach { defaults.removeObject(forKey: $0 + employeeCode) }
             defaults.removeObject(forKey: acknowledgedNotificationBadgePrefix + employeeCode)
             defaults.removeObject(forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
             defaults.removeObject(forKey: todayMenuCachePrefix + employeeCode)
@@ -1297,7 +1297,6 @@ final class SessionStore: ObservableObject {
         todayMenuRefreshTask = nil
         todayMenuLoadedAt = nil
         latestRequestNotifications = []
-        localAttendanceNotifications = []
         if let employeeCode = cacheEmployeeCode {
             UserDefaults.standard.removeObject(
                 forKey: "native-employee-requests-cache-" + employeeCode
@@ -1350,7 +1349,6 @@ final class SessionStore: ObservableObject {
         let defaults = UserDefaults.standard
         let exactKeys = [
             dashboardCachePrefix + employeeCode,
-            knownAttendancePrefix + employeeCode,
             attendanceReportsCachePrefix + employeeCode,
             attendanceMonthCacheOwnerKey,
             attendanceStaleBeforePrefix + employeeCode,
@@ -1386,22 +1384,30 @@ final class SessionStore: ObservableObject {
         ConnectionDiagnostics.record("Sign-in completed successfully")
     }
 
-    private func applySession(_ response: LoginResponse) {
+    /// `isRenewal`: the same session was refreshed, not a new sign-in.
+    private func applySession(_ response: LoginResponse, isRenewal: Bool = false) {
         // Apply the authenticated identity in memory first. Keychain persistence
         // must not sit on the UI-critical path between HTTP 201 and the portal.
         token = response.accessToken
-        profile = Profile(
-            id: "",
-            employeeCode: response.user.employeeCode,
-            name: response.user.name,
-            role: response.user.role,
-            accountType: response.user.accountType,
-            permissions: response.user.permissions,
-            protected: response.user.protected,
-            email: nil,
-            managerFullName: nil,
-            passwordChangedAt: nil
+        let user = response.user
+        // The login/refresh response carries only the token's identity. For
+        // the same account keep what `auth/me` added (email, manager,
+        // password date) instead of replacing it with a stripped copy, and
+        // publish only when something actually changed.
+        let current = profile?.employeeCode == user.employeeCode ? profile : nil
+        let updated = Profile(
+            id: current?.id ?? "",
+            employeeCode: user.employeeCode,
+            name: user.name,
+            role: user.role,
+            accountType: user.accountType,
+            permissions: user.permissions,
+            protected: user.protected,
+            email: current?.email,
+            managerFullName: current?.managerFullName,
+            passwordChangedAt: current?.passwordChangedAt
         )
+        if profile != updated { profile = updated }
         let cachedProfile = profile
         let widgetToken = response.widgetToken
         Task { @MainActor in
@@ -1423,6 +1429,8 @@ final class SessionStore: ObservableObject {
             }
         }
 
+        // Push registration belongs to a sign-in; a token renewal keeps it.
+        guard !isRenewal else { return }
         Task { @MainActor [weak self] in
             await APNsRegistration.requestAuthorizationAndRegister()
             await self?.syncAPNsToken()
@@ -1463,9 +1471,11 @@ final class SessionStore: ObservableObject {
         )
         guard generation == SessionGeneration.current, state != .signedOut else { return }
         lastSessionRefreshAt = Date()
-        applySession(response)
+        applySession(response, isRenewal: true)
         if biometricsEnabled, !response.refreshToken.isEmpty {
-            _ = BiometricKeychain.save(refreshToken: response.refreshToken)
+            // Keychain items with access control can block; keep them off main.
+            let refreshToken = response.refreshToken
+            Task.detached(priority: .utility) { _ = BiometricKeychain.save(refreshToken: refreshToken) }
         }
     }
 
@@ -1515,8 +1525,10 @@ final class SessionStore: ObservableObject {
     func clearNotificationBadge() {
         let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
         guard !employeeCode.isEmpty else { return }
-        let acknowledgedAt = Date()
         let currentUnreadIDs = latestRequestNotifications.filter { !$0.read }.map(\.id)
+        let acknowledgedIDs = UserDefaults.standard.stringArray(forKey: acknowledgedNotificationBadgePrefix + employeeCode) ?? []
+        if notificationBadgeCount == 0, articleBadgeCount == 0, Set(acknowledgedIDs) == Set(currentUnreadIDs) { return }
+        let acknowledgedAt = Date()
         UserDefaults.standard.set(currentUnreadIDs, forKey: acknowledgedNotificationBadgePrefix + employeeCode)
         UserDefaults.standard.set(acknowledgedAt, forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
         articleBadgeCount = 0
@@ -1544,7 +1556,10 @@ final class SessionStore: ObservableObject {
                 token: token,
                 body: PushBadgeResetBody(token: deviceToken, acknowledgedAt: resetAt)
             )
+            badgeResetPending = false
         } catch {
+            // Retried when the network comes back (see startNetworkMonitoring).
+            badgeResetPending = true
             ConnectionDiagnostics.record("APNs badge reset sync deferred: \(error.localizedDescription)")
         }
     }
@@ -1681,16 +1696,22 @@ final class SessionStore: ObservableObject {
                 self.showOfflineNoticeIfNeeded(previousStatus: wasStatus, currentStatus: path.status)
 
                 // The first callback only records the current path. Refresh after a real reconnect or handoff.
+                // In the background the stream is closed on purpose and
+                // appBecameActive refreshes on return; do not reopen it here.
                 guard wasStatus != nil,
                       path.status == .satisfied,
                       wasStatus != .satisfied || wasCellular != isCellular,
-                      self.token != nil else { return }
-                await self.refreshAiAssistantAvailability()
-                await self.syncPushBadgeReset()
+                      self.token != nil,
+                      UIApplication.shared.applicationState == .active else { return }
+                if self.badgeResetPending { await self.syncPushBadgeReset() }
                 if self.profile?.accountType == "CANTEEN" { return }
-                await self.refreshDashboard()
-                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
+                // Reconnecting the stream revalidates the AI setting, and
+                // the dashboard pass refreshes the notification count.
                 self.startRealTimeUpdates()
+                await self.ensureDashboardFresh()
+                if self.hasViewedMeetingSchedule {
+                    await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
+                }
             }
         }
         pathMonitor.start(queue: pathMonitorQueue)
@@ -1854,6 +1875,7 @@ final class SessionStore: ObservableObject {
     /// Shows the last confirmed schedule immediately and only revalidates when it is stale.
     /// Realtime/APNs events and explicit user refreshes bypass the freshness window.
     func refreshMeetingSchedule(date: Date = .now, force: Bool = false) async {
+        hasViewedMeetingSchedule = true
         activeMeetingScheduleDate = date
         let day = VietnamTime.dayKey.string(from: date)
         displayCachedMeetingScheduleIfNeeded(for: day)
@@ -2360,7 +2382,22 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private func scheduleRealtimeRefresh(for event: String) {
+    private struct RealtimePayload: Decodable {
+        let type: String?
+        let employeeCodes: [String]?
+    }
+
+    /// `line` is one SSE line: `data: {"type": ..., "employeeCodes": [...]}`.
+    /// `employeeCodes` (optional) scopes a change to those employees; other
+    /// devices ignore it instead of all refetching at once.
+    private func scheduleRealtimeRefresh(for line: String) {
+        let body = line.hasPrefix("data:") ? String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces) : line
+        let payload = body.data(using: .utf8).flatMap { try? JSONDecoder().decode(RealtimePayload.self, from: $0) }
+        if let scope = payload?.employeeCodes {
+            guard let employeeCode = profile?.employeeCode.nilIfEmpty,
+                  scope.contains(where: { $0.caseInsensitiveCompare(employeeCode) == .orderedSame }) else { return }
+        }
+        let event = payload?.type ?? body
         if event.contains("ai_assistant_settings_changed_disabled") {
             applyAiAssistantAvailability(false)
             return
@@ -2408,12 +2445,14 @@ final class SessionStore: ObservableObject {
             if events.contains("own_profile_changed") {
                 await self.refreshProfile()
             }
+            // The dashboard carries attendance and news. Requests and meeting
+            // invitations only change the notification count.
             if events.contains("attendance_changed") ||
                 events.contains("employee_changed") ||
-                events.contains("request_changed") ||
-                events.contains("content_changed") ||
-                events.contains("meeting_changed") {
+                events.contains("content_changed") {
                 await self.refreshDashboard()
+            } else if events.contains("request_changed") || events.contains("meeting_changed") {
+                await self.refreshRequestNotificationCount()
             }
             if events.contains("meal_changed") {
                 await self.refreshTodayMenu()
@@ -2431,9 +2470,11 @@ final class SessionStore: ObservableObject {
     private func employeeProfileEventTargetsCurrentEmployee(_ event: String) -> Bool {
         guard let employeeCode = profile?.employeeCode.nilIfEmpty,
               let marker = event.range(of: "employee_changed:") else { return false }
+        // `event` is the decoded type. Cutting the code out of the raw JSON
+        // line used to keep a trailing quote, so this never matched.
         let payload = String(event[marker.upperBound...])
         let target = payload.components(
-            separatedBy: CharacterSet(charactersIn: ",; \r\n ")
+            separatedBy: CharacterSet(charactersIn: ",; \r\n\"}")
         ).first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return target?.caseInsensitiveCompare(employeeCode) == .orderedSame

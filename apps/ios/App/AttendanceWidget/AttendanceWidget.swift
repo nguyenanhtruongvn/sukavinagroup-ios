@@ -229,24 +229,6 @@ private struct AttendanceWidgetView: View {
         }
     }
 
-    @ViewBuilder
-    private var widgetArtwork: some View {
-        if let url = Bundle.main.url(forResource: "WidgetBackground", withExtension: "jpg"),
-           let image = UIImage(contentsOfFile: url.path) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-        } else {
-            LinearGradient(
-                colors: [
-                    Color(red: 1.00, green: 0.34, blue: 0.02),
-                    Color(red: 0.95, green: 0.02, blue: 0.08),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
 
     private var stripedWhiteBackground: some View {
         ZStack {

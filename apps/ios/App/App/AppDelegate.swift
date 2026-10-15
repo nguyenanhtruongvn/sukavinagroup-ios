@@ -299,7 +299,12 @@ private final class NativeAppContainerViewController: UIViewController {
                 self.view.bringSubviewToFront(self.offlineNotice)
             }
         }
+        // UserDefaults posts this for every write in the app (several per
+        // dashboard refresh). Re-apply only when the appearance key changed.
         appearanceObservation = NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            .map { _ in UserDefaults.standard.string(forKey: "sukavina.appearanceMode") }
+            .removeDuplicates()
+            .dropFirst()
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyAppearance() }
         applyAppearance()

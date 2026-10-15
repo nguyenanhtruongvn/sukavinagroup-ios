@@ -24,10 +24,13 @@ struct AiAssistantMessage: Identifiable {
 @available(iOS 17.0, *)
 struct AiAssistantOrbView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     var size: CGFloat = 64
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 24.0)) { timeline in
+        // With Reduce Motion the orb is static, and it cannot be seen while
+        // the app is inactive: stop the 24 fps redraw in both cases.
+        TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: reduceMotion || scenePhase != .active)) { timeline in
             let seconds = timeline.date.timeIntervalSinceReferenceDate
             let coreAngle = reduceMotion ? 0 : (seconds.truncatingRemainder(dividingBy: 5.4) / 5.4) * Double.pi * 2
             let orbitAngle = reduceMotion ? 0 : (seconds.truncatingRemainder(dividingBy: 10.8) / 10.8) * 360

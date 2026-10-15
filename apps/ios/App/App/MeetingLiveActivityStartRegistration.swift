@@ -63,6 +63,10 @@ enum MeetingLiveActivityStartRegistration {
             ConnectionDiagnostics.record("Live Activity start token cached until sign-in")
             return
         }
+        // Launch, every activation and every sign-in call this. Send the token
+        // only when it (or the account) changed, re-asserting it daily.
+        let registration = LiveActivityTokenLedger.key(token: tokenValue, scope: "start")
+        guard LiveActivityTokenLedger.needsUpload(registration) else { return }
 
         var request = URLRequest(
             url: URL(string: "me/meeting-bookings/live-activity-start-token", relativeTo: baseURL)!
@@ -84,6 +88,7 @@ enum MeetingLiveActivityStartRegistration {
                 ConnectionDiagnostics.record("Live Activity start token upload was rejected")
                 return
             }
+            LiveActivityTokenLedger.markUploaded(registration)
             ConnectionDiagnostics.record("Live Activity start token registered")
         } catch {
             ConnectionDiagnostics.record("Live Activity start token upload failed: \(error.localizedDescription)")
