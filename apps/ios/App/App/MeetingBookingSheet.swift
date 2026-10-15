@@ -132,10 +132,16 @@ struct MeetingBookingSheet: View {
                         guard field != nil else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
-                    .onChange(of: selected) { _, _ in
+                    // Adding people grows the list above the search field and
+                    // pushes it down, so follow it. Removing someone (the x in
+                    // "Đã chọn") only shrinks that list: the user is working
+                    // there, and jumping back to the search field was jarring.
+                    .onChange(of: selected) { old, new in
+                        guard new.count > old.count else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
-                    .onChange(of: selectedDepartments) { _, _ in
+                    .onChange(of: selectedDepartments) { old, new in
+                        guard new.count > old.count else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
                     .onChange(of: query) { _, _ in
