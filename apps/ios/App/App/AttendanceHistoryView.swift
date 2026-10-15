@@ -553,6 +553,7 @@ struct ModernAttendanceHistoryView: View {
 
     /// A long label ("Quên chấm công") wraps to a second line instead of being
     /// cut off; the row stretches every cell to the tallest one so they stay even.
+    /// Content is top-aligned so numbers and labels line up across cells.
     private func summaryCell(_ value: Text, _ label: String, _ color: Color) -> some View {
         VStack(spacing: 5) {
             value.font(.title3.bold()).foregroundStyle(color)
@@ -564,7 +565,7 @@ struct ModernAttendanceHistoryView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 2)
-        .frame(maxWidth: .infinity, maxHeight: .infinity).padding(.vertical, 13)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top).padding(.vertical, 13)
         .background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 15))
     }
 
