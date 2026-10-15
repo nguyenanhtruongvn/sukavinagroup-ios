@@ -220,6 +220,8 @@ final class DataRevisions: ObservableObject {
     @Published fileprivate(set) var request = 0
     /// Meeting bookings or invitations changed on the server.
     @Published fileprivate(set) var meeting = 0
+    /// Notifications were read or deleted on another of this user's devices.
+    @Published fileprivate(set) var inbox = 0
 }
 
 /// The Notifications tab badge. Only the tab bar observes it.
@@ -2522,8 +2524,11 @@ final class SessionStore: ObservableObject {
                 events.contains("employee_changed") ||
                 events.contains("content_changed") {
                 await self.refreshDashboard()
-            } else if events.contains("request_changed") || events.contains("meeting_changed") {
+            } else if events.contains("request_changed") || events.contains("meeting_changed") || events.contains("inbox_changed") {
                 await self.refreshRequestNotificationCount()
+            }
+            if events.contains("inbox_changed") {
+                self.revisions.inbox &+= 1
             }
             if events.contains("meal_changed") {
                 // Forced: the 90 s freshness window would otherwise drop an

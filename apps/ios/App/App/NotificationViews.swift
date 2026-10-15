@@ -211,6 +211,8 @@ struct NotificationsView: View {
                 .onChange(of: revisions.request) { _, _ in Task { await reloadNotifications() } }
                 // Meeting invitations are notifications too.
                 .onChange(of: revisions.meeting) { _, _ in Task { await reloadNotifications() } }
+                // Read or deleted on another of this user's devices.
+                .onChange(of: revisions.inbox) { _, _ in Task { await reloadNotifications() } }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }

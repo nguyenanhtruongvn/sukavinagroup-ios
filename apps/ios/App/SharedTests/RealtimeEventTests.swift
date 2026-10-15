@@ -2,6 +2,12 @@ import XCTest
 @testable import SukavinaShared
 
 final class RealtimeEventTests: XCTestCase {
+    func testInboxChangeIsScopedToItsOwner() {
+        let line = #"data: {"type":"inbox_changed","employeeCodes":["NV001"]}"#
+        XCTAssertEqual(RealtimeEvent(line: line, employeeCode: "NV001")?.changes, [.inbox])
+        XCTAssertNil(RealtimeEvent(line: line, employeeCode: "NV002"))
+    }
+
     func testPayloadWithoutChangeIsIgnored() {
         XCTAssertNil(RealtimeEvent(line: #"data: {"type":"connected"}"#, employeeCode: "NV001"))
         XCTAssertNil(RealtimeEvent(line: #"data: {"type":"heartbeat"}"#, employeeCode: "NV001"))

@@ -14,6 +14,8 @@ struct RealtimeEvent: Equatable {
         case meal = "meal_changed"
         case meeting = "meeting_changed"
         case content = "content_changed"
+        /// This user read or deleted notifications on another device.
+        case inbox = "inbox_changed"
     }
 
     /// The change kinds this event announces to the signed-in employee.
