@@ -362,7 +362,7 @@ private struct ForgotPasswordView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundColor(AppTheme.redText)
                             }
-                            NativeField(title: "Mã OTP gồm 6 số", text: $otp, icon: "number", keyboard: .numberPad)
+                            NativeField(title: "Mã OTP gồm 6 số", text: $otp, icon: "number", keyboard: .numberPad, textContentType: .oneTimeCode)
                                 .onChange(of: otp) { _, value in
                                     otp = String(value.filter(\.isNumber).prefix(6))
                                     formError = nil
@@ -547,6 +547,8 @@ struct VerificationView: View {
                 Text(message).multilineTextAlignment(.center).foregroundColor(AppTheme.muted)
                 TextField("000000", text: $code)
                     .keyboardType(.numberPad)
+                    // iOS offers the code from Mail above the keyboard.
+                    .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
                     .font(.system(size: 30, weight: .bold, design: .monospaced))
                     .padding()
