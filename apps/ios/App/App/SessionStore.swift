@@ -218,6 +218,8 @@ final class DataRevisions: ObservableObject {
     @Published fileprivate(set) var attendance = 0
     /// Requests or approvals changed on the server.
     @Published fileprivate(set) var request = 0
+    /// Meeting bookings or invitations changed on the server.
+    @Published fileprivate(set) var meeting = 0
 }
 
 /// The Notifications tab badge. Only the tab bar observes it.
@@ -1707,9 +1709,18 @@ final class SessionStore: ObservableObject {
                     let resumed = self.realtimeConnectedBefore
                     self.realtimeConnectedBefore = true
                     if resumed {
+                        // Events missed during the gap can concern any area,
+                        // not just attendance: open request, notification and
+                        // menu views reload too, and a viewed meeting schedule.
                         self.invalidateAttendanceCacheForRealtimeUpdate()
                         self.revisions.attendance &+= 1
+                        self.revisions.request &+= 1
+                        self.revisions.meeting &+= 1
                         await self.ensureDashboardFresh()
+                        await self.refreshTodayMenu(force: true)
+                        if self.hasViewedMeetingSchedule {
+                            await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
+                        }
                     }
 
                     for try await line in bytes.lines {
@@ -2515,10 +2526,18 @@ final class SessionStore: ObservableObject {
                 await self.refreshRequestNotificationCount()
             }
             if events.contains("meal_changed") {
-                await self.refreshTodayMenu()
+                // Forced: the 90 s freshness window would otherwise drop an
+                // admin's menu change announced right after a load. Mirrors Android.
+                await self.refreshTodayMenu(force: true)
             }
             if events.contains("meeting_changed") {
-                await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
+                self.revisions.meeting &+= 1
+                // Only a device that opened the meeting schedule keeps it fresh;
+                // refreshing here also marked it viewed, so every device
+                // fetched the schedule on every booking change.
+                if self.hasViewedMeetingSchedule {
+                    await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
+                }
             }
         }
     }
