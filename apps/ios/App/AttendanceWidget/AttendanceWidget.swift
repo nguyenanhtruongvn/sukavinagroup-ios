@@ -22,6 +22,16 @@ private enum WidgetStorage {
     struct State: Codable {
         let checkIn: String?
         let checkOut: String?
+
+        /// Only the punches made on `day` (Vietnam time).
+        func punches(on day: Date, calendar: Calendar) -> State {
+            let sameDay = { (value: String?) -> String? in
+                guard let value, let date = VietnamTime.date(fromISO8601: value),
+                      calendar.isDate(date, inSameDayAs: day) else { return nil }
+                return value
+            }
+            return State(checkIn: sameDay(checkIn), checkOut: sameDay(checkOut))
+        }
     }
 
     static func load() -> State? {
@@ -144,13 +154,26 @@ private struct AttendanceProvider: TimelineProvider {
         completion(context.isPreview ? placeholder(in: context) : AttendanceEntry(date: Date(), state: WidgetStorage.load()))
     }
 
+    /// Punches change only when the employee clocks in or out. The server's
+    /// punch push wakes the app, which reloads this widget at once (as do
+    /// the app's own attendance updates); the day change is a ready-made
+    /// midnight entry needing no network. The hourly reload is only a safety
+    /// net for pushes iOS does not deliver (e.g. after the app was force-quit).
+    /// Previously the widget fetched from the network every 15 minutes.
     func getTimeline(in context: Context, completion: @escaping (Timeline<AttendanceEntry>) -> Void) {
         Task {
-            let entry = AttendanceEntry(date: Date(), state: await WidgetStorage.fetchLatest())
-            // WidgetKit throttles frequent timeline reloads anyway; the app
-            // reloads this widget itself whenever attendance changes.
-            let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(15 * 60)
-            completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+            let now = Date()
+            let calendar = VietnamTime.calendar
+            let state = await WidgetStorage.fetchLatest()
+            let midnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
+                ?? now.addingTimeInterval(86_400)
+            let entries = [
+                AttendanceEntry(date: now, state: state),
+                // New day: the calendar moves on and yesterday's times clear.
+                AttendanceEntry(date: midnight, state: state?.punches(on: midnight, calendar: calendar)),
+            ]
+            let safetyNet = now.addingTimeInterval(60 * 60)
+            completion(Timeline(entries: entries, policy: .after(min(safetyNet, midnight))))
         }
     }
 }

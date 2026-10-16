@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		FC0000000000000000000320 /* Shared/RealtimeEvent.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000310 /* Shared/RealtimeEvent.swift */; };
 		FC0000000000000000000220 /* Shared/RequestReasonPrefill.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000210 /* Shared/RequestReasonPrefill.swift */; };
+		FC0000000000000000000620 /* Shared/AccessTokenTiming.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000610 /* Shared/AccessTokenTiming.swift */; };
 		FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */; };
 		FC0000000000000000000420 /* Shared/ReadableColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000410 /* Shared/ReadableColor.swift */; };
 		FC0000000000000000000120 /* Shared/MeetingBookingDeduplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */; };
@@ -94,6 +95,7 @@
 /* Begin PBXFileReference section */
 		FC0000000000000000000310 /* Shared/RealtimeEvent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/RealtimeEvent.swift; sourceTree = "<group>"; };
 		FC0000000000000000000210 /* Shared/RequestReasonPrefill.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/RequestReasonPrefill.swift; sourceTree = "<group>"; };
+		FC0000000000000000000610 /* Shared/AccessTokenTiming.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/AccessTokenTiming.swift; sourceTree = "<group>"; };
 		FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingBookingTime.swift; sourceTree = "<group>"; };
 		FC0000000000000000000410 /* Shared/ReadableColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ReadableColor.swift; sourceTree = "<group>"; };
 		FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingBookingDeduplication.swift; sourceTree = "<group>"; };
@@ -187,6 +189,7 @@
 				D40000000000000000000107 /* EmployeeViews.swift */,
 				FC0000000000000000000310 /* Shared/RealtimeEvent.swift */,
 				FC0000000000000000000210 /* Shared/RequestReasonPrefill.swift */,
+				FC0000000000000000000610 /* Shared/AccessTokenTiming.swift */,
 				FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */,
 				FC0000000000000000000410 /* Shared/ReadableColor.swift */,
 				FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */,
@@ -350,6 +353,7 @@
 				D40000000000000000000007 /* EmployeeViews.swift in Sources */,
 				FC0000000000000000000320 /* Shared/RealtimeEvent.swift in Sources */,
 				FC0000000000000000000220 /* Shared/RequestReasonPrefill.swift in Sources */,
+				FC0000000000000000000620 /* Shared/AccessTokenTiming.swift in Sources */,
 				FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */,
 				FC0000000000000000000420 /* Shared/ReadableColor.swift in Sources */,
 				FC0000000000000000000120 /* Shared/MeetingBookingDeduplication.swift in Sources */,

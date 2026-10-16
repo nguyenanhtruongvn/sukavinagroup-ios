@@ -190,6 +190,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     ) {
         MeetingLiveActivityManager.start(from: userInfo)
         publishMeetingChangeIfNeeded(userInfo)
+        reloadAttendanceWidgetIfNeeded(userInfo)
         completionHandler(.newData)
     }
 
@@ -199,6 +200,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         publishMeetingChangeIfNeeded(notification.request.content.userInfo)
+        reloadAttendanceWidgetIfNeeded(notification.request.content.userInfo)
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -210,6 +212,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         notificationRouter.handle(userInfo: response.notification.request.content.userInfo)
         publishMeetingChangeIfNeeded(response.notification.request.content.userInfo)
         completionHandler()
+    }
+
+    /// "Đã chấm công" push (content-available, so it also arrives with the
+    /// app in the background): the widget fetches the new punch right away
+    /// instead of waiting for a periodic refresh.
+    private func reloadAttendanceWidgetIfNeeded(_ userInfo: [AnyHashable: Any]) {
+        guard let type = userInfo["type"] as? String,
+              type == "attendance_check_in" || type == "attendance_check_out" else { return }
+        WidgetCenter.shared.reloadTimelines(ofKind: AttendanceWidgetBridge.kind)
     }
 
     private func publishMeetingChangeIfNeeded(_ userInfo: [AnyHashable: Any]) {

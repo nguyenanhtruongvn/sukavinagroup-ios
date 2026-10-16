@@ -1534,15 +1534,26 @@ final class SessionStore: ObservableObject {
     private func startSessionRefresh() {
         sessionRefreshTask?.cancel()
         sessionRefreshTask = Task { [weak self] in
+            var failures = 0
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 12 * 60 * 60 * 1_000_000_000)
+                // Wake 10 minutes before the current access token expires
+                // (its JWT exp), not on a fixed 12-hour cycle that ignored
+                // the token's age. After a failed attempt, back off (1 min
+                // doubling to 15 min) instead of retrying in a tight loop.
+                guard let token = self?.token else { return }
+                let renewal = AccessTokenTiming.renewalDate(for: token, now: Date())
+                let backoff = failures == 0 ? 0 : min(15 * 60, 60 * pow(2, Double(failures - 1)))
+                let wait = max(renewal.timeIntervalSinceNow, backoff, 0)
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                 guard !Task.isCancelled, let self else { return }
                 do {
                     try await self.refreshSession()
+                    failures = 0
                 } catch NetworkError.unauthorized {
                     self.signOut()
                     return
                 } catch {
+                    failures += 1
                     ConnectionDiagnostics.record("Session refresh deferred: \(error.localizedDescription)")
                 }
             }
