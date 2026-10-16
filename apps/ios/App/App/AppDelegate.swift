@@ -119,6 +119,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // Before anything reads the session: Keychain items outlive an
+        // uninstall, so a reinstalled app must not sign the previous user in.
+        InstallationGuard.forgetPreviousInstallationIfNeeded()
         // Room and news photos (AsyncImage, the iOS 17 room list) load
         // through URLSession.shared. `/api/media` files are immutable for a
         // year; give the shared cache room to keep them across launches
@@ -177,15 +180,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
             MeetingLiveActivityStartRegistration.observe()
         }
         appContainer?.appBecameActive()
-    }
-
-    func application(
-        _ app: UIApplication,
-        open url: URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        appContainer?.handleLiveActivityURL(url)
-        return true
     }
 
     func application(
@@ -270,6 +264,8 @@ private final class NativeAppContainerViewController: UIViewController {
     private var appearanceObservation: AnyCancellable?
     private var hasStartedRestore = false
     private var host: UIHostingController<AnyView>?
+    /// Full-screen "change the default password" step; see updateForcedPasswordChange.
+    private var forcedPasswordController: UIViewController?
     private var renderedScreenKind: ScreenKind?
     private let launchView = UIView()
     private let launchSpinner = UIActivityIndicatorView(style: .large)
@@ -320,11 +316,15 @@ private final class NativeAppContainerViewController: UIViewController {
                 }
 
                 self.installRootView()
+                self.updateForcedPasswordChange()
             }
-        profileObservation = session.$profile.sink { [weak self] _ in
-            guard self?.session.state == .signedIn else { return }
-            self?.installRootView()
-        }
+        profileObservation = session.$profile
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if self.session.state == .signedIn { self.installRootView() }
+                self.updateForcedPasswordChange()
+            }
         errorObservation = session.$errorMessage.sink { [weak self] message in
             self?.showErrorIfNeeded(message)
         }
@@ -356,15 +356,6 @@ private final class NativeAppContainerViewController: UIViewController {
 
     func appBecameActive() {
         session.appBecameActive()
-    }
-
-    func handleLiveActivityURL(_ url: URL) {
-        guard url.scheme == "sukavina",
-              url.host == "meeting",
-              url.pathComponents.count == 3 else { return }
-        let bookingID = url.pathComponents[1]
-        let action = url.pathComponents[2]
-        Task { await session.handleLiveActivityAction(bookingID: bookingID, action: action) }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -558,6 +549,30 @@ private final class NativeAppContainerViewController: UIViewController {
             offlineNotice.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             offlineNotice.heightAnchor.constraint(equalToConstant: 36)
         ])
+    }
+
+    /// While the account still uses the company default password the server
+    /// refuses everything except changing it, so the change form covers the
+    /// app (UIKit-presented, outside the large SwiftUI portal bodies) and
+    /// closes itself once the refreshed profile no longer requires it.
+    private func updateForcedPasswordChange() {
+        let required = session.state == .signedIn && session.profile?.mustChangePassword == true
+        if required, forcedPasswordController == nil {
+            let controller = UIHostingController(rootView: AnyView(
+                PasswordChangeView(isForced: true).sessionEnvironment(session)
+            ))
+            controller.modalPresentationStyle = .fullScreen
+            controller.isModalInPresentation = true
+            forcedPasswordController = controller
+            if let presented = presentedViewController {
+                presented.dismiss(animated: false) { [weak self] in self?.present(controller, animated: true) }
+            } else {
+                present(controller, animated: true)
+            }
+        } else if !required, let controller = forcedPasswordController {
+            forcedPasswordController = nil
+            controller.dismiss(animated: true)
+        }
     }
 
     private func showErrorIfNeeded(_ message: String?) {

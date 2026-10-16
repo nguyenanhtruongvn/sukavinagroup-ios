@@ -355,6 +355,9 @@ struct NativeLegalView: View {
 struct PasswordChangeView: View {
     @EnvironmentObject private var session: SessionStore
     @Environment(\.dismiss) private var dismiss
+    /// Shown by the app container while the default password is in use: it
+    /// cannot be closed, only completed or left by signing out.
+    var isForced = false
     @State private var email = ""
     @State private var code = ""
     @State private var currentPassword = ""
@@ -397,10 +400,12 @@ struct PasswordChangeView: View {
                                 .fill(AppTheme.red.opacity(0.14)).frame(width: 58, height: 58)
                             Image(systemName: "key.fill").font(.title2).foregroundColor(AppTheme.red)
                         }
-                        Text("Bảo vệ tài khoản").font(.title2.bold())
-                        Text(isDemoAccount
-                             ? "Nhập mật khẩu hiện tại trước khi thiết lập mật khẩu mới."
-                             : "Xác minh email trước khi thiết lập mật khẩu mới.")
+                        Text(isForced ? "Đổi mật khẩu mặc định" : "Bảo vệ tài khoản").font(.title2.bold())
+                        Text(isForced
+                             ? "Bạn đang dùng mật khẩu mặc định. Hãy đặt mật khẩu mới để tiếp tục sử dụng ứng dụng."
+                             : (isDemoAccount
+                                ? "Nhập mật khẩu hiện tại trước khi thiết lập mật khẩu mới."
+                                : "Xác minh email trước khi thiết lập mật khẩu mới."))
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
 
@@ -505,9 +510,20 @@ struct PasswordChangeView: View {
             }
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Đổi mật khẩu")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if isForced {
+                        Button("Đăng xuất") { session.signOut() }
+                    } else {
+                        Button("Đóng") { dismiss() }
+                    }
+                }
+            }
+            .interactiveDismissDisabled(isForced)
             .alert("Đổi mật khẩu thành công", isPresented: $completed) {
-                Button("Hoàn tất") { dismiss() }
+                // Forced: the refreshed profile clears the flag and the app
+                // container closes this screen itself.
+                Button("Hoàn tất") { if !isForced { dismiss() } }
             } message: {
                 Text("Các thiết bị khác đang đăng nhập tài khoản này đã được đăng xuất; thiết bị này vẫn tiếp tục sử dụng bình thường.")
             }

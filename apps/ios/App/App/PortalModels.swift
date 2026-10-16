@@ -185,9 +185,11 @@ struct UserSummary: Codable {
     let accountType: String
     let permissions: [String]
     let protected: Bool
+    /// The default password is in use (absent in older server responses).
+    let mustChangePassword: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case employeeCode, name, role, accountType, permissions, protected
+        case employeeCode, name, role, accountType, permissions, protected, mustChangePassword
     }
 
     init(from decoder: Decoder) throws {
@@ -198,6 +200,7 @@ struct UserSummary: Codable {
         accountType = try values.decodeIfPresent(String.self, forKey: .accountType) ?? "EMPLOYEE"
         permissions = try values.decodeIfPresent([String].self, forKey: .permissions) ?? []
         protected = try values.decodeIfPresent(Bool.self, forKey: .protected) ?? false
+        mustChangePassword = try values.decodeIfPresent(Bool.self, forKey: .mustChangePassword) ?? false
     }
 }
 
@@ -235,6 +238,9 @@ struct Profile: Codable, Equatable {
     let email: String?
     let managerFullName: String?
     let passwordChangedAt: Date?
+    /// The company default password is in use: the server accepts nothing
+    /// but changing it (or signing out) until it is changed.
+    let mustChangePassword: Bool?
 }
 
 enum SessionCache {

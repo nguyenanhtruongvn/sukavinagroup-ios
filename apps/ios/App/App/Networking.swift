@@ -164,7 +164,6 @@ final class APIClient {
     /// Bodies kept for conditional GETs; one per path, most recent first.
     private static let revalidationLimit = 64
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")
-    private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { value in
@@ -245,10 +244,9 @@ final class APIClient {
         var data: Data
         var response: URLResponse
         let retryable = ["GET", "HEAD"].contains(method.uppercased())
-        // Mutating requests are never retried by default. Authentication can
-        // opt in to a single alternate-host attempt only after a transport
-        // failure (DNS/connectivity/timeout), never after an HTTP response.
-        let transportFallbackAllowed = retryable || allowTransportFallback
+        // There is no alternate host any more: the former nip.io fallback
+        // was a hostname whose DNS a third party controls, and sign-in
+        // (password) and token refresh were sent there on network errors.
         let primaryHost = url.host ?? "unknown"
         ConnectionDiagnostics.record("API primary start: \(method) \(primaryHost)/\(path)")
         do {
@@ -265,29 +263,7 @@ final class APIClient {
             let code = (error as? URLError)?.code.rawValue
             let codeText = code.map(String.init) ?? "n/a"
             ConnectionDiagnostics.record("API primary failed: code=\(codeText) \(error.localizedDescription)")
-            guard transportFallbackAllowed,
-                  shouldRetry(error),
-                  let fallbackBaseURL,
-                  let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
-                throw NetworkError.offline
-            }
-            urlRequest.url = fallbackURL
-            let fallbackHost = fallbackURL.host ?? "unknown"
-            ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackHost)/\(path)")
-            do {
-                (data, response) = try await load(urlRequest, retryable: retryable, path: path, hostRole: "fallback")
-            } catch is CancellationError {
-                ConnectionDiagnostics.record("API fallback cancelled: \(method) \(fallbackHost)/\(path)")
-                throw CancellationError()
-            } catch let fallbackError as URLError where fallbackError.code == .dataNotAllowed || fallbackError.code == .internationalRoamingOff {
-                ConnectionDiagnostics.record("API fallback cellular denied: \(fallbackError.code.rawValue) \(fallbackError.localizedDescription)")
-                throw NetworkError.cellularRestricted
-            } catch let fallbackError {
-                let code = (fallbackError as? URLError)?.code.rawValue
-                let codeText = code.map(String.init) ?? "n/a"
-                ConnectionDiagnostics.record("API fallback failed: code=\(codeText) \(fallbackError.localizedDescription)")
-                throw NetworkError.offline
-            }
+            throw NetworkError.offline
         }
 
         guard let http = response as? HTTPURLResponse else {
@@ -572,6 +548,32 @@ enum BiometricKeychain {
             kSecAttrAccount as String: legacyAccount
         ]
         SecItemDelete(legacyQuery as CFDictionary)
+    }
+}
+
+/// Keychain items survive uninstalling the app; UserDefaults do not. The
+/// first launch of a new installation therefore removes the session,
+/// biometric and widget items a previous installation left behind, so the
+/// next person to install the app on this phone is not signed in as the
+/// previous user. An app update keeps its UserDefaults and is unaffected.
+enum InstallationGuard {
+    private static let markerKey = "installation-marker-v1"
+
+    static func forgetPreviousInstallationIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: markerKey) else { return }
+        // Before the first unlock after a reboot neither the Keychain nor
+        // UserDefaults can be read reliably: decide on a later launch.
+        guard UIApplication.shared.isProtectedDataAvailable else { return }
+        // Versions before this marker leave other keys behind: an update of
+        // such a version is an existing installation, not a new one.
+        let existing = defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "") ?? [:]
+        if existing.isEmpty {
+            KeychainStore.clear()
+            BiometricKeychain.clear()
+            WidgetTokenKeychain.delete()
+        }
+        defaults.set(true, forKey: markerKey)
     }
 }
 

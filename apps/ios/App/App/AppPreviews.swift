@@ -22,7 +22,8 @@ struct SukavinaPreviewContainer: View {
             previewSession.profile = Profile(
                 id: "preview", employeeCode: "SKV-001", name: "Nguyễn Văn A",
                 role: "Nhân viên", accountType: "EMPLOYEE", permissions: [], protected: false,
-                email: "preview@sukavinagroup.net", managerFullName: "Trần Quản lý", passwordChangedAt: nil
+                email: "preview@sukavinagroup.net", managerFullName: "Trần Quản lý", passwordChangedAt: nil,
+                mustChangePassword: false
             )
             previewSession.dashboard = Dashboard(
                 employeeCode: "SKV-001", fullName: "Nguyễn Văn A", role: "Nhân sự vận hành",

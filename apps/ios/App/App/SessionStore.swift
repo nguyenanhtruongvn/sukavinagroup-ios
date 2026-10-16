@@ -1525,7 +1525,8 @@ final class SessionStore: ObservableObject {
             protected: user.protected,
             email: current?.email,
             managerFullName: current?.managerFullName,
-            passwordChangedAt: current?.passwordChangedAt
+            passwordChangedAt: current?.passwordChangedAt,
+            mustChangePassword: user.mustChangePassword
         )
         if profile != updated { profile = updated }
         let cachedProfile = profile
@@ -2518,14 +2519,6 @@ final class SessionStore: ObservableObject {
 
     /// Live Activity controls always revalidate with the server; only the
     /// organiser may end or extend an active booking.
-    func handleLiveActivityAction(bookingID: String, action: String) async {
-        // No screen of its own shows the result here, so use the app alert.
-        if let message = await performMeetingControl(bookingID: bookingID, action: action, extensionMinutes: 5) {
-            errorTitle = "Chưa thể thực hiện"
-            errorMessage = message
-        }
-    }
-
     /// Shared by the Live Activity and the in-app ten-minute reminder.  The
     /// endpoint remains unchanged for older clients; only the optional minute
     /// choice is new UI state sent to the existing extend API.
