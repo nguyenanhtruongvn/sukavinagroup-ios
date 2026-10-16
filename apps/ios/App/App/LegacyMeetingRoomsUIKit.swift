@@ -1221,6 +1221,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private let confirmButton = UIButton(type: .system)
     private var notice: UIView?
     private var noticeHide: DispatchWorkItem?
+    private var keyboardObservers: [NSObjectProtocol] = []
 
     init(session: SessionStore, room: MeetingRoom, day: Date) {
         self.session = session; self.room = room; self.day = day
@@ -1314,6 +1315,16 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         content.addArrangedSubview(makeInviteesCard())
 
         invitees = session.meetings.invitees
+        // The scroll view ends at the confirm card, which follows the keyboard
+        // (keyboardLayoutGuide). When a field gains focus the keyboard is not
+        // up yet, so scrolling then found the field "visible" and the keyboard
+        // covered it a moment later. Scroll again once the keyboard's final
+        // frame is laid out, as MeetingBookingSheet does on iOS 18.
+        for name in [UIResponder.keyboardDidShowNotification, UIResponder.keyboardDidChangeFrameNotification] {
+            keyboardObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.keepFocusedFieldVisible(animated: true) }
+            })
+        }
         cancellable = session.meetings.$invitees.receive(on: RunLoop.main).sink { [weak self] value in
             self?.invitees = value
             self?.renderInvitees()
@@ -1689,10 +1700,22 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         renderConfirm()
 
         if let field = field ?? [peopleField, departmentField].first(where: \.isFirstResponder) {
-            view.layoutIfNeeded()
-            let rect = field.convert(field.bounds, to: scroll).insetBy(dx: 0, dy: -8)
-            scroll.scrollRectToVisible(rect, animated: false)
+            keepVisible(field, animated: false)
         }
+    }
+
+    /// The focused field's whole rounded box (not only its text) just above
+    /// the confirm card, which itself sits on the keyboard.
+    private func keepVisible(_ field: UITextField, animated: Bool) {
+        view.layoutIfNeeded()
+        let box = field.superview?.superview ?? field
+        let rect = box.convert(box.bounds, to: scroll).insetBy(dx: 0, dy: -10)
+        scroll.scrollRectToVisible(rect, animated: animated)
+    }
+
+    private func keepFocusedFieldVisible(animated: Bool) {
+        guard let field = [titleField, peopleField, departmentField].first(where: \.isFirstResponder) else { return }
+        keepVisible(field, animated: animated)
     }
 
     // MARK: Pieces
@@ -2032,8 +2055,13 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     }
 
     func textFieldDidBeginEditing(_ textField: UITextField) {
-        guard textField !== titleField else { return }
-        DispatchQueue.main.async { [weak self] in self?.renderInvitees(keeping: textField) }
+        // Moving between fields with the keyboard already up sends no
+        // keyboard notification: scroll for the new field here too.
+        DispatchQueue.main.async { [weak self] in self?.keepVisible(textField, animated: true) }
+    }
+
+    deinit {
+        keyboardObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     // MARK: Actions
