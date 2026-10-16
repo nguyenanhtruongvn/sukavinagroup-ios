@@ -429,6 +429,21 @@ struct PasswordChangeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 20).stroke(AppTheme.cardBorder)) }
 
+                    // Before the OTP is sent: the Profile entry point checks
+                    // for an email first, the forced screen cannot, so say it
+                    // here (and show a failed "Gửi mã OTP" at all).
+                    if !otpSent && !isDemoAccount {
+                        if isForced && !session.hasLinkedEmail {
+                            Label("Tài khoản chưa có email liên kết nên chưa thể nhận mã OTP. Vui lòng liên hệ Nhân sự để cập nhật email, sau đó mở lại ứng dụng.", systemImage: "exclamationmark.triangle.fill")
+                                .font(.subheadline).foregroundColor(AppTheme.redText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else if let regularAccountError {
+                            Label(regularAccountError, systemImage: "exclamationmark.circle.fill")
+                                .font(.caption).foregroundColor(AppTheme.redText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+
                     if otpSent || isDemoAccount {
                         VStack(spacing: 14) {
                             if isDemoAccount {
