@@ -245,7 +245,10 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     private let todayButton = LegacyPillButton(title: "Hôm nay")
     private let tomorrowButton = LegacyPillButton(title: "Ngày mai")
     private let mineButton = LegacyPillButton(symbol: "calendar")
-    private var minuteTimer: Timer?
+    /// Fires at the next moment a room's status can change (a meeting start
+    /// or end, or midnight), not every minute.
+    private var statusTimer: Timer?
+    private var isVisible = false
     private var rooms: [MeetingRoom] { session.meetings.rooms }
 
     init(session: SessionStore) {
@@ -315,26 +318,44 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
             .sink { [weak self] _, _, _, _ in self?.reload() }
             .store(in: &cancellables)
         updateDayButtons()
+        NotificationCenter.default.addObserver(self, selector: #selector(clockChanged),
+                                               name: UIApplication.significantTimeChangeNotification, object: nil)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // The tab has its own header; pushed screens keep the navigation bar.
         navigationController?.setNavigationBarHidden(true, animated: animated)
+        isVisible = true
         fetch()
-        // "Trống" / "Đang họp" follow the clock, not only data changes.
-        minuteTimer?.invalidate()
-        minuteTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.reload() }
-        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         navigationController?.setNavigationBarHidden(false, animated: animated)
-        minuteTimer?.invalidate()
-        minuteTimer = nil
+        isVisible = false
+        statusTimer?.invalidate()
+        statusTimer = nil
     }
+
+    /// Schedules one refresh for the next status change. New or changed
+    /// bookings arrive through the realtime stream and reload the list, which
+    /// reschedules; a clock change (time zone, manual time) does too.
+    private func scheduleNextStatusChange() {
+        statusTimer?.invalidate()
+        statusTimer = nil
+        guard isVisible else { return }
+        let boundaries = session.meetings.bookingsByRoom.values.joined().flatMap { [$0.startDate, $0.endDate] }.compactMap { $0 }
+        guard let next = MeetingBookingTime.statusChangeTimes(after: Date(), boundaries: boundaries, calendar: MeetingPresentation.calendar).first else { return }
+        let timer = Timer(fire: next.addingTimeInterval(0.5), interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.reload() }
+        }
+        // .common so the refresh also happens while the list is scrolling.
+        RunLoop.main.add(timer, forMode: .common)
+        statusTimer = timer
+    }
+
+    @objc private func clockChanged() { reload() }
 
     private func fetch() {
         let selected = day
@@ -345,6 +366,7 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     private func reload() {
         tableView.reloadData()
         tableView.backgroundView = stateView()
+        scheduleNextStatusChange()
     }
 
     /// Loading, failure (with retry) or "no rooms" — same states as iOS 18+.

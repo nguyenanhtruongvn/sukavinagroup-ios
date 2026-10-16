@@ -96,6 +96,13 @@ struct MeetingRoomsView: View {
         }
     }
 
+    /// Now, then each moment a room's status can change.
+    private var statusChangeTimes: [Date] {
+        let now = Date()
+        let boundaries = meetingStore.bookingsByRoom.values.joined().flatMap { [$0.startDate, $0.endDate] }.compactMap { $0 }
+        return [now] + MeetingBookingTime.statusChangeTimes(after: now, boundaries: boundaries, calendar: MeetingPresentation.calendar)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -132,9 +139,9 @@ struct MeetingRoomsView: View {
                             }
                         }
 
-                        // "Trống" / "Đang họp" must change when a meeting starts
-                        // or ends, not only when something else redraws.
-                        TimelineView(.everyMinute) { clock in
+                        // "Trống" / "Đang họp" change when a meeting starts or
+                        // ends (or at midnight): redraw exactly then, not every minute.
+                        TimelineView(.explicit(statusChangeTimes)) { clock in
                         ForEach(meetingStore.rooms) { room in
                             MeetingRoomCard(
                                 room: room,

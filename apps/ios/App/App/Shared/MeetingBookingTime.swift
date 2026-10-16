@@ -30,4 +30,12 @@ enum MeetingBookingTime {
         }
         return nil
     }
+
+    /// The moments after `now` when a room's "Trống" / "Đang họp" status can
+    /// change: every booking start or end, plus the next midnight (the day
+    /// rolls over). Screens refresh exactly then instead of every minute.
+    static func statusChangeTimes(after now: Date, boundaries: [Date], calendar: Calendar) -> [Date] {
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now.addingTimeInterval(86_400)
+        return Array(Set(boundaries.filter { $0 > now && $0 < tomorrow } + [tomorrow])).sorted()
+    }
 }

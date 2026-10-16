@@ -2,6 +2,17 @@ import XCTest
 @testable import SukavinaShared
 
 final class MeetingBookingTimeTests: XCTestCase {
+    func testStatusChangesAtBookingBoundariesAndMidnightOnly() throws {
+        let calendar = VietnamTime.calendar
+        let now = try XCTUnwrap(VietnamTime.date(fromISO8601: "2026-10-16T09:00:00+07:00"))
+        let past = try XCTUnwrap(VietnamTime.date(fromISO8601: "2026-10-16T08:00:00+07:00"))
+        let start = try XCTUnwrap(VietnamTime.date(fromISO8601: "2026-10-16T10:00:00+07:00"))
+        let end = try XCTUnwrap(VietnamTime.date(fromISO8601: "2026-10-16T11:30:00+07:00"))
+        let times = MeetingBookingTime.statusChangeTimes(after: now, boundaries: [end, past, start, start], calendar: calendar)
+        XCTAssertEqual(times.map { VietnamTime.clock.string(from: $0) }, ["10:00", "11:30", "00:00"])
+        XCTAssertEqual(VietnamTime.dayKey.string(from: try XCTUnwrap(times.last)), "2026-10-17")
+    }
+
     private let calendar = VietnamTime.calendar
 
     private func date(_ iso: String) throws -> Date {
