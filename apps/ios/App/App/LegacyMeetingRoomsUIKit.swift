@@ -134,8 +134,16 @@ struct LegacyMeetingRoomsUIKitView: UIViewControllerRepresentable {
 private enum LegacyMeetingUI {
     static func time(_ text: String) -> String { MeetingPresentation.time(text) }
     /// The booking form as a large sheet with its own navigation bar.
-    static func presentBooking(session: SessionStore, room: MeetingRoom, day: Date, from controller: UIViewController) {
-        let navigation = UINavigationController(rootViewController: LegacyMeetingBookingController(session: session, room: room, day: day))
+    static func presentBooking(session: SessionStore, room: MeetingRoom, day: Date, from controller: UIViewController, onDismiss: (() -> Void)? = nil) {
+        presentSheet(LegacyMeetingBookingController(session: session, room: room, day: day), from: controller, onDismiss: onDismiss)
+    }
+
+    /// Every meeting screen opens as a large sheet, as on iOS 18:
+    /// booking, a room's schedule, "Lịch của tôi" and meeting details.
+    static func presentSheet(_ root: UIViewController, from controller: UIViewController, largeTitles: Bool = false, onDismiss: (() -> Void)? = nil) {
+        let navigation = LegacySheetNavigationController(rootViewController: root)
+        navigation.onDismiss = onDismiss
+        navigation.navigationBar.prefersLargeTitles = largeTitles
         navigation.modalPresentationStyle = .pageSheet
         navigation.sheetPresentationController?.detents = [.large()]
         navigation.sheetPresentationController?.prefersGrabberVisible = false
@@ -418,19 +426,23 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     }
 
     @objc private func openMyMeetings() {
-        navigationController?.pushViewController(
-            LegacyMeetingScheduleController(session: session, room: nil, day: day), animated: true
-        )
+        LegacyMeetingUI.presentSheet(LegacyMyMeetingsController(session: session, day: day), from: self) { [weak self] in
+            self?.fetch()
+        }
     }
 
     private func openSchedule(_ room: MeetingRoom) {
-        navigationController?.pushViewController(
-            LegacyMeetingScheduleController(session: session, room: room, day: day), animated: true
-        )
+        // The schedule can switch day and a booking can be for another day;
+        // both reload the shared schedule: show this list's day again.
+        LegacyMeetingUI.presentSheet(LegacyMeetingScheduleController(session: session, room: room, day: day), from: self, largeTitles: true) { [weak self] in
+            self?.fetch()
+        }
     }
 
     private func openBooking(_ room: MeetingRoom) {
-        LegacyMeetingUI.presentBooking(session: session, room: room, day: day, from: self)
+        LegacyMeetingUI.presentBooking(session: session, room: room, day: day, from: self) { [weak self] in
+            self?.fetch()
+        }
     }
 
     // MARK: Table
@@ -745,6 +757,7 @@ private final class LegacyMeetingScheduleController: UIViewController {
         view.backgroundColor = .systemBackground
         title = room?.name ?? "Lịch của tôi"
         navigationItem.largeTitleDisplayMode = .always
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(closeSheet))
 
         // "Ngày" and a compact day picker; past days cannot be booked.
         let dayLabel = UILabel()
@@ -854,6 +867,8 @@ private final class LegacyMeetingScheduleController: UIViewController {
         Task { await session.refreshMeetingSchedule(date: day) }
     }
 
+    @objc private func closeSheet() { dismiss(animated: true) }
+
     @objc private func bookRoom() {
         guard let room else { return }
         LegacyMeetingUI.presentBooking(session: session, room: room, day: day, from: self)
@@ -863,9 +878,7 @@ private final class LegacyMeetingScheduleController: UIViewController {
         // Other people's private bookings carry no id and no details.
         guard !meeting.id.isEmpty,
               let selectedRoom = room ?? session.meetingRooms.first(where: { $0.id == meeting.roomId }) else { return }
-        navigationController?.pushViewController(
-            LegacyMeetingDetailController(session: session, room: selectedRoom, meeting: meeting), animated: true
-        )
+        LegacyMeetingUI.presentSheet(LegacyMeetingDetailController(session: session, room: selectedRoom, meeting: meeting), from: self)
     }
 }
 
@@ -2110,97 +2123,750 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     }
 }
 
+/// `MeetingBookingDetailSheet` (iOS 18+) in UIKit for iOS 17: the role-
+/// coloured hero card, time / place / equipment / organiser / participants
+/// cards (limited view for HR), the organiser's meeting controls (extend in
+/// 5-minute steps up to the next booking, end with confirmation) and
+/// cancelling a future booking. Follows live schedule changes.
 @MainActor
 private final class LegacyMeetingDetailController: UIViewController {
     private let session: SessionStore
     private let room: MeetingRoom
     private let meeting: MeetingBooking
-    private let summary = UILabel()
+    private var details: MeetingBookingDetails?
+    private var isCancelling = false
+    private var extensionMinutes = 5
+    private var isSubmittingControl = false
+    private var controlAction: String?
+    private var controlError: String?
+    private var cancellable: AnyCancellable?
+    private let scroll = UIScrollView()
+    private let content = UIStackView()
+
     init(session: SessionStore, room: MeetingRoom, meeting: MeetingBooking) {
         self.session = session; self.room = room; self.meeting = meeting
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { nil }
+
+    // MARK: Derived values (as in MeetingBookingDetailSheet)
+
+    private var isOwner: Bool { meeting.isOwner == true }
+    private var isLimitedViewer: Bool { details?.isLimitedViewer == true }
+    private var accent: UIColor { isOwner ? UIColor(red: 0.13, green: 0.71, blue: 0.45, alpha: 1) : .systemBlue }
+    private var roleTitle: String {
+        if isLimitedViewer { return "Thông tin giới hạn dành cho Phòng Nhân sự" }
+        return isOwner ? "Bạn là người tổ chức" : "Bạn được mời tham dự"
+    }
+    private var roleIcon: String {
+        isLimitedViewer ? "lock.shield.fill" : isOwner ? "person.badge.key.fill" : "person.2.badge.gearshape.fill"
+    }
+    /// The live schedule copy: an end or extension shows at once.
+    private var current: MeetingBooking {
+        session.meetings.bookings.first(where: { $0.id == meeting.id }) ?? meeting
+    }
+    private var displayedRoom: MeetingRoom { details?.room ?? room }
+    private var meetingStarted: Bool { current.startDate.map { $0 <= Date() } ?? false }
+    private var meetingEnded: Bool { current.endDate.map { $0 <= Date() } ?? false }
+    private var dateTitle: String {
+        guard let start = current.startDate else { return "Chưa xác định" }
+        return VietnamTime.weekdayLongDate.string(from: start).capitalized
+    }
+    private var durationTitle: String {
+        guard let start = current.startDate, let end = current.endDate else { return "—" }
+        let minutes = max(0, Int(end.timeIntervalSince(start) / 60))
+        return minutes >= 60 ? "\(minutes / 60) giờ\(minutes % 60 == 0 ? "" : " \(minutes % 60) phút")" : "\(minutes) phút"
+    }
+    private var canCancel: Bool {
+        guard isOwner, current.status == "confirmed", let start = current.startDate else { return false }
+        return start > Date()
+    }
+    private var canShowMeetingControls: Bool { isOwner && current.status == "confirmed" && meetingStarted }
+    private var nextBooking: MeetingBooking? {
+        guard let end = current.endDate else { return nil }
+        return session.meetings.bookings
+            .filter { $0.roomId == current.roomId && $0.id != current.id }
+            .filter { ($0.startDate ?? .distantPast) > end }
+            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+    }
+    private var maximumExtensionMinutes: Int {
+        guard let end = current.endDate else { return 0 }
+        guard let nextStart = nextBooking?.startDate else { return 120 }
+        return min(120, max(0, Int(nextStart.timeIntervalSince(end) / 60) - 5))
+    }
+    private var extensionBlockMessage: String {
+        guard let nextBooking else { return "Không thể gia hạn vì lịch phòng đang được cập nhật." }
+        let title = nextBooking.title.isEmpty ? "cuộc họp tiếp theo" : "“\(nextBooking.title)”"
+        return "Không thể gia hạn vì \(displayedRoom.name) có \(title) lúc \(MeetingPresentation.time(nextBooking.startsAt))."
+    }
+
+    // MARK: Lifecycle
+
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Chi tiết cuộc họp"
+        navigationItem.largeTitleDisplayMode = .never
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(close))
         view.backgroundColor = .systemGroupedBackground
-        let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
-        scroll.showsHorizontalScrollIndicator = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
+        content.axis = .vertical
+        content.spacing = 18
+        content.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(content)
         view.addSubview(scroll)
-        let fields = UIStackView()
-        fields.axis = .vertical; fields.spacing = 16
-        fields.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(fields)
         NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
-            fields.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 18),
-            fields.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -18),
-            fields.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 20),
-            fields.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -20),
-            fields.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -36)
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            content.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 20),
+            content.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -20),
+            content.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 20),
+            content.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -20),
         ])
-        summary.numberOfLines = 0
-        summary.font = .preferredFont(forTextStyle: .body)
-        summary.text = "\(meeting.title)\n\nPhòng: \(room.name)\nThời gian: \(LegacyMeetingUI.time(meeting.startsAt)) – \(LegacyMeetingUI.time(meeting.endsAt))\nSố người: \(meeting.attendeeCount)"
-        fields.addArrangedSubview(summary)
-        if meeting.isOwner == true {
-            if let start = meeting.startDate, start > Date() {
-                fields.addArrangedSubview(button("Hủy lịch họp", #selector(cancel)))
-            } else if let meetingEndDate = meeting.endDate, meetingEndDate > Date() {
-                fields.addArrangedSubview(button("Gia hạn 5 phút", #selector(extend)))
-                fields.addArrangedSubview(button("Kết thúc cuộc họp", #selector(end)))
+        details = session.cachedMeetingBookingDetails(id: meeting.id)
+        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
+        render()
+        Task { [weak self] in
+            guard let self else { return }
+            if let loaded = await session.meetingBookingDetails(id: meeting.id) {
+                details = loaded
+                render()
             }
         }
-        Task {
-            if let detail = await session.meetingBookingDetails(id: meeting.id) {
-                var value = "\(detail.title)\n\nPhòng: \(detail.room.name)\nThời gian: \(LegacyMeetingUI.time(detail.startsAt)) – \(LegacyMeetingUI.time(detail.endsAt))\nNgười tổ chức: \(detail.employee.fullName)"
-                if detail.isLimitedViewer != true {
-                    value += "\n\nNgười tham gia:\n" + detail.participants.map { $0.employee.fullName }.joined(separator: "\n")
+    }
+
+    @objc private func close() { dismiss(animated: true) }
+
+    // MARK: Rendering
+
+    private func render() {
+        content.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        content.addArrangedSubview(heroCard())
+
+        var time: [UIView] = [
+            label(MeetingPresentation.range(current), font: .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .title3).pointSize, weight: .bold)),
+            label(dateTitle, style: .subheadline, color: .secondaryLabel),
+        ]
+        if !isLimitedViewer {
+            let pills = UIStackView(arrangedSubviews: [pill(durationTitle, icon: "timer"), pill("\(current.attendeeCount) người", icon: "person.2.fill"), UIView()])
+            pills.spacing = 8
+            time.append(pills)
+        }
+        content.addArrangedSubview(card("Thời gian", icon: "clock.fill", time))
+
+        if !isLimitedViewer {
+            var place: [UIView] = [label(displayedRoom.name, style: .headline)]
+            if !displayedRoom.location.isEmpty {
+                place.append(iconLabel(displayedRoom.location, icon: "mappin.and.ellipse", style: .subheadline, color: .secondaryLabel))
+            }
+            place.append(label("Sức chứa phòng: \(displayedRoom.capacity) người", style: .caption1, weight: .medium, color: .secondaryLabel))
+            content.addArrangedSubview(card("Địa điểm", icon: "building.2.fill", place))
+            if !displayedRoom.equipment.isEmpty {
+                content.addArrangedSubview(card("Thiết bị sẵn có", icon: "display.2", [
+                    label(displayedRoom.equipment.joined(separator: "  ·  "), style: .subheadline, weight: .medium, color: .secondaryLabel),
+                ]))
+            }
+        }
+
+        if let details {
+            if isLimitedViewer {
+                content.addArrangedSubview(card("Thông tin cuộc họp", icon: "lock.shield.fill", [
+                    iconLabel("Loại cuộc họp: \(details.title)", icon: "tag.fill", style: .headline, color: .label),
+                    iconLabel("Người tổ chức: \(details.employee.fullName)", icon: "person.crop.circle.fill", style: .subheadline, weight: .semibold, color: .label),
+                ]))
+            } else {
+                let organiserMeta = [details.employee.employeeCode, details.employee.department, details.employee.jobTitle]
+                    .compactMap { $0?.isEmpty == false ? $0 : nil }
+                    .joined(separator: " · ")
+                content.addArrangedSubview(card("Người tổ chức", icon: "person.crop.circle.fill", [
+                    label(details.employee.fullName, style: .headline),
+                    label(organiserMeta, style: .subheadline, color: .secondaryLabel),
+                ]))
+                let people: [UIView] = details.participants.isEmpty
+                    ? [label("Chưa có người được mời thêm.", style: .subheadline, color: .secondaryLabel)]
+                    : details.participants.map { label($0.employee.fullName, style: .subheadline, weight: .medium) as UIView }
+                content.addArrangedSubview(card("Người tham gia (\(details.participants.count))", icon: "person.2.fill", people))
+            }
+        } else {
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            let loading = UIStackView(arrangedSubviews: [spinner, label("Đang tải thông tin người tham gia…", style: .caption1, color: .secondaryLabel), UIView()])
+            loading.spacing = 8
+            content.addArrangedSubview(loading)
+        }
+
+        if canShowMeetingControls { content.addArrangedSubview(controlCard()) }
+
+        if canCancel {
+            var configuration = UIButton.Configuration.tinted()
+            configuration.baseBackgroundColor = .systemRed
+            configuration.baseForegroundColor = .systemRed
+            configuration.image = UIImage(systemName: "calendar.badge.minus")
+            configuration.imagePadding = 6
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 14, leading: 12, bottom: 14, trailing: 12)
+            var title = AttributedString(isCancelling ? "Đang hủy lịch…" : "Hủy lịch")
+            title.font = .preferredFont(forTextStyle: .headline)
+            configuration.attributedTitle = title
+            let cancel = UIButton(configuration: configuration)
+            cancel.isEnabled = !isCancelling
+            cancel.addAction(UIAction { [weak self] _ in self?.confirmCancel() }, for: .touchUpInside)
+            content.addArrangedSubview(cancel)
+        }
+
+        let footer = label("Thông tin được đồng bộ theo thời gian thực.", style: .caption1, color: .secondaryLabel)
+        footer.textAlignment = .center
+        content.addArrangedSubview(footer)
+    }
+
+    private func heroCard() -> UIView {
+        let icon = UIImageView(image: UIImage(systemName: "calendar.badge.clock", withConfiguration: UIImage.SymbolConfiguration(textStyle: .title2, scale: .medium).applying(UIImage.SymbolConfiguration(weight: .bold))))
+        icon.tintColor = .white
+        icon.contentMode = .center
+        let iconBox = LegacyGradientView(colors: [accent, accent.withAlphaComponent(0.78)])
+        iconBox.layer.cornerRadius = 18
+        iconBox.layer.cornerCurve = .continuous
+        iconBox.clipsToBounds = true
+        iconBox.addSubview(icon)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        iconBox.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            iconBox.widthAnchor.constraint(equalToConstant: 54), iconBox.heightAnchor.constraint(equalToConstant: 54),
+            icon.centerXAnchor.constraint(equalTo: iconBox.centerXAnchor), icon.centerYAnchor.constraint(equalTo: iconBox.centerYAnchor),
+        ])
+        let status = chip(current.status == "confirmed" ? "Đã xác nhận" : current.status, icon: "checkmark.seal.fill")
+        let top = UIStackView(arrangedSubviews: [iconBox, UIView(), status])
+        top.alignment = .top
+        let title = UILabel()
+        title.text = current.title.isEmpty ? "Cuộc họp" : current.title
+        title.numberOfLines = 0
+        let rounded = UIFont.systemFont(ofSize: 27, weight: .bold).fontDescriptor.withDesign(.rounded)
+        title.font = rounded.map { UIFont(descriptor: $0, size: 27) } ?? .systemFont(ofSize: 27, weight: .bold)
+        let role = iconLabel(roleTitle, icon: roleIcon, style: .subheadline, weight: .semibold, color: accent)
+        let stack = UIStackView(arrangedSubviews: [top, title, role])
+        stack.axis = .vertical
+        stack.spacing = 15
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        let hero = LegacyGradientView(colors: [accent.withAlphaComponent(0.18), .secondarySystemBackground], diagonal: true)
+        hero.layer.cornerRadius = 26
+        hero.layer.cornerCurve = .continuous
+        hero.clipsToBounds = true
+        hero.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: hero.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: hero.bottomAnchor, constant: -20),
+            stack.leadingAnchor.constraint(equalTo: hero.leadingAnchor, constant: 20),
+            stack.trailingAnchor.constraint(equalTo: hero.trailingAnchor, constant: -20),
+        ])
+        return hero
+    }
+
+    private func controlCard() -> UIView {
+        let green = UIColor(AppTheme.text(.green))
+        var rows: [UIView] = [
+            iconLabel(meetingEnded ? "Cuộc họp đã kết thúc" : "Điều khiển cuộc họp",
+                      icon: meetingEnded ? "checkmark.circle.fill" : "slider.horizontal.3",
+                      style: .headline, weight: .bold, color: green),
+        ]
+        if meetingEnded {
+            rows.append(label("Cuộc họp đã kết thúc. Bạn không thể gia hạn hoặc kết thúc lại.", style: .subheadline, color: .secondaryLabel))
+        } else {
+            if let controlError {
+                let error = label(controlError, style: .caption1, weight: .semibold, color: .systemRed)
+                rows.append(padded(error, background: UIColor.systemRed.withAlphaComponent(0.1), radius: 12, inset: 10))
+            }
+            if maximumExtensionMinutes >= 5 {
+                rows.append(label("Gia hạn thêm \(extensionMinutes) phút", style: .subheadline, weight: .bold, color: UIColor(AppTheme.text(.green, chipAlpha: 0.08))))
+                let minus = borderedButton("− 5 phút") { [weak self] in
+                    guard let self else { return }
+                    extensionMinutes = max(5, extensionMinutes - 5); controlError = nil; render()
                 }
-                summary.text = value
+                minus.isEnabled = !isSubmittingControl
+                let plus = borderedButton("+ 5 phút") { [weak self] in
+                    guard let self else { return }
+                    extensionMinutes = min(maximumExtensionMinutes, extensionMinutes + 5); controlError = nil; render()
+                }
+                plus.isEnabled = !isSubmittingControl && extensionMinutes < maximumExtensionMinutes
+                let steps = UIStackView(arrangedSubviews: [minus, plus, UIView()])
+                steps.spacing = 10
+                rows.append(steps)
+                let extending = isSubmittingControl && controlAction == "extend"
+                rows.append(prominentButton(extending ? "Đang gia hạn…" : "Xác nhận gia hạn", icon: "checkmark",
+                                            color: .systemGreen, busy: extending) { [weak self] in
+                    Task { await self?.submitMeetingControl("extend") }
+                })
+            } else {
+                let unavailable = iconLabel("Gia hạn không khả dụng", icon: "clock.badge.exclamationmark", style: .subheadline, color: .secondaryLabel)
+                rows.append(padded(unavailable, background: .tertiarySystemFill, radius: 10, inset: 10))
+                rows.append(label(extensionBlockMessage, style: .caption1, weight: .semibold, color: .systemRed))
             }
+            let ending = isSubmittingControl && controlAction == "end"
+            rows.append(prominentButton(ending ? "Đang kết thúc…" : "Kết thúc cuộc họp", icon: "stop.fill",
+                                        color: .systemRed, busy: ending) { [weak self] in self?.confirmEnd() })
         }
+        let stack = UIStackView(arrangedSubviews: rows)
+        stack.axis = .vertical
+        stack.spacing = 14
+        return padded(stack, background: .secondarySystemBackground, radius: 22, inset: 18)
     }
-    private func button(_ text: String, _ selector: Selector) -> UIButton {
-        let value = UIButton(type: .system)
-        value.setTitle(text, for: .normal)
-        value.heightAnchor.constraint(equalToConstant: 48).isActive = true
-        value.addTarget(self, action: selector, for: .touchUpInside)
-        return value
-    }
-    @objc private func cancel() {
-        let alert = UIAlertController(title: "Hủy lịch họp?", message: "Bạn có chắc muốn hủy?", preferredStyle: .alert)
+
+    // MARK: Actions
+
+    private func confirmCancel() {
+        let alert = UIAlertController(title: "Hủy lịch họp?", message: "Những người được mời sẽ nhận được thông báo lịch họp đã hủy.", preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Không", style: .cancel))
         alert.addAction(UIAlertAction(title: "Hủy lịch", style: .destructive) { [weak self] _ in
             guard let self else { return }
+            isCancelling = true
+            render()
             Task {
                 let error = await self.session.cancelMeeting(id: self.meeting.id, scheduledAt: self.meeting.startsAt)
-                if let error { LegacyMeetingUI.message("Không thể hủy", error, from: self) }
-                else { self.navigationController?.popViewController(animated: true) }
+                self.isCancelling = false
+                if let error {
+                    self.render()
+                    LegacyMeetingUI.message("Chưa thể hủy lịch", error, from: self)
+                } else {
+                    self.dismiss(animated: true)
+                }
             }
         })
         present(alert, animated: true)
     }
-    @objc private func extend() { perform("extend") }
-    @objc private func end() {
-        let alert = UIAlertController(title: "Kết thúc cuộc họp?", message: nil, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "Không", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Kết thúc", style: .destructive) { [weak self] _ in
-            self?.perform("end")
+
+    private func confirmEnd() {
+        // Irreversible: ask first.
+        let sheet = UIAlertController(title: "Kết thúc cuộc họp?", message: "Phòng sẽ được giải phóng ngay để người khác có thể đặt. Không thể hoàn tác.", preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Kết thúc", style: .destructive) { [weak self] _ in
+            Task { await self?.submitMeetingControl("end") }
         })
-        present(alert, animated: true)
+        sheet.addAction(UIAlertAction(title: "Tiếp tục họp", style: .cancel))
+        sheet.popoverPresentationController?.sourceView = view
+        sheet.popoverPresentationController?.sourceRect = CGRect(x: view.bounds.midX, y: view.bounds.maxY - 80, width: 1, height: 1)
+        present(sheet, animated: true)
     }
-    private func perform(_ action: String) {
-        Task {
-            let error = await session.performMeetingControl(bookingID: meeting.id, action: action)
-            if let error { LegacyMeetingUI.message("Không thể cập nhật", error, from: self) }
-            else { navigationController?.popViewController(animated: true) }
+
+    private func submitMeetingControl(_ action: String) async {
+        guard !isSubmittingControl else { return }
+        isSubmittingControl = true
+        controlAction = action
+        controlError = nil
+        render()
+        let error = await session.performMeetingControl(bookingID: current.id, action: action, extensionMinutes: extensionMinutes)
+        controlError = error
+        if error == nil { extensionMinutes = 5 }
+        controlAction = nil
+        isSubmittingControl = false
+        render()
+    }
+
+    // MARK: Pieces
+
+    private func card(_ title: String, icon: String, _ rows: [UIView]) -> UIView {
+        let stack = UIStackView(arrangedSubviews: [iconLabel(title, icon: icon, style: .subheadline, weight: .bold, color: accent)] + rows)
+        stack.axis = .vertical
+        stack.spacing = 13
+        stack.alignment = .fill
+        return padded(stack, background: .secondarySystemBackground, radius: 22, inset: 18)
+    }
+
+    private func padded(_ inner: UIView, background: UIColor, radius: CGFloat, inset: CGFloat) -> UIView {
+        let box = UIView()
+        box.backgroundColor = background
+        box.layer.cornerRadius = radius
+        box.layer.cornerCurve = .continuous
+        inner.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(inner)
+        NSLayoutConstraint.activate([
+            inner.topAnchor.constraint(equalTo: box.topAnchor, constant: inset),
+            inner.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -inset),
+            inner.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: inset),
+            inner.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -inset),
+        ])
+        return box
+    }
+
+    private func pill(_ text: String, icon: String) -> UIView {
+        let view = iconLabel(text, icon: icon, style: .caption1, weight: .semibold, color: accent)
+        let box = padded(view, background: accent.withAlphaComponent(0.12), radius: 14, inset: 7)
+        box.setContentHuggingPriority(.required, for: .horizontal)
+        return box
+    }
+
+    private func chip(_ text: String, icon: String) -> UIView {
+        let view = iconLabel(text, icon: icon, style: .caption1, weight: .bold, color: accent)
+        let box = padded(view, background: accent.withAlphaComponent(0.12), radius: 15, inset: 7)
+        box.setContentHuggingPriority(.required, for: .horizontal)
+        return box
+    }
+
+    private func label(_ text: String, style: UIFont.TextStyle = .body, weight: UIFont.Weight? = nil, color: UIColor = .label) -> UILabel {
+        let font = UIFont.preferredFont(forTextStyle: style)
+        return label(text, font: weight.map { font.withWeight($0) } ?? font, color: color)
+    }
+
+    private func label(_ text: String, font: UIFont, color: UIColor = .label) -> UILabel {
+        let label = UILabel()
+        label.text = text
+        label.font = font
+        label.textColor = color
+        label.numberOfLines = 0
+        return label
+    }
+
+    private func iconLabel(_ text: String, icon: String, style: UIFont.TextStyle, weight: UIFont.Weight? = nil, color: UIColor) -> UIView {
+        let image = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(textStyle: style)))
+        image.tintColor = color
+        image.setContentHuggingPriority(.required, for: .horizontal)
+        image.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [image, label(text, style: style, weight: weight, color: color)])
+        row.spacing = 6
+        row.alignment = .firstBaseline
+        return row
+    }
+
+    private func borderedButton(_ title: String, action: @escaping () -> Void) -> UIButton {
+        var configuration = UIButton.Configuration.gray()
+        var text = AttributedString(title)
+        text.font = .preferredFont(forTextStyle: .subheadline)
+        configuration.attributedTitle = text
+        let button = UIButton(configuration: configuration)
+        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        return button
+    }
+
+    private func prominentButton(_ title: String, icon: String, color: UIColor, busy: Bool, action: @escaping () -> Void) -> UIButton {
+        var configuration = UIButton.Configuration.filled()
+        configuration.baseBackgroundColor = color
+        configuration.baseForegroundColor = .white
+        configuration.image = busy ? nil : UIImage(systemName: icon)
+        configuration.showsActivityIndicator = busy
+        configuration.imagePadding = 8
+        configuration.attributedTitle = AttributedString(title)
+        let button = UIButton(configuration: configuration)
+        button.isEnabled = !isSubmittingControl
+        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        return button
+    }
+}
+
+/// `MyMeetingsSheet` in UIKit: the employee's meetings as cards, upcoming or
+/// past (segmented control or a horizontal swipe), with the meeting count.
+@MainActor
+private final class LegacyMyMeetingsController: UIViewController {
+    private let session: SessionStore
+    private let day: Date
+    private var showsUpcoming = true
+    private var cancellable: AnyCancellable?
+    private let countValue = UILabel()
+    private let countCaption = UILabel()
+    private let filter = UISegmentedControl(items: ["Sắp tới", "Đã qua"])
+    private let list = UIStackView()
+    private static let cardColors: [UIColor] = [.systemRed, .systemBlue, .systemGreen, .systemOrange, .systemPurple, .systemTeal]
+
+    init(session: SessionStore, day: Date) {
+        self.session = session; self.day = day
+        super.init(nibName: nil, bundle: nil)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    private var meetings: [MeetingBooking] {
+        session.meetings.bookings
+            .filter { $0.isMine ?? false }
+            .filter { meeting in
+                guard let end = meeting.endDate else { return showsUpcoming }
+                return showsUpcoming ? end >= Date() : end < Date()
+            }
+            .sorted { $0.startsAt < $1.startsAt }
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemGroupedBackground
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(textStyle: .subheadline, scale: .medium).applying(UIImage.SymbolConfiguration(weight: .bold))), for: .normal)
+        closeButton.tintColor = .label
+        closeButton.backgroundColor = .secondarySystemBackground
+        closeButton.layer.cornerRadius = 17
+        closeButton.accessibilityLabel = "Đóng lịch của tôi"
+        closeButton.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        closeButton.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([closeButton.widthAnchor.constraint(equalToConstant: 34), closeButton.heightAnchor.constraint(equalToConstant: 34)])
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: closeButton)
+
+        let scroll = UIScrollView()
+        scroll.showsVerticalScrollIndicator = false
+        scroll.alwaysBounceVertical = true
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        let stack = UIStackView(arrangedSubviews: [header(), filterBox(), list])
+        stack.axis = .vertical
+        stack.spacing = 18
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        list.axis = .vertical
+        list.spacing = 12
+        scroll.addSubview(stack)
+        view.addSubview(scroll)
+        NSLayoutConstraint.activate([
+            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 14),
+            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -34),
+            stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -16),
+        ])
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
+            swipe.direction = direction
+            view.addGestureRecognizer(swipe)
         }
+        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
+        render()
+        Task { await session.refreshMeetingSchedule(date: day) }
+    }
+
+    private func header() -> UIView {
+        let title = UILabel()
+        title.text = "Lịch của tôi"
+        let rounded = UIFont.systemFont(ofSize: 29, weight: .bold).fontDescriptor.withDesign(.rounded)
+        title.font = rounded.map { UIFont(descriptor: $0, size: 29) } ?? .systemFont(ofSize: 29, weight: .bold)
+        let date = UILabel()
+        date.text = VietnamTime.weekdayLongDayMonth.string(from: day).capitalized
+        date.font = .preferredFont(forTextStyle: .subheadline)
+        date.textColor = .secondaryLabel
+        let titles = UIStackView(arrangedSubviews: [title, date])
+        titles.axis = .vertical
+        titles.spacing = 4
+
+        countValue.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .title3).pointSize, weight: .bold)
+        countCaption.font = .preferredFont(forTextStyle: .caption2).withWeight(.semibold)
+        for label in [countValue, countCaption] { label.textColor = .systemRed; label.textAlignment = .center }
+        let count = UIStackView(arrangedSubviews: [countValue, countCaption])
+        count.axis = .vertical
+        count.spacing = 1
+        count.isLayoutMarginsRelativeArrangement = true
+        count.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 11, bottom: 8, trailing: 11)
+        count.backgroundColor = UIColor.systemRed.withAlphaComponent(0.10)
+        count.layer.cornerRadius = 13
+        count.layer.cornerCurve = .continuous
+        count.setContentHuggingPriority(.required, for: .horizontal)
+        let top = UIStackView(arrangedSubviews: [titles, UIView(), count])
+        top.alignment = .center
+        top.spacing = 12
+
+        let icon = UIImageView(image: UIImage(systemName: "calendar.badge.clock"))
+        icon.tintColor = .systemRed
+        icon.setContentHuggingPriority(.required, for: .horizontal)
+        let note = UILabel()
+        note.text = "Lịch họp được đồng bộ theo thời gian thực"
+        note.font = .preferredFont(forTextStyle: .caption1).withWeight(.medium)
+        note.textColor = .secondaryLabel
+        note.numberOfLines = 0
+        let info = UIStackView(arrangedSubviews: [icon, note])
+        info.spacing = 8
+        info.alignment = .center
+        info.isLayoutMarginsRelativeArrangement = true
+        info.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+        info.backgroundColor = .secondarySystemBackground
+        info.layer.cornerRadius = 14
+        info.layer.cornerCurve = .continuous
+
+        let stack = UIStackView(arrangedSubviews: [top, info])
+        stack.axis = .vertical
+        stack.spacing = 12
+        return stack
+    }
+
+    private func filterBox() -> UIView {
+        filter.selectedSegmentIndex = 0
+        filter.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            showsUpcoming = filter.selectedSegmentIndex == 0
+            render()
+        }, for: .valueChanged)
+        filter.translatesAutoresizingMaskIntoConstraints = false
+        let box = UIView()
+        box.backgroundColor = .secondarySystemBackground
+        box.layer.cornerRadius = 14
+        box.layer.cornerCurve = .continuous
+        box.addSubview(filter)
+        NSLayoutConstraint.activate([
+            filter.topAnchor.constraint(equalTo: box.topAnchor, constant: 4),
+            filter.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -4),
+            filter.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 4),
+            filter.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -4),
+        ])
+        return box
+    }
+
+    @objc private func swiped(_ gesture: UISwipeGestureRecognizer) {
+        showsUpcoming = gesture.direction == .right
+        filter.selectedSegmentIndex = showsUpcoming ? 0 : 1
+        UIView.animate(withDuration: 0.2) { self.render() }
+    }
+
+    private func render() {
+        let meetings = meetings
+        countValue.text = "\(meetings.count)"
+        countCaption.text = showsUpcoming ? "sắp tới" : "đã qua"
+        list.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        if meetings.isEmpty {
+            list.addArrangedSubview(emptyState())
+            return
+        }
+        for (index, meeting) in meetings.enumerated() {
+            let color = showsUpcoming ? Self.cardColors[index % Self.cardColors.count] : .systemGray
+            let roomName = session.meetingRooms.first(where: { $0.id == meeting.roomId })?.name ?? "Phòng họp"
+            let card = LegacyMeetingSummaryCard(meeting: meeting, roomName: roomName, color: color)
+            card.addAction(UIAction { [weak self] _ in self?.open(meeting) }, for: .touchUpInside)
+            list.addArrangedSubview(card)
+        }
+    }
+
+    private func emptyState() -> UIView {
+        var configuration = UIContentUnavailableConfiguration.empty()
+        configuration.image = UIImage(systemName: "calendar.badge.exclamationmark")
+        configuration.text = showsUpcoming ? "Chưa có lịch sắp tới" : "Chưa có lịch đã qua"
+        configuration.secondaryText = showsUpcoming
+            ? "Các cuộc họp bạn tạo hoặc được mời sẽ xuất hiện tại đây."
+            : "Các cuộc họp đã kết thúc sẽ được lưu tại đây."
+        let empty = UIContentUnavailableView(configuration: configuration)
+        empty.backgroundColor = .systemBackground
+        empty.layer.cornerRadius = 22
+        empty.layer.cornerCurve = .continuous
+        empty.clipsToBounds = true
+        empty.heightAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
+        return empty
+    }
+
+    private func open(_ meeting: MeetingBooking) {
+        guard let room = session.meetingRooms.first(where: { $0.id == meeting.roomId }) else {
+            LegacyMeetingUI.message("Không tìm thấy thông tin phòng", "Phòng của cuộc họp này không còn trong danh sách.", from: self)
+            return
+        }
+        LegacyMeetingUI.presentSheet(LegacyMeetingDetailController(session: session, room: room, meeting: meeting), from: self)
+    }
+}
+
+/// `MeetingSummaryCard`: times, colour bar, title, room and role.
+private final class LegacyMeetingSummaryCard: UIControl {
+    init(meeting: MeetingBooking, roomName: String, color: UIColor) {
+        super.init(frame: .zero)
+        backgroundColor = .systemBackground
+        layer.cornerRadius = 19
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 1
+        layer.borderColor = color.withAlphaComponent(0.14).cgColor
+        layer.shadowColor = color.cgColor
+        layer.shadowOpacity = 0.08
+        layer.shadowRadius = 8
+        layer.shadowOffset = CGSize(width: 0, height: 3)
+
+        let start = UILabel()
+        start.text = MeetingPresentation.time(meeting.startsAt)
+        start.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .headline).pointSize, weight: .bold)
+        let end = UILabel()
+        end.text = MeetingPresentation.time(meeting.endsAt)
+        end.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+        end.textColor = .secondaryLabel
+        let times = UIStackView(arrangedSubviews: [start, end])
+        times.axis = .vertical
+        times.spacing = 3
+        times.alignment = .center
+        times.widthAnchor.constraint(equalToConstant: 54).isActive = true
+
+        let bar = UIView()
+        bar.backgroundColor = color
+        bar.layer.cornerRadius = 2
+        bar.widthAnchor.constraint(equalToConstant: 4).isActive = true
+
+        let title = UILabel()
+        title.text = meeting.title.isEmpty ? "Cuộc họp" : meeting.title
+        title.font = .preferredFont(forTextStyle: .headline).withWeight(.bold)
+        title.numberOfLines = 2
+        let roomIcon = UIImageView(image: UIImage(systemName: "building.2.fill", withConfiguration: UIImage.SymbolConfiguration(textStyle: .subheadline)))
+        roomIcon.tintColor = .secondaryLabel
+        roomIcon.setContentHuggingPriority(.required, for: .horizontal)
+        let room = UILabel()
+        room.text = roomName
+        room.font = .preferredFont(forTextStyle: .subheadline)
+        room.textColor = .secondaryLabel
+        let roomRow = UIStackView(arrangedSubviews: [roomIcon, room])
+        roomRow.spacing = 6
+        let role = UILabel()
+        role.text = "  \(meeting.isOwner == true ? "Bạn tạo lịch" : "Bạn được mời")  "
+        role.font = .preferredFont(forTextStyle: .caption1).withWeight(.bold)
+        role.textColor = color
+        role.backgroundColor = color.withAlphaComponent(0.12)
+        role.layer.cornerRadius = 10
+        role.layer.masksToBounds = true
+        role.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        let roleRow = UIStackView(arrangedSubviews: [role, UIView()])
+        let texts = UIStackView(arrangedSubviews: [title, roomRow, roleRow])
+        texts.axis = .vertical
+        texts.spacing = 5
+
+        let chevron = UIImageView(image: UIImage(systemName: "chevron.right", withConfiguration: UIImage.SymbolConfiguration(textStyle: .caption1).applying(UIImage.SymbolConfiguration(weight: .bold))))
+        chevron.tintColor = .tertiaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+
+        let row = UIStackView(arrangedSubviews: [times, bar, texts, chevron])
+        row.spacing = 13
+        row.alignment = .center
+        row.isUserInteractionEnabled = false
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 14),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -14),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            bar.heightAnchor.constraint(equalTo: row.heightAnchor),
+        ])
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        accessibilityLabel = "Xem chi tiết cuộc họp \(meeting.title)"
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.7 : 1 }
+    }
+}
+
+/// A gradient-filled view (hero card, role icon tile).
+private final class LegacyGradientView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+    private let colors: [UIColor]
+
+    init(colors: [UIColor], diagonal: Bool = false) {
+        self.colors = colors
+        super.init(frame: .zero)
+        let gradient = layer as! CAGradientLayer
+        gradient.startPoint = diagonal ? CGPoint(x: 0, y: 0) : CGPoint(x: 0.5, y: 0)
+        gradient.endPoint = diagonal ? CGPoint(x: 1, y: 1) : CGPoint(x: 0.5, y: 1)
+        applyColors()
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        applyColors()
+    }
+
+    private func applyColors() {
+        (layer as! CAGradientLayer).colors = colors.map { $0.resolvedColor(with: traitCollection).cgColor }
+    }
+}
+
+/// A sheet's navigation controller that reports its dismissal (iOS 18
+/// sheets reload the room list's day in `onDismiss`).
+private final class LegacySheetNavigationController: UINavigationController {
+    var onDismiss: (() -> Void)?
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isBeingDismissed || presentingViewController == nil { onDismiss?(); onDismiss = nil }
     }
 }
