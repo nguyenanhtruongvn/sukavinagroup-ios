@@ -1664,7 +1664,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             retry.addAction(UIAction { [weak self] _ in
                 Task { [weak self] in
                     guard let self else { return }
-                    inviteesError = await session.refreshMeetingInvitees(force: true)
+                    self.inviteesError = await self.session.refreshMeetingInvitees(force: true)
                     renderInvitees()
                 }
             }, for: .touchUpInside)
