@@ -142,63 +142,249 @@ private enum LegacyMeetingUI {
         alert.addAction(UIAlertAction(title: "Đóng", style: .default))
         controller.present(alert, animated: true)
     }
+
+    /// PortalPageTitle: 30 pt bold rounded, scaled with Dynamic Type.
+    static var pageTitleFont: UIFont {
+        let base = UIFont.systemFont(ofSize: 30, weight: .bold)
+        let rounded = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: 30) } ?? base
+        return UIFontMetrics(forTextStyle: .largeTitle).scaledFont(for: rounded)
+    }
+
+    /// The room's state on `day`, same rules as MeetingRoomCard (iOS 18+):
+    /// in a meeting now, free until the next one, or free all day.
+    static func roomStatus(bookings: [MeetingBooking], day: Date, now: Date) -> (available: Bool, text: String) {
+        let calendar = MeetingPresentation.calendar
+        let dayBookings = bookings.filter { sameDay($0, day) }
+        let isToday = calendar.isDate(day, inSameDayAs: now)
+        if isToday, let current = dayBookings.first(where: { booking in
+            guard let start = booking.startDate, let end = booking.endDate else { return false }
+            return now >= start && now < end
+        }) {
+            return (false, "Đang họp đến \(time(current.endsAt))")
+        }
+        let point = isToday ? now : calendar.startOfDay(for: day)
+        let next = dayBookings
+            .filter { ($0.startDate ?? .distantPast) > point }
+            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+        if let next { return (true, "Trống đến \(time(next.startsAt))") }
+        return (true, "Còn trống cả ngày")
+    }
+
+    /// Loading (nil symbol), failure or empty state for a list background.
+    static func stateView(symbol: String?, title: String, message: String?, action: (String, UIAction)?) -> UIView {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 10
+        if let symbol {
+            let image = UIImageView(image: UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 40, weight: .regular)))
+            image.tintColor = .secondaryLabel
+            stack.addArrangedSubview(image)
+        } else {
+            let spinner = UIActivityIndicatorView(style: .medium)
+            spinner.startAnimating()
+            stack.addArrangedSubview(spinner)
+        }
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = UIFont.preferredFont(forTextStyle: symbol == nil ? .subheadline : .title3).withWeight(symbol == nil ? .regular : .bold)
+        titleLabel.textColor = symbol == nil ? .secondaryLabel : .label
+        titleLabel.numberOfLines = 0
+        titleLabel.textAlignment = .center
+        stack.addArrangedSubview(titleLabel)
+        if let message {
+            let messageLabel = UILabel()
+            messageLabel.text = message
+            messageLabel.font = .preferredFont(forTextStyle: .subheadline)
+            messageLabel.textColor = .secondaryLabel
+            messageLabel.numberOfLines = 0
+            messageLabel.textAlignment = .center
+            stack.addArrangedSubview(messageLabel)
+        }
+        if let action {
+            var configuration = UIButton.Configuration.filled()
+            configuration.title = action.0
+            configuration.baseBackgroundColor = .systemRed
+            configuration.cornerStyle = .medium
+            stack.addArrangedSubview(UIButton(configuration: configuration, primaryAction: action.1))
+        }
+        let container = UIView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: container.topAnchor, constant: 60),
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 32),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -32),
+        ])
+        return container
+    }
 }
 
+private extension UIFont {
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        let descriptor = fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
+        return UIFont(descriptor: descriptor, size: 0)
+    }
+}
+
+/// The iOS 17 Meeting Rooms tab, built in UIKit to match the iOS 18+ SwiftUI
+/// design (MeetingRoomsView): pinned "Phòng họp" header with Hôm nay /
+/// Ngày mai / Lịch của tôi, and room cards with photo, status chip, status
+/// line and a full-width action. UIKit on purpose: the SwiftUI room tree
+/// aborts in type-metadata construction on iOS 17 (see LegacyMeetingRoomsUIKitView).
 @MainActor
-private final class LegacyMeetingRoomsController: UITableViewController {
+private final class LegacyMeetingRoomsController: UIViewController, UITableViewDataSource, UITableViewDelegate,
+    UITableViewDragDelegate, UITableViewDropDelegate {
     private let session: SessionStore
     private var cancellables = Set<AnyCancellable>()
-    private let daySelector = UISegmentedControl(items: ["Hôm nay", "Ngày mai"])
-    private var day = Date()
-    /// Rooms with a meeting in progress, computed once per data change
-    /// instead of scanning every booking inside each row callback.
-    private var occupiedRoomIDs = Set<String>()
-
-    private func reload() {
-        let now = Date()
-        occupiedRoomIDs = Set(session.meetingBookings.lazy.filter { booking in
-            guard LegacyMeetingUI.sameDay(booking, self.day),
-                  let start = booking.startDate, let end = booking.endDate else { return false }
-            return start <= now && now < end
-        }.map(\.roomId))
-        tableView.reloadData()
+    private var dayOffset = 0
+    private var day: Date {
+        MeetingPresentation.calendar.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
     }
+    private let tableView = UITableView(frame: .zero, style: .plain)
+    private let todayButton = LegacyPillButton(title: "Hôm nay")
+    private let tomorrowButton = LegacyPillButton(title: "Ngày mai")
+    private let mineButton = LegacyPillButton(symbol: "calendar")
+    private var minuteTimer: Timer?
+    private var rooms: [MeetingRoom] { session.meetings.rooms }
 
     init(session: SessionStore) {
         self.session = session
-        super.init(style: .insetGrouped)
+        super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { nil }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Phòng họp"
-        tableView.backgroundColor = .systemGroupedBackground
-        daySelector.selectedSegmentIndex = 0
-        daySelector.addTarget(self, action: #selector(dayChanged), for: .valueChanged)
-        navigationItem.titleView = daySelector
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            image: UIImage(systemName: "calendar"),
-            style: .plain, target: self, action: #selector(openMyMeetings)
-        )
-        session.meetings.$rooms.combineLatest(session.meetings.$bookings)
+        view.backgroundColor = .systemGroupedBackground
+
+        // Pinned header, same metrics as the iOS 18+ PortalPinnedHeader:
+        // title 20 pt below the safe area and from the edges.
+        let title = UILabel()
+        title.text = "Phòng họp"
+        title.font = LegacyMeetingUI.pageTitleFont
+        title.adjustsFontForContentSizeCategory = true
+        title.accessibilityTraits = .header
+        todayButton.addTarget(self, action: #selector(showToday), for: .touchUpInside)
+        tomorrowButton.addTarget(self, action: #selector(showTomorrow), for: .touchUpInside)
+        mineButton.addTarget(self, action: #selector(openMyMeetings), for: .touchUpInside)
+        mineButton.accessibilityLabel = "Lịch của tôi"
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let buttons = UIStackView(arrangedSubviews: [todayButton, tomorrowButton, spacer, mineButton])
+        buttons.spacing = 10
+        let header = UIStackView(arrangedSubviews: [title, buttons])
+        header.axis = .vertical
+        header.spacing = 12
+        header.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(header)
+
+        tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.backgroundColor = .clear
+        tableView.separatorStyle = .none
+        tableView.showsVerticalScrollIndicator = false
+        tableView.dataSource = self
+        tableView.delegate = self
+        tableView.dragDelegate = self
+        tableView.dropDelegate = self
+        tableView.dragInteractionEnabled = true
+        tableView.register(LegacyRoomCardCell.self, forCellReuseIdentifier: LegacyRoomCardCell.reuseID)
+        tableView.contentInset = UIEdgeInsets(top: 6, left: 0, bottom: 24, right: 0)
+        view.addSubview(tableView)
+
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
+            header.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            header.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            tableView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10),
+            tableView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            tableView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+
+        // Swipe left/right switches Hôm nay ⇄ Ngày mai, like iOS 18+.
+        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
+            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swipedDay(_:)))
+            swipe.direction = direction
+            tableView.addGestureRecognizer(swipe)
+        }
+
+        session.meetings.$rooms
+            .combineLatest(session.meetings.$bookingsByRoom, session.meetings.$scheduleLoaded, session.meetings.$scheduleError)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _, _ in self?.reload() }
+            .sink { [weak self] _, _, _, _ in self?.reload() }
             .store(in: &cancellables)
+        updateDayButtons()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // The tab has its own header; pushed screens keep the navigation bar.
+        navigationController?.setNavigationBarHidden(true, animated: animated)
         fetch()
+        // "Trống" / "Đang họp" follow the clock, not only data changes.
+        minuteTimer?.invalidate()
+        minuteTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.reload() }
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        navigationController?.setNavigationBarHidden(false, animated: animated)
+        minuteTimer?.invalidate()
+        minuteTimer = nil
     }
 
     private func fetch() {
-        let shift = daySelector.selectedSegmentIndex
-        day = MeetingPresentation.calendar.date(byAdding: .day, value: shift, to: Date()) ?? Date()
-        Task { await session.refreshMeetingSchedule(date: day) }
+        let selected = day
+        Task { await session.refreshMeetingSchedule(date: selected) }
         reload()
     }
-    @objc private func dayChanged() { fetch() }
+
+    private func reload() {
+        tableView.reloadData()
+        tableView.backgroundView = stateView()
+    }
+
+    /// Loading, failure (with retry) or "no rooms" — same states as iOS 18+.
+    private func stateView() -> UIView? {
+        guard rooms.isEmpty else { return nil }
+        let meetings = session.meetings
+        if let error = meetings.scheduleError {
+            return LegacyMeetingUI.stateView(
+                symbol: "wifi.exclamationmark", title: "Không tải được phòng họp", message: error,
+                action: ("Thử lại", UIAction { [weak self] _ in
+                    guard let self else { return }
+                    let selected = self.day
+                    Task { await self.session.refreshMeetingSchedule(date: selected, force: true) }
+                }))
+        }
+        if !meetings.scheduleLoaded {
+            return LegacyMeetingUI.stateView(symbol: nil, title: "Đang tải phòng họp…", message: nil, action: nil)
+        }
+        return LegacyMeetingUI.stateView(
+            symbol: "building.2", title: "Chưa có phòng họp",
+            message: "Quản trị viên cần cấu hình phòng trước khi nhân viên có thể đặt lịch.", action: nil)
+    }
+
+    private func updateDayButtons() {
+        todayButton.isOn = dayOffset == 0
+        tomorrowButton.isOn = dayOffset == 1
+    }
+
+    private func setDay(_ offset: Int) {
+        guard offset != dayOffset else { return }
+        dayOffset = offset
+        updateDayButtons()
+        fetch()
+    }
+
+    @objc private func showToday() { setDay(0) }
+    @objc private func showTomorrow() { setDay(1) }
+    @objc private func swipedDay(_ gesture: UISwipeGestureRecognizer) {
+        setDay(gesture.direction == .left ? 1 : 0)
+    }
 
     @objc private func openMyMeetings() {
         navigationController?.pushViewController(
@@ -206,41 +392,293 @@ private final class LegacyMeetingRoomsController: UITableViewController {
         )
     }
 
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        session.meetingRooms.count
+    private func openSchedule(_ room: MeetingRoom) {
+        navigationController?.pushViewController(
+            LegacyMeetingScheduleController(session: session, room: room, day: day), animated: true
+        )
     }
-    override func tableView(_ tableView: UITableView, cellForRowAt path: IndexPath) -> UITableViewCell {
-        let room = session.meetingRooms[path.row]
-        let cell = tableView.dequeueReusableCell(withIdentifier: "room")
-            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "room")
-        let occupied = occupiedRoomIDs.contains(room.id)
-        cell.textLabel?.text = room.name
-        cell.textLabel?.font = .preferredFont(forTextStyle: .headline)
-        cell.detailTextLabel?.text = "\(room.capacity) chỗ · \(occupied ? "Đang họp" : "Xem lịch phòng")"
-        cell.detailTextLabel?.textColor = occupied ? .systemRed : .secondaryLabel
-        let button = UIButton(type: .system)
-        button.setTitle("Đặt phòng", for: .normal)
-        button.tag = path.row
-        button.frame = CGRect(x: 0, y: 0, width: 100, height: 44)
-        button.addTarget(self, action: #selector(bookFromRow(_:)), for: .touchUpInside)
-        cell.accessoryView = button
+
+    private func openBooking(_ room: MeetingRoom) {
+        navigationController?.pushViewController(
+            LegacyMeetingBookingController(session: session, room: room, day: day), animated: true
+        )
+    }
+
+    // MARK: Table
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rooms.count }
+
+    func tableView(_ tableView: UITableView, cellForRowAt path: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: LegacyRoomCardCell.reuseID, for: path) as! LegacyRoomCardCell
+        let room = rooms[path.row]
+        cell.configure(
+            room: room,
+            bookings: session.meetings.bookingsByRoom[room.id] ?? [],
+            day: day,
+            now: Date(),
+            onSchedule: { [weak self] in self?.openSchedule(room) },
+            onBook: { [weak self] in self?.openBooking(room) }
+        )
         return cell
     }
-    override func tableView(_ tableView: UITableView, didSelectRowAt path: IndexPath) {
-        tableView.deselectRow(at: path, animated: true)
-        guard session.meetingRooms.indices.contains(path.row) else { return }
-        navigationController?.pushViewController(
-            LegacyMeetingScheduleController(session: session, room: session.meetingRooms[path.row], day: day),
-            animated: true
-        )
+
+    func tableView(_ tableView: UITableView, didSelectRowAt path: IndexPath) {
+        tableView.deselectRow(at: path, animated: false)
+        guard rooms.indices.contains(path.row) else { return }
+        openSchedule(rooms[path.row])
     }
-    @objc private func bookFromRow(_ button: UIButton) {
-        guard session.meetingRooms.indices.contains(button.tag) else { return }
-        navigationController?.pushViewController(
-            LegacyMeetingBookingController(session: session, room: session.meetingRooms[button.tag], day: day),
-            animated: true
-        )
+
+    // Long-press drag reorders rooms, saved like the iOS 18+ list.
+    func tableView(_ tableView: UITableView, itemsForBeginning session: UIDragSession, at path: IndexPath) -> [UIDragItem] {
+        let item = UIDragItem(itemProvider: NSItemProvider())
+        item.localObject = rooms[path.row].id
+        return [item]
     }
+
+    func tableView(_ tableView: UITableView, dropSessionDidUpdate session: UIDropSession,
+                   withDestinationIndexPath destinationIndexPath: IndexPath?) -> UITableViewDropProposal {
+        session.localDragSession != nil
+            ? UITableViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
+            : UITableViewDropProposal(operation: .forbidden)
+    }
+
+    func tableView(_ tableView: UITableView, performDropWith coordinator: UITableViewDropCoordinator) {
+        guard let destination = coordinator.destinationIndexPath,
+              let item = coordinator.items.first,
+              let roomID = item.dragItem.localObject as? String,
+              let from = rooms.firstIndex(where: { $0.id == roomID }) else { return }
+        var reordered = rooms
+        let room = reordered.remove(at: from)
+        reordered.insert(room, at: min(destination.row, reordered.count))
+        self.session.reorderMeetingRooms(reordered)
+    }
+}
+
+/// "Hôm nay" / "Ngày mai" pills and the calendar button of the iOS 18+ header.
+private final class LegacyPillButton: UIButton {
+    var isOn = false { didSet { applyStyle() } }
+
+    init(title: String? = nil, symbol: String? = nil) {
+        super.init(frame: .zero)
+        var configuration = UIButton.Configuration.plain()
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+        if let title {
+            configuration.attributedTitle = AttributedString(title, attributes: AttributeContainer([
+                .font: UIFont.preferredFont(forTextStyle: .subheadline).withWeight(.bold),
+            ]))
+        }
+        if let symbol {
+            configuration.image = UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .bold))
+            configuration.contentInsets = .zero
+            widthAnchor.constraint(equalToConstant: 38).isActive = true
+        }
+        self.configuration = configuration
+        heightAnchor.constraint(equalToConstant: 38).isActive = true
+        layer.cornerRadius = 11
+        layer.cornerCurve = .continuous
+        applyStyle()
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        applyStyle()
+    }
+
+    private func applyStyle() {
+        backgroundColor = isOn ? .systemRed : .systemBackground
+        tintColor = isOn ? .white : .label
+        configuration?.baseForegroundColor = isOn ? .white : .label
+        layer.borderWidth = isOn ? 0 : 0.8
+        layer.borderColor = UIColor.separator.resolvedColor(with: traitCollection).cgColor
+    }
+}
+
+/// One room card: photo, name, status chip, capacity · equipment, status
+/// line and the full-width "Đặt phòng" / "Xem lịch" button (iOS 18+ card).
+private final class LegacyRoomCardCell: UITableViewCell {
+    static let reuseID = "LegacyRoomCardCell"
+    private static let imageCache = NSCache<NSURL, UIImage>()
+
+    private let card = UIView()
+    private let photo = UIImageView()
+    private let nameLabel = UILabel()
+    private let chip = UIView()
+    private let chipDot = UIView()
+    private let chipLabel = UILabel()
+    private let detailLabel = UILabel()
+    private let statusLabel = UILabel()
+    private let actionButton = UIButton(configuration: .filled())
+    private var onSchedule: () -> Void = {}
+    private var onBook: () -> Void = {}
+    private var available = true
+    private var imageTask: Task<Void, Never>?
+
+    override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
+        super.init(style: style, reuseIdentifier: reuseIdentifier)
+        backgroundColor = .clear
+        selectionStyle = .none
+
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.layer.cornerRadius = 24
+        card.layer.cornerCurve = .continuous
+        card.layer.shadowOffset = CGSize(width: 0, height: 3)
+        contentView.addSubview(card)
+
+        photo.contentMode = .scaleAspectFill
+        photo.clipsToBounds = true
+        photo.layer.cornerRadius = 14
+        photo.layer.cornerCurve = .continuous
+        photo.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.10)
+        photo.tintColor = .systemGreen
+        photo.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            photo.widthAnchor.constraint(equalToConstant: 88),
+            photo.heightAnchor.constraint(equalToConstant: 108),
+        ])
+
+        nameLabel.font = UIFont.preferredFont(forTextStyle: .headline).withWeight(.bold)
+        nameLabel.adjustsFontForContentSizeCategory = true
+        nameLabel.textColor = .label
+        nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        chipDot.layer.cornerRadius = 3
+        chipDot.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([chipDot.widthAnchor.constraint(equalToConstant: 6), chipDot.heightAnchor.constraint(equalToConstant: 6)])
+        chipLabel.font = UIFont.preferredFont(forTextStyle: .caption1).withWeight(.bold)
+        let chipStack = UIStackView(arrangedSubviews: [chipDot, chipLabel])
+        chipStack.spacing = 4
+        chipStack.alignment = .center
+        chipStack.translatesAutoresizingMaskIntoConstraints = false
+        chip.addSubview(chipStack)
+        chip.layer.cornerRadius = 12
+        NSLayoutConstraint.activate([
+            chipStack.topAnchor.constraint(equalTo: chip.topAnchor, constant: 5),
+            chipStack.bottomAnchor.constraint(equalTo: chip.bottomAnchor, constant: -5),
+            chipStack.leadingAnchor.constraint(equalTo: chip.leadingAnchor, constant: 8),
+            chipStack.trailingAnchor.constraint(equalTo: chip.trailingAnchor, constant: -8),
+        ])
+        chip.setContentHuggingPriority(.required, for: .horizontal)
+        chip.setContentCompressionResistancePriority(.required, for: .horizontal)
+
+        detailLabel.font = .preferredFont(forTextStyle: .caption1)
+        detailLabel.adjustsFontForContentSizeCategory = true
+        detailLabel.textColor = .secondaryLabel
+        detailLabel.numberOfLines = 2
+        statusLabel.font = UIFont.preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
+        statusLabel.adjustsFontForContentSizeCategory = true
+
+        let titleRow = UIStackView(arrangedSubviews: [nameLabel, chip])
+        titleRow.spacing = 8
+        titleRow.alignment = .top
+        let info = UIStackView(arrangedSubviews: [titleRow, detailLabel, statusLabel])
+        info.axis = .vertical
+        info.spacing = 7
+        let topRow = UIStackView(arrangedSubviews: [photo, info])
+        topRow.spacing = 12
+        topRow.alignment = .top
+
+        actionButton.addTarget(self, action: #selector(tappedAction), for: .touchUpInside)
+        actionButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
+
+        let column = UIStackView(arrangedSubviews: [topRow, actionButton])
+        column.axis = .vertical
+        column.spacing = 12
+        column.translatesAutoresizingMaskIntoConstraints = false
+        card.addSubview(column)
+
+        NSLayoutConstraint.activate([
+            card.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 8),
+            card.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -8),
+            card.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            card.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            column.topAnchor.constraint(equalTo: card.topAnchor, constant: 12),
+            column.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -12),
+            column.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            column.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+        ])
+        applyColors()
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        imageTask?.cancel()
+        imageTask = nil
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        applyColors()
+    }
+
+    func configure(room: MeetingRoom, bookings: [MeetingBooking], day: Date, now: Date,
+                   onSchedule: @escaping () -> Void, onBook: @escaping () -> Void) {
+        self.onSchedule = onSchedule
+        self.onBook = onBook
+        let status = LegacyMeetingUI.roomStatus(bookings: bookings, day: day, now: now)
+        available = status.available
+
+        nameLabel.text = room.name
+        detailLabel.text = "\(room.capacity) chỗ · \(room.equipment.isEmpty ? "Thiết bị đang cập nhật" : room.equipment.joined(separator: " · "))"
+        statusLabel.text = status.text
+        chipLabel.text = available ? "Trống" : "Đang họp"
+        accessibilityLabel = "\(room.name), \(available ? "Trống" : "Đang họp"), \(status.text)"
+
+        var configuration = UIButton.Configuration.filled()
+        configuration.image = UIImage(systemName: available ? "calendar.badge.plus" : "calendar",
+                                      withConfiguration: UIImage.SymbolConfiguration(textStyle: .subheadline, scale: .medium))
+        configuration.imagePadding = 7
+        configuration.attributedTitle = AttributedString(available ? "Đặt phòng" : "Xem lịch", attributes: AttributeContainer([
+            .font: UIFont.preferredFont(forTextStyle: .subheadline).withWeight(.bold),
+        ]))
+        configuration.cornerStyle = .fixed
+        configuration.background.cornerRadius = 12
+        actionButton.configuration = configuration
+        applyColors()
+        loadPhoto(room)
+    }
+
+    private func applyColors() {
+        let dark = traitCollection.userInterfaceStyle == .dark
+        // Same surfaces as the iOS 18+ card on iOS 17.
+        card.backgroundColor = dark ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1) : .white
+        card.layer.shadowColor = UIColor.black.cgColor
+        card.layer.shadowOpacity = dark ? 0.24 : 0.05
+        card.layer.shadowRadius = dark ? 14 : 8
+        let statusColor: UIColor = available ? .systemGreen : .systemRed
+        chipDot.backgroundColor = statusColor
+        chip.backgroundColor = statusColor.withAlphaComponent(0.12)
+        chipLabel.textColor = UIColor(AppTheme.text(Color(statusColor), chipAlpha: 0.12))
+        statusLabel.textColor = UIColor(AppTheme.text(Color(statusColor)))
+        actionButton.configuration?.baseBackgroundColor = available
+            ? .systemRed
+            : (dark ? UIColor.white.withAlphaComponent(0.12) : UIColor.black.withAlphaComponent(0.07))
+        actionButton.configuration?.baseForegroundColor = available ? .white : .label
+    }
+
+    private func loadPhoto(_ room: MeetingRoom) {
+        let placeholder = UIImage(systemName: "building.2.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 31, weight: .bold))
+        photo.contentMode = .center
+        photo.image = placeholder
+        let value = room.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: value.hasPrefix("/") ? "https://sukavinagroup.net\(value)" : value),
+              url.scheme?.hasPrefix("http") == true else { return }
+        if let cached = Self.imageCache.object(forKey: url as NSURL) {
+            photo.contentMode = .scaleAspectFill
+            photo.image = cached
+            return
+        }
+        imageTask = Task { [weak self] in
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let image = UIImage(data: data), !Task.isCancelled else { return }
+            Self.imageCache.setObject(image, forKey: url as NSURL)
+            self?.photo.contentMode = .scaleAspectFill
+            self?.photo.image = image
+        }
+    }
+
+    @objc private func tappedAction() { available ? onBook() : onSchedule() }
 }
 
 @MainActor
