@@ -429,34 +429,18 @@ struct RequestsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if #available(iOS 18.0, *) {
-                    // The native TabView already reserves the tab-bar safe area.
-                    // Avoid adding a second full-width bottom inset on iOS 18+.
-                    requestPages
-                        // The pager extends under the translucent system tab
-                        // bar. Do not mask, clip, or reserve a second bottom
-                        // panel: those approaches leave a visible empty strip.
-                        .overlay(alignment: .bottomTrailing) {
-                            createRequestButton
-                                .padding(.trailing, 20)
-                                .padding(.bottom, 18)
-                        }
-                } else {
-                    // iOS 17 uses an app-owned tab bar. Keep the create button
-                    // inside the remaining safe area so the bar cannot cover it.
-                    requestPages
-                        .safeAreaInset(edge: .bottom, spacing: 0) {
-                            HStack {
-                                Spacer(minLength: 0)
-                                createRequestButton
-                            }
-                            .padding(.trailing, 20)
-                            .padding(.top, 8)
-                            .padding(.bottom, 18)
-                        }
+            // Every version hosts this page in a native tab bar controller
+            // (iOS 17 too, LegacyEmployeePortalController). The pager runs
+            // under the translucent bar and the button floats above it. The
+            // former iOS 17 branch reserved a bottom safe-area inset for an
+            // app-drawn tab bar that no longer exists: it covered the list
+            // with an empty strip above the tab bar.
+            requestPages
+                .overlay(alignment: .bottomTrailing) {
+                    createRequestButton
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 18)
                 }
-            }
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $composing) {
@@ -532,17 +516,10 @@ struct RequestsView: View {
                 }
             }
 
-            if #available(iOS 18.0, *) {
-                // Restore the native-tab-bar behavior used before the iOS 17
-                // compose-button workaround: only the scrollable request
-                // pager draws under Apple's transparent tab bar. The floating
-                // compose button remains anchored above it in the parent.
-                requestPager
-                    .ignoresSafeArea(.container, edges: .bottom)
-            } else {
-                // The custom iOS 17 tab bar already reserves its own safe area.
-                requestPager
-            }
+            // Only the scrollable pager draws under the system tab bar; its
+            // scroll views still inset their content by the safe area.
+            requestPager
+                .ignoresSafeArea(.container, edges: .bottom)
         }
         .padding(.top, 8)
         .onChange(of: filterIndex) { _, newIndex in

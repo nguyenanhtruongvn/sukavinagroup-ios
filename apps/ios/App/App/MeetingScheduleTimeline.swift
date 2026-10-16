@@ -141,166 +141,23 @@ struct MeetingTimeline: View {
         }
     }
 
-    private var timelineBookings: [TimelineBookingItem] {
-        var seenServerBookingIDs = Set<String>()
-        return bookings.enumerated().compactMap { index, booking in
-            if !booking.id.isEmpty, !seenServerBookingIDs.insert(booking.id).inserted {
-                return nil
-            }
-            return TimelineBookingItem(sourceIndex: index, booking: booking)
-        }
-    }
-
     private var labelPlacements: [MeetingScheduleLabelPlacement] {
-        let labelHeight = MeetingScheduleLabelMetrics.height
-        let spacing = MeetingScheduleLabelMetrics.spacing
-        let inset = MeetingScheduleLabelMetrics.verticalInset
-        let latestTop = max(inset, timelineHeight - inset - labelHeight)
-
-        let candidates: [MeetingScheduleLabelCandidate] = timelineBookings.compactMap { item in
-            guard let position = bookingPosition(item.booking) else { return nil }
-            let startY = position.top
-            let endY = position.top + position.height
-            let eventCenter = (startY + endY) / 2
-            let idealTop = min(
-                max(eventCenter - labelHeight / 2, inset),
-                latestTop
-            )
-            return MeetingScheduleLabelCandidate(
-                item: item,
-                startY: startY,
-                endY: endY,
-                idealTop: idealTop
+        MeetingScheduleLayout.slots(
+            bookings: bookings,
+            firstHour: firstHour,
+            lastHour: lastHour,
+            hourHeight: hourHeight
+        ).map { slot in
+            MeetingScheduleLabelPlacement(
+                id: slot.item.id,
+                booking: slot.item.booking,
+                style: bookingStyle(for: slot.item.booking),
+                lane: slot.lane,
+                startY: slot.startY,
+                endY: slot.endY,
+                labelTop: slot.labelTop
             )
         }
-        .sorted {
-            if $0.idealTop == $1.idealTop {
-                return $0.item.sourceIndex < $1.item.sourceIndex
-            }
-            return $0.idealTop < $1.idealTop
-        }
-
-        var placements: [MeetingScheduleLabelPlacement] = []
-        var groupStart = 0
-
-        while groupStart < candidates.count {
-            var groupEnd = groupStart + 1
-            var groupBottom = candidates[groupStart].idealTop + labelHeight
-
-            while groupEnd < candidates.count,
-                  candidates[groupEnd].idealTop < groupBottom + spacing {
-                groupBottom = max(
-                    groupBottom,
-                    candidates[groupEnd].idealTop + labelHeight
-                )
-                groupEnd += 1
-            }
-
-            let group = Array(candidates[groupStart..<groupEnd])
-
-            if group.count == 1, let candidate = group.first {
-                placements.append(
-                    MeetingScheduleLabelPlacement(
-                        id: candidate.item.id,
-                        booking: candidate.item.booking,
-                        style: bookingStyle(for: candidate.item.booking),
-                        lane: .center,
-                        startY: candidate.startY,
-                        endY: candidate.endY,
-                        labelTop: candidate.idealTop
-                    )
-                )
-            } else {
-                var laneBottoms: [CGFloat?] = [nil, nil]
-
-                for (order, candidate) in group.enumerated() {
-                    let preferredLane = order.isMultiple(of: 2) ? 0 : 1
-                    let alternateLane = 1 - preferredLane
-
-                    func canUse(_ laneIndex: Int) -> Bool {
-                        guard let bottom = laneBottoms[laneIndex] else { return true }
-                        return candidate.idealTop >= bottom + spacing
-                    }
-
-                    let laneIndex: Int
-                    if canUse(preferredLane) {
-                        laneIndex = preferredLane
-                    } else if canUse(alternateLane) {
-                        laneIndex = alternateLane
-                    } else {
-                        let preferredBottom = laneBottoms[preferredLane] ?? -CGFloat.greatestFiniteMagnitude
-                        let alternateBottom = laneBottoms[alternateLane] ?? -CGFloat.greatestFiniteMagnitude
-                        laneIndex = preferredBottom <= alternateBottom ? preferredLane : alternateLane
-                    }
-
-                    let minimumTop = laneBottoms[laneIndex].map { $0 + spacing } ?? inset
-                    let labelTop = max(candidate.idealTop, minimumTop)
-                    let lane: MeetingScheduleLabelLane = laneIndex == 0 ? .left : .right
-
-                    placements.append(
-                        MeetingScheduleLabelPlacement(
-                            id: candidate.item.id,
-                            booking: candidate.item.booking,
-                            style: bookingStyle(for: candidate.item.booking),
-                            lane: lane,
-                            startY: candidate.startY,
-                            endY: candidate.endY,
-                            labelTop: labelTop
-                        )
-                    )
-                    laneBottoms[laneIndex] = labelTop + labelHeight
-                }
-            }
-
-            groupStart = groupEnd
-        }
-
-        return keepPlacementsInsideTimeline(placements)
-    }
-
-    private func keepPlacementsInsideTimeline(
-        _ placements: [MeetingScheduleLabelPlacement]
-    ) -> [MeetingScheduleLabelPlacement] {
-        var result = placements
-        let labelHeight = MeetingScheduleLabelMetrics.height
-        let spacing = MeetingScheduleLabelMetrics.spacing
-        let inset = MeetingScheduleLabelMetrics.verticalInset
-        let maximumBottom = timelineHeight - inset
-
-        for lane in [MeetingScheduleLabelLane.left, .right] {
-            let indices = result.indices
-                .filter { result[$0].lane == lane }
-                .sorted { result[$0].labelTop < result[$1].labelTop }
-
-            guard let firstIndex = indices.first, let lastIndex = indices.last else { continue }
-
-            let overflow = result[lastIndex].labelTop + labelHeight - maximumBottom
-            if overflow > 0 {
-                for index in indices {
-                    result[index].labelTop -= overflow
-                }
-            }
-
-            if indices.count > 1 {
-                for position in stride(from: indices.count - 2, through: 0, by: -1) {
-                    let index = indices[position]
-                    let nextIndex = indices[position + 1]
-                    let latestWithoutOverlap = result[nextIndex].labelTop - labelHeight - spacing
-                    if result[index].labelTop > latestWithoutOverlap {
-                        result[index].labelTop = latestWithoutOverlap
-                    }
-                }
-            }
-
-            let underflow = inset - result[firstIndex].labelTop
-            if underflow > 0 {
-                for index in indices {
-                    result[index].labelTop += underflow
-                }
-            }
-        }
-
-        return result
     }
 
     private func currentOffset(at now: Date) -> CGFloat? {
@@ -309,25 +166,6 @@ struct MeetingTimeline: View {
         guard hour >= firstHour && hour <= lastHour else { return nil }
         let minute = MeetingPresentation.calendar.component(.minute, from: now)
         return CGFloat(hour - firstHour) * hourHeight + CGFloat(minute) / 60 * hourHeight
-    }
-
-    private func bookingPosition(_ booking: MeetingBooking) -> (top: CGFloat, height: CGFloat)? {
-        guard let start = booking.startDate,
-              let end = booking.endDate else { return nil }
-
-        let startMinute = MeetingPresentation.calendar.component(.hour, from: start) * 60
-            + MeetingPresentation.calendar.component(.minute, from: start)
-        let endMinute = MeetingPresentation.calendar.component(.hour, from: end) * 60
-            + MeetingPresentation.calendar.component(.minute, from: end)
-        let visibleStart = max(startMinute, firstHour * 60)
-        let visibleEnd = min(endMinute, (lastHour + 1) * 60)
-
-        guard visibleEnd > visibleStart else { return nil }
-
-        return (
-            CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
-            max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 1)
-        )
     }
 
     private func bookingStyle(for booking: MeetingBooking) -> MeetingTimelineBookingStyle {
@@ -633,5 +471,169 @@ struct MeetingScheduleLabel: View {
                 .stroke(style.border.opacity(0.96), lineWidth: 0.8)
         }
         .shadow(color: .black.opacity(0.035), radius: 1.5, y: 0.5)
+    }
+}
+
+/// Where each booking's label goes on a day timeline: one centred label, or
+/// two lanes when labels would overlap, each kept inside the timeline with a
+/// connector back to the booking's start and end. Pure geometry, shared by the
+/// SwiftUI timeline (iOS 18+) and the UIKit one (iOS 17), so both place every
+/// meeting identically.
+enum MeetingScheduleLayout {
+    struct Slot {
+        let item: TimelineBookingItem
+        let lane: MeetingScheduleLabelLane
+        let startY: CGFloat
+        let endY: CGFloat
+        var labelTop: CGFloat
+    }
+
+    static func slots(
+        bookings: [MeetingBooking],
+        firstHour: Int,
+        lastHour: Int,
+        hourHeight: CGFloat
+    ) -> [Slot] {
+        let timelineHeight = hourHeight * CGFloat(lastHour - firstHour + 1)
+        let labelHeight = MeetingScheduleLabelMetrics.height
+        let spacing = MeetingScheduleLabelMetrics.spacing
+        let inset = MeetingScheduleLabelMetrics.verticalInset
+        let latestTop = max(inset, timelineHeight - inset - labelHeight)
+
+        // A booking can appear twice in one response; place it once.
+        var seenServerBookingIDs = Set<String>()
+        let items: [TimelineBookingItem] = bookings.enumerated().compactMap { index, booking in
+            if !booking.id.isEmpty, !seenServerBookingIDs.insert(booking.id).inserted {
+                return nil
+            }
+            return TimelineBookingItem(sourceIndex: index, booking: booking)
+        }
+
+        let candidates: [MeetingScheduleLabelCandidate] = items.compactMap { item in
+            guard let position = position(item.booking, firstHour: firstHour, lastHour: lastHour, hourHeight: hourHeight) else {
+                return nil
+            }
+            let startY = position.top
+            let endY = position.top + position.height
+            let eventCenter = (startY + endY) / 2
+            let idealTop = min(max(eventCenter - labelHeight / 2, inset), latestTop)
+            return MeetingScheduleLabelCandidate(item: item, startY: startY, endY: endY, idealTop: idealTop)
+        }
+        .sorted {
+            if $0.idealTop == $1.idealTop {
+                return $0.item.sourceIndex < $1.item.sourceIndex
+            }
+            return $0.idealTop < $1.idealTop
+        }
+
+        var slots: [Slot] = []
+        var groupStart = 0
+        while groupStart < candidates.count {
+            var groupEnd = groupStart + 1
+            var groupBottom = candidates[groupStart].idealTop + labelHeight
+            while groupEnd < candidates.count, candidates[groupEnd].idealTop < groupBottom + spacing {
+                groupBottom = max(groupBottom, candidates[groupEnd].idealTop + labelHeight)
+                groupEnd += 1
+            }
+            let group = Array(candidates[groupStart..<groupEnd])
+
+            if group.count == 1, let candidate = group.first {
+                slots.append(Slot(item: candidate.item, lane: .center, startY: candidate.startY,
+                                  endY: candidate.endY, labelTop: candidate.idealTop))
+            } else {
+                var laneBottoms: [CGFloat?] = [nil, nil]
+                for (order, candidate) in group.enumerated() {
+                    let preferredLane = order.isMultiple(of: 2) ? 0 : 1
+                    let alternateLane = 1 - preferredLane
+                    func canUse(_ laneIndex: Int) -> Bool {
+                        guard let bottom = laneBottoms[laneIndex] else { return true }
+                        return candidate.idealTop >= bottom + spacing
+                    }
+                    let laneIndex: Int
+                    if canUse(preferredLane) {
+                        laneIndex = preferredLane
+                    } else if canUse(alternateLane) {
+                        laneIndex = alternateLane
+                    } else {
+                        let preferredBottom = laneBottoms[preferredLane] ?? -CGFloat.greatestFiniteMagnitude
+                        let alternateBottom = laneBottoms[alternateLane] ?? -CGFloat.greatestFiniteMagnitude
+                        laneIndex = preferredBottom <= alternateBottom ? preferredLane : alternateLane
+                    }
+                    let minimumTop = laneBottoms[laneIndex].map { $0 + spacing } ?? inset
+                    let labelTop = max(candidate.idealTop, minimumTop)
+                    slots.append(Slot(item: candidate.item, lane: laneIndex == 0 ? .left : .right,
+                                      startY: candidate.startY, endY: candidate.endY, labelTop: labelTop))
+                    laneBottoms[laneIndex] = labelTop + labelHeight
+                }
+            }
+            groupStart = groupEnd
+        }
+        return keepInside(slots, timelineHeight: timelineHeight)
+    }
+
+    /// Shifts each lane so no label leaves the timeline or overlaps another.
+    private static func keepInside(_ slots: [Slot], timelineHeight: CGFloat) -> [Slot] {
+        var result = slots
+        let labelHeight = MeetingScheduleLabelMetrics.height
+        let spacing = MeetingScheduleLabelMetrics.spacing
+        let inset = MeetingScheduleLabelMetrics.verticalInset
+        let maximumBottom = timelineHeight - inset
+
+        for lane in [MeetingScheduleLabelLane.left, .right] {
+            let indices = result.indices
+                .filter { result[$0].lane == lane }
+                .sorted { result[$0].labelTop < result[$1].labelTop }
+            guard let firstIndex = indices.first, let lastIndex = indices.last else { continue }
+
+            let overflow = result[lastIndex].labelTop + labelHeight - maximumBottom
+            if overflow > 0 {
+                for index in indices { result[index].labelTop -= overflow }
+            }
+            if indices.count > 1 {
+                for position in stride(from: indices.count - 2, through: 0, by: -1) {
+                    let index = indices[position]
+                    let nextIndex = indices[position + 1]
+                    let latestWithoutOverlap = result[nextIndex].labelTop - labelHeight - spacing
+                    if result[index].labelTop > latestWithoutOverlap {
+                        result[index].labelTop = latestWithoutOverlap
+                    }
+                }
+            }
+            let underflow = inset - result[firstIndex].labelTop
+            if underflow > 0 {
+                for index in indices { result[index].labelTop += underflow }
+            }
+        }
+        return result
+    }
+
+    /// The booking's vertical extent within the visible hours, if any.
+    static func position(
+        _ booking: MeetingBooking,
+        firstHour: Int,
+        lastHour: Int,
+        hourHeight: CGFloat
+    ) -> (top: CGFloat, height: CGFloat)? {
+        guard let start = booking.startDate, let end = booking.endDate else { return nil }
+        let calendar = MeetingPresentation.calendar
+        let startMinute = calendar.component(.hour, from: start) * 60 + calendar.component(.minute, from: start)
+        let endMinute = calendar.component(.hour, from: end) * 60 + calendar.component(.minute, from: end)
+        let visibleStart = max(startMinute, firstHour * 60)
+        let visibleEnd = min(endMinute, (lastHour + 1) * 60)
+        guard visibleEnd > visibleStart else { return nil }
+        return (
+            CGFloat(visibleStart - firstHour * 60) / 60 * hourHeight,
+            max(CGFloat(visibleEnd - visibleStart) / 60 * hourHeight, 1)
+        )
+    }
+
+    /// The current-time marker's offset when [day] is today and in range.
+    static func currentOffset(day: Date, now: Date, firstHour: Int, lastHour: Int, hourHeight: CGFloat) -> CGFloat? {
+        let calendar = MeetingPresentation.calendar
+        guard calendar.isDate(day, inSameDayAs: now) else { return nil }
+        let hour = calendar.component(.hour, from: now)
+        guard hour >= firstHour && hour <= lastHour else { return nil }
+        let minute = calendar.component(.minute, from: now)
+        return CGFloat(hour - firstHour) * hourHeight + CGFloat(minute) / 60 * hourHeight
     }
 }

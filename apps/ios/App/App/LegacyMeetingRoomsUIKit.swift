@@ -710,68 +710,437 @@ private final class LegacyRoomCardCell: UITableViewCell {
     @objc private func tappedAction() { available ? onBook() : onSchedule() }
 }
 
+/// The day schedule of a room (or of the employee's own meetings) as the
+/// same timeline iOS 18+ shows: hours 06:00–23:00, a label per meeting with
+/// connectors to its start and end, a red current-time marker, a day picker
+/// and a booking button. UIKit, so iOS 17 never builds the SwiftUI timeline
+/// (see the iOS 17 crash rules); the label placement is the shared
+/// `MeetingScheduleLayout`, so both versions place every meeting identically.
 @MainActor
-private final class LegacyMeetingScheduleController: UITableViewController {
+private final class LegacyMeetingScheduleController: UIViewController {
     private let session: SessionStore
     private let room: MeetingRoom?
-    private let day: Date
+    private var day: Date
     private var cancellable: AnyCancellable?
-    /// This room's (or my) meetings of the day, recomputed per data change;
-    /// every row callback used to filter and sort the whole schedule again.
-    private var bookings: [MeetingBooking] = []
+    private let scrollView = UIScrollView()
+    private let timeline = LegacyMeetingTimelineView()
+    private let datePicker = UIDatePicker()
+    private var didScrollToNow = false
 
-    private func reload() {
-        bookings = session.meetingBookings.filter { meeting in
-            LegacyMeetingUI.sameDay(meeting, day)
-                && (room == nil ? (meeting.isMine ?? false) : meeting.roomId == room?.id)
-        }.sorted { $0.startsAt < $1.startsAt }
-        tableView.reloadData()
-    }
     init(session: SessionStore, room: MeetingRoom?, day: Date) {
         self.session = session; self.room = room; self.day = day
-        super.init(style: .insetGrouped)
+        super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { nil }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        view.backgroundColor = .systemBackground
         title = room?.name ?? "Lịch của tôi"
+        navigationItem.largeTitleDisplayMode = .always
+
+        // "Ngày" and a compact day picker; past days cannot be booked.
+        let dayLabel = UILabel()
+        dayLabel.text = "Ngày"
+        dayLabel.font = .preferredFont(forTextStyle: .body)
+        datePicker.datePickerMode = .date
+        datePicker.preferredDatePickerStyle = .compact
+        datePicker.locale = Locale(identifier: "vi_VN")
+        datePicker.timeZone = VietnamTime.timeZone
+        datePicker.calendar = VietnamTime.calendar
+        datePicker.minimumDate = VietnamTime.calendar.startOfDay(for: Date())
+        datePicker.date = day
+        datePicker.addTarget(self, action: #selector(dayChanged), for: .valueChanged)
+        let header = UIStackView(arrangedSubviews: [dayLabel, UIView(), datePicker])
+        header.alignment = .center
+        header.translatesAutoresizingMaskIntoConstraints = false
+
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.alwaysBounceVertical = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        timeline.translatesAutoresizingMaskIntoConstraints = false
+        timeline.onSelect = { [weak self] booking in self?.openDetail(booking) }
+        scrollView.addSubview(timeline)
+        view.addSubview(header)
+        view.addSubview(scrollView)
+
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
+            header.leadingAnchor.constraint(equalTo: view.layoutMarginsGuide.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: view.layoutMarginsGuide.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            timeline.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            timeline.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            timeline.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor),
+            timeline.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor),
+            timeline.heightAnchor.constraint(equalToConstant: LegacyMeetingTimelineView.timelineHeight),
+        ])
+
         if room != nil {
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
-                title: "Đặt phòng", style: .plain, target: self, action: #selector(book)
-            )
+            // The green "+" of the iOS 18 schedule.
+            let book = UIButton(type: .system)
+            var configuration = UIButton.Configuration.filled()
+            configuration.image = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold))
+            configuration.baseBackgroundColor = .systemGreen
+            configuration.baseForegroundColor = .white
+            configuration.cornerStyle = .capsule
+            book.configuration = configuration
+            book.accessibilityLabel = "Đặt phòng \(room?.name ?? "")"
+            book.layer.shadowColor = UIColor.black.cgColor
+            book.layer.shadowOpacity = 0.2
+            book.layer.shadowRadius = 8
+            book.layer.shadowOffset = CGSize(width: 0, height: 4)
+            book.addTarget(self, action: #selector(bookRoom), for: .touchUpInside)
+            book.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(book)
+            NSLayoutConstraint.activate([
+                book.widthAnchor.constraint(equalToConstant: 58),
+                book.heightAnchor.constraint(equalToConstant: 58),
+                book.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -22),
+                book.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -22),
+            ])
+            scrollView.contentInset.bottom = 58 + 22
         }
+
+        // `bookings` is published after `bookingsByRoom`: both are current here.
         cancellable = session.meetings.$bookings.receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.reload() }
+        reload()
     }
+
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         Task { await session.refreshMeetingSchedule(date: day) }
     }
-    @objc private func book() {
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Today opens on the current hour, like iOS 18.
+        guard !didScrollToNow, scrollView.bounds.height > 0 else { return }
+        didScrollToNow = true
+        guard let offset = MeetingScheduleLayout.currentOffset(
+            day: day, now: Date(),
+            firstHour: LegacyMeetingTimelineView.firstHour,
+            lastHour: LegacyMeetingTimelineView.lastHour,
+            hourHeight: LegacyMeetingTimelineView.hourHeight
+        ) else { return }
+        let maxOffset = max(0, LegacyMeetingTimelineView.timelineHeight + scrollView.adjustedContentInset.bottom - scrollView.bounds.height)
+        scrollView.contentOffset.y = min(max(0, offset - scrollView.bounds.height / 2), maxOffset)
+    }
+
+    private func reload() {
+        let bookings: [MeetingBooking]
+        if let room {
+            bookings = (session.meetings.bookingsByRoom[room.id] ?? []).filter { LegacyMeetingUI.sameDay($0, day) }
+        } else {
+            bookings = session.meetingBookings.filter { ($0.isMine ?? false) && LegacyMeetingUI.sameDay($0, day) }
+        }
+        timeline.update(bookings: bookings, day: day)
+    }
+
+    @objc private func dayChanged() {
+        day = datePicker.date
+        reload()
+        Task { await session.refreshMeetingSchedule(date: day) }
+    }
+
+    @objc private func bookRoom() {
         guard let room else { return }
         navigationController?.pushViewController(
             LegacyMeetingBookingController(session: session, room: room, day: day), animated: true
         )
     }
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        bookings.count
-    }
-    override func tableView(_ tableView: UITableView, cellForRowAt path: IndexPath) -> UITableViewCell {
-        let meeting = bookings[path.row]
-        let cell = tableView.dequeueReusableCell(withIdentifier: "meeting")
-            ?? UITableViewCell(style: .subtitle, reuseIdentifier: "meeting")
-        cell.textLabel?.text = meeting.title.isEmpty ? "Cuộc họp" : meeting.title
-        cell.detailTextLabel?.text = "\(LegacyMeetingUI.time(meeting.startsAt)) – \(LegacyMeetingUI.time(meeting.endsAt)) · \(meeting.attendeeCount) người"
-        cell.accessoryType = .disclosureIndicator
-        return cell
-    }
-    override func tableView(_ tableView: UITableView, didSelectRowAt path: IndexPath) {
-        tableView.deselectRow(at: path, animated: true)
-        let meeting = bookings[path.row]
-        guard let selectedRoom = room ?? session.meetingRooms.first(where: { $0.id == meeting.roomId }) else { return }
+
+    private func openDetail(_ meeting: MeetingBooking) {
+        // Other people's private bookings carry no id and no details.
+        guard !meeting.id.isEmpty,
+              let selectedRoom = room ?? session.meetingRooms.first(where: { $0.id == meeting.roomId }) else { return }
         navigationController?.pushViewController(
             LegacyMeetingDetailController(session: session, room: selectedRoom, meeting: meeting), animated: true
         )
+    }
+}
+
+/// UIKit drawing of `MeetingTimeline` (MeetingScheduleTimeline.swift).
+@MainActor
+private final class LegacyMeetingTimelineView: UIView {
+    static let firstHour = 6
+    static let lastHour = 23
+    static let hourHeight: CGFloat = 72
+    static var timelineHeight: CGFloat { hourHeight * CGFloat(lastHour - firstHour + 1) }
+    /// Hour labels: 56 pt wide plus 8 pt of trailing padding.
+    private static let gutter: CGFloat = 64
+
+    var onSelect: (MeetingBooking) -> Void = { _ in }
+    private var bookings: [MeetingBooking] = []
+    private var day = Date()
+    private var hourLabels: [UILabel] = []
+    private var hourRows: [UIView] = []
+    private let lanesView = UIView()
+    private let nowLine = UIView()
+    private let nowLabel = UILabel()
+    private var minuteTimer: Timer?
+    private var renderedWidth: CGFloat = -1
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        for hour in Self.firstHour...Self.lastHour {
+            let label = UILabel()
+            label.text = String(format: "%02d:00", hour)
+            label.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+            label.textColor = .secondaryLabel
+            label.textAlignment = .right
+            addSubview(label)
+            hourLabels.append(label)
+
+            let row = UIView()
+            row.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.035)
+            let line = UIView()
+            line.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.12)
+            line.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
+            line.frame = CGRect(x: 0, y: Self.hourHeight - 1, width: 0, height: 1)
+            row.addSubview(line)
+            addSubview(row)
+            hourRows.append(row)
+        }
+        lanesView.clipsToBounds = true
+        addSubview(lanesView)
+        nowLine.backgroundColor = .systemRed
+        nowLabel.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .bold)
+        nowLabel.textColor = .white
+        nowLabel.backgroundColor = .systemRed
+        nowLabel.textAlignment = .center
+        nowLine.isUserInteractionEnabled = false
+        nowLabel.isUserInteractionEnabled = false
+        addSubview(nowLine)
+        addSubview(nowLabel)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    deinit { minuteTimer?.invalidate() }
+
+    func update(bookings: [MeetingBooking], day: Date) {
+        self.bookings = bookings
+        self.day = day
+        renderLabels()
+        updateNowMarker()
+        scheduleMinuteTimer()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil {
+            minuteTimer?.invalidate()
+            minuteTimer = nil
+        } else {
+            updateNowMarker()
+            scheduleMinuteTimer()
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = bounds.width
+        for (index, label) in hourLabels.enumerated() {
+            label.frame = CGRect(x: 0, y: CGFloat(index) * Self.hourHeight, width: 56, height: 16)
+        }
+        for (index, row) in hourRows.enumerated() {
+            row.frame = CGRect(x: Self.gutter, y: CGFloat(index) * Self.hourHeight, width: max(0, width - Self.gutter), height: Self.hourHeight)
+        }
+        lanesView.frame = CGRect(x: Self.gutter, y: 0, width: max(0, width - Self.gutter), height: Self.timelineHeight)
+        if renderedWidth != lanesView.bounds.width { renderLabels() }
+        updateNowMarker()
+    }
+
+    /// Labels, connectors and dots for the current bookings and width.
+    private func renderLabels() {
+        lanesView.subviews.forEach { $0.removeFromSuperview() }
+        lanesView.layer.sublayers?.filter { $0 is CAShapeLayer }.forEach { $0.removeFromSuperlayer() }
+        let width = lanesView.bounds.width
+        renderedWidth = width
+        guard width > 0 else { return }
+
+        let inset = MeetingScheduleLabelMetrics.horizontalInset
+        let fullAvailable = max(1, width - inset * 2)
+        let centeredWidth = min(max(180, width - 48), fullAvailable)
+        let laneWidth = max(1, (width - inset * 2 - MeetingScheduleLabelMetrics.laneGap) / 2)
+
+        let slots = MeetingScheduleLayout.slots(
+            bookings: bookings, firstHour: Self.firstHour, lastHour: Self.lastHour, hourHeight: Self.hourHeight
+        )
+        for slot in slots {
+            let style = LegacyTimelineStyle(for: slot.item.booking)
+            let geometry: (left: CGFloat, width: CGFloat)
+            switch slot.lane {
+            case .center: geometry = ((width - centeredWidth) / 2, centeredWidth)
+            case .left: geometry = (inset, laneWidth)
+            case .right: geometry = (width - inset - laneWidth, laneWidth)
+            }
+            addConnector(slot: slot, geometry: geometry, width: width, style: style)
+            let label = LegacyTimelineLabel(booking: slot.item.booking, style: style)
+            label.frame = CGRect(x: geometry.left, y: slot.labelTop, width: geometry.width, height: MeetingScheduleLabelMetrics.height)
+            label.addAction(UIAction { [weak self] _ in self?.onSelect(slot.item.booking) }, for: .touchUpInside)
+            lanesView.addSubview(label)
+        }
+    }
+
+    private func addConnector(slot: MeetingScheduleLayout.Slot, geometry: (left: CGFloat, width: CGFloat), width: CGFloat, style: LegacyTimelineStyle) {
+        let labelRight = geometry.left + geometry.width
+        let labelCenterY = slot.labelTop + MeetingScheduleLabelMetrics.height / 2
+        let leftRail: CGFloat = 4
+        let rightRail = max(4, width - 4)
+        let startX: CGFloat = slot.lane == .right ? width / 2 + 4 : leftRail
+        let endX: CGFloat = slot.lane == .left ? width / 2 - 4 : rightRail
+
+        let path = UIBezierPath()
+        Self.appendElbow(to: path, from: CGPoint(x: startX, y: slot.startY), to: CGPoint(x: geometry.left, y: labelCenterY), verticalFirst: true)
+        Self.appendElbow(to: path, from: CGPoint(x: labelRight, y: labelCenterY), to: CGPoint(x: endX, y: slot.endY), verticalFirst: false)
+        let line = CAShapeLayer()
+        line.path = path.cgPath
+        line.fillColor = nil
+        line.strokeColor = style.line.withAlphaComponent(0.72).cgColor
+        line.lineWidth = 1
+        line.lineCap = .round
+        line.lineJoin = .round
+        lanesView.layer.addSublayer(line)
+
+        for (x, y, onRail) in [(startX, slot.startY, startX == leftRail), (endX, slot.endY, endX == rightRail)] {
+            let size: CGFloat = onRail ? 4 : 3.4
+            let dot = CAShapeLayer()
+            dot.path = UIBezierPath(ovalIn: CGRect(x: x - size / 2, y: y - size / 2, width: size, height: size)).cgPath
+            dot.fillColor = style.line.withAlphaComponent(0.88).cgColor
+            lanesView.layer.addSublayer(dot)
+        }
+    }
+
+    /// The rounded L-shaped connector of MeetingScheduleConnector: vertical
+    /// then horizontal from the booking start, horizontal then vertical to
+    /// the booking end.
+    private static func appendElbow(to path: UIBezierPath, from start: CGPoint, to end: CGPoint, verticalFirst: Bool) {
+        let dx = end.x - start.x
+        let dy = end.y - start.y
+        let radius = min(MeetingScheduleLabelMetrics.cornerRadius, abs(dx), abs(dy))
+        let sx: CGFloat = dx > 0 ? 1 : dx < 0 ? -1 : 0
+        let sy: CGFloat = dy > 0 ? 1 : dy < 0 ? -1 : 0
+        path.move(to: start)
+        if radius > 0 {
+            if verticalFirst {
+                path.addLine(to: CGPoint(x: start.x, y: end.y - sy * radius))
+                path.addQuadCurve(to: CGPoint(x: start.x + sx * radius, y: end.y), controlPoint: CGPoint(x: start.x, y: end.y))
+            } else {
+                path.addLine(to: CGPoint(x: end.x - sx * radius, y: start.y))
+                path.addQuadCurve(to: CGPoint(x: end.x, y: start.y + sy * radius), controlPoint: CGPoint(x: end.x, y: start.y))
+            }
+        }
+        path.addLine(to: end)
+    }
+
+    private func updateNowMarker() {
+        let offset = MeetingScheduleLayout.currentOffset(
+            day: day, now: Date(), firstHour: Self.firstHour, lastHour: Self.lastHour, hourHeight: Self.hourHeight
+        )
+        nowLine.isHidden = offset == nil
+        nowLabel.isHidden = offset == nil
+        guard let offset else { return }
+        nowLine.frame = CGRect(x: Self.gutter, y: offset, width: max(0, bounds.width - Self.gutter), height: 2)
+        nowLabel.text = MeetingPresentation.clock.string(from: Date())
+        let size = nowLabel.intrinsicContentSize
+        nowLabel.frame = CGRect(x: Self.gutter, y: offset - 13, width: size.width + 14, height: size.height + 8)
+        bringSubviewToFront(nowLine)
+        bringSubviewToFront(nowLabel)
+    }
+
+    /// The marker moves once a minute, only while today's timeline is shown
+    /// (the one per-minute exception of the event-driven rule: the clock).
+    private func scheduleMinuteTimer() {
+        minuteTimer?.invalidate()
+        minuteTimer = nil
+        guard window != nil, MeetingPresentation.calendar.isDateInToday(day) else { return }
+        let now = Date()
+        let nextMinute = VietnamTime.calendar.nextDate(after: now, matching: DateComponents(second: 0), matchingPolicy: .nextTime) ?? now.addingTimeInterval(60)
+        let timer = Timer(fire: nextMinute, interval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateNowMarker() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        minuteTimer = timer
+    }
+}
+
+/// UIKit colours of `MeetingTimeline.bookingStyle(for:)`.
+private struct LegacyTimelineStyle {
+    let fill: UIColor
+    let border: UIColor
+    let foreground: UIColor
+    let meta: UIColor
+    let line: UIColor
+
+    init(for booking: MeetingBooking) {
+        func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> UIColor { UIColor(red: r / 255, green: g / 255, blue: b / 255, alpha: 1) }
+        if booking.isOwner == true {
+            fill = rgb(220, 239, 226); border = rgb(143, 198, 160); foreground = rgb(46, 106, 67); meta = rgb(92, 127, 104); line = rgb(166, 207, 178)
+        } else if booking.isMine == true {
+            fill = rgb(220, 233, 250); border = rgb(142, 180, 232); foreground = rgb(49, 92, 145); meta = rgb(96, 126, 167); line = rgb(168, 195, 232)
+        } else {
+            fill = rgb(229, 231, 235); border = rgb(184, 190, 199); foreground = rgb(89, 97, 109); meta = rgb(119, 127, 137); line = rgb(195, 200, 207)
+        }
+    }
+}
+
+/// One meeting's pill: title · organiser on the left, time range on the right.
+private final class LegacyTimelineLabel: UIControl {
+    init(booking: MeetingBooking, style: LegacyTimelineStyle) {
+        super.init(frame: .zero)
+        backgroundColor = style.fill
+        layer.cornerRadius = 18
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 0.8
+        layer.borderColor = style.border.withAlphaComponent(0.96).cgColor
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = 0.035
+        layer.shadowRadius = 1.5
+        layer.shadowOffset = CGSize(width: 0, height: 0.5)
+
+        let title = UILabel()
+        title.text = [booking.title.isEmpty ? "Đã có lịch" : booking.title, booking.organizerName]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+        title.font = .systemFont(ofSize: 10.5, weight: .semibold)
+        title.textColor = style.foreground
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        let time = UILabel()
+        time.text = MeetingPresentation.range(booking)
+        time.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
+        time.textColor = style.meta
+        time.setContentCompressionResistancePriority(.required, for: .horizontal)
+        time.setContentHuggingPriority(.required, for: .horizontal)
+
+        let row = UIStackView(arrangedSubviews: [title, time])
+        row.spacing = 7
+        row.alignment = .center
+        row.isUserInteractionEnabled = false
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 11),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -11),
+            row.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        isAccessibilityElement = true
+        accessibilityTraits = booking.id.isEmpty ? .staticText : .button
+        accessibilityLabel = booking.id.isEmpty
+            ? "Khung giờ đã được đặt, \(MeetingPresentation.range(booking))"
+            : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title), \(MeetingPresentation.range(booking))"
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.7 : 1 }
     }
 }
 
