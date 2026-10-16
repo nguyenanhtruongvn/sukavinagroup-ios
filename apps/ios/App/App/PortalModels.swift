@@ -624,6 +624,7 @@ enum AttendanceWidgetBridge {
     }
 
     static func update(from dashboard: Dashboard) {
+        moveTokenToKeychainIfNeeded()
         let state = State(
             checkIn: dashboard.attendanceCheckIn,
             checkOut: dashboard.attendanceCheckOut
@@ -640,19 +641,35 @@ enum AttendanceWidgetBridge {
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
+    /// The widget token lives in the shared Keychain group; the App Group
+    /// copy is only a fallback for a build signed without that group.
     static func configure(token: String) {
         let defaults = UserDefaults(suiteName: appGroup)
-        guard defaults?.string(forKey: tokenKey) != token else { return }
-        defaults?.set(token, forKey: tokenKey)
-        defaults?.synchronize()
+        let current = WidgetTokenKeychain.load() ?? defaults?.string(forKey: tokenKey)
+        if WidgetTokenKeychain.save(token) {
+            defaults?.removeObject(forKey: tokenKey)
+        } else {
+            defaults?.set(token, forKey: tokenKey)
+        }
+        guard current != token else { return }
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
+
+    /// Versions before the Keychain group kept the token in the App Group plist.
+    private static func moveTokenToKeychainIfNeeded() {
+        guard WidgetTokenKeychain.isAvailable,
+              let defaults = UserDefaults(suiteName: appGroup),
+              let token = defaults.string(forKey: tokenKey), !token.isEmpty,
+              WidgetTokenKeychain.save(token) else { return }
+        defaults.removeObject(forKey: tokenKey)
     }
 
     static func clear() {
         let defaults = UserDefaults(suiteName: appGroup)
         let hasState = defaults?.object(forKey: stateKey) != nil
-        let hasToken = defaults?.object(forKey: tokenKey) != nil
+        let hasToken = defaults?.object(forKey: tokenKey) != nil || WidgetTokenKeychain.load() != nil
         guard hasState || hasToken else { return }
+        WidgetTokenKeychain.delete()
         defaults?.removeObject(forKey: stateKey)
         defaults?.removeObject(forKey: savedAtKey)
         defaults?.removeObject(forKey: tokenKey)

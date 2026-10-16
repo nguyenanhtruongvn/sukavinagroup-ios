@@ -51,9 +51,15 @@ private enum WidgetStorage {
         return URLSession(configuration: configuration)
     }()
 
+    /// The shared Keychain group first; the App Group copy only for a build
+    /// signed without that group, or until the app has moved it there.
+    private static func currentToken(_ defaults: UserDefaults?) -> String? {
+        WidgetTokenKeychain.load() ?? defaults?.string(forKey: tokenKey)?.nilIfEmptyToken
+    }
+
     static func fetchLatest() async -> State? {
         let defaults = UserDefaults(suiteName: appGroup)
-        guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty else {
+        guard let token = currentToken(defaults) else {
             // Signed out: never keep showing the previous account's punches.
             defaults?.removeObject(forKey: stateKey)
             return nil
@@ -79,7 +85,7 @@ private enum WidgetStorage {
             if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
                 // The session behind this widget token was signed out or
                 // revoked. Stop showing its data.
-                if defaults?.string(forKey: tokenKey) == token {
+                if currentToken(defaults) == token {
                     defaults?.removeObject(forKey: stateKey)
                 }
                 return nil
@@ -89,7 +95,7 @@ private enum WidgetStorage {
                 return load()
             }
             // The user may have signed out while the request was in flight.
-            guard defaults?.string(forKey: tokenKey) == token else { return nil }
+            guard currentToken(defaults) == token else { return nil }
             let records = payload.attendanceRecords.sorted { $0.punchedAt < $1.punchedAt }
             let state: State
             if payload.attendanceClassification != nil {
@@ -805,4 +811,8 @@ struct SukavinaAttendanceWidgetBundle: WidgetBundle {
         SukavinaAttendanceWidget()
         MeetingLiveActivityWidget()
     }
+}
+
+private extension String {
+    var nilIfEmptyToken: String? { isEmpty ? nil : self }
 }
