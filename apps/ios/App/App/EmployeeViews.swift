@@ -11,6 +11,12 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
+/// The signed-in portal on iOS 18+. iOS 17 never builds this view: just
+/// instantiating it aborted in SwiftUI type-metadata construction there, so
+/// AppDelegate hosts `LegacyEmployeePortalController` (UIKit tabs) instead.
+/// Keep iOS 17 work out of this type; the availability makes the compiler
+/// enforce that.
+@available(iOS 18.0, *)
 struct EmployeePortalView: View {
     @Environment(\.sessionActions) private var actions
     /// Methods and non-published values only; observing the whole session
@@ -19,34 +25,21 @@ struct EmployeePortalView: View {
     @EnvironmentObject private var badge: NotificationBadgeState
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     @State private var selectedTab = 0
-    /// iOS 17 tab bar: pages opened so far. They stay alive (hidden) so a
-    /// tab switch keeps scroll position, filters and pushed screens, as the
-    /// system TabView does on iOS 18+.
-    @State private var visitedTabs: Set<Int> = [0]
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
-    var body: AnyView {
-        let content: AnyView
-        if #available(iOS 18.0, *) {
-            content = AnyView(systemPortalTabs)
-        } else {
-            content = AnyView(ios17PortalTabs)
-        }
-        return AnyView(
-            content
-                .accentColor(AppTheme.red)
-                .onChange(of: selectedTab) { _, tab in
-                    if tab == 3 { session.clearNotificationBadge() }
-                }
-                .onChange(of: notificationRouter.pendingRoute) { _, route in
-                    if route != nil { selectedTab = 3 }
-                }
-        )
+    var body: some View {
+        systemPortalTabs
+            .accentColor(AppTheme.red)
+            .onChange(of: selectedTab) { _, tab in
+                if tab == 3 { session.clearNotificationBadge() }
+            }
+            .onChange(of: notificationRouter.pendingRoute) { _, route in
+                if route != nil { selectedTab = 3 }
+            }
     }
 
     private var systemPortalTabs: some View {
-        // Keep every tab item structurally stable. iOS 18+ does not use the
-        // iOS 17 fallback, but still must not swap tab-label view types.
+        // Keep every tab item structurally stable: never swap tab-label view types.
         TabView(selection: $selectedTab) {
             DashboardView(isActive: selectedTab == 0)
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
@@ -66,97 +59,6 @@ struct EmployeePortalView: View {
             .tag(4)
         }
         .adaptivePortalTabBarBackground()
-    }
-
-    private var ios17PortalTabs: some View {
-        // iOS 17.6 can overflow its SwiftUI/AttributeGraph stack while
-        // constructing the main TabView at launch. Keep the same five pages
-        // but use a small, stable app-owned tab bar on iOS 17 only.
-        //
-        // Reserve real bottom safe-area space rather than overlaying the tab
-        // bar on the page. An overlay obscures bottom-trailing controls such
-        // as the Requests screen's "Tạo đơn mới" button on iOS 17.
-        ZStack {
-            ForEach(visitedTabs.union([selectedTab]).sorted(), id: \.self) { tab in
-                portalPage(tab)
-                    .opacity(selectedTab == tab ? 1 : 0)
-                    .allowsHitTesting(selectedTab == tab)
-                    .accessibilityHidden(selectedTab != tab)
-                    .zIndex(selectedTab == tab ? 1 : 0)
-            }
-        }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: selectedTab) { _, tab in visitedTabs.insert(tab) }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                HStack(spacing: 0) {
-                    portalTabButton(title: "Trang chủ", image: "house.fill", tab: 0)
-                    portalTabButton(title: "Đơn từ", image: "doc.text.fill", tab: 1)
-                    portalTabButton(title: "Phòng họp", image: "building.2.fill", tab: 2)
-                    portalTabButton(title: "Thông báo", image: "bell.fill", tab: 3, badge: badge.count)
-                    portalTabButton(title: "Tài khoản", image: "person.crop.circle.fill", tab: 4)
-                }
-                .padding(.top, 8)
-                .padding(.bottom, 6)
-                .frame(maxWidth: .infinity)
-                .background(.ultraThinMaterial)
-                .overlay(alignment: .top) {
-                    Divider()
-                }
-            }
-    }
-
-    /// Type-erased so the iOS 17 page container stays a shallow generic tree.
-    private func portalPage(_ tab: Int) -> AnyView {
-        switch tab {
-        case 1:
-            return AnyView(RequestsView(initialFilter: requestInitialFilter))
-        case 2:
-            // TestFlight 109 and 110 abort in SwiftUI's iOS 17 type metadata
-            // construction. The iOS 17 route must not instantiate any of
-            // MeetingRoomsView's complex SwiftUI generic view tree.
-            return AnyView(LegacyMeetingRoomsUIKitView(session: session))
-        case 3:
-            return AnyView(NotificationsView())
-        case 4:
-            return AnyView(ProfileView())
-        default:
-            // Hidden pages stay alive; only the visible dashboard runs its
-            // clock and refresh loop.
-            return AnyView(DashboardView(isActive: selectedTab == 0))
-        }
-    }
-
-    private func portalTabButton(title: String, image: String, tab: Int, badge: Int = 0) -> some View {
-        Button {
-            selectedTab = tab
-        } label: {
-            VStack(spacing: 3) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: image)
-                        .font(.system(size: 18, weight: .semibold))
-                    if badge > 0 {
-                        Text(badge > 99 ? "99+" : "\(badge)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(AppTheme.red, in: Capsule())
-                            .offset(x: 9, y: -6)
-                    }
-                }
-                Text(title)
-                    .font(.system(size: 10, weight: selectedTab == tab ? .semibold : .regular))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(selectedTab == tab ? AppTheme.red : Color.secondary)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        // The badge is drawn as a separate number; read it with the tab.
-        .accessibilityValue(badge > 0 ? "\(badge) mục mới" : "")
-        .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
     }
 }
 

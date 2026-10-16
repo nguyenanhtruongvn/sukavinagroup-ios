@@ -40,7 +40,13 @@ struct SukavinaPreviewContainer: View {
             switch mode {
             case .restoring: NativeLaunchView()
             case .signedOut: AuthenticationView().sessionEnvironment(session)
-            case .signedIn: EmployeePortalView().sessionEnvironment(session)
+            case .signedIn:
+                if #available(iOS 18.0, *) {
+                    EmployeePortalView().sessionEnvironment(session)
+                } else {
+                    // iOS 17 uses the UIKit portal (LegacyEmployeePortalController).
+                    Text("Cổng nhân viên iOS 17 dùng UIKit")
+                }
             }
         }
     }
