@@ -254,13 +254,15 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     UITableViewDragDelegate, UITableViewDropDelegate {
     private let session: SessionStore
     private var cancellables = Set<AnyCancellable>()
-    private var dayOffset = 0
-    private var day: Date {
-        MeetingPresentation.calendar.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+    /// The shown day as a date, like MeetingRoomsView: after midnight a
+    /// "Ngày mai" selection becomes today instead of moving on a day.
+    private var day = Date()
+    private var tomorrow: Date {
+        MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
     }
     private let tableView = UITableView(frame: .zero, style: .plain)
-    private let todayButton = LegacyPillButton(title: "Hôm nay")
-    private let tomorrowButton = LegacyPillButton(title: "Ngày mai")
+    private let todayButton = LegacyPillButton(title: "Hôm nay", weight: .bold)
+    private let tomorrowButton = LegacyPillButton(title: "Ngày mai", weight: .semibold)
     private let mineButton = LegacyPillButton(symbol: "calendar")
     /// Fires at the next moment a room's status can change (a meeting start
     /// or end, or midnight), not every minute.
@@ -295,7 +297,7 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
         buttons.spacing = 10
         let header = UIStackView(arrangedSubviews: [title, buttons])
         header.axis = .vertical
-        header.spacing = 12
+        header.spacing = 10
         header.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(header)
 
@@ -309,25 +311,37 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
         tableView.dropDelegate = self
         tableView.dragInteractionEnabled = true
         tableView.register(LegacyRoomCardCell.self, forCellReuseIdentifier: LegacyRoomCardCell.reuseID)
-        tableView.contentInset = UIEdgeInsets(top: 6, left: 0, bottom: 24, right: 0)
+        // 16 pt from the buttons to the first card and 24 pt below the last,
+        // as in MeetingRoomsView (cells add 8 pt around each card).
+        tableView.contentInset = UIEdgeInsets(top: 6, left: 0, bottom: 16, right: 0)
+        let refresh = UIRefreshControl()
+        refresh.addAction(UIAction { [weak self, weak refresh] _ in
+            guard let self else { return }
+            let selected = day
+            Task {
+                await self.session.refreshMeetingSchedule(date: selected, force: true)
+                refresh?.endRefreshing()
+            }
+        }, for: .valueChanged)
+        tableView.refreshControl = refresh
         view.addSubview(tableView)
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
             header.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
             header.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
-            tableView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 10),
+            tableView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 2),
             tableView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
 
-        // Swipe left/right switches Hôm nay ⇄ Ngày mai, like iOS 18+.
-        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
-            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swipedDay(_:)))
-            swipe.direction = direction
-            tableView.addGestureRecognizer(swipe)
-        }
+        // A horizontal drag switches Hôm nay ⇄ Ngày mai with the thresholds
+        // of MeetingRoomsView (at least 48 pt, mostly horizontal), alongside
+        // vertical scrolling.
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(pannedDay(_:)))
+        pan.delegate = self
+        tableView.addGestureRecognizer(pan)
 
         session.meetings.$rooms
             .combineLatest(session.meetings.$bookingsByRoom, session.meetings.$scheduleLoaded, session.meetings.$scheduleError)
@@ -335,8 +349,11 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
             .sink { [weak self] _, _, _, _ in self?.reload() }
             .store(in: &cancellables)
         updateDayButtons()
-        NotificationCenter.default.addObserver(self, selector: #selector(clockChanged),
-                                               name: UIApplication.significantTimeChangeNotification, object: nil)
+        // Midnight, a clock change and returning to the app: like
+        // refreshForCalendarChange in MeetingRoomsView.
+        for name in [Notification.Name.NSCalendarDayChanged, UIApplication.significantTimeChangeNotification, UIApplication.didBecomeActiveNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(calendarChanged), name: name, object: nil)
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -372,7 +389,19 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
         statusTimer = timer
     }
 
-    @objc private func clockChanged() { reload() }
+    /// A past day goes back to today; otherwise the shown day is refetched.
+    @objc private func calendarChanged() {
+        let calendar = MeetingPresentation.calendar
+        if calendar.startOfDay(for: day) < calendar.startOfDay(for: Date()) {
+            day = Date()
+            updateDayButtons()
+            fetch()
+        } else if isVisible {
+            fetch()
+        } else {
+            reload()
+        }
+    }
 
     private func fetch() {
         let selected = day
@@ -408,21 +437,33 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     }
 
     private func updateDayButtons() {
-        todayButton.isOn = dayOffset == 0
-        tomorrowButton.isOn = dayOffset == 1
+        todayButton.isOn = MeetingPresentation.calendar.isDateInToday(day)
+        tomorrowButton.isOn = MeetingPresentation.calendar.isDate(day, inSameDayAs: tomorrow)
     }
 
-    private func setDay(_ offset: Int) {
-        guard offset != dayOffset else { return }
-        dayOffset = offset
-        updateDayButtons()
-        fetch()
+    /// Setting the day always refetches, like assigning `day` in SwiftUI.
+    private func setDay(_ value: Date, animated: Bool = false) {
+        day = value
+        let changes = {
+            self.updateDayButtons()
+            self.fetch()
+        }
+        if animated {
+            UIView.transition(with: tableView, duration: 0.25, options: .transitionCrossDissolve, animations: changes)
+        } else {
+            changes()
+        }
     }
 
-    @objc private func showToday() { setDay(0) }
-    @objc private func showTomorrow() { setDay(1) }
-    @objc private func swipedDay(_ gesture: UISwipeGestureRecognizer) {
-        setDay(gesture.direction == .left ? 1 : 0)
+    @objc private func showToday() { setDay(Date()) }
+    @objc private func showTomorrow() { setDay(tomorrow) }
+    @objc private func pannedDay(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        let translation = gesture.translation(in: tableView)
+        guard abs(translation.x) > abs(translation.y), abs(translation.x) > 48 else { return }
+        let calendar = MeetingPresentation.calendar
+        if translation.x < 0, calendar.isDateInToday(day) { setDay(tomorrow, animated: true) }
+        if translation.x > 0, calendar.isDate(day, inSameDayAs: tomorrow) { setDay(Date(), animated: true) }
     }
 
     @objc private func openMyMeetings() {
@@ -458,15 +499,32 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
             day: day,
             now: Date(),
             onSchedule: { [weak self] in self?.openSchedule(room) },
-            onBook: { [weak self] in self?.openBooking(room) }
+            onBook: { [weak self] in self?.openBooking(room) },
+            onMoveUp: path.row > 0 ? { [weak self] in self?.move(room, by: -1) } : nil,
+            onMoveDown: path.row < rooms.count - 1 ? { [weak self] in self?.move(room, by: 1) } : nil
         )
         return cell
     }
 
-    func tableView(_ tableView: UITableView, didSelectRowAt path: IndexPath) {
-        tableView.deselectRow(at: path, animated: false)
-        guard rooms.indices.contains(path.row) else { return }
-        openSchedule(rooms[path.row])
+    /// The long-press menu of MeetingRoomOrderingModifier: the accessible,
+    /// non-drag way to reorder.
+    func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt path: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
+        guard rooms.indices.contains(path.row) else { return nil }
+        let room = rooms[path.row]
+        return UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { [weak self] _ in
+            let up = UIAction(title: "Chuyển phòng lên trên", image: UIImage(systemName: "arrow.up")) { _ in self?.move(room, by: -1) }
+            let down = UIAction(title: "Chuyển phòng xuống dưới", image: UIImage(systemName: "arrow.down")) { _ in self?.move(room, by: 1) }
+            if path.row <= 0 { up.attributes = .disabled }
+            if path.row >= (self?.rooms.count ?? 0) - 1 { down.attributes = .disabled }
+            return UIMenu(children: [up, down])
+        }
+    }
+
+    private func move(_ room: MeetingRoom, by offset: Int) {
+        guard let index = rooms.firstIndex(where: { $0.id == room.id }), rooms.indices.contains(index + offset) else { return }
+        var reordered = rooms
+        reordered.swapAt(index, index + offset)
+        session.reorderMeetingRooms(reordered)
     }
 
     // Long-press drag reorders rooms, saved like the iOS 18+ list.
@@ -491,7 +549,15 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
         var reordered = rooms
         let room = reordered.remove(at: from)
         reordered.insert(room, at: min(destination.row, reordered.count))
+        // Land the lifted card at its new place instead of snapping it back.
+        coordinator.drop(item.dragItem, toRowAt: destination)
         self.session.reorderMeetingRooms(reordered)
+    }
+}
+
+extension LegacyMeetingRoomsController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
     }
 }
 
@@ -499,13 +565,13 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
 private final class LegacyPillButton: UIButton {
     var isOn = false { didSet { applyStyle() } }
 
-    init(title: String? = nil, symbol: String? = nil) {
+    init(title: String? = nil, weight: UIFont.Weight = .bold, symbol: String? = nil) {
         super.init(frame: .zero)
         var configuration = UIButton.Configuration.plain()
         configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
         if let title {
             configuration.attributedTitle = AttributedString(title, attributes: AttributeContainer([
-                .font: UIFont.preferredFont(forTextStyle: .subheadline).withWeight(.bold),
+                .font: UIFont.preferredFont(forTextStyle: .subheadline).withWeight(weight),
             ]))
         }
         if let symbol {
@@ -558,6 +624,8 @@ private final class LegacyRoomCardCell: UITableViewCell {
     private let actionButton = UIButton(configuration: .filled())
     private var onSchedule: () -> Void = {}
     private var onBook: () -> Void = {}
+    private var onMoveUp: (() -> Void)?
+    private var onMoveDown: (() -> Void)?
     private var available = true
     private var imageTask: Task<Void, Never>?
 
@@ -624,6 +692,9 @@ private final class LegacyRoomCardCell: UITableViewCell {
         let topRow = UIStackView(arrangedSubviews: [photo, info])
         topRow.spacing = 12
         topRow.alignment = .top
+        // Only the photo and text open the schedule (MeetingRoomCard's
+        // onTapGesture), not the margins or the button area.
+        topRow.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tappedInfo)))
 
         actionButton.addTarget(self, action: #selector(tappedAction), for: .touchUpInside)
         actionButton.heightAnchor.constraint(equalToConstant: 44).isActive = true
@@ -654,15 +725,24 @@ private final class LegacyRoomCardCell: UITableViewCell {
         imageTask = nil
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // A capsule at any Dynamic Type size.
+        chip.layer.cornerRadius = chip.bounds.height / 2
+    }
+
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         applyColors()
     }
 
     func configure(room: MeetingRoom, bookings: [MeetingBooking], day: Date, now: Date,
-                   onSchedule: @escaping () -> Void, onBook: @escaping () -> Void) {
+                   onSchedule: @escaping () -> Void, onBook: @escaping () -> Void,
+                   onMoveUp: (() -> Void)?, onMoveDown: (() -> Void)?) {
         self.onSchedule = onSchedule
         self.onBook = onBook
+        self.onMoveUp = onMoveUp
+        self.onMoveDown = onMoveDown
         let status = LegacyMeetingUI.roomStatus(bookings: bookings, day: day, now: now)
         available = status.available
 
@@ -671,6 +751,16 @@ private final class LegacyRoomCardCell: UITableViewCell {
         statusLabel.text = status.text
         chipLabel.text = available ? "Trống" : "Đang họp"
         accessibilityLabel = "\(room.name), \(available ? "Trống" : "Đang họp"), \(status.text)"
+        // One VoiceOver item per card; its actions are the card's controls.
+        var actions = [
+            UIAccessibilityCustomAction(name: available ? "Đặt phòng" : "Xem lịch") { [weak self] _ in self?.tappedAction(); return true },
+        ]
+        if available {
+            actions.append(UIAccessibilityCustomAction(name: "Xem lịch") { [weak self] _ in self?.onSchedule(); return true })
+        }
+        if let onMoveUp { actions.append(UIAccessibilityCustomAction(name: "Chuyển phòng lên trên") { _ in onMoveUp(); return true }) }
+        if let onMoveDown { actions.append(UIAccessibilityCustomAction(name: "Chuyển phòng xuống dưới") { _ in onMoveDown(); return true }) }
+        accessibilityCustomActions = actions
 
         var configuration = UIButton.Configuration.filled()
         configuration.image = UIImage(systemName: available ? "calendar.badge.plus" : "calendar",
@@ -693,6 +783,7 @@ private final class LegacyRoomCardCell: UITableViewCell {
         card.layer.shadowColor = UIColor.black.cgColor
         card.layer.shadowOpacity = dark ? 0.24 : 0.05
         card.layer.shadowRadius = dark ? 14 : 8
+        card.layer.shadowOffset = CGSize(width: 0, height: dark ? 6 : 3)
         let statusColor: UIColor = available ? .systemGreen : .systemRed
         chipDot.backgroundColor = statusColor
         chip.backgroundColor = statusColor.withAlphaComponent(0.12)
@@ -727,6 +818,7 @@ private final class LegacyRoomCardCell: UITableViewCell {
     }
 
     @objc private func tappedAction() { available ? onBook() : onSchedule() }
+    @objc private func tappedInfo() { onSchedule() }
 }
 
 /// The day schedule of a room (or of the employee's own meetings) as the
@@ -738,15 +830,15 @@ private final class LegacyRoomCardCell: UITableViewCell {
 @MainActor
 private final class LegacyMeetingScheduleController: UIViewController {
     private let session: SessionStore
-    private let room: MeetingRoom?
+    private let room: MeetingRoom
     private var day: Date
     private var cancellable: AnyCancellable?
     private let scrollView = UIScrollView()
     private let timeline = LegacyMeetingTimelineView()
     private let datePicker = UIDatePicker()
-    private var didScrollToNow = false
+    private let header = UIStackView()
 
-    init(session: SessionStore, room: MeetingRoom?, day: Date) {
+    init(session: SessionStore, room: MeetingRoom, day: Date) {
         self.session = session; self.room = room; self.day = day
         super.init(nibName: nil, bundle: nil)
     }
@@ -755,14 +847,16 @@ private final class LegacyMeetingScheduleController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        title = room?.name ?? "Lịch của tôi"
+        title = room.name
         navigationItem.largeTitleDisplayMode = .always
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(closeSheet))
 
-        // "Ngày" and a compact day picker; past days cannot be booked.
+        // "Ngày" and a compact day picker inside the scrolling content, as in
+        // MeetingRoomScheduleSheet; past days cannot be booked.
         let dayLabel = UILabel()
         dayLabel.text = "Ngày"
         dayLabel.font = .preferredFont(forTextStyle: .body)
+        dayLabel.adjustsFontForContentSizeCategory = true
         datePicker.datePickerMode = .date
         datePicker.preferredDatePickerStyle = .compact
         datePicker.locale = Locale(identifier: "vi_VN")
@@ -771,94 +865,88 @@ private final class LegacyMeetingScheduleController: UIViewController {
         datePicker.minimumDate = VietnamTime.calendar.startOfDay(for: Date())
         datePicker.date = day
         datePicker.addTarget(self, action: #selector(dayChanged), for: .valueChanged)
-        let header = UIStackView(arrangedSubviews: [dayLabel, UIView(), datePicker])
+        [dayLabel, UIView(), datePicker].forEach(header.addArrangedSubview)
         header.alignment = .center
-        header.translatesAutoresizingMaskIntoConstraints = false
+        header.isLayoutMarginsRelativeArrangement = true
+        header.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16)
 
+        let content = UIStackView(arrangedSubviews: [header, timeline])
+        content.axis = .vertical
+        content.translatesAutoresizingMaskIntoConstraints = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.alwaysBounceVertical = true
         scrollView.translatesAutoresizingMaskIntoConstraints = false
-        timeline.translatesAutoresizingMaskIntoConstraints = false
         timeline.onSelect = { [weak self] booking in self?.openDetail(booking) }
-        scrollView.addSubview(timeline)
-        view.addSubview(header)
+        scrollView.addSubview(content)
         view.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
-            header.leadingAnchor.constraint(equalTo: view.layoutMarginsGuide.leadingAnchor),
-            header.trailingAnchor.constraint(equalTo: view.layoutMarginsGuide.trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 12),
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            timeline.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-            timeline.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            timeline.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor),
-            timeline.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor),
+            content.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            content.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            content.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor),
             timeline.heightAnchor.constraint(equalToConstant: LegacyMeetingTimelineView.timelineHeight),
         ])
 
-        if room != nil {
-            // The green "+" of the iOS 18 schedule.
-            let book = UIButton(type: .system)
-            var configuration = UIButton.Configuration.filled()
-            configuration.image = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 22, weight: .bold))
-            configuration.baseBackgroundColor = .systemGreen
-            configuration.baseForegroundColor = .white
-            configuration.cornerStyle = .capsule
-            book.configuration = configuration
-            book.accessibilityLabel = "Đặt phòng \(room?.name ?? "")"
-            book.layer.shadowColor = UIColor.black.cgColor
-            book.layer.shadowOpacity = 0.2
-            book.layer.shadowRadius = 8
-            book.layer.shadowOffset = CGSize(width: 0, height: 4)
-            book.addTarget(self, action: #selector(bookRoom), for: .touchUpInside)
-            book.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(book)
-            NSLayoutConstraint.activate([
-                book.widthAnchor.constraint(equalToConstant: 58),
-                book.heightAnchor.constraint(equalToConstant: 58),
-                book.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -22),
-                book.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -22),
-            ])
-            scrollView.contentInset.bottom = 58 + 22
-        }
+        // The green "+" floats over the timeline, as on iOS 18.
+        let book = UIButton(type: .system)
+        var configuration = UIButton.Configuration.filled()
+        configuration.image = UIImage(systemName: "plus", withConfiguration: UIImage.SymbolConfiguration(textStyle: .title2).applying(UIImage.SymbolConfiguration(weight: .bold)))
+        configuration.baseBackgroundColor = .systemGreen
+        configuration.baseForegroundColor = .white
+        configuration.cornerStyle = .capsule
+        book.configuration = configuration
+        book.accessibilityLabel = "Đặt phòng \(room.name)"
+        book.layer.shadowColor = UIColor.black.cgColor
+        book.layer.shadowOpacity = 0.2
+        book.layer.shadowRadius = 8
+        book.layer.shadowOffset = CGSize(width: 0, height: 4)
+        book.addTarget(self, action: #selector(bookRoom), for: .touchUpInside)
+        book.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(book)
+        NSLayoutConstraint.activate([
+            book.widthAnchor.constraint(equalToConstant: 58),
+            book.heightAnchor.constraint(equalToConstant: 58),
+            book.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -22),
+            book.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -22),
+        ])
 
         // `bookings` is published after `bookingsByRoom`: both are current here.
         cancellable = session.meetings.$bookings.receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.reload() }
         reload()
+        // Like the sheet's .task: load, then centre today's current hour.
+        Task { [weak self] in
+            guard let self else { return }
+            await session.refreshMeetingSchedule(date: day)
+            scrollToCurrentHour()
+        }
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        Task { await session.refreshMeetingSchedule(date: day) }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        // Today opens on the current hour, like iOS 18.
-        guard !didScrollToNow, scrollView.bounds.height > 0 else { return }
-        didScrollToNow = true
-        guard let offset = MeetingScheduleLayout.currentOffset(
-            day: day, now: Date(),
-            firstHour: LegacyMeetingTimelineView.firstHour,
-            lastHour: LegacyMeetingTimelineView.lastHour,
-            hourHeight: LegacyMeetingTimelineView.hourHeight
-        ) else { return }
-        let maxOffset = max(0, LegacyMeetingTimelineView.timelineHeight + scrollView.adjustedContentInset.bottom - scrollView.bounds.height)
-        scrollView.contentOffset.y = min(max(0, offset - scrollView.bounds.height / 2), maxOffset)
+    /// `proxy.scrollTo(hour, anchor: .center)`: the current hour's row centred.
+    private func scrollToCurrentHour() {
+        let calendar = MeetingPresentation.calendar
+        guard calendar.isDateInToday(day) else { return }
+        let hour = calendar.component(.hour, from: Date())
+        guard hour >= LegacyMeetingTimelineView.firstHour, hour <= LegacyMeetingTimelineView.lastHour else { return }
+        view.layoutIfNeeded()
+        let rowCenter = header.frame.maxY
+            + CGFloat(hour - LegacyMeetingTimelineView.firstHour) * LegacyMeetingTimelineView.hourHeight
+            + LegacyMeetingTimelineView.hourHeight / 2
+        let inset = scrollView.adjustedContentInset
+        let visible = scrollView.bounds.height - inset.top - inset.bottom
+        let minOffset = -inset.top
+        let maxOffset = max(minOffset, scrollView.contentSize.height + inset.bottom - scrollView.bounds.height)
+        scrollView.setContentOffset(CGPoint(x: 0, y: min(max(minOffset, rowCenter - inset.top - visible / 2), maxOffset)), animated: false)
     }
 
     private func reload() {
-        let bookings: [MeetingBooking]
-        if let room {
-            bookings = (session.meetings.bookingsByRoom[room.id] ?? []).filter { LegacyMeetingUI.sameDay($0, day) }
-        } else {
-            bookings = session.meetingBookings.filter { ($0.isMine ?? false) && LegacyMeetingUI.sameDay($0, day) }
-        }
-        timeline.update(bookings: bookings, day: day)
+        // The store's bookings for this room, as MeetingRoomScheduleSheet shows them.
+        timeline.update(bookings: session.meetings.bookingsByRoom[room.id] ?? [], day: day)
     }
 
     @objc private func dayChanged() {
@@ -870,15 +958,13 @@ private final class LegacyMeetingScheduleController: UIViewController {
     @objc private func closeSheet() { dismiss(animated: true) }
 
     @objc private func bookRoom() {
-        guard let room else { return }
         LegacyMeetingUI.presentBooking(session: session, room: room, day: day, from: self)
     }
 
     private func openDetail(_ meeting: MeetingBooking) {
         // Other people's private bookings carry no id and no details.
-        guard !meeting.id.isEmpty,
-              let selectedRoom = room ?? session.meetingRooms.first(where: { $0.id == meeting.roomId }) else { return }
-        LegacyMeetingUI.presentSheet(LegacyMeetingDetailController(session: session, room: selectedRoom, meeting: meeting), from: self)
+        guard !meeting.id.isEmpty else { return }
+        LegacyMeetingUI.presentSheet(LegacyMeetingDetailController(session: session, room: room, meeting: meeting), from: self)
     }
 }
 
@@ -908,7 +994,8 @@ private final class LegacyMeetingTimelineView: UIView {
         for hour in Self.firstHour...Self.lastHour {
             let label = UILabel()
             label.text = String(format: "%02d:00", hour)
-            label.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .regular)
+            label.font = UIFontMetrics(forTextStyle: .caption1).scaledFont(for: .monospacedDigitSystemFont(ofSize: 12, weight: .regular))
+            label.adjustsFontForContentSizeCategory = true
             label.textColor = .secondaryLabel
             label.textAlignment = .right
             addSubview(label)
@@ -1170,7 +1257,7 @@ private final class LegacyTimelineLabel: UIControl {
 /// discard confirmation. Presented as a sheet, like on iOS 18.
 @MainActor
 private final class LegacyMeetingBookingController: UIViewController, UITextFieldDelegate,
-    UIPickerViewDataSource, UIPickerViewDelegate, UIAdaptivePresentationControllerDelegate {
+    UIPickerViewDataSource, UIPickerViewDelegate {
     private let session: SessionStore
     private let room: MeetingRoom
     private let day: Date
@@ -1218,6 +1305,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private let hintLabel = UILabel()
     private let capacityLabel = UILabel()
     private let blockLabel = UILabel()
+    private var blockRow: UIView?
     private let confirmButton = UIButton(type: .system)
     private var notice: UIView?
     private var noticeHide: DispatchWorkItem?
@@ -1278,8 +1366,11 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemGroupedBackground
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(close))
-        navigationController?.presentationController?.delegate = self
+        let closeItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(close))
+        let closeFont = UIFont.preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
+        closeItem.setTitleTextAttributes([.font: closeFont], for: .normal)
+        closeItem.setTitleTextAttributes([.font: closeFont], for: .highlighted)
+        navigationItem.rightBarButtonItem = closeItem
         start = MeetingBookingTime.defaultStart(on: day, now: Date(), calendar: MeetingPresentation.calendar)
 
         scroll.showsVerticalScrollIndicator = false
@@ -1380,7 +1471,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
         let contentLabel = label("Nội dung cuộc họp", style: .caption1, weight: .semibold, color: .secondaryLabel)
         styleField(titleField, placeholder: "Ví dụ: Họp kế hoạch tuần", icon: nil, height: 48)
-        titleField.returnKeyType = .done
         titleField.delegate = self
         titleField.addAction(UIAction { [weak self] _ in self?.renderConfirm() }, for: .editingChanged)
         let titleGroup = UIStackView(arrangedSubviews: [contentLabel, fieldContainer(titleField, icon: nil, height: 48)])
@@ -1404,7 +1494,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         card.addArrangedSubview(tiles)
 
         configurePicker(startPicker, box: startPickerBox, titles: ["Giờ", "Phút"])
-        configurePicker(durationPicker, box: durationPickerBox, titles: ["Số", "Đơn vị"])
+        configurePicker(durationPicker, box: durationPickerBox, titles: ["Số", ""])
         card.addArrangedSubview(startPickerBox)
         card.addArrangedSubview(durationPickerBox)
 
@@ -1432,13 +1522,10 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         let card = cardStack()
         countBadge.font = .preferredFont(forTextStyle: .caption1).withWeight(.bold)
         countBadge.textColor = red
-        countBadge.backgroundColor = red.withAlphaComponent(0.10)
-        countBadge.layer.cornerRadius = 11
-        countBadge.layer.masksToBounds = true
-        countBadge.textAlignment = .center
-        countBadge.setContentHuggingPriority(.required, for: .horizontal)
-        countBadge.heightAnchor.constraint(equalToConstant: 22).isActive = true
-        let titleRow = UIStackView(arrangedSubviews: [sectionTitle("Mời người tham gia", icon: "person.2.fill"), UIView(), countBadge])
+        let badge = LegacyCapsuleView(content: countBadge, insets: NSDirectionalEdgeInsets(top: 5, leading: 9, bottom: 5, trailing: 9))
+        badge.backgroundColor = red.withAlphaComponent(0.10)
+        badge.setContentHuggingPriority(.required, for: .horizontal)
+        let titleRow = UIStackView(arrangedSubviews: [sectionTitle("Mời người tham gia", icon: "person.2.fill"), UIView(), badge])
         titleRow.alignment = .center
         card.addArrangedSubview(titleRow)
 
@@ -1453,9 +1540,8 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         styleField(peopleField, placeholder: "Tìm tên hoặc mã nhân viên", icon: "magnifyingglass", height: 46)
         styleField(departmentField, placeholder: "Tìm phòng ban", icon: "building.2", height: 46)
         for field in [peopleField, departmentField] {
-            field.returnKeyType = .search
             field.delegate = self
-            field.addAction(UIAction { [weak self] _ in self?.renderInvitees(keeping: field) }, for: .editingChanged)
+            field.addAction(UIAction { [weak self] _ in self?.renderInvitees(followFocus: true) }, for: .editingChanged)
         }
         // Results sit right above their field, like on iOS 18.
         card.addArrangedSubview(peopleResults)
@@ -1477,7 +1563,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     }
 
     private func makeConfirmCard() -> UIView {
-        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemThickMaterial))
+        let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
         blur.layer.cornerRadius = 25
         blur.layer.cornerCurve = .continuous
         blur.clipsToBounds = true
@@ -1494,10 +1580,23 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         configuration.background.cornerRadius = 16
         configuration.imagePadding = 8
         confirmButton.configuration = configuration
+        // The system's disabled look would replace these colours.
+        confirmButton.configurationUpdateHandler = { [weak self] button in
+            guard let self, var updated = button.configuration else { return }
+            let canConfirm = blockReason == nil && !isSubmitting
+            updated.baseBackgroundColor = canConfirm ? red : .systemGray3
+            updated.baseForegroundColor = .white
+            updated.background.backgroundColor = canConfirm ? red : .systemGray3
+            button.configuration = updated
+        }
         confirmButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
         confirmButton.addTarget(self, action: #selector(submit), for: .touchUpInside)
 
-        let stack = UIStackView(arrangedSubviews: [blockLabel, confirmButton])
+        let blockRow = UIStackView(arrangedSubviews: [blockLabel])
+        blockRow.isLayoutMarginsRelativeArrangement = true
+        blockRow.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6)
+        self.blockRow = blockRow
+        let stack = UIStackView(arrangedSubviews: [blockRow, confirmButton])
         stack.axis = .vertical
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -1542,7 +1641,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     private func renderConfirm() {
         let reason = isSubmitting ? nil : blockReason
-        blockLabel.isHidden = reason == nil
+        blockRow?.isHidden = reason == nil
         if let reason {
             let text = NSMutableAttributedString(attributedString: NSAttributedString(attachment: NSTextAttachment(image: UIImage(systemName: "info.circle") ?? UIImage())))
             text.append(NSAttributedString(string: " " + reason))
@@ -1550,7 +1649,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         }
         let enabled = reason == nil && !isSubmitting
         var configuration = confirmButton.configuration ?? .filled()
-        configuration.baseBackgroundColor = enabled || isSubmitting ? red : .systemGray3
+        configuration.baseBackgroundColor = enabled ? red : .systemGray3
         configuration.baseForegroundColor = .white
         configuration.image = isSubmitting ? nil : UIImage(systemName: "checkmark.circle.fill")
         configuration.showsActivityIndicator = isSubmitting
@@ -1559,14 +1658,16 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         configuration.attributedTitle = title
         confirmButton.configuration = configuration
         confirmButton.isEnabled = enabled
+        confirmButton.setNeedsUpdateConfiguration()
         // Swiping the sheet down asks first once something was entered.
         navigationController?.isModalInPresentation = hasUnsavedInput || isSubmitting
     }
 
-    /// The invitation card's dynamic parts. [keeping] stays visible above the
-    /// keyboard while the results above it grow or shrink.
-    private func renderInvitees(keeping field: UITextField? = nil) {
-        countBadge.text = "  \(selected.count) người  "
+    /// The invitation card's dynamic parts. With [followFocus] (typing, or
+    /// people/departments added) the focused search field stays above the
+    /// keyboard; removing someone only shrinks a list and does not jump.
+    private func renderInvitees(followFocus: Bool = false) {
+        countBadge.text = "\(selected.count) người"
 
         // "Đã chọn"
         selectedSection.arrangedSubviews.forEach { $0.removeFromSuperview() }
@@ -1624,7 +1725,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             button.addAction(UIAction { [weak self] _ in
                 guard let self else { return }
                 selected.formUnion(unselectedDepartmentInvitees.map(\.id))
-                renderInvitees()
+                renderInvitees(followFocus: true)
             }, for: .touchUpInside)
             inviteAllSection.addArrangedSubview(button)
             if !canInviteEntireDepartment {
@@ -1667,7 +1768,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
                             selectedDepartments.insert(department)
                             peopleField.text = ""
                         }
-                        renderInvitees(keeping: departmentField)
+                        renderInvitees(followFocus: selectedDepartments.contains(department))
                     }
                 }
                 panel.addArrangedSubview(horizontalScroller(chips, height: 48))
@@ -1688,7 +1789,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             retry.addAction(UIAction { [weak self] _ in
                 Task { [weak self] in
                     guard let self else { return }
-                    self.inviteesError = await self.session.refreshMeetingInvitees(force: true)
+                    self.inviteesError = await self.session.refreshMeetingInvitees()
                     renderInvitees()
                 }
             }, for: .touchUpInside)
@@ -1699,7 +1800,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         capacityLabel.text = "\(selected.count + 1)/\(room.capacity) chỗ · gồm bạn và người được mời"
         renderConfirm()
 
-        if let field = field ?? [peopleField, departmentField].first(where: \.isFirstResponder) {
+        if followFocus, let field = [peopleField, departmentField].first(where: \.isFirstResponder) {
             keepVisible(field, animated: false)
         }
     }
@@ -1790,8 +1891,9 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         control.accessibilityTraits = .button
         control.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            if selected.contains(person.id) { selected.remove(person.id) } else { selected.insert(person.id) }
-            renderInvitees(keeping: peopleField)
+            let adding = !selected.contains(person.id)
+            if adding { selected.insert(person.id) } else { selected.remove(person.id) }
+            renderInvitees(followFocus: adding)
         }, for: .touchUpInside)
         return control
     }
@@ -1981,8 +2083,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private func styleField(_ field: UITextField, placeholder: String, icon: String?, height: CGFloat) {
         field.placeholder = placeholder
         field.font = .preferredFont(forTextStyle: icon == nil ? .body : .subheadline)
-        field.clearButtonMode = .whileEditing
-        field.autocorrectionType = icon == nil ? .default : .no
+
     }
 
     private func fieldContainer(_ field: UITextField, icon: String?, height: CGFloat) -> UIView {
@@ -2066,13 +2167,9 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     // MARK: Actions
 
-    func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
-        close()
-    }
-
     @objc private func close() {
-        guard hasUnsavedInput, !isSubmitting else {
-            if !isSubmitting { dismiss(animated: true) }
+        guard hasUnsavedInput else {
+            dismiss(animated: true)
             return
         }
         let sheet = UIAlertController(
@@ -2425,8 +2522,10 @@ private final class LegacyMeetingDetailController: UIViewController {
                     Task { await self?.submitMeetingControl("extend") }
                 })
             } else {
-                let unavailable = iconLabel("Gia hạn không khả dụng", icon: "clock.badge.exclamationmark", style: .subheadline, color: .secondaryLabel)
-                rows.append(padded(unavailable, background: .tertiarySystemFill, radius: 10, inset: 10))
+                let unavailable = iconLabel("Gia hạn không khả dụng", icon: "clock.badge.exclamationmark", style: .body, color: .secondaryLabel)
+                let centred = UIStackView(arrangedSubviews: [UIView(), unavailable, UIView()])
+                centred.distribution = .equalCentering
+                rows.append(centred)
                 rows.append(label(extensionBlockMessage, style: .caption1, weight: .semibold, color: .systemRed))
             }
             let ending = isSubmittingControl && controlAction == "end"
@@ -2453,7 +2552,9 @@ private final class LegacyMeetingDetailController: UIViewController {
                 self.isCancelling = false
                 if let error {
                     self.render()
-                    LegacyMeetingUI.message("Chưa thể hủy lịch", error, from: self)
+                    let failed = UIAlertController(title: "Chưa thể hủy lịch", message: error, preferredStyle: .alert)
+                    failed.addAction(UIAlertAction(title: "Đã hiểu", style: .cancel))
+                    self.present(failed, animated: true)
                 } else {
                     self.dismiss(animated: true)
                 }
@@ -2515,15 +2616,16 @@ private final class LegacyMeetingDetailController: UIViewController {
     }
 
     private func pill(_ text: String, icon: String) -> UIView {
-        let view = iconLabel(text, icon: icon, style: .caption1, weight: .semibold, color: accent)
-        let box = padded(view, background: accent.withAlphaComponent(0.12), radius: 14, inset: 7)
-        box.setContentHuggingPriority(.required, for: .horizontal)
-        return box
+        capsule(iconLabel(text, icon: icon, style: .caption1, weight: .semibold, color: accent))
     }
 
     private func chip(_ text: String, icon: String) -> UIView {
-        let view = iconLabel(text, icon: icon, style: .caption1, weight: .bold, color: accent)
-        let box = padded(view, background: accent.withAlphaComponent(0.12), radius: 15, inset: 7)
+        capsule(iconLabel(text, icon: icon, style: .caption1, weight: .bold, color: accent))
+    }
+
+    private func capsule(_ content: UIView) -> UIView {
+        let box = LegacyCapsuleView(content: content, insets: NSDirectionalEdgeInsets(top: 7, leading: 10, bottom: 7, trailing: 10))
+        box.backgroundColor = accent.withAlphaComponent(0.12)
         box.setContentHuggingPriority(.required, for: .horizontal)
         return box
     }
@@ -2554,9 +2656,10 @@ private final class LegacyMeetingDetailController: UIViewController {
     }
 
     private func borderedButton(_ title: String, action: @escaping () -> Void) -> UIButton {
-        var configuration = UIButton.Configuration.gray()
+        // SwiftUI's .bordered: tinted fill, body text.
+        var configuration = UIButton.Configuration.tinted()
         var text = AttributedString(title)
-        text.font = .preferredFont(forTextStyle: .subheadline)
+        text.font = .preferredFont(forTextStyle: .body)
         configuration.attributedTitle = text
         let button = UIButton(configuration: configuration)
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
@@ -2619,8 +2722,16 @@ private final class LegacyMyMeetingsController: UIViewController {
         closeButton.accessibilityLabel = "Đóng lịch của tôi"
         closeButton.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([closeButton.widthAnchor.constraint(equalToConstant: 34), closeButton.heightAnchor.constraint(equalToConstant: 34)])
-        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: closeButton)
+        let closeArea = UIControl()
+        closeArea.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        closeArea.addSubview(closeButton)
+        closeArea.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            closeButton.widthAnchor.constraint(equalToConstant: 34), closeButton.heightAnchor.constraint(equalToConstant: 34),
+            closeButton.centerXAnchor.constraint(equalTo: closeArea.centerXAnchor), closeButton.centerYAnchor.constraint(equalTo: closeArea.centerYAnchor),
+            closeArea.widthAnchor.constraint(equalToConstant: 44), closeArea.heightAnchor.constraint(equalToConstant: 44),
+        ])
+        navigationItem.rightBarButtonItem = UIBarButtonItem(customView: closeArea)
 
         let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
@@ -2644,11 +2755,9 @@ private final class LegacyMyMeetingsController: UIViewController {
             stack.leadingAnchor.constraint(equalTo: scroll.frameLayoutGuide.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -16),
         ])
-        for direction in [UISwipeGestureRecognizer.Direction.left, .right] {
-            let swipe = UISwipeGestureRecognizer(target: self, action: #selector(swiped(_:)))
-            swipe.direction = direction
-            view.addGestureRecognizer(swipe)
-        }
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(panned(_:)))
+        pan.delegate = self
+        view.addGestureRecognizer(pan)
         cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
         render()
         Task { await session.refreshMeetingSchedule(date: day) }
@@ -2680,7 +2789,7 @@ private final class LegacyMyMeetingsController: UIViewController {
         count.layer.cornerCurve = .continuous
         count.setContentHuggingPriority(.required, for: .horizontal)
         let top = UIStackView(arrangedSubviews: [titles, UIView(), count])
-        top.alignment = .center
+        top.alignment = .firstBaseline
         top.spacing = 12
 
         let icon = UIImageView(image: UIImage(systemName: "calendar.badge.clock"))
@@ -2728,10 +2837,13 @@ private final class LegacyMyMeetingsController: UIViewController {
         return box
     }
 
-    @objc private func swiped(_ gesture: UISwipeGestureRecognizer) {
-        showsUpcoming = gesture.direction == .right
+    @objc private func panned(_ gesture: UIPanGestureRecognizer) {
+        guard gesture.state == .ended else { return }
+        let translation = gesture.translation(in: view)
+        guard abs(translation.x) > abs(translation.y), abs(translation.x) > 48 else { return }
+        showsUpcoming = translation.x > 0
         filter.selectedSegmentIndex = showsUpcoming ? 0 : 1
-        UIView.animate(withDuration: 0.2) { self.render() }
+        UIView.animate(withDuration: 0.25) { self.render() }
     }
 
     private func render() {
@@ -2770,7 +2882,13 @@ private final class LegacyMyMeetingsController: UIViewController {
 
     private func open(_ meeting: MeetingBooking) {
         guard let room = session.meetingRooms.first(where: { $0.id == meeting.roomId }) else {
-            LegacyMeetingUI.message("Không tìm thấy thông tin phòng", "Phòng của cuộc họp này không còn trong danh sách.", from: self)
+            var configuration = UIContentUnavailableConfiguration.empty()
+            configuration.image = UIImage(systemName: "building.2.crop.circle")
+            configuration.text = "Không tìm thấy thông tin phòng"
+            let missing = UIViewController()
+            missing.view.backgroundColor = .systemGroupedBackground
+            missing.contentUnavailableConfiguration = configuration
+            LegacyMeetingUI.presentSheet(missing, from: self)
             return
         }
         LegacyMeetingUI.presentSheet(LegacyMeetingDetailController(session: session, room: room, meeting: meeting), from: self)
@@ -2823,14 +2941,12 @@ private final class LegacyMeetingSummaryCard: UIControl {
         let roomRow = UIStackView(arrangedSubviews: [roomIcon, room])
         roomRow.spacing = 6
         let role = UILabel()
-        role.text = "  \(meeting.isOwner == true ? "Bạn tạo lịch" : "Bạn được mời")  "
+        role.text = meeting.isOwner == true ? "Bạn tạo lịch" : "Bạn được mời"
         role.font = .preferredFont(forTextStyle: .caption1).withWeight(.bold)
         role.textColor = color
-        role.backgroundColor = color.withAlphaComponent(0.12)
-        role.layer.cornerRadius = 10
-        role.layer.masksToBounds = true
-        role.heightAnchor.constraint(equalToConstant: 22).isActive = true
-        let roleRow = UIStackView(arrangedSubviews: [role, UIView()])
+        let roleChip = LegacyCapsuleView(content: role, insets: NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
+        roleChip.backgroundColor = color.withAlphaComponent(0.12)
+        let roleRow = UIStackView(arrangedSubviews: [roleChip, UIView()])
         let texts = UIStackView(arrangedSubviews: [title, roomRow, roleRow])
         texts.axis = .vertical
         texts.spacing = 5
@@ -2860,6 +2976,39 @@ private final class LegacyMeetingSummaryCard: UIControl {
 
     override var isHighlighted: Bool {
         didSet { alpha = isHighlighted ? 0.7 : 1 }
+    }
+}
+
+/// A capsule around a label (SwiftUI `.padding` + `.clipShape(Capsule())`):
+/// round at any Dynamic Type size.
+private final class LegacyCapsuleView: UIView {
+    init(content: UIView, insets: NSDirectionalEdgeInsets) {
+        super.init(frame: .zero)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            content.topAnchor.constraint(equalTo: topAnchor, constant: insets.top),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -insets.bottom),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: insets.leading),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -insets.trailing),
+        ])
+        layer.cornerCurve = .continuous
+        clipsToBounds = true
+    }
+    required init?(coder: NSCoder) { nil }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+    }
+
+    override var forFirstBaselineLayout: UIView { subviews.first?.forFirstBaselineLayout ?? self }
+    override var forLastBaselineLayout: UIView { subviews.first?.forLastBaselineLayout ?? self }
+}
+
+extension LegacyMyMeetingsController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        true
     }
 }
 

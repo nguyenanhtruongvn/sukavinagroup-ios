@@ -441,7 +441,11 @@ struct MeetingRoomCard: View {
     }
 
     private var nextBooking: MeetingBooking? {
-        let point = MeetingPresentation.calendar.isDate(day, inSameDayAs: now) ? now : day
+        // Another day counts from its start: "day" carries the time it was
+        // chosen, so tomorrow at 10:00 used to skip meetings before 10:00.
+        let point = MeetingPresentation.calendar.isDate(day, inSameDayAs: now)
+            ? now
+            : MeetingPresentation.calendar.startOfDay(for: day)
         return bookings.first {
             guard let start = $0.startDate else { return false }
             return start > point
