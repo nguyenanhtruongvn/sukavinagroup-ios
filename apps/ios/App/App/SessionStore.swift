@@ -322,6 +322,7 @@ final class SessionStore: ObservableObject {
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
     private let unreadArticlesKey = "unread-native-article-ids"
+    private let hiddenArticlesKey = "hidden-notification-articles"
     /// Written by older versions (local attendance inbox); only ever removed now.
     private let legacyAttendanceKeyPrefixes = [
         "known-native-attendance-ids-",
@@ -329,7 +330,20 @@ final class SessionStore: ObservableObject {
     ]
     private let acknowledgedNotificationBadgePrefix = "acknowledged-native-notification-badge-"
     private let acknowledgedNotificationBadgeDatePrefix = "acknowledged-native-notification-badge-date-"
-    private var latestRequestNotifications: [RequestNotification] = []
+    /// The inbox's server notifications; the Notifications screen mirrors it.
+    @Published private(set) var latestRequestNotifications: [RequestNotification] = []
+    /// One shared `me/requests/notifications` request (count badge and screen).
+    private var requestNotificationsTask: Task<[RequestNotification]?, Never>?
+    private var requestNotificationsRerun = false
+    /// Shared attendance month requests; a forced call re-runs a running one.
+    private var attendanceMonthTasks: [String: Task<AttendanceMonth, Error>] = [:]
+    private var attendanceMonthReruns: Set<String> = []
+    private var attendanceReportsTask: Task<[AttendanceReport]?, Never>?
+    private var attendanceReportsLoadedAt: Date?
+    private var todayMenuRerun = false
+    private var meetingDetailsReruns: Set<String> = []
+    /// Read/unread news are kept per account (`<key>-<employee code>`).
+    private var articleOwner: String?
     private var articleBadgeCount = 0
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
@@ -530,7 +544,7 @@ final class SessionStore: ObservableObject {
         if let cached = attendanceMemoryCache[cacheKey] {
             return cached.value
         }
-        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        guard let data = AccountDocumentStore.shared.data(forKey: cacheKey) else { return nil }
         if let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) {
             attendanceMemoryCache[cacheKey] = cached
             return cached.value
@@ -550,7 +564,7 @@ final class SessionStore: ObservableObject {
         if let memory = attendanceMemoryCache[cacheKey] {
             cached = memory
         } else {
-            guard let data = UserDefaults.standard.data(forKey: cacheKey),
+            guard let data = AccountDocumentStore.shared.data(forKey: cacheKey),
                   let disk = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) else { return true }
             attendanceMemoryCache[cacheKey] = disk
             cached = disk
@@ -565,30 +579,63 @@ final class SessionStore: ObservableObject {
         return Date().timeIntervalSince(cached.savedAt) >= ttl
     }
 
-    func loadAttendanceMonth(_ month: String, token: String) async throws -> AttendanceMonth {
-        do {
-            let loaded: AttendanceMonth = try await APIClient.shared.request(
-                "me/attendance?month=\(month)", token: token
-            )
-            saveAttendanceMonth(loaded, for: month)
-            return loaded
-        } catch {
-            if let cached = cachedAttendanceMonth(month) { return cached }
-            throw error
+    /// Concurrent callers for one month share a request. `force` (a change
+    /// was just announced) never settles for a request that started before
+    /// it: the running one is followed by one more. A cached month is
+    /// returned when the network fails.
+    func loadAttendanceMonth(_ month: String, token: String, force: Bool = false) async throws -> AttendanceMonth {
+        if let running = attendanceMonthTasks[month] {
+            if force { attendanceMonthReruns.insert(month) }
+            return try await running.value
         }
+        let task = Task { @MainActor [weak self] () throws -> AttendanceMonth in
+            guard let self else { throw CancellationError() }
+            var loaded: AttendanceMonth
+            repeat {
+                self.attendanceMonthReruns.remove(month)
+                do {
+                    loaded = try await APIClient.shared.request(
+                        "me/attendance?month=\(month)", token: self.token ?? token
+                    )
+                    self.saveAttendanceMonth(loaded, for: month)
+                } catch {
+                    if let cached = self.cachedAttendanceMonth(month) { return cached }
+                    throw error
+                }
+            } while self.attendanceMonthReruns.contains(month) && !Task.isCancelled
+            return loaded
+        }
+        attendanceMonthTasks[month] = task
+        defer { if attendanceMonthTasks[month] == task { attendanceMonthTasks[month] = nil } }
+        return try await task.value
     }
 
+    /// Released statements never change and a new one is announced by a
+    /// realtime attendance event (which clears `attendanceReportsLoadedAt`),
+    /// so a list loaded within the TTL is returned without a request, and the
+    /// list and detail screens share one request. Mirrors Android.
     func loadAttendanceReports() async -> [AttendanceReport] {
-        guard let token else { return [] }
-        do {
-            let reports: [AttendanceReport] = try await APIClient.shared.request(
-                "me/attendance/reports", token: token
-            )
-            saveAttendanceReports(reports)
-            return reports
-        } catch {
+        guard token != nil else { return [] }
+        if let attendanceReportsLoadedAt,
+           Date().timeIntervalSince(attendanceReportsLoadedAt) < 30 * 60 {
             return cachedAttendanceReports()
         }
+        if let running = attendanceReportsTask {
+            return await running.value ?? cachedAttendanceReports()
+        }
+        let task = Task { @MainActor [weak self] () -> [AttendanceReport]? in
+            guard let self, let token = self.token else { return nil }
+            guard let reports: [AttendanceReport] = try? await APIClient.shared.request(
+                "me/attendance/reports", token: token
+            ) else { return nil }
+            self.saveAttendanceReports(reports)
+            self.attendanceReportsLoadedAt = Date()
+            return reports
+        }
+        attendanceReportsTask = task
+        let reports = await task.value
+        if attendanceReportsTask == task { attendanceReportsTask = nil }
+        return reports ?? cachedAttendanceReports()
     }
 
     /// Released attendance statements are immutable, so show this disk-backed
@@ -596,7 +643,7 @@ final class SessionStore: ObservableObject {
     func cachedAttendanceReports() -> [AttendanceReport] {
         guard let cacheKey = attendanceReportsCacheKey() else { return [] }
         if let memory = attendanceReportsMemory, memory.key == cacheKey { return memory.value }
-        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+        guard let data = AccountDocumentStore.shared.data(forKey: cacheKey),
               let cached = try? JSONDecoder().decode(CachedValue<[AttendanceReport]>.self, from: data) else {
             return []
         }
@@ -626,7 +673,7 @@ final class SessionStore: ObservableObject {
               let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: reports)) else { return }
         attendanceReportsMemory = (cacheKey, reports)
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
-        UserDefaults.standard.set(data, forKey: cacheKey)
+        AccountDocumentStore.shared.set(data, forKey: cacheKey)
     }
 
     private func saveAttendanceMonth(_ month: AttendanceMonth, for keyMonth: String) {
@@ -636,7 +683,7 @@ final class SessionStore: ObservableObject {
         attendanceMemoryCache[cacheKey] = cached
         guard let data = try? JSONEncoder().encode(cached) else { return }
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
-        UserDefaults.standard.set(data, forKey: cacheKey)
+        AccountDocumentStore.shared.set(data, forKey: cacheKey)
     }
 
     private func invalidateAttendanceCacheForRealtimeUpdate() {
@@ -645,6 +692,9 @@ final class SessionStore: ObservableObject {
         // an admin/attendance realtime event, matching Android's cache semantics.
         // A single timestamp replaces decoding and re-encoding every cached
         // month on the main thread for each company-wide event.
+        attendanceReportsLoadedAt = nil
+        attendanceReportsTask?.cancel()
+        attendanceReportsTask = nil
         guard let employeeCode = attendanceCacheEmployeeCode() else { return }
         UserDefaults.standard.set(Date(), forKey: attendanceStaleBeforePrefix + employeeCode)
         let prefix = attendanceMonthCachePrefix + employeeCode + "-"
@@ -661,9 +711,9 @@ final class SessionStore: ObservableObject {
 
     private func restoreCachedDashboard() {
         guard let employeeCode = profile?.employeeCode.nilIfEmpty,
-              let data = UserDefaults.standard.data(forKey: dashboardCachePrefix + employeeCode),
-              let cached = try? JSONDecoder().decode(CachedDashboard.self, from: data),
-              Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
+              let data = AccountDocumentStore.shared.data(forKey: dashboardCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedDashboard.self, from: data) else { return }
+        // Shown until replaced, offline included; restore always revalidates.
         dashboard = cached.value
     }
 
@@ -679,7 +729,7 @@ final class SessionStore: ObservableObject {
             await previous?.value
             // Cancelled at sign-out: never write the previous account back.
             guard !Task.isCancelled, let data = try? JSONEncoder().encode(cached) else { return }
-            UserDefaults.standard.set(data, forKey: key)
+            AccountDocumentStore.shared.set(data, forKey: key)
         }
     }
 
@@ -689,7 +739,7 @@ final class SessionStore: ObservableObject {
 
     private func restoreCachedTodayMenu() {
         guard let employeeCode = cacheEmployeeCode,
-              let data = UserDefaults.standard.data(forKey: todayMenuCachePrefix + employeeCode),
+              let data = AccountDocumentStore.shared.data(forKey: todayMenuCachePrefix + employeeCode),
               let cached = try? JSONDecoder().decode(CachedValue<TodayMenu>.self, from: data),
               cached.value.date == VietnamTime.dayKey.string(from: Date()),
               Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
@@ -700,14 +750,13 @@ final class SessionStore: ObservableObject {
     private func saveTodayMenuCache(_ value: TodayMenu) {
         guard let employeeCode = cacheEmployeeCode,
               let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: value)) else { return }
-        UserDefaults.standard.set(data, forKey: todayMenuCachePrefix + employeeCode)
+        AccountDocumentStore.shared.set(data, forKey: todayMenuCachePrefix + employeeCode)
     }
 
     func cachedRequestNotifications() -> [RequestNotification] {
         guard let employeeCode = cacheEmployeeCode,
-              let data = UserDefaults.standard.data(forKey: requestNotificationsCachePrefix + employeeCode),
-              let cached = try? JSONDecoder().decode(CachedValue<[RequestNotification]>.self, from: data),
-              Date().timeIntervalSince(cached.savedAt) < 7 * 24 * 60 * 60 else {
+              let data = AccountDocumentStore.shared.data(forKey: requestNotificationsCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedValue<[RequestNotification]>.self, from: data) else {
             return mergedRequestNotifications([])
         }
         return mergedRequestNotifications(cached.value)
@@ -717,7 +766,7 @@ final class SessionStore: ObservableObject {
         let inboxValues = values.filter { !isAttendanceNotificationType($0.type) }
         guard let employeeCode = cacheEmployeeCode,
               let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: inboxValues)) else { return }
-        UserDefaults.standard.set(data, forKey: requestNotificationsCachePrefix + employeeCode)
+        AccountDocumentStore.shared.set(data, forKey: requestNotificationsCachePrefix + employeeCode)
     }
 
     /// Starts restoration directly from the UIKit lifecycle. This deliberately
@@ -764,6 +813,10 @@ final class SessionStore: ObservableObject {
         activeRestoreAttempt = nil
         guard savedToken != nil || savedRefreshToken != nil else {
             sessionRestoreLogger.notice("Restore completed: no saved session")
+            // The session ended while the app was not running (or sign-out
+            // was interrupted): no account data may outlive it.
+            AccountDocumentStore.shared.removeAll()
+            AccountDocumentStore.revalidation.removeAll()
             state = .signedOut
             return
         }
@@ -939,6 +992,9 @@ final class SessionStore: ObservableObject {
         }
 
         if let existing = todayMenuRefreshTask {
+            // A forced refresh reacts to a change made after the running
+            // request may have started: run once more when it finishes.
+            if force { todayMenuRerun = true }
             await existing.value
             return
         }
@@ -947,7 +1003,11 @@ final class SessionStore: ObservableObject {
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let value: TodayMenu = try await APIClient.shared.request("me/menu", token: token)
+                var value: TodayMenu
+                repeat {
+                    self.todayMenuRerun = false
+                    value = try await APIClient.shared.request("me/menu", token: self.token ?? token)
+                } while self.todayMenuRerun && !Task.isCancelled
                 guard !Task.isCancelled else { return }
                 self.todayMenu = value
                 self.menu.loadError = nil
@@ -1336,6 +1396,16 @@ final class SessionStore: ObservableObject {
         todayMenuRefreshTask = nil
         todayMenuLoadedAt = nil
         latestRequestNotifications = []
+        requestNotificationsTask?.cancel()
+        requestNotificationsTask = nil
+        attendanceMonthTasks.values.forEach { $0.cancel() }
+        attendanceMonthTasks.removeAll()
+        attendanceMonthReruns.removeAll()
+        attendanceReportsTask?.cancel()
+        attendanceReportsTask = nil
+        attendanceReportsLoadedAt = nil
+        meetingDetailsReruns.removeAll()
+        todayMenuRerun = false
         requests.reset()
         if let employeeCode = cacheEmployeeCode {
             UserDefaults.standard.removeObject(
@@ -1349,6 +1419,12 @@ final class SessionStore: ObservableObject {
         dashboardCacheWrite = nil
 
         SessionCache.clear()
+        // Every cached document and revalidation body belongs to this account,
+        // also those a sign-out without a known employee code used to miss.
+        AccountDocumentStore.shared.removeAll()
+        AccountDocumentStore.revalidation.removeAll()
+        articleOwner = nil
+        knownArticleIDs = []
         token = nil
         profile = nil
         dashboard = nil
@@ -1362,7 +1438,6 @@ final class SessionStore: ObservableObject {
         AttendanceWidgetBridge.clear()
         unreadCount = 0
         unreadArticleIDs = []
-        UserDefaults.standard.removeObject(forKey: unreadArticlesKey)
         requestUnreadCount = 0
         notificationBadgeCount = 0
         articleBadgeCount = 0
@@ -1561,9 +1636,35 @@ final class SessionStore: ObservableObject {
     }
 
     func refreshRequestNotificationCount() async {
-        guard let token,
-              let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) else { return }
-        updateRequestUnreadCount(values)
+        _ = await loadRequestNotifications(force: true)
+    }
+
+    /// The inbox's server notifications. The badge (realtime events) and the
+    /// Notifications screen used to fetch them separately for the same
+    /// change; now they share one request, and a forced call made while one
+    /// runs is followed by one more instead of reusing an older response.
+    @discardableResult
+    func loadRequestNotifications(force: Bool = false) async -> [RequestNotification]? {
+        if let running = requestNotificationsTask {
+            if force { requestNotificationsRerun = true }
+            return await running.value
+        }
+        let task = Task { @MainActor [weak self] () -> [RequestNotification]? in
+            guard let self else { return nil }
+            var values: [RequestNotification]?
+            repeat {
+                self.requestNotificationsRerun = false
+                guard let token = self.token else { return nil }
+                values = try? await APIClient.shared.request("me/requests/notifications", token: token)
+            } while self.requestNotificationsRerun && !Task.isCancelled
+            guard !Task.isCancelled, let values else { return nil }
+            self.updateRequestUnreadCount(values)
+            return self.latestRequestNotifications
+        }
+        requestNotificationsTask = task
+        let result = await task.value
+        if requestNotificationsTask == task { requestNotificationsTask = nil }
+        return result
     }
 
     func updateRequestUnreadCount(_ values: [RequestNotification]) {
@@ -1907,11 +2008,34 @@ final class SessionStore: ObservableObject {
         syncApplicationBadge()
     }
 
+    /// Loads this account's read/unread news. The first account opened after
+    /// the update adopts the former device-wide lists (almost always the
+    /// device's owner); any other account on a shared device starts fresh.
     private func loadKnownArticles() {
-        let stored = UserDefaults.standard.stringArray(forKey: knownArticlesKey) ?? []
-        knownArticleIDs = Set(stored)
-        unreadArticleIDs = Set(UserDefaults.standard.stringArray(forKey: unreadArticlesKey) ?? [])
+        guard let owner = cacheEmployeeCode, owner != articleOwner else { return }
+        articleOwner = owner
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: knownArticlesKey + "-" + owner) == nil,
+           defaults.object(forKey: knownArticlesKey) != nil {
+            for key in [knownArticlesKey, unreadArticlesKey, hiddenArticlesKey] {
+                if let value = defaults.stringArray(forKey: key) { defaults.set(value, forKey: key + "-" + owner) }
+                defaults.removeObject(forKey: key)
+            }
+        }
+        knownArticleIDs = Set(defaults.stringArray(forKey: knownArticlesKey + "-" + owner) ?? [])
+        unreadArticleIDs = Set(defaults.stringArray(forKey: unreadArticlesKey + "-" + owner) ?? [])
         unreadCount = unreadArticleIDs.count
+    }
+
+    /// News hidden from this account's Notifications list.
+    func hiddenArticleIDs() -> Set<String> {
+        guard let owner = articleOwner ?? cacheEmployeeCode else { return [] }
+        return Set(UserDefaults.standard.stringArray(forKey: hiddenArticlesKey + "-" + owner) ?? [])
+    }
+
+    func saveHiddenArticleIDs(_ ids: Set<String>) {
+        guard let owner = articleOwner ?? cacheEmployeeCode else { return }
+        UserDefaults.standard.set(Array(ids), forKey: hiddenArticlesKey + "-" + owner)
     }
 
     /// Opening one article marks only that article as read.
@@ -1927,10 +2051,12 @@ final class SessionStore: ObservableObject {
     }
 
     private func persistUnreadArticles() {
-        UserDefaults.standard.set(Array(unreadArticleIDs), forKey: unreadArticlesKey)
+        guard let articleOwner else { return }
+        UserDefaults.standard.set(Array(unreadArticleIDs), forKey: unreadArticlesKey + "-" + articleOwner)
     }
 
     private func processNewArticles(_ items: [ContentItem]) {
+        loadKnownArticles()
         if knownArticleIDs.isEmpty {
             knownArticleIDs = Set(items.map(\.id))
             persistKnownArticles()
@@ -1951,7 +2077,8 @@ final class SessionStore: ObservableObject {
     }
 
     private func persistKnownArticles() {
-        UserDefaults.standard.set(Array(knownArticleIDs.prefix(300)), forKey: knownArticlesKey)
+        guard let articleOwner else { return }
+        UserDefaults.standard.set(Array(knownArticleIDs.prefix(300)), forKey: knownArticlesKey + "-" + articleOwner)
     }
 
     func deleteAccount() async -> Bool {
@@ -2176,6 +2303,7 @@ final class SessionStore: ObservableObject {
         }
 
         if let existing = meetingDetailsRefreshTasks[id] {
+            if forceRefresh { meetingDetailsReruns.insert(id) }
             return await existing.value
         }
 
@@ -2185,10 +2313,14 @@ final class SessionStore: ObservableObject {
         let task = Task { @MainActor [weak self] () -> MeetingBookingDetails? in
             guard let self else { return staleValue }
             do {
-                let fresh: MeetingBookingDetails = try await APIClient.shared.request(
-                    "me/meeting-bookings/\(id)",
-                    token: token
-                )
+                var fresh: MeetingBookingDetails
+                repeat {
+                    self.meetingDetailsReruns.remove(id)
+                    fresh = try await APIClient.shared.request(
+                        "me/meeting-bookings/\(id)",
+                        token: self.token ?? token
+                    )
+                } while self.meetingDetailsReruns.contains(id) && !Task.isCancelled
                 self.meetingDetailsCache[id] = MeetingDetailsMemoryEntry(
                     savedAt: Date(),
                     value: fresh
@@ -2535,6 +2667,9 @@ final class SessionStore: ObservableObject {
             self.realtimeRefreshTask = nil
             if events.contains("request_changed") {
                 self.revisions.request &+= 1
+                // One forced reload for every screen showing requests
+                // (Requests and Notifications share this store). Mirrors Android.
+                Task { await self.requests.load(self.token, force: true) }
             }
             if events.contains("attendance_changed") || events.contains("employee_changed") {
                 // Employee/shift edits can change the calculated attendance

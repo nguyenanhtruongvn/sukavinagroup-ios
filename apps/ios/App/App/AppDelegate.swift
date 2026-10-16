@@ -119,6 +119,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // Room and news photos (AsyncImage, the iOS 17 room list) load
+        // through URLSession.shared. `/api/media` files are immutable for a
+        // year; give the shared cache room to keep them across launches
+        // instead of the small default, so a photo is downloaded once.
+        URLCache.shared = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 96 * 1024 * 1024)
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
         // SwiftUI may host List in either UIKit class depending on iOS release.

@@ -520,7 +520,13 @@ private final class LegacyPillButton: UIButton {
 /// line and the full-width "Đặt phòng" / "Xem lịch" button (iOS 18+ card).
 private final class LegacyRoomCardCell: UITableViewCell {
     static let reuseID = "LegacyRoomCardCell"
-    private static let imageCache = NSCache<NSURL, UIImage>()
+    /// Decoded room photos; bounded (the HTTP layer keeps the files).
+    private static let imageCache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 40
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
 
     private let card = UIView()
     private let photo = UIImageView()
@@ -694,7 +700,8 @@ private final class LegacyRoomCardCell: UITableViewCell {
         imageTask = Task { [weak self] in
             guard let (data, _) = try? await URLSession.shared.data(from: url),
                   let image = UIImage(data: data), !Task.isCancelled else { return }
-            Self.imageCache.setObject(image, forKey: url as NSURL)
+            let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+            Self.imageCache.setObject(image, forKey: url as NSURL, cost: cost)
             self?.photo.contentMode = .scaleAspectFill
             self?.photo.image = image
         }

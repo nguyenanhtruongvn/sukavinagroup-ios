@@ -212,6 +212,8 @@ final class EmployeeRequestStore: ObservableObject {
     private var lastLoadedAt: Date?
     private var loadTask: Task<Void, Never>?
     private var loadTaskID: UUID?
+    /// A forced load arrived while one was running: run once more.
+    private var rerunRequested = false
     private let refreshTTL: TimeInterval = 60
 
     /// Restore first so a previously loaded request list remains usable when
@@ -223,9 +225,10 @@ final class EmployeeRequestStore: ObservableObject {
         // lists are in memory, the disk copy is never newer.
         if cacheEmployeeCode == employeeCode, lastLoadedAt != nil { return }
         cacheEmployeeCode = employeeCode
-        guard let data = UserDefaults.standard.data(forKey: cachePrefix + employeeCode),
-              let cached = try? JSONDecoder().decode(CachedRequests.self, from: data),
-              Date().timeIntervalSince(cached.savedAt) < 7 * 24 * 60 * 60 else { return }
+        guard let data = AccountDocumentStore.shared.data(forKey: cachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedRequests.self, from: data) else { return }
+        // Shown until replaced (offline included); lastLoadedAt = savedAt
+        // makes an old copy revalidate at once.
         requests = cached.requests
         approvals = cached.approvals
         lastLoadedAt = cached.savedAt
@@ -236,6 +239,7 @@ final class EmployeeRequestStore: ObservableObject {
         loadTask?.cancel()
         loadTask = nil
         loadTaskID = nil
+        rerunRequested = false
         requests = []
         approvals = []
         message = nil
@@ -248,7 +252,7 @@ final class EmployeeRequestStore: ObservableObject {
     private func saveCache() {
         guard let employeeCode = cacheEmployeeCode,
               let data = try? JSONEncoder().encode(CachedRequests(savedAt: Date(), requests: requests, approvals: approvals)) else { return }
-        UserDefaults.standard.set(data, forKey: cachePrefix + employeeCode)
+        AccountDocumentStore.shared.set(data, forKey: cachePrefix + employeeCode)
     }
 
     private static func actionMessage(_ error: Error, fallback: String) -> String {
@@ -266,6 +270,9 @@ final class EmployeeRequestStore: ObservableObject {
         }
 
         if let existing = loadTask {
+            // The running request may predate the change a forced load
+            // reacts to; joining it could keep showing the old lists.
+            if force { rerunRequested = true }
             await existing.value
             return
         }
@@ -277,10 +284,15 @@ final class EmployeeRequestStore: ObservableObject {
             guard let self else { return }
             defer { self.isLoading = false }
             do {
-                async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
-                async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
-                let loadedRequests = try await mine
-                let loadedApprovals = try await assigned
+                var loadedRequests: [EmployeeRequest]
+                var loadedApprovals: [EmployeeRequest]
+                repeat {
+                    self.rerunRequested = false
+                    async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
+                    async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
+                    loadedRequests = try await mine
+                    loadedApprovals = try await assigned
+                } while self.rerunRequested && !Task.isCancelled
                 guard !Task.isCancelled else { return }
                 self.requests = loadedRequests
                 self.approvals = loadedApprovals
@@ -491,10 +503,8 @@ struct RequestsView: View {
                 await store.load(session.token)
             }
             // A realtime request_changed event (another device, a manager's
-            // decision) bumps requestRevision; reload like Android does.
-            .onChange(of: revisions.request) { _, _ in
-                Task { await store.load(session.token, force: true) }
-            }
+            // decision) reloads this shared store in SessionStore, once for
+            // the Requests and Notifications screens alike.
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
     }

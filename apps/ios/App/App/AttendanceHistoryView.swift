@@ -477,7 +477,9 @@ struct ModernAttendanceHistoryView: View {
         // Keep already-rendered data on screen while a refresh is in flight.
         // This mirrors Android: cache first, then revalidate without replacing
         // the calendar with a loading state.
-        guard !loadingMonths.contains(month) else { return }
+        // A forced reload (realtime change) is never dropped because a load is
+        // running: SessionStore re-runs a running request for it.
+        guard forceNetwork || !loadingMonths.contains(month) else { return }
         loadingMonths.insert(month)
         defer { loadingMonths.remove(month) }
 
@@ -490,7 +492,7 @@ struct ModernAttendanceHistoryView: View {
         guard forceNetwork || session.shouldRevalidateAttendanceMonth(month) else { return }
         guard let token = session.token else { return }
         do {
-            let loaded = try await session.loadAttendanceMonth(month, token: token)
+            let loaded = try await session.loadAttendanceMonth(month, token: token, force: forceNetwork)
             cache[month] = loaded
             errors.removeValue(forKey: month)
             if selectedDates[month] == nil {

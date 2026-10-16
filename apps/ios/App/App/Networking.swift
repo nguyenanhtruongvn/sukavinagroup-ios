@@ -138,8 +138,31 @@ actor SessionRefreshCoordinator {
     }
 }
 
+/// The last body and ETag of an authenticated GET, for `If-None-Match`.
+private struct RevalidationEntry {
+    let etag: String
+    let body: Data
+
+    init(etag: String, body: Data) {
+        self.etag = etag
+        self.body = body
+    }
+
+    init?(stored: Data) {
+        guard let newline = stored.firstIndex(of: 0x0A),
+              let etag = String(data: stored[stored.startIndex..<newline], encoding: .utf8),
+              !etag.isEmpty else { return nil }
+        self.etag = etag
+        body = Data(stored[stored.index(after: newline)...])
+    }
+
+    var stored: Data { Data(etag.utf8) + Data([0x0A]) + body }
+}
+
 final class APIClient {
     static let shared = APIClient()
+    /// Bodies kept for conditional GETs; one per path, most recent first.
+    private static let revalidationLimit = 64
     private let baseURL = URL(string: "https://sukavinagroup.net/api/")
     private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")
     private let decoder: JSONDecoder = {
@@ -191,7 +214,21 @@ final class APIClient {
             urlRequest.timeoutInterval = 20
         }
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
-        urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+        // Authenticated reads are revalidated with the last body's ETag: the
+        // server answers 304 without a body when nothing changed (the usual
+        // case after returning to the app or a realtime event about another
+        // area). The body is kept in the account's protected document store,
+        // never in URLCache. A conditional request must not send no-cache,
+        // which makes the server skip the comparison.
+        let revalidationKey = method.uppercased() == "GET" && token != nil ? "revalidation-" + path : nil
+        let revalidation = revalidationKey
+            .flatMap { AccountDocumentStore.revalidation.data(forKey: $0) }
+            .flatMap(RevalidationEntry.init(stored:))
+        if let revalidation {
+            urlRequest.setValue(revalidation.etag, forHTTPHeaderField: "If-None-Match")
+        } else {
+            urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+        }
         urlRequest.setValue("ios", forHTTPHeaderField: "X-Sukavina-Client")
         // The caller already owns the current in-memory session token.
         // Reading Keychain synchronously here can block CFNetwork requests on
@@ -263,7 +300,18 @@ final class APIClient {
         NotificationCenter.default.post(name: .sukavinaTransportReachable, object: nil)
         let responseHost = http.url?.host ?? "unknown"
         ConnectionDiagnostics.record("API response: \(http.statusCode) host=\(responseHost) path=\(path) bytes=\(data.count)")
-        guard (200..<300).contains(http.statusCode) else {
+        var status = http.statusCode
+        if status == 304, let revalidation {
+            // Not modified: the stored body is the current one.
+            data = revalidation.body
+            status = 200
+        } else if (200..<300).contains(status),
+                  let revalidationKey,
+                  let etag = http.value(forHTTPHeaderField: "ETag"), !etag.isEmpty {
+            AccountDocumentStore.revalidation.set(RevalidationEntry(etag: etag, body: data).stored, forKey: revalidationKey)
+            AccountDocumentStore.revalidation.trim(prefix: "revalidation-", keeping: Self.revalidationLimit)
+        }
+        guard (200..<300).contains(status) else {
             if token == nil && path == "auth/login" && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.invalidCredentials
             }

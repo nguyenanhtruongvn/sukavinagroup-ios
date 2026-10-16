@@ -38,6 +38,8 @@ struct NotificationsView: View {
     @State private var attendanceReportMonth: String?
     @State private var confirmClear = false
     @State private var hiddenArticleIDs = Set<String>()
+    @State private var reloadAgain = false
+    @State private var reloadAgainWithDashboard = false
     @State private var isReloadingNotifications = false
     private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
     private var inboxRequestNotifications: [RequestNotification] {
@@ -178,7 +180,7 @@ struct NotificationsView: View {
             .toolbar(.hidden, for: .navigationBar)
                 .refreshable { await reloadNotifications(refreshDashboard: true) }
                 .task {
-                    hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? [])
+                    hiddenArticleIDs = session.hiddenArticleIDs()
                     requestNotifications = session.cachedRequestNotifications()
                     requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
                     await reloadNotifications()
@@ -186,11 +188,13 @@ struct NotificationsView: View {
                 }
                 .onAppear { Task { await openPendingAPNsRouteIfNeeded() } }
                 .onChange(of: revisions.attendance) { _, _ in Task { await reloadNotifications() } }
-                .onChange(of: revisions.request) { _, _ in Task { await reloadNotifications() } }
-                // Meeting invitations are notifications too.
-                .onChange(of: revisions.meeting) { _, _ in Task { await reloadNotifications() } }
-                // Read or deleted on another of this user's devices.
-                .onChange(of: revisions.inbox) { _, _ in Task { await reloadNotifications() } }
+                // Request, meeting and inbox events (a decision, an invitation,
+                // a read on another device) are fetched once by SessionStore,
+                // for the badge; this list mirrors that result instead of
+                // requesting the same notifications a second time.
+                .onChange(of: session.latestRequestNotifications) { _, values in
+                    if requestNotifications != values { requestNotifications = values }
+                }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
@@ -261,27 +265,36 @@ struct NotificationsView: View {
 
     private func loadRequestNotifications() async {
         guard let token = session.token else { return }
-        if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
-            let merged = session.mergedRequestNotifications(values)
+        if let merged = await session.loadRequestNotifications(force: true) {
             if requestNotifications != merged {
                 requestNotifications = merged
             }
-            session.updateRequestUnreadCount(merged)
             await requestStore.load(token)
         }
     }
 
     /// A List refresh keeps its scroll position stable only while its backing
-    /// data is replaced once. Dashboard updates used to trigger this method
-    /// again through two independent observers during the same pull gesture.
+    /// data is replaced once, so overlapping reloads are not run in parallel.
+    /// They are not dropped either (a change announced meanwhile would be
+    /// lost): one more pass runs when the current one ends.
     private func reloadNotifications(refreshDashboard: Bool = false) async {
-        guard !isReloadingNotifications else { return }
+        if isReloadingNotifications {
+            reloadAgain = true
+            reloadAgainWithDashboard = reloadAgainWithDashboard || refreshDashboard
+            return
+        }
         isReloadingNotifications = true
         defer { isReloadingNotifications = false }
-        if refreshDashboard {
-            await session.refreshDashboard(shouldRefreshRequestNotificationCount: false)
-        }
-        await loadRequestNotifications()
+        var withDashboard = refreshDashboard
+        repeat {
+            reloadAgain = false
+            if withDashboard {
+                await session.refreshDashboard(shouldRefreshRequestNotificationCount: false)
+            }
+            await loadRequestNotifications()
+            withDashboard = reloadAgainWithDashboard
+            reloadAgainWithDashboard = false
+        } while reloadAgain
     }
 
     private func open(_ item: RequestNotification) async {
@@ -388,7 +401,7 @@ struct NotificationsView: View {
     private func clearAll() async {
         guard let token = session.token else { return }
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications", method: "DELETE", token: token)
-        hiddenArticleIDs.formUnion(items.map(\.id)); UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+        hiddenArticleIDs.formUnion(items.map(\.id)); session.saveHiddenArticleIDs(hiddenArticleIDs)
         session.markArticlesRead(); await reloadNotifications()
     }
 
@@ -408,7 +421,7 @@ struct NotificationsView: View {
         withAnimation(.easeInOut(duration: 0.28)) {
             _ = hiddenArticleIDs.insert(item.id)
         }
-        UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+        session.saveHiddenArticleIDs(hiddenArticleIDs)
     }
 
     private func linkedRequest(_ item: RequestNotification) -> EmployeeRequest? {

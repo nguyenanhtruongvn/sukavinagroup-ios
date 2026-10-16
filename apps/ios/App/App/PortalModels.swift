@@ -246,21 +246,21 @@ enum SessionCache {
 
     static func save(profile: Profile) {
         guard let data = try? JSONEncoder().encode(profile) else { return }
-        UserDefaults.standard.set(data, forKey: profileKey)
+        AccountDocumentStore.shared.set(data, forKey: profileKey)
     }
 
     static func loadProfile() -> Profile? {
-        guard let data = UserDefaults.standard.data(forKey: profileKey) else { return nil }
+        guard let data = AccountDocumentStore.shared.data(forKey: profileKey) else { return nil }
         return try? JSONDecoder().decode(Profile.self, from: data)
     }
 
     static func saveMeetingRooms(_ rooms: [MeetingRoom], employeeCode: String) {
         guard let data = try? JSONEncoder().encode(rooms) else { return }
-        UserDefaults.standard.set(data, forKey: meetingRoomsPrefix + employeeCode)
+        AccountDocumentStore.shared.set(data, forKey: meetingRoomsPrefix + employeeCode)
     }
 
     static func loadMeetingRooms(employeeCode: String) -> [MeetingRoom] {
-        guard let data = UserDefaults.standard.data(forKey: meetingRoomsPrefix + employeeCode) else { return [] }
+        guard let data = AccountDocumentStore.shared.data(forKey: meetingRoomsPrefix + employeeCode) else { return [] }
         return (try? JSONDecoder().decode([MeetingRoom].self, from: data)) ?? []
     }
 
@@ -279,7 +279,7 @@ enum SessionCache {
     static func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, day: String, employeeCode: String) {
         guard let data = try? JSONEncoder().encode(schedule) else { return }
         let suffix = employeeCode + "-" + day
-        UserDefaults.standard.set(data, forKey: meetingSchedulePrefix + suffix)
+        AccountDocumentStore.shared.set(data, forKey: meetingSchedulePrefix + suffix)
         UserDefaults.standard.set(Date(), forKey: meetingScheduleSavedAtPrefix + suffix)
         pruneMeetingSchedulesOnce()
     }
@@ -296,20 +296,25 @@ enum SessionCache {
         let now = Date()
         let oldest = now.addingTimeInterval(-7 * 24 * 60 * 60)
         let newest = now.addingTimeInterval(60 * 24 * 60 * 60)
+        func outOfRange(_ key: String) -> Bool {
+            // Keys end with "-yyyy-MM-dd".
+            guard key.count > 10, let day = formatter.date(from: String(key.suffix(10))) else { return false }
+            return day < oldest || day > newest
+        }
+        AccountDocumentStore.shared.removeAll { $0.hasPrefix(meetingSchedulePrefix) && outOfRange($0) }
         let defaults = UserDefaults.standard
         for key in defaults.dictionaryRepresentation().keys
-            where key.hasPrefix(meetingSchedulePrefix) || key.hasPrefix(meetingScheduleSavedAtPrefix) {
-            // Keys end with "-yyyy-MM-dd".
-            guard key.count > 10, let day = formatter.date(from: String(key.suffix(10))) else { continue }
-            if day < oldest || day > newest {
-                defaults.removeObject(forKey: key)
-            }
+            where (key.hasPrefix(meetingSchedulePrefix) || key.hasPrefix(meetingScheduleSavedAtPrefix)) && outOfRange(key) {
+            defaults.removeObject(forKey: key)
         }
     }
 
     /// Removes the account's cached room catalogue and day schedules. The
     /// personal room order is a device preference and is kept.
     static func clearAccount(employeeCode: String) {
+        AccountDocumentStore.shared.removeAll { key in
+            key == meetingRoomsPrefix + employeeCode || key.hasPrefix(meetingSchedulePrefix + employeeCode + "-")
+        }
         let defaults = UserDefaults.standard
         let dayPrefixes = [
             meetingSchedulePrefix + employeeCode + "-",
@@ -322,7 +327,7 @@ enum SessionCache {
     }
 
     static func loadMeetingSchedule(day: String, employeeCode: String) -> MeetingScheduleResponse? {
-        guard let data = UserDefaults.standard.data(forKey: meetingSchedulePrefix + employeeCode + "-" + day) else { return nil }
+        guard let data = AccountDocumentStore.shared.data(forKey: meetingSchedulePrefix + employeeCode + "-" + day) else { return nil }
         return try? JSONDecoder().decode(MeetingScheduleResponse.self, from: data)
     }
 
@@ -333,7 +338,7 @@ enum SessionCache {
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: profileKey)
+        AccountDocumentStore.shared.removeObject(forKey: profileKey)
     }
 }
 
