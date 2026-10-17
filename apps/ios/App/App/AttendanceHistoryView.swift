@@ -322,6 +322,8 @@ struct ModernAttendanceHistoryView: View {
         let violations = AttendanceMetrics.violationCount(data)
         return VStack(alignment: .leading, spacing: 14) {
             attendanceReportCard(title: "Chi tiết công", icon: "doc.text.fill", color: AppTheme.red) {
+                // Paid differently, so listed apart: day shift, night shift, night shift on Sunday.
+                reportRow("Ngày công thường", "\(AttendanceMetrics.workDayTotalText(AttendanceMetrics.dayShiftWorkDays(data))) ngày", color: .blue)
                 reportRow("Ngày công ca đêm thường", "\(AttendanceMetrics.workDayTotalText(AttendanceMetrics.nightShiftWorkdays(data, sunday: false))) ngày", color: .blue)
                 reportRow("Ngày công ca đêm chủ nhật", "\(AttendanceMetrics.workDayTotalText(AttendanceMetrics.nightShiftWorkdays(data, sunday: true))) ngày", color: .blue)
             }

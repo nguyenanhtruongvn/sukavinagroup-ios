@@ -241,6 +241,11 @@ enum AttendanceMetrics {
         return max(0, total - (day.nightShift?.workdays ?? 0))
     }
 
+    /// Day-shift workdays ("ngày công thường"): the month total without night shifts.
+    static func dayShiftWorkDays(_ month: AttendanceMonth) -> Double {
+        max(0, totalWorkDays(month) - month.days.reduce(0) { $0 + ($1.nightShift?.workdays ?? 0) })
+    }
+
     /// Night-shift workdays on Sundays, or on every other date.
     static func nightShiftWorkdays(_ month: AttendanceMonth, sunday: Bool) -> Double {
         month.days
@@ -273,9 +278,10 @@ enum AttendanceMetrics {
         }
     }
 
+    // "Đủ công" counts day shifts only: a night shift alone is not a full day-shift day.
     static func paidDayCount(_ month: AttendanceMonth) -> Int {
         month.days.filter {
-            if let factor = $0.workdayFactor { return factor >= 0.995 }
+            if let factor = dayShiftWorkdayFactor($0) { return factor >= 0.995 }
             return isPaidDay($0, month: month)
         }.count
     }
