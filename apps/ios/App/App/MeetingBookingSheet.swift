@@ -23,8 +23,7 @@ struct MeetingBookingSheet: View {
     @State private var title = ""
     @State private var meetingType = "Nội bộ"
     @State private var start = Date()
-    @State private var durationValue = 30
-    @State private var durationUnit = "phút"
+    @State private var durationMinutes = 30
     @State private var query = ""
     @State private var departmentQuery = ""
     @State private var selectedDepartments = Set<String>()
@@ -77,10 +76,6 @@ struct MeetingBookingSheet: View {
 
     private var canInviteEntireDepartment: Bool {
         selected.count + unselectedDepartmentInvitees.count + 1 <= room.capacity
-    }
-
-    private var durationMinutes: Int {
-        durationUnit == "giờ" ? durationValue * 60 : durationValue
     }
 
     /// Why "Xác nhận đặt phòng" is disabled (past start, over capacity).
@@ -298,24 +293,19 @@ struct MeetingBookingSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 Menu {
-                    Picker("Thời lượng", selection: durationChoice) {
-                        Section("Phút") {
-                            ForEach([5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { minutes in
-                                Text("\(minutes) phút").tag(DurationChoice(value: minutes, unit: "phút"))
-                            }
-                        }
-                        Section("Giờ") {
-                            ForEach(Array(1...8), id: \.self) { hours in
-                                Text("\(hours) giờ").tag(DurationChoice(value: hours, unit: "giờ"))
-                            }
+                    // Standard marks, each once: 5 phút ... 45 phút, 1 giờ,
+                    // 1 giờ 30 phút, 2 giờ ... 8 giờ.
+                    Picker("Thời lượng", selection: $durationMinutes) {
+                        ForEach(MeetingBookingTime.durationChoices, id: \.self) { minutes in
+                            Text(MeetingBookingTime.durationTitle(minutes: minutes)).tag(minutes)
                         }
                     }
                 } label: {
-                    bookingTile(title: "Thời lượng", value: "\(durationValue) \(durationUnit)", icon: "timer")
+                    bookingTile(title: "Thời lượng", value: MeetingBookingTime.durationTitle(minutes: durationMinutes), icon: "timer")
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Thời lượng")
-                .accessibilityValue("\(durationValue) \(durationUnit)")
+                .accessibilityValue(MeetingBookingTime.durationTitle(minutes: durationMinutes))
             }
 
             HStack(spacing: 9) {
@@ -684,17 +674,6 @@ struct MeetingBookingSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    /// Amount and unit together, one choice in the "Thời lượng" menu.
-    private var durationChoice: Binding<DurationChoice> {
-        Binding(
-            get: { DurationChoice(value: durationValue, unit: durationUnit) },
-            set: { choice in
-                durationUnit = choice.unit
-                durationValue = choice.value
-            }
-        )
-    }
-
     private func searchField(
         icon: String,
         placeholder: String,
@@ -868,10 +847,4 @@ private struct TileFillingTimePicker: UIViewRepresentable {
             ) ?? current
         }
     }
-}
-
-/// One entry of the booking duration menu: 30 phút, 2 giờ.
-private struct DurationChoice: Hashable {
-    let value: Int
-    let unit: String
 }

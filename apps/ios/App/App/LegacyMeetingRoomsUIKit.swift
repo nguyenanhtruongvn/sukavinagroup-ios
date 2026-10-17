@@ -1264,8 +1264,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     // Form state (mirrors MeetingBookingSheet).
     private var meetingType = "Nội bộ"
     private var start = Date()
-    private var durationValue = 30
-    private var durationUnit = "phút"
+    private var durationMinutes = 30
     private var selected = Set<String>()
     private var selectedDepartments = Set<String>()
     private var inviteesError: String?
@@ -1275,9 +1274,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     private let red = UIColor.systemRed
     private let green = UIColor(red: 0, green: 0.42, blue: 0.25, alpha: 1)
-    /// The durations offered, as on iOS 18 (MeetingBookingSheet).
-    private let durationMinutesChoices = [5, 10, 15, 20, 30, 45, 60, 90, 120]
-    private let durationHoursChoices = Array(1...8)
 
     // Views that persist (text fields keep focus); the rest is re-rendered.
     private let scroll = UIScrollView()
@@ -1321,7 +1317,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     // MARK: Derived values
 
-    private var durationMinutes: Int { durationUnit == "giờ" ? durationValue * 60 : durationValue }
     private var endTime: Date { start.addingTimeInterval(Double(durationMinutes * 60)) }
     private var blockReason: String? {
         MeetingBookingTime.blockReason(
@@ -2055,28 +2050,23 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         return tile
     }
 
-    /// The Thời lượng tile's value and its system menu: minutes then hours
-    /// in one list, so a choice sets amount and unit together.
+    /// The Thời lượng tile's value and its system menu of standard marks,
+    /// as on iOS 18 (MeetingBookingTime.durationChoices).
     private func renderDurationButton() {
-        durationValueLabel.text = "\(durationValue) \(durationUnit)"
-        durationButton.menu = UIMenu(children: [
-            durationSection("Phút", unit: "phút", values: durationMinutesChoices),
-            durationSection("Giờ", unit: "giờ", values: durationHoursChoices),
-        ])
-        durationButton.accessibilityLabel = "Thời lượng"
-        durationButton.accessibilityValue = "\(durationValue) \(durationUnit)"
-    }
-
-    private func durationSection(_ title: String, unit: String, values: [Int]) -> UIMenu {
-        UIMenu(title: title, options: .displayInline, children: values.map { value in
-            let chosen = durationUnit == unit && durationValue == value
-            return UIAction(title: "\(value) \(unit)", state: chosen ? .on : .off) { [weak self] _ in
+        let title = MeetingBookingTime.durationTitle(minutes: durationMinutes)
+        durationValueLabel.text = title
+        durationButton.menu = UIMenu(children: MeetingBookingTime.durationChoices.map { minutes in
+            UIAction(
+                title: MeetingBookingTime.durationTitle(minutes: minutes),
+                state: minutes == durationMinutes ? .on : .off
+            ) { [weak self] _ in
                 guard let self else { return }
-                self.durationUnit = unit
-                self.durationValue = value
+                self.durationMinutes = minutes
                 self.render()
             }
         })
+        durationButton.accessibilityLabel = "Thời lượng"
+        durationButton.accessibilityValue = title
     }
 
     private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight? = nil, color: UIColor) -> UILabel {

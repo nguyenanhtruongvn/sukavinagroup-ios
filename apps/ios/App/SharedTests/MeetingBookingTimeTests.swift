@@ -36,6 +36,23 @@ final class MeetingBookingTimeTests: XCTestCase {
         XCTAssertEqual(VietnamTime.clock.string(from: start), "23:55")
     }
 
+    func testDurationsAreStandardMarksEachShownOnce() {
+        let choices = MeetingBookingTime.durationChoices
+        XCTAssertEqual(Set(choices).count, choices.count)
+        XCTAssertEqual(choices, choices.sorted())
+        XCTAssertEqual(
+            choices.map(MeetingBookingTime.durationTitle(minutes:)),
+            ["5 phút", "10 phút", "15 phút", "20 phút", "30 phút", "45 phút",
+             "1 giờ", "1 giờ 30 phút", "2 giờ", "3 giờ", "4 giờ", "5 giờ", "6 giờ", "7 giờ", "8 giờ"]
+        )
+    }
+
+    func testDurationTitleSplitsHoursAndMinutes() {
+        XCTAssertEqual(MeetingBookingTime.durationTitle(minutes: 30), "30 phút")
+        XCTAssertEqual(MeetingBookingTime.durationTitle(minutes: 60), "1 giờ")
+        XCTAssertEqual(MeetingBookingTime.durationTitle(minutes: 150), "2 giờ 30 phút")
+    }
+
     func testPastStartAndOverCapacityAreBlockedWithAReason() throws {
         let now = try date("2026-10-15T14:20:00+07:00")
         XCTAssertNotNil(MeetingBookingTime.blockReason(start: try date("2026-10-15T14:15:00+07:00"), now: now, attendeeCount: 1, capacity: 10, calendar: calendar))

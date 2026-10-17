@@ -6,6 +6,20 @@ enum MeetingBookingTime {
     /// Start times move in 5-minute steps.
     static let minuteStep = 5
 
+    /// The durations a booking offers, in minutes: short slots, then whole
+    /// and half hours up to 8 hours, each exactly once. The menu used to
+    /// list "60 phút" and "1 giờ", "120 phút" and "2 giờ", side by side.
+    static let durationChoices = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480]
+
+    /// "45 phút", "1 giờ", "1 giờ 30 phút".
+    static func durationTitle(minutes: Int) -> String {
+        let hours = minutes / 60
+        let rest = minutes % 60
+        if hours == 0 { return "\(rest) phút" }
+        if rest == 0 { return "\(hours) giờ" }
+        return "\(hours) giờ \(rest) phút"
+    }
+
     /// The current Vietnam time of day rounded up to the next 5-minute mark
     /// (09:07 -> 09:10), placed on `day`. Never rolls past 23:55.
     static func defaultStart(on day: Date, now: Date, calendar: Calendar) -> Date {

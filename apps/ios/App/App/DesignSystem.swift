@@ -270,29 +270,12 @@ extension View {
 }
 
 extension View {
-    /// For a compact `DatePicker` showing `day`: gives it the width its full
-    /// date needs, so it shows "Ngày 18 thg 10, 2026" rather than "18/10/26".
-    ///
-    /// A compact picker sizes itself to its date and widens on its own when a
-    /// longer date is set (debug.log, 1.0.76: "resize w=189" for a new date
-    /// needing 188). It is deliberately NOT re-created on a new day: a fresh
-    /// picker came up at the previous date's width ("appear w=185
-    /// wanted=188") and shortened the new date to "18/10/26"; that
-    /// re-creation was the cause of the short dates, not a cure.
-    ///
-    /// Its frame is kept at least as wide as its long form, measured in the
-    /// system font from the system's Vietnamese medium date, so the row
-    /// always has room for the picker to widen into. The picker does not
-    /// stretch to that frame itself. Nothing is drawn in its place.
-    ///
-    /// The picker's own width is logged (UIFlowLog "datePicker.width") next
-    /// to the width its long form needs.
-    ///
-    /// Apply it to the picker alone, with `.labelsHidden()`, and give it ONE
-    /// layout for its whole life (`CompactDateRow`, or a fixed stack): any
-    /// layout switch swaps in a second picker, which comes up short.
-    func keepsFullCompactDate(day: Date, includesTime: Bool = false, logName: String) -> some View {
-        modifier(FullCompactDate(
+    /// Logs a compact date picker's own width next to the width its long
+    /// date needs (UIFlowLog "datePicker.width"). The long form is about
+    /// twice as wide as "18/10/26", so debug.log shows which one appeared,
+    /// and when. Apply it to the picker alone.
+    func logsCompactDateWidth(day: Date, includesTime: Bool = false, logName: String) -> some View {
+        modifier(CompactDateWidthLog(
             day: VietnamTime.calendar.startOfDay(for: day),
             includesTime: includesTime,
             logName: logName
@@ -300,51 +283,30 @@ extension View {
     }
 }
 
-extension EnvironmentValues {
-    /// Where a `keepsFullCompactDate` picker sits in the room it is given:
-    /// trailing beside a label, leading under one.
-    var compactDateAlignment: Alignment {
-        get { self[CompactDateAlignmentKey.self] }
-        set { self[CompactDateAlignmentKey.self] = newValue }
-    }
-}
-
-private struct CompactDateAlignmentKey: EnvironmentKey {
-    static let defaultValue: Alignment = .trailing
-}
-
-/// See `View.keepsFullCompactDate`.
-struct FullCompactDate: ViewModifier {
+/// See `View.logsCompactDateWidth`.
+struct CompactDateWidthLog: ViewModifier {
     let day: Date
     let includesTime: Bool
     let logName: String
-    @Environment(\.compactDateAlignment) private var alignment
 
     func body(content: Content) -> some View {
         let wanted = Self.fullWidth(of: day, includesTime: includesTime)
-        // No `.id(day)`: the same picker must live on across dates so it can
-        // widen itself (see `keepsFullCompactDate`).
-        return content
-            // The picker's own size, inside the room it is given.
-            .background(
-                GeometryReader { geometry in
-                    Color.clear
-                        .onAppear { log(geometry.size.width, wanted: wanted, cause: "appear") }
-                        .onChange(of: geometry.size.width) { _, width in log(width, wanted: wanted, cause: "resize") }
-                }
-            )
-            .frame(minWidth: wanted, alignment: alignment)
+        return content.background(
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear { log(geometry.size.width, wanted: wanted, cause: "appear") }
+                    .onChange(of: geometry.size.width) { _, width in log(width, wanted: wanted, cause: "resize") }
+            }
+        )
     }
 
-    /// The width of `day`'s long form as the compact picker draws it: each
-    /// value in its own capsule of body text.
+    /// Roughly the width of `day`'s long form as the compact picker draws
+    /// it: each value in its own capsule of body text.
     static func fullWidth(of day: Date, includesTime: Bool) -> CGFloat {
         let font = UIFont.preferredFont(forTextStyle: .body)
         func textWidth(_ text: String) -> CGFloat {
             ceil((text as NSString).size(withAttributes: [.font: font]).width)
         }
-        // About 11pt of capsule padding a side, and a few points to spare
-        // for the picker's own rounding.
         let capsule: CGFloat = 26
         var width = textWidth(longDate.string(from: day)) + capsule
         if includesTime {
@@ -353,8 +315,7 @@ struct FullCompactDate: ViewModifier {
         return width
     }
 
-    /// The system's medium date style in Vietnamese, the long form the
-    /// picker shows when it has the room.
+    /// The system's medium date style in Vietnamese, the long form.
     private static let longDate: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = VietnamTime.locale
@@ -373,15 +334,11 @@ struct FullCompactDate: ViewModifier {
     }
 }
 
-/// A label and a `keepsFullCompactDate` picker on one row, as a labelled
-/// DatePicker lays out. The picker keeps its full width; a long label
-/// wraps instead.
+/// A label and a compact date picker on one row, as a labelled DatePicker
+/// lays out. The picker keeps its full width; a long label wraps instead.
 ///
-/// One layout only. Choosing between a row and a stack (ViewThatFits, in
-/// 4e051cf) swapped in the other layout's picker whenever the date's
-/// length crossed the fit, and a new picker comes up at the old width and
-/// shows "18/10/26": "Ngày chấm công", the longest label, sat on that line
-/// and still shortened while "Ngày xảy ra" never did.
+/// One layout only: a picker swapped in by a layout change is a new one
+/// (see `SystemCompactDatePicker`).
 struct CompactDateRow<Picker: View>: View {
     let label: String
     @ViewBuilder let picker: () -> Picker
@@ -399,75 +356,70 @@ struct CompactDateRow<Picker: View>: View {
     }
 }
 
-/// Apple's compact date picker — UIKit's UIDatePicker, the control behind
-/// SwiftUI's compact DatePicker — always sized to the date it shows.
+/// Apple's compact DatePicker that keeps the full date ("Ngày 18 thg 10,
+/// 2026", not "18/10/26").
 ///
-/// SwiftUI's DatePicker measures its UIDatePicker while it still holds
-/// today's date and only then applies the selection, without measuring
-/// again. debug.log (1.0.79): every new picker came up at today's width
-/// (185pt date, 259pt date and time) whatever date it held, so a later
-/// date ("Làm chủ nhật" on Sunday, a chosen attendance day) did not fit
-/// and showed "18/10/26" until some later layout. Here the date is set
-/// before the picker is ever measured, and SwiftUI is given the picker's
-/// current size on every layout.
+/// debug.log proved three things about the compact DatePicker. A new one
+/// is sized for today's date, whatever date it is given: 185pt for a date
+/// and 259pt for a date and time, so a later, wider date did not fit and
+/// was shortened (1.0.79: "Bắt đầu w=259 wanted=268" on Sunday). It is
+/// right when it does show today. And a picker already on screen widens
+/// itself when its date changes, by the employee or by code ("resize
+/// w=189 wanted=188").
 ///
-/// Times and dates are Vietnam time, as `VietnamTime`.
-struct SystemCompactDatePicker: UIViewRepresentable {
+/// So this picker is never created with any date but now: it starts on
+/// the current time, the date it is sized for, and moves to its real date
+/// as soon as it appears, through the change that it handles correctly.
+/// It is SwiftUI's own DatePicker throughout; nothing is drawn in its
+/// place.
+struct SystemCompactDatePicker: View {
     @Binding var selection: Date
     let mode: UIDatePicker.Mode
     var minimum: Date? = nil
-    var minuteInterval = 1
     let accessibilityLabel: String
 
-    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+    /// What the picker shows: now at first, then always `selection`.
+    @State private var shown = Date()
+    /// Until the first move to `selection`, nothing the picker reports is
+    /// the employee's choice (it may only clamp now into its range).
+    @State private var synced = false
 
-    func makeUIView(context: Context) -> UIDatePicker {
-        let picker = UIDatePicker()
-        picker.preferredDatePickerStyle = .compact
-        picker.datePickerMode = mode
-        picker.minuteInterval = minuteInterval
-        picker.timeZone = VietnamTime.timeZone
-        picker.calendar = VietnamTime.calendar
-        picker.locale = VietnamTime.locale
-        picker.minimumDate = minimum
-        // Before anything measures it.
-        picker.date = selection
-        picker.accessibilityLabel = accessibilityLabel
-        picker.setContentHuggingPriority(.required, for: .horizontal)
-        picker.setContentCompressionResistancePriority(.required, for: .horizontal)
-        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        return picker
+    var body: some View {
+        picker
+            .labelsHidden()
+            .datePickerStyle(.compact)
+            .environment(\.timeZone, VietnamTime.timeZone)
+            .environment(\.calendar, VietnamTime.calendar)
+            .environment(\.locale, VietnamTime.locale)
+            .onAppear {
+                synced = true
+                if shown != selection { shown = selection }
+            }
+            .onChange(of: selection) { _, value in
+                if shown != value { shown = value }
+            }
     }
 
-    func updateUIView(_ picker: UIDatePicker, context: Context) {
-        context.coordinator.selection = $selection
-        if picker.minimumDate != minimum { picker.minimumDate = minimum }
-        if picker.date != selection {
-            picker.date = selection
-            picker.invalidateIntrinsicContentSize()
-        }
+    private var components: DatePickerComponents {
+        mode == .date ? .date : [.date, .hourAndMinute]
     }
 
-    /// The picker's own size for its current date, asked on every layout.
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIDatePicker, context: Context) -> CGSize? {
-        let size = uiView.intrinsicContentSize
-        // No intrinsic size yet: let SwiftUI measure it its own way.
-        guard size.width > 0, size.height > 0 else { return nil }
-        return size
+    private var shownBinding: Binding<Date> {
+        Binding(
+            get: { shown },
+            set: { value in
+                shown = value
+                if synced, value != selection { selection = value }
+            }
+        )
     }
 
-    @MainActor
-    final class Coordinator: NSObject {
-        var selection: Binding<Date>
-
-        init(selection: Binding<Date>) {
-            self.selection = selection
-        }
-
-        @objc func changed(_ picker: UIDatePicker) {
-            selection.wrappedValue = picker.date
-            // A longer date needs more room; let SwiftUI ask again.
-            picker.invalidateIntrinsicContentSize()
+    @ViewBuilder
+    private var picker: some View {
+        if let minimum {
+            DatePicker(accessibilityLabel, selection: shownBinding, in: minimum..., displayedComponents: components)
+        } else {
+            DatePicker(accessibilityLabel, selection: shownBinding, displayedComponents: components)
         }
     }
 }
@@ -479,6 +431,7 @@ struct SystemCompactDatePicker: UIViewRepresentable {
 /// (MeetingBookingSheet) and iOS 17 (LegacyMeetingRoomsUIKit).
 final class TileFillingPickerView: UIView {
     let picker = UIDatePicker()
+    private var loggedLayout = ""
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -489,9 +442,9 @@ final class TileFillingPickerView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        picker.transform = .identity
-        let natural = picker.intrinsicContentSize
+        let natural = naturalSize()
         guard natural.width > 0, natural.height > 0, bounds.width > 0, bounds.height > 0 else {
+            picker.transform = .identity
             picker.frame = bounds
             return
         }
@@ -501,5 +454,31 @@ final class TileFillingPickerView: UIView {
             scaleX: bounds.width / natural.width,
             y: bounds.height / natural.height
         )
+    }
+
+    /// The picker's own, unscaled size. Its `intrinsicContentSize` alone
+    /// left the tile answering taps on a small capsule in its middle only,
+    /// so it is first sized to fit, as UIKit sizes a compact picker; a
+    /// height the size of a wheel (216pt) is not the compact one and is
+    /// skipped. What was found is logged ("tilePicker.size").
+    private func naturalSize() -> CGSize {
+        picker.transform = .identity
+        picker.sizeToFit()
+        let fitted = picker.bounds.size
+        let intrinsic = picker.intrinsicContentSize
+        let natural: CGSize
+        if fitted.width > 0, fitted.height > 0, fitted.height < 100 {
+            natural = fitted
+        } else if intrinsic.width > 0, intrinsic.height > 0, intrinsic.height < 100 {
+            natural = intrinsic
+        } else {
+            natural = .zero
+        }
+        let line = "fitted=\(Int(fitted.width))x\(Int(fitted.height)) intrinsic=\(Int(intrinsic.width))x\(Int(intrinsic.height)) tile=\(Int(bounds.width))x\(Int(bounds.height))"
+        if line != loggedLayout {
+            loggedLayout = line
+            UIFlowLog.record("tilePicker.size", line)
+        }
+        return natural
     }
 }
