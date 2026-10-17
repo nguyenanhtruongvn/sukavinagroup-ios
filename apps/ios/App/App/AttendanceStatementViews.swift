@@ -260,7 +260,9 @@ enum AttendanceMetrics {
 
     static func absenceCount(_ month: AttendanceMonth) -> Int {
         month.days.filter { day in
-            day.punchCount == 0 && statuses(day).contains("absent") && !isUnfinishedToday(day)
+            // An HR-confirmed absence (V) counts even when the day has stray punches.
+            day.overrideCode == "V" ||
+                (day.punchCount == 0 && statuses(day).contains("absent") && !isUnfinishedToday(day))
         }.count
     }
 
@@ -449,6 +451,7 @@ struct AttendanceCodeLegend: View {
         ("NN", "Ngày nghỉ (nghỉ hưởng chế độ, nghỉ bù)"),
         ("NVP", "Nghỉ văn phòng"),
         ("KCC", "Không chấm công"),
+        ("V", "Vắng (nhân sự xác nhận nghỉ không phép)"),
         ("NL", "Nghỉ lễ")
     ]
 

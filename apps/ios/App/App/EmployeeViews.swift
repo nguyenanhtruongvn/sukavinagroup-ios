@@ -216,7 +216,8 @@ struct PreloadedAttendanceDayCell: View {
         switch note {
         case "NL": return holidayColor
         case "NVP": return Color(red: 15.0 / 255.0, green: 118.0 / 255.0, blue: 110.0 / 255.0)
-        case "KCC": return Self.absentColor
+        // V is the HR-confirmed form of an unexcused absence (KCC).
+        case "KCC", "V": return Self.absentColor
         case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
         case "RO", "RO/2", "NP", "NP/2", "P/2": return Self.leaveColor
         case "CT": return Color(red: 3.0 / 255.0, green: 105.0 / 255.0, blue: 161.0 / 255.0)
