@@ -1806,41 +1806,4 @@ struct RequestComposer: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-
-    @ViewBuilder
-    private func dateOnlyRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
-        if usesCompactDateRows {
-            HStack(spacing: 6) {
-                leaveDateLabel(title)
-                    .fixedSize(horizontal: true, vertical: false)
-                dateOnlyPicker(selection: selection, range: range)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                leaveDateLabel(title)
-                dateOnlyPicker(selection: selection, range: range)
-            }
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-        }
-    }
-
-    private func leaveDateLabel(_ title: String) -> some View {
-        Label(title, systemImage: title == "Từ ngày" ? "calendar.badge.plus" : "calendar.badge.checkmark")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(title == "Từ ngày" ? AppTheme.red : Color.green)
-            .lineLimit(1)
-    }
-
-    @ViewBuilder
-    private func dateOnlyPicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        if let range {
-            DatePicker("", selection: selection, in: range, displayedComponents: .date)
-                .labelsHidden().datePickerStyle(.compact)
-        } else {
-            DatePicker("", selection: selection, displayedComponents: .date)
-                .labelsHidden().datePickerStyle(.compact)
-        }
-    }
 }

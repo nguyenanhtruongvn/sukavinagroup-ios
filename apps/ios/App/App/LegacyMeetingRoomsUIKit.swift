@@ -1253,8 +1253,8 @@ private final class LegacyTimelineLabel: UIControl {
 /// iOS 17, section by section: header, meeting details with the start and
 /// duration wheels and the expected time, invitations (people and
 /// departments, invite a whole department, capacity), a floating confirm
-/// card that names what blocks the booking, a transient error notice and a
-/// discard confirmation. Presented as a sheet, like on iOS 18.
+/// card that names what blocks the booking, an alert when booking fails
+/// and a discard confirmation. Presented as a sheet, like on iOS 18.
 @MainActor
 private final class LegacyMeetingBookingController: UIViewController, UITextFieldDelegate {
     private let session: SessionStore
@@ -1306,8 +1306,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private let blockLabel = UILabel()
     private var blockRow: UIView?
     private let confirmButton = UIButton(type: .system)
-    private var notice: UIView?
-    private var noticeHide: DispatchWorkItem?
     private var keyboardObservers: [NSObjectProtocol] = []
 
     init(session: SessionStore, room: MeetingRoom, day: Date) {
@@ -2175,54 +2173,20 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             if let failure {
                 isSubmitting = false
                 renderInvitees()
-                showNotice(failure)
+                showError(failure)
             } else {
                 dismiss(animated: true)
             }
         }
     }
 
-    /// The dark notice at the top that disappears after five seconds.
-    private func showNotice(_ message: String) {
-        noticeHide?.cancel()
-        notice?.removeFromSuperview()
-        let icon = UIImageView(image: UIImage(systemName: "exclamationmark.triangle.fill"))
-        icon.tintColor = .white
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        let text = label(message, style: .subheadline, weight: .semibold, color: .white)
-        let row = UIStackView(arrangedSubviews: [icon, text])
-        row.spacing = 8
-        row.alignment = .center
-        row.isLayoutMarginsRelativeArrangement = true
-        row.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
-        row.backgroundColor = UIColor.black.withAlphaComponent(0.90)
-        row.layer.cornerRadius = 16
-        row.layer.cornerCurve = .continuous
-        row.layer.shadowColor = UIColor.black.cgColor
-        row.layer.shadowOpacity = 0.24
-        row.layer.shadowRadius = 10
-        row.layer.shadowOffset = CGSize(width: 0, height: 4)
-        row.isUserInteractionEnabled = false
-        row.accessibilityLabel = "Không thể đặt phòng: \(message)"
-        row.isAccessibilityElement = true
-        row.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(row)
-        NSLayoutConstraint.activate([
-            row.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 10),
-            row.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            row.widthAnchor.constraint(lessThanOrEqualToConstant: 360),
-            row.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 16),
-        ])
-        notice = row
-        UIAccessibility.post(notification: .announcement, argument: row.accessibilityLabel)
-        let hide = DispatchWorkItem { [weak self, weak row] in
-            UIView.animate(withDuration: 0.2, animations: { row?.alpha = 0 }) { _ in
-                row?.removeFromSuperview()
-                if self?.notice === row { self?.notice = nil }
-            }
-        }
-        noticeHide = hide
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: hide)
+    /// Apple's alert, as on iOS 18, which stays until it is read and
+    /// dismissed (it was a dark notice drawn at the top that hid itself
+    /// after five seconds).
+    private func showError(_ message: String) {
+        let alert = UIAlertController(title: "Không thể đặt phòng", message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Đã hiểu", style: .cancel))
+        present(alert, animated: true)
     }
 }
 

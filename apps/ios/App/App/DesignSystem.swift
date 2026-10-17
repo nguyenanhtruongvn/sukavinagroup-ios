@@ -204,49 +204,7 @@ struct PortalPinnedHeader<Accessory: View>: View {
     }
 }
 
-struct AdaptiveGlassSurface: ViewModifier {
-    let cornerRadius: CGFloat
-    var tint: Color? = nil
-    var interactive = false
-    var legacyFill = AppTheme.card
-    var legacyOpacity = 1.0
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        // Do not reference the iOS 26 Liquid Glass APIs from the app binary.
-        // Xcode 26 can turn that reference into a required SwiftUICore.framework
-        // dependency even inside an availability check, which prevents the app
-        // from launching on iOS 15–17.  This adaptive surface intentionally uses
-        // the same supported material treatment on every OS version instead.
-        content
-            .background(legacyFill.opacity(legacyOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-    }
-}
-
 extension View {
-    func adaptiveGlassSurface(
-        cornerRadius: CGFloat,
-        tint: Color? = nil,
-        interactive: Bool = false,
-        legacyFill: Color = AppTheme.card,
-        legacyOpacity: Double = 1
-    ) -> some View {
-        modifier(
-            AdaptiveGlassSurface(
-                cornerRadius: cornerRadius,
-                tint: tint,
-                interactive: interactive,
-                legacyFill: legacyFill,
-                legacyOpacity: legacyOpacity
-            )
-        )
-    }
-
     @ViewBuilder
     func hidesPortalBottomScrollEdgeEffect() -> some View {
         // scrollEdgeEffectHidden is also an iOS 26-only SwiftUI API. Keep the
