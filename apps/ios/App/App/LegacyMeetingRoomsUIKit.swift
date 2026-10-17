@@ -1416,7 +1416,10 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
                 MainActor.assumeIsolated { self?.keepFocusedFieldVisible(animated: true) }
             })
         }
+        UIFlowLog.record("sheet.appear", "legacy.booking")
         cancellable = session.meetings.$invitees.receive(on: RunLoop.main).sink { [weak self] value in
+            // Rebuilds the invitation card while the employee may be typing.
+            UIFlowLog.record("legacy.booking.renderInvitees", "cause=inviteesChanged")
             self?.invitees = value
             self?.renderInvitees()
         }
@@ -2351,7 +2354,12 @@ private final class LegacyMeetingDetailController: UIViewController {
             content.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -20),
         ])
         details = session.cachedMeetingBookingDetails(id: meeting.id)
-        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
+        UIFlowLog.record("sheet.appear", "legacy.meetingDetail")
+        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in
+            // Rebuilds every subview of the open detail sheet.
+            UIFlowLog.record("legacy.meetingDetail.render", "cause=bookingsChanged")
+            self?.render()
+        }
         render()
         Task { [weak self] in
             guard let self else { return }
@@ -3044,6 +3052,11 @@ private final class LegacySheetNavigationController: UINavigationController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if isBeingDismissed || presentingViewController == nil { onDismiss?(); onDismiss = nil }
+        if isBeingDismissed || presentingViewController == nil {
+            let root = viewControllers.first.map { String(describing: type(of: $0)) } ?? "unknown"
+            UIFlowLog.record("sheet.disappear", "legacy root=\(root) animated=\(animated)")
+            onDismiss?()
+            onDismiss = nil
+        }
     }
 }

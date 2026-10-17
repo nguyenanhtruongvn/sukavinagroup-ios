@@ -463,6 +463,7 @@ struct RequestsView: View {
                     // of being retained by its form scroll view.
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
+                    .logsSheetFlow("requests.composing")
             }
             .sheet(item: $resubmitting) { request in
                 RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
@@ -471,11 +472,13 @@ struct RequestsView: View {
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
+                    .logsSheetFlow("requests.resubmitting")
             }
             .sheet(item: $reviewing) { request in
                 RequestDecisionView(request: request) { approved, note in
                     await store.decide(token: session.token, id: request.id, approved: approved, note: note)
                 }
+                .logsSheetFlow("requests.reviewing")
             }
             .alert(item: $cancelling) { request in
                 Alert(

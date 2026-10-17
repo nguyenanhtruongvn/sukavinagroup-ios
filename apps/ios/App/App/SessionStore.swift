@@ -1963,6 +1963,8 @@ final class SessionStore: ObservableObject {
     private func applyAiAssistantAvailability(_ enabled: Bool) {
         UserDefaults.standard.set(enabled, forKey: aiAssistantMobileEnabledKey)
         if aiAssistantMobileEnabled != enabled {
+            // Flipping this to false closes an open assistant chat.
+            UIFlowLog.record("aiAssistant.availabilityChanged", "enabled=\(enabled)")
             aiAssistantMobileEnabled = enabled
         }
     }
@@ -2638,9 +2640,11 @@ final class SessionStore: ObservableObject {
     private func scheduleRealtimeRefresh(for line: String) {
         guard let event = RealtimeEvent(line: line, employeeCode: profile?.employeeCode.nilIfEmpty) else { return }
         if let enabled = event.aiAssistantEnabled {
+            UIFlowLog.record("sse.aiAssistant", "enabled=\(enabled)")
             applyAiAssistantAvailability(enabled)
             return
         }
+        UIFlowLog.record("sse.event", event.changes.map(\.rawValue).sorted().joined(separator: ","))
         pendingRealtimeEvents.formUnion(event.changes.map(\.rawValue))
         guard !pendingRealtimeEvents.isEmpty, realtimeRefreshTask == nil else { return }
         realtimeRefreshTask = Task { [weak self] in

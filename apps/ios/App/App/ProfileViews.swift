@@ -152,6 +152,26 @@ struct ProfileView: View {
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
+                    // Temporary: collects the UI flow behind the "a card closes
+                    // itself" report. Remove with UIFlowLog once confirmed.
+                    accountSectionTitle("NHẬT KÝ GỠ LỖI")
+                    VStack(spacing: 0) {
+                        ShareLink(item: UIFlowLog.fileURL) {
+                            accountLink(icon: "square.and.arrow.up", title: "Xuất nhật ký thao tác", opensExternally: false)
+                        }
+                        .buttonStyle(.plain)
+                        Divider().padding(.leading, 58)
+                        Button {
+                            UIFlowLog.clear()
+                            UIFlowLog.record("log.cleared")
+                        } label: {
+                            accountLink(icon: "trash.fill", title: "Xóa nhật ký đã ghi", opensExternally: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .background(AppTheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
                     accountSectionTitle("PHIÊN ĐĂNG NHẬP")
                     Button {
                         showSignOutConfirmation = true

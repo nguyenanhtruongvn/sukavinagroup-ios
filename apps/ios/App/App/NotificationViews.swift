@@ -187,7 +187,10 @@ struct NotificationsView: View {
                     await openPendingAPNsRouteIfNeeded()
                 }
                 .onAppear { Task { await openPendingAPNsRouteIfNeeded() } }
-                .onChange(of: revisions.attendance) { _, _ in Task { await reloadNotifications() } }
+                .onChange(of: revisions.attendance) { _, _ in
+                    UIFlowLog.record("notifications.reload", "cause=attendanceRevision")
+                    Task { await reloadNotifications() }
+                }
                 // Request, meeting and inbox events (a decision, an invitation,
                 // a read on another device) are fetched once by SessionStore,
                 // for the badge; this list mirrors that result instead of
@@ -198,7 +201,7 @@ struct NotificationsView: View {
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
-                .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
+                .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) }.logsSheetFlow("notifications.reviewing") }
                 .sheet(item: $viewing, onDismiss: {
                     resubmitting = pendingResubmit
                     pendingResubmit = nil
@@ -207,6 +210,7 @@ struct NotificationsView: View {
                         request: request,
                         onResubmit: requestStore.canResubmit(request) ? { pendingResubmit = request } : nil
                     )
+                    .logsSheetFlow("notifications.viewing")
                 }
                 .sheet(item: $resubmitting) { request in
                     RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
@@ -215,8 +219,9 @@ struct NotificationsView: View {
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
+                    .logsSheetFlow("notifications.resubmitting")
                 }
-                .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification) }
+                .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification).logsSheetFlow("notifications.meetingDetail") }
                 .sheet(
                     isPresented: Binding(
                         get: { attendanceReportMonth != nil },
@@ -230,6 +235,7 @@ struct NotificationsView: View {
                             ModernAttendanceHistoryView(initialMonth: month, releasedStatementMonths: [month])
                                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { attendanceReportMonth = nil } } }
                         }
+                        .logsSheetFlow("notifications.attendanceReport")
                     }
                 }
         }

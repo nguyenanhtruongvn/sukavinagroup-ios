@@ -106,6 +106,94 @@ enum ConnectionDiagnostics {
     }
 }
 
+/// Temporary instrumentation for the "a sheet closes itself while the employee
+/// is using it" report. `ConnectionDiagnostics` goes to the unified log at
+/// debug level, which is not retained and needs a Mac to read; these lines go
+/// to a file the employee exports from Tài khoản instead.
+///
+/// The exported file is handled by people, so record UI flow only: screen
+/// names, lifecycle transitions and event kinds. Never a token, a password, an
+/// employee name, a meeting title or a message body.
+///
+/// Remove this type and its call sites once the cause is confirmed.
+enum UIFlowLog {
+    static let fileName = "sukavina-ui-flow.log"
+    private static let queue = DispatchQueue(label: "net.sukavinagroup.ui-flow-log")
+    /// Roughly an hour of heavy use; halved when it fills so a long session
+    /// keeps its most recent lines rather than its first ones.
+    private static let maximumBytes = 512 * 1024
+
+    static var fileURL: URL {
+        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return base.appendingPathComponent(fileName)
+    }
+
+    private static let stamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh")
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter
+    }()
+
+    static func record(_ event: String, _ detail: String = "") {
+        let line = "\(stamp.string(from: Date()))  \(event)\(detail.isEmpty ? "" : "  \(detail)")\n"
+        queue.async { append(line) }
+    }
+
+    /// One header line per launch, so an exported file shows which build and
+    /// which iOS produced it (the iOS 17 and iOS 18+ paths differ).
+    static func recordLaunch() {
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        record("app.launch", "ios=\(UIDevice.current.systemVersion) app=\(version)(\(build))")
+    }
+
+    static func clear() {
+        queue.async { try? FileManager.default.removeItem(at: fileURL) }
+    }
+
+    private static func append(_ line: String) {
+        guard let data = line.data(using: .utf8) else { return }
+        let url = fileURL
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            try? data.write(to: url, options: .atomic)
+            return
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
+        try? handle.close()
+        trimIfNeeded(url)
+    }
+
+    private static func trimIfNeeded(_ url: URL) {
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? Int,
+              size > maximumBytes,
+              let contents = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let kept = String(contents.suffix(maximumBytes / 2))
+        try? kept.write(to: url, atomically: true, encoding: .utf8)
+    }
+}
+
+/// Records a SwiftUI sheet's own lifecycle. `onDisappear` without a matching
+/// user action in the lines above it is the signal we are looking for.
+struct SheetFlowLogger: ViewModifier {
+    let name: String
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { UIFlowLog.record("sheet.appear", name) }
+            .onDisappear { UIFlowLog.record("sheet.disappear", name) }
+    }
+}
+
+extension View {
+    func logsSheetFlow(_ name: String) -> some View {
+        modifier(SheetFlowLogger(name: name))
+    }
+}
+
 /// Monotonic sign-out counter. A token refresh that started before a sign-out
 /// must not persist its result afterwards, or the signed-out account would be
 /// restored on the next launch.
