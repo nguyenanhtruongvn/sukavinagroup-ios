@@ -1252,16 +1252,13 @@ struct RequestComposer: View {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
                             // Laid out as a labelled DatePicker is (label, space,
-                            // picker), with the label beside it so the picker can
-                            // be measured alone; see `remeasuresCompactDate`.
-                            HStack {
-                                Text("Ngày chấm công")
-                                    .accessibilityHidden(true)
-                                Spacer(minLength: 8)
+                            // picker), with the picker given the width of its full
+                            // date; see `keepsFullCompactDate`.
+                            CompactDateRow(label: "Ngày chấm công") {
                                 DatePicker("Ngày chấm công", selection: editedByEmployee($attendanceDate), displayedComponents: .date)
                                     .labelsHidden()
                                     .datePickerStyle(.compact)
-                                    .remeasuresCompactDate(day: attendanceDate, logName: "composer.attendanceDate")
+                                    .keepsFullCompactDate(day: attendanceDate, logName: "composer.attendanceDate")
                             }
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
@@ -1359,14 +1356,11 @@ struct RequestComposer: View {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
                             // As "Ngày chấm công"; switching to Đi trễ or Về sớm
                             // also moves `from`, which re-measures it too.
-                            HStack {
-                                Text("Ngày xảy ra")
-                                    .accessibilityHidden(true)
-                                Spacer(minLength: 8)
+                            CompactDateRow(label: "Ngày xảy ra") {
                                 DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
                                     .labelsHidden()
                                     .datePickerStyle(.compact)
-                                    .remeasuresCompactDate(day: from, logName: "composer.eventDate")
+                                    .keepsFullCompactDate(day: from, logName: "composer.eventDate")
                             }
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
@@ -1651,23 +1645,34 @@ struct RequestComposer: View {
     @ViewBuilder
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
         if usesCompactDateRows {
-            // iOS 18's compact DatePicker has a large intrinsic width. Keeping
-            // the label fixed and removing the flexible spacer prevents
-            // "Bắt đầu" and "Kết thúc" from being truncated on narrow phones.
-            HStack(spacing: 6) {
-                requestDateLabel(title)
-                    .fixedSize(horizontal: true, vertical: false)
-                dateTimePicker(title, selection: selection, range: range)
-                    .fixedSize(horizontal: true, vertical: false)
+            // The picker is given the width of its full date and time
+            // (`keepsFullCompactDate`), which beside the label is more than
+            // most phones have; then it goes under the label instead of
+            // shortening the date or overflowing the card.
+            ViewThatFits(in: .horizontal) {
+                // iOS 18's compact DatePicker has a large intrinsic width.
+                // Keeping the label fixed and removing the flexible spacer
+                // prevents "Bắt đầu" and "Kết thúc" from being truncated.
+                HStack(spacing: 6) {
+                    requestDateLabel(title)
+                        .fixedSize(horizontal: true, vertical: false)
+                    dateTimePicker(title, selection: selection, range: range)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
+                .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                stackedDateRow(title, selection: selection, range: range)
             }
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                requestDateLabel(title)
-                dateTimePicker(title, selection: selection, range: range)
-            }
-            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+            stackedDateRow(title, selection: selection, range: range)
         }
+    }
+
+    private func stackedDateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            requestDateLabel(title)
+            dateTimePicker(title, selection: selection, range: range)
+        }
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
     }
 
     private func requestDateLabel(_ title: String) -> some View {
@@ -1683,9 +1688,9 @@ struct RequestComposer: View {
         .layoutPriority(1)
     }
 
-    /// Re-measured on a new day and once the form has settled, so it keeps
-    /// the full date ("Ngày 18 thg 10, 2026", not "18/10/26"); see
-    /// `remeasuresCompactDate`.
+    /// Given the width of its full date and time, so it keeps "Ngày 18 thg
+    /// 10, 2026" rather than "18/10/26"; see `keepsFullCompactDate`. It sits
+    /// at the leading edge of that room, right after or under its label.
     ///
     /// The system picker, not a custom pill with a popover: a SwiftUI
     /// `.popover` inside this sheet closed the whole composer when tapped
@@ -1693,7 +1698,8 @@ struct RequestComposer: View {
     /// the attendance request, is the smoother and steadier of the two.
     private func dateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
         compactDateTimePicker(selection: selection, range: range)
-            .remeasuresCompactDate(day: selection.wrappedValue, logName: "composer.\(title)")
+            .keepsFullCompactDate(day: selection.wrappedValue, includesTime: true, logName: "composer.\(title)")
+            .environment(\.compactDateAlignment, .leading)
     }
 
     @ViewBuilder

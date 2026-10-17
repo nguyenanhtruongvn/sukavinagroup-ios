@@ -270,60 +270,131 @@ extension View {
 }
 
 extension View {
-    /// For a compact `DatePicker` showing `day`: makes it measure its date
-    /// again whenever it may have settled on the short form.
+    /// For a compact `DatePicker` showing `day`: gives it the width its full
+    /// date needs, so it shows "Ngày 18 thg 10, 2026" rather than "18/10/26".
     ///
-    /// A compact picker chooses between "Ngày 18 thg 10, 2026" and "18/10/26"
-    /// on its own when it is created, and keeps that width afterwards; free
-    /// space around it is not given to it. Re-creating it when the day
-    /// changes was not enough (1.0.75 still showed "18/10/26" in the
-    /// attendance request with plenty of room), which points at it choosing
-    /// while the form is still sliding in. So it is also re-created once,
-    /// after the form has settled. Its width is logged (UIFlowLog
-    /// "datePicker.width"): the long form is roughly twice as wide as the
-    /// short one, which shows which form appeared, and when.
+    /// A compact picker chooses the long or the short date from the width it
+    /// is given, and keeps its choice. Re-creating it on a new day alone did
+    /// not stop "18/10/26" (1.0.75, attendance request), so its frame is now
+    /// at least as wide as its long form, measured in the system font from
+    /// the system's Vietnamese medium date, as the picker formats it.
+    /// Nothing is drawn in its place: the date is still the picker's own.
     ///
-    /// Apply it to the picker alone, with `.labelsHidden()`, so the logged
-    /// width is the picker's.
-    func remeasuresCompactDate(day: Date, logName: String) -> some View {
-        modifier(CompactDateRemeasure(day: VietnamTime.calendar.startOfDay(for: day), logName: logName))
+    /// Still re-created on a new day, so a longer date is measured again.
+    /// The picker's own width is logged (UIFlowLog "datePicker.width") next
+    /// to the width it was given: a picker staying narrower than that did
+    /// not take the room, which would show this does not reach it.
+    ///
+    /// Apply it to the picker alone, with `.labelsHidden()`, and lay it out
+    /// in a `CompactDateRow` (or a fallback of its own) so the wider picker
+    /// moves under its label instead of overflowing a narrow screen.
+    func keepsFullCompactDate(day: Date, includesTime: Bool = false, logName: String) -> some View {
+        modifier(FullCompactDate(
+            day: VietnamTime.calendar.startOfDay(for: day),
+            includesTime: includesTime,
+            logName: logName
+        ))
     }
 }
 
-/// See `View.remeasuresCompactDate`.
-struct CompactDateRemeasure: ViewModifier {
-    let day: Date
-    let logName: String
-    /// Bumped once after the form settles; part of the picker's identity.
-    @State private var settledPass = 0
-
-    private struct Identity: Hashable {
-        let day: Date
-        let pass: Int
+extension EnvironmentValues {
+    /// Where a `keepsFullCompactDate` picker sits in the room it is given:
+    /// trailing beside a label, leading under one.
+    var compactDateAlignment: Alignment {
+        get { self[CompactDateAlignmentKey.self] }
+        set { self[CompactDateAlignmentKey.self] = newValue }
     }
+}
+
+private struct CompactDateAlignmentKey: EnvironmentKey {
+    static let defaultValue: Alignment = .trailing
+}
+
+/// See `View.keepsFullCompactDate`.
+struct FullCompactDate: ViewModifier {
+    let day: Date
+    let includesTime: Bool
+    let logName: String
+    @Environment(\.compactDateAlignment) private var alignment
 
     func body(content: Content) -> some View {
-        content
-            .id(Identity(day: day, pass: settledPass))
+        let wanted = Self.fullWidth(of: day, includesTime: includesTime)
+        return content
+            .id(day)
+            // The picker's own size, inside the room it is given.
             .background(
                 GeometryReader { geometry in
                     Color.clear
-                        .onAppear { log(width: geometry.size.width, cause: "appear") }
-                        .onChange(of: geometry.size.width) { _, width in log(width: width, cause: "resize") }
+                        .onAppear { log(geometry.size.width, wanted: wanted, cause: "appear") }
+                        .onChange(of: geometry.size.width) { _, width in log(width, wanted: wanted, cause: "resize") }
                 }
             )
-            // Outside the `.id`, so it runs once per appearance, not again
-            // for every re-creation it causes.
-            .task {
-                // A sheet takes about a third of a second to slide in.
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                guard !Task.isCancelled else { return }
-                settledPass += 1
-            }
+            .frame(minWidth: wanted, alignment: alignment)
     }
 
-    private func log(width: CGFloat, cause: String) {
-        UIFlowLog.record("datePicker.width", "\(logName) w=\(Int(width.rounded())) pass=\(settledPass) \(cause)")
+    /// The width of `day`'s long form as the compact picker draws it: each
+    /// value in its own capsule of body text.
+    static func fullWidth(of day: Date, includesTime: Bool) -> CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        func textWidth(_ text: String) -> CGFloat {
+            ceil((text as NSString).size(withAttributes: [.font: font]).width)
+        }
+        // About 11pt of capsule padding a side, and a few points to spare
+        // for the picker's own rounding.
+        let capsule: CGFloat = 26
+        var width = textWidth(longDate.string(from: day)) + capsule
+        if includesTime {
+            width += 8 + textWidth(VietnamTime.clock.string(from: day)) + capsule
+        }
+        return width
+    }
+
+    /// The system's medium date style in Vietnamese, the long form the
+    /// picker shows when it has the room.
+    private static let longDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = VietnamTime.locale
+        formatter.calendar = VietnamTime.calendar
+        formatter.timeZone = VietnamTime.timeZone
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+
+    private func log(_ width: CGFloat, wanted: CGFloat, cause: String) {
+        UIFlowLog.record(
+            "datePicker.width",
+            "\(logName) w=\(Int(width.rounded())) wanted=\(Int(wanted.rounded())) \(cause)"
+        )
+    }
+}
+
+/// A label and a `keepsFullCompactDate` picker: side by side when the
+/// picker's full width fits beside the label, the picker under the label
+/// when it does not, never overflowing the row.
+struct CompactDateRow<Picker: View>: View {
+    let label: String
+    @ViewBuilder let picker: () -> Picker
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                labelText
+                Spacer(minLength: 8)
+                picker()
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                labelText
+                picker()
+                    .environment(\.compactDateAlignment, .leading)
+            }
+        }
+    }
+
+    /// VoiceOver reads the picker's own label instead.
+    private var labelText: some View {
+        Text(label)
+            .accessibilityHidden(true)
     }
 }
 

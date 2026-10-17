@@ -630,17 +630,14 @@ struct MeetingRoomScheduleSheet: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         // Past days cannot be booked; showing them only confused the list.
-                        // Laid out as a labelled DatePicker is, with the label
-                        // beside it so the picker can be measured alone and keep
-                        // the full date; see `remeasuresCompactDate`.
-                        HStack {
-                            Text("Ngày")
-                                .accessibilityHidden(true)
-                            Spacer(minLength: 8)
+                        // Laid out as a labelled DatePicker is, with the picker
+                        // given the width of its full date; see
+                        // `keepsFullCompactDate`.
+                        CompactDateRow(label: "Ngày") {
                             DatePicker("Ngày", selection: $selectedDay, in: VietnamTime.calendar.startOfDay(for: .now)..., displayedComponents: .date)
                                 .labelsHidden()
                                 .datePickerStyle(.compact)
-                                .remeasuresCompactDate(day: selectedDay, logName: "rooms.scheduleDay")
+                                .keepsFullCompactDate(day: selectedDay, logName: "rooms.scheduleDay")
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 12)
