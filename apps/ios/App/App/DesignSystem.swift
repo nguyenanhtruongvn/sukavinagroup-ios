@@ -324,10 +324,38 @@ struct AnchoredPopover<Content: View>: UIViewControllerRepresentable {
             }
             return
         }
-        guard isPresented else { return }
-        guard anchor.view.window != nil, anchor.presentedViewController == nil else {
-            UIFlowLog.record("popover.skipped", "\(logName) inWindow=\(anchor.view.window != nil)")
+        guard isPresented, !coordinator.waitingToPresent else { return }
+        present(from: anchor, coordinator: coordinator)
+    }
+
+    /// Presents the popover now, or as soon as UIKit has finished fading out
+    /// the previous one. The anchor drops its highlight as a fade starts
+    /// (`presentationControllerWillDismiss`), so a quick second tap often
+    /// lands mid-fade, when UIKit cannot present yet. Dropping that tap made
+    /// the field look unresponsive; it now waits for the fade instead.
+    private func present(from anchor: UIViewController, coordinator: Coordinator) {
+        guard anchor.view.window != nil else {
+            UIFlowLog.record("popover.skipped", "\(logName) notInWindow")
             DispatchQueue.main.async { isPresented = false }
+            return
+        }
+        if let busy = anchor.presentedViewController {
+            if busy.isBeingDismissed, let transition = busy.transitionCoordinator {
+                UIFlowLog.record("popover.deferred", logName)
+                coordinator.waitingToPresent = true
+                transition.animate(alongsideTransition: nil) { [weak anchor] _ in
+                    // Next turn of the run loop, once UIKit has let go of
+                    // the old popover.
+                    DispatchQueue.main.async {
+                        coordinator.waitingToPresent = false
+                        guard let anchor, isPresented, coordinator.host == nil else { return }
+                        present(from: anchor, coordinator: coordinator)
+                    }
+                }
+            } else {
+                UIFlowLog.record("popover.skipped", "\(logName) busy")
+                DispatchQueue.main.async { isPresented = false }
+            }
             return
         }
 
@@ -353,6 +381,10 @@ struct AnchoredPopover<Content: View>: UIViewControllerRepresentable {
     @MainActor
     final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
         var host: UIHostingController<Content>?
+        /// A tap arrived while the previous popover was fading out; it
+        /// presents when the fade ends. Keeps updates meanwhile from queuing
+        /// it twice.
+        var waitingToPresent = false
         var logName = ""
         var onDismiss: () -> Void = {}
 

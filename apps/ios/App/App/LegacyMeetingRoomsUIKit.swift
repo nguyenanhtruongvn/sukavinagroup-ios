@@ -1272,6 +1272,8 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private var inviteesError: String?
     private var showStartPicker = false
     private var showDurationPicker = false
+    /// A picker popover waits for the previous one to finish fading out.
+    private var pickerPresentationPending = false
     private var isSubmitting = false
     private var invitees: [MeetingInvitee] = []
     private var cancellable: AnyCancellable?
@@ -2047,7 +2049,24 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     /// under it. Closing it clears the tile's highlight in
     /// `presentationControllerWillDismiss`.
     private func presentPicker(_ box: UIView, from tile: UIView, logName: String) {
-        guard presentedViewController == nil else {
+        guard !pickerPresentationPending else { return }
+        if let busy = presentedViewController {
+            // The tile drops its highlight as a fade starts, so a quick second
+            // tap often lands while the previous popover is still fading out
+            // and UIKit cannot present yet. Wait for the fade rather than drop
+            // the tap, which made the tile look unresponsive.
+            if busy.isBeingDismissed, let transition = busy.transitionCoordinator {
+                UIFlowLog.record("popover.deferred", logName)
+                pickerPresentationPending = true
+                transition.animate(alongsideTransition: nil) { [weak self] _ in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        pickerPresentationPending = false
+                        presentPicker(box, from: tile, logName: logName)
+                    }
+                }
+                return
+            }
             UIFlowLog.record("popover.skipped", "\(logName) busy")
             showStartPicker = false
             showDurationPicker = false
