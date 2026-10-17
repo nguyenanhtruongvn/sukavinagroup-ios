@@ -221,6 +221,8 @@ struct PreloadedAttendanceDayCell: View {
         case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
         case "RO", "RO/2", "NP", "NP/2", "P/2": return Self.leaveColor
         case "CT": return Color(red: 3.0 / 255.0, green: 105.0 / 255.0, blue: 161.0 / 255.0)
+        // CĐ (ca đêm): indigo, distinct from the sky-blue business trip CT.
+        case "CĐ": return Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
         // NN is vivid raspberry pink, distinct from purple overtime and green holiday.
         case "NN": return colorScheme == .dark
             ? Color(red: 244.0 / 255.0, green: 114.0 / 255.0, blue: 182.0 / 255.0)

@@ -448,6 +448,7 @@ struct AttendanceCodeLegend: View {
         ("P/2", "Nghỉ cả ngày có đơn, 0,5 ngày hưởng phép năm, 0,5 ngày không lương"),
         ("NTL", "Nghỉ trừ lương (do nhân sự xác nhận)"),
         ("CT", "Công tác"),
+        ("CĐ", "Ca đêm"),
         ("NN", "Ngày nghỉ (nghỉ hưởng chế độ, nghỉ bù)"),
         ("NVP", "Nghỉ văn phòng"),
         ("KCC", "Không chấm công"),
