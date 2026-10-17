@@ -1627,8 +1627,18 @@ struct RequestComposer: View {
         .layoutPriority(1)
     }
 
-    @ViewBuilder
+    /// A compact DatePicker keeps the width it measured for its first date and
+    /// abbreviates a later, programmatically set date to fit it ("18/10/26"
+    /// instead of "Ngày 18 thg 10, 2026", e.g. after "Làm chủ nhật" moves the
+    /// form to Sunday). Re-creating it when the day changes measures it again,
+    /// so every request kind shows the same full date. Time changes keep it.
     private func dateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+        compactDateTimePicker(selection: selection, range: range)
+            .id(VietnamTime.calendar.startOfDay(for: selection.wrappedValue))
+    }
+
+    @ViewBuilder
+    private func compactDateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
         if let range {
             DatePicker("", selection: selection, in: range, displayedComponents: [.date, .hourAndMinute])
                 .labelsHidden().datePickerStyle(.compact)
