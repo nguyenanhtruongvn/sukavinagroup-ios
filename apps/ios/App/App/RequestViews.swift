@@ -1464,15 +1464,27 @@ struct RequestComposer: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Hủy") {
+                        UIFlowLog.record("composer.userTappedCancel", "unsaved=\(hasUnsavedInput)")
                         if hasUnsavedInput { confirmingDiscard = true } else { dismiss() }
                     }
                         .foregroundStyle(AppTheme.muted)
                 }
             }
             .onAppear { if initialInput == nil { initialInput = currentInput } }
+            // A disappear with no composer.user* line above it was not the
+            // employee's doing: the sheet closed on its own.
+            .onDisappear {
+                UIFlowLog.record(
+                    "composer.disappear",
+                    "unsaved=\(hasUnsavedInput) submitting=\(isSubmitting) dismissDisabled=\(hasUnsavedInput || isSubmitting)"
+                )
+            }
             .interactiveDismissDisabled(hasUnsavedInput || isSubmitting)
             .confirmationDialog("Bỏ đơn đang soạn?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
-                Button("Bỏ đơn", role: .destructive) { dismiss() }
+                Button("Bỏ đơn", role: .destructive) {
+                    UIFlowLog.record("composer.userDiscarded")
+                    dismiss()
+                }
                 Button("Tiếp tục soạn", role: .cancel) {}
             } message: {
                 Text("Nội dung bạn đã nhập sẽ không được lưu.")
@@ -1503,6 +1515,7 @@ struct RequestComposer: View {
                         if let error {
                             submitError = error
                         } else {
+                            UIFlowLog.record("composer.userSubmitted")
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
                             dismiss()
                         }

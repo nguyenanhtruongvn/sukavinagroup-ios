@@ -117,7 +117,7 @@ enum ConnectionDiagnostics {
 ///
 /// Remove this type and its call sites once the cause is confirmed.
 enum UIFlowLog {
-    static let fileName = "sukavina-ui-flow.log"
+    static let fileName = "debug.log"
     private static let queue = DispatchQueue(label: "net.sukavinagroup.ui-flow-log")
     /// Roughly an hour of heavy use; halved when it fills so a long session
     /// keeps its most recent lines rather than its first ones.
