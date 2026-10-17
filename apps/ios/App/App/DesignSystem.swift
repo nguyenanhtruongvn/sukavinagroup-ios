@@ -413,12 +413,20 @@ struct SystemCompactDatePicker: UIViewRepresentable {
         let longForm = CompactDateWidthLog.fullWidth(of: selection, includesTime: mode != .date)
         let width = max(fitted.width, longForm) + Self.spare
         let height = (20...80).contains(fitted.height) ? fitted.height : 34
+        // Which of the two set the width: if the picker's own measure is
+        // always at least the long form, the estimate and spare can go.
+        let line = "\(accessibilityLabel) fitted=\(Int(fitted.width.rounded())) longForm=\(Int(longForm.rounded())) intrinsic=\(Int(picker.intrinsicContentSize.width.rounded())) frame=\(Int(picker.bounds.width.rounded()))"
+        if line != context.coordinator.lastSizeLog {
+            context.coordinator.lastSizeLog = line
+            UIFlowLog.record("datePicker.fit", line)
+        }
         return CGSize(width: ceil(width), height: ceil(height))
     }
 
     @MainActor
     final class Coordinator: NSObject {
         var selection: Binding<Date>
+        var lastSizeLog = ""
 
         init(selection: Binding<Date>) {
             self.selection = selection
@@ -511,17 +519,15 @@ struct TileFillingTimePicker: UIViewRepresentable {
 /// _UIContextMenuActionsOnlyViewController) made the picker report its
 /// bubble open although none could be presented, and it then never
 /// reported it closed, so it counted itself open and ignored the next tap
-/// (debug.log, 1.0.85). So, when a touch lands on the tile while the
-/// sheet presents something other than a date bubble:
-/// - a system menu is closed at once, before the touch reaches the picker,
-///   so the bubble opens on that same tap;
-/// - if anything is still presented after that, the touch is kept from
-///   the picker: it only closes what is open, as a tap outside any popup
-///   does, and the picker never enters that state.
+/// (debug.log, 1.0.85). So a touch that lands on the tile while the sheet
+/// presents anything but a date bubble is kept from the picker: it only
+/// closes what is open, as a tap outside a menu does. The menu cannot be
+/// closed sooner from here: dismissing it, even unanimated, left it
+/// presented for that touch (1.0.86, "after=_UIContextMenu...").
 /// A date bubble already open is left to Apple: from it, a tap on another
 /// time tile opens that one, and a tap on its own tile closes it.
-/// Touches, closed menus, kept touches and the bubble opening and closing
-/// are logged ("tilePicker.*").
+/// Touches, kept touches and the bubble opening and closing are logged
+/// ("tilePicker.*").
 final class TileFillingPickerView: UIView {
     let picker = UIDatePicker()
     /// Names the tile in debug.log.
@@ -576,33 +582,15 @@ final class TileFillingPickerView: UIView {
     }
 
     /// Whether a new touch can go to the picker: nothing but a date bubble
-    /// is presented, once a system menu still on screen has been closed.
+    /// is presented.
     private func clearPresentation(forTouchAt point: CGPoint) -> Bool {
-        let controller = nearestViewController()
-        let before = controller?.presentedViewController
-        if let before, Self.typeName(before).contains("ContextMenu"), !before.isBeingDismissed {
-            // At once, not animated: the picker presents its bubble when
-            // this tap ends, a few hundredths of a second from now.
-            before.dismiss(animated: false)
-            if let window { Self.dismissContextMenus(in: window) }
-        }
-        let after = controller?.presentedViewController
-        let free = after == nil || Self.isDateBubble(after)
+        let presented = nearestViewController()?.presentedViewController
+        let free = presented == nil || Self.isDateBubble(presented)
         UIFlowLog.record(
             "tilePicker.touch",
-            "\(name) at=\(Int(point.x)),\(Int(point.y)) presented=\(Self.typeName(before)) after=\(Self.typeName(after)) toPicker=\(free)"
+            "\(name) at=\(Int(point.x)),\(Int(point.y)) presented=\(Self.typeName(presented)) toPicker=\(free)"
         )
         return free
-    }
-
-    /// Lets every context menu interaction know its menu is gone.
-    private static func dismissContextMenus(in view: UIView) {
-        for case let interaction as UIContextMenuInteraction in view.interactions {
-            interaction.dismissMenu()
-        }
-        for subview in view.subviews {
-            dismissContextMenus(in: subview)
-        }
     }
 
     private static func isDateBubble(_ controller: UIViewController?) -> Bool {
