@@ -201,20 +201,99 @@ struct PreloadedAttendanceDayCell: View {
         if note == nil, day.checkIn == nil, day.checkOut == nil {
             return AnyView(nightShiftColumn(night, whole: true))
         }
-        return AnyView(HStack(alignment: .top, spacing: 1) {
-            dayShift
-            nightShiftColumn(night, whole: false)
-        })
+        return splitShifts(
+            night: night,
+            note: note,
+            isHoliday: isHoliday,
+            hasCompletePunchPair: hasCompletePunchPair,
+            hasForgottenPunch: hasForgottenPunch
+        )
     }
 
-    /// Ca đêm, text only. The metrics calendar shows its workdays and overtime on
-    /// the same two rows as a day shift's coefficient and overtime. The normal
-    /// calendar shows "CĐ": centred between the day shift's check-in and check-out
-    /// beside it, or on the first row like any other code when it is the whole day.
-    private func nightShiftColumn(_ night: AttendanceNightShift, whole: Bool) -> AnyView {
-        let color = colorScheme == .dark
+    private struct SplitLine {
+        let text: String
+        let color: Color
+        var size: CGFloat = 10.5
+        var bold = false
+    }
+
+    /// A day with both shifts: two columns on the same 18 pt rows as every other
+    /// cell, centred together with an even gap. In the metrics calendar ca đêm
+    /// shows its workdays and overtime level with the day shift's; in the normal
+    /// calendar "CĐ" sits midway between the check-in and check-out beside it.
+    private func splitShifts(
+        night: AttendanceNightShift,
+        note: String?,
+        isHoliday: Bool,
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool
+    ) -> AnyView {
+        let metrics = AttendanceMetrics.workMetrics(day, month: month)
+        let muted = Color.primary.opacity(0.72)
+        let compact = !showWorkMetrics && note == nil
+        var dayLines: [SplitLine] = []
+        if let note {
+            dayLines.append(SplitLine(text: note, color: noteColor(note), size: 11, bold: true))
+            if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
+                dayLines.append(SplitLine(text: AttendanceMetrics.hourText(metrics.overtimeHours), color: AppTheme.text(holidayColor)))
+            }
+        } else if showWorkMetrics && hasCompletePunchPair {
+            dayLines = [
+                SplitLine(text: AttendanceMetrics.workFactorText(metrics.coefficient), color: muted),
+                SplitLine(text: AttendanceMetrics.hourText(metrics.overtimeHours), color: muted),
+            ]
+        } else if showWorkMetrics && hasForgottenPunch {
+            dayLines = [
+                SplitLine(text: AttendanceMetrics.workFactorText(0), color: muted),
+                SplitLine(text: "0", color: muted),
+            ]
+        } else if !showWorkMetrics {
+            // Times need the room: a slightly smaller size keeps "07:05 CĐ" inside the cell.
+            dayLines = [
+                SplitLine(text: time(day.checkIn), color: muted, size: 9.5),
+                SplitLine(text: time(day.checkOut), color: muted, size: 9.5),
+            ]
+        }
+        let nightColor = nightShiftColor()
+        let nightLines: [SplitLine] = showWorkMetrics
+            ? [
+                SplitLine(text: AttendanceMetrics.workFactorText(night.workdays), color: nightColor),
+                SplitLine(text: AttendanceMetrics.hourText(night.overtimeHours), color: nightColor),
+            ]
+            : [SplitLine(text: "CĐ", color: nightColor, size: compact ? 9.5 : 10.5, bold: true)]
+        return AnyView(HStack(alignment: .top, spacing: compact ? 3 : 6) {
+            splitColumn(dayLines, offset: 0)
+            // Texts sit at the top of their rows: half a row down is midway between two.
+            splitColumn(nightLines, offset: showWorkMetrics ? 0 : 9)
+        }
+        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
+    }
+
+    private func splitColumn(_ lines: [SplitLine], offset: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                Text(line.text)
+                    .font(.system(size: line.size, weight: line.bold ? .heavy : .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(line.color)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(height: 18, alignment: .top)
+            }
+        }
+        .padding(.top, offset)
+    }
+
+    private func nightShiftColor() -> Color {
+        colorScheme == .dark
             ? Color(red: 165.0 / 255.0, green: 180.0 / 255.0, blue: 252.0 / 255.0)
             : Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
+    }
+
+    /// Ca đêm as the whole day, centred like any other code: "CĐ" on the first row
+    /// in the normal calendar, its workdays and overtime in the metrics one.
+    private func nightShiftColumn(_ night: AttendanceNightShift, whole: Bool) -> AnyView {
+        let color = nightShiftColor()
         if showWorkMetrics {
             return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(night.workdays))
