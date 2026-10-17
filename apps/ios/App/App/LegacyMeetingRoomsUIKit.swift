@@ -2073,8 +2073,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             render()
             return
         }
-        // The keyboard would otherwise stay up under the popover.
-        view.endEditing(true)
         let popover = LegacyPickerPopoverController(box: box)
         popover.modalPresentationStyle = .popover
         popover.preferredContentSize = CGSize(width: 256, height: 196)
