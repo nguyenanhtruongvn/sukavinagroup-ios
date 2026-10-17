@@ -459,10 +459,9 @@ struct RequestsView: View {
                     await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
                     .presentationDetents([.large])
-                    // Not .resizes: the sheet then takes the drag out of the
-                    // wheel and graphical date pickers, and with one detent to
-                    // sit in it closes the form while the employee is setting
-                    // a date or a time.
+                    // Let a downward pull dismiss the composer sheet instead
+                    // of being retained by its form scroll view.
+                    .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
                     .logsSheetFlow("requests.composing")
             }
@@ -471,6 +470,7 @@ struct RequestsView: View {
                     await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
                     .presentationDetents([.large])
+                    .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
                     .logsSheetFlow("requests.resubmitting")
             }
@@ -910,17 +910,15 @@ struct RequestComposer: View {
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) async -> String?
     @State private var isSubmitting = false
     @State private var submitError: String?
-    /// Typed content when the form opened; closing after changing it asks
-    /// first (Hủy or swipe down) instead of silently losing the text.
+    /// Typed content when the form opened; once it changes, a swipe down no
+    /// longer closes the form, so a stray drag cannot lose the text. Hủy is
+    /// an explicit choice and always closes at once.
     @State private var initialInput: [String]?
     /// Set when the employee changes a date or time. The form also assigns
     /// `from`, `to` and `attendanceDate` itself, after it has appeared, from
     /// the attendance month and the shift schedule; those must not count as
     /// input, so only changes made through a picker binding set this.
     @State private var scheduleEdited = false
-    /// The one date or time picker open inline, across every date row.
-    @State private var expandedDateField: RequestExpandedDateField?
-    @State private var confirmingDiscard = false
     /// A rejected request this form starts from; nil for a new request.
     let template: EmployeeRequest?
     /// The first attendance lookup must not replace the template's times.
@@ -1497,7 +1495,7 @@ struct RequestComposer: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Hủy") {
                         UIFlowLog.record("composer.userTappedCancel", "unsaved=\(hasUnsavedInput)")
-                        if hasUnsavedInput { confirmingDiscard = true } else { dismiss() }
+                        dismiss()
                     }
                         .foregroundStyle(AppTheme.muted)
                 }
@@ -1512,15 +1510,6 @@ struct RequestComposer: View {
                 )
             }
             .interactiveDismissDisabled(hasUnsavedInput || isSubmitting)
-            .confirmationDialog("Bỏ đơn đang soạn?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
-                Button("Bỏ đơn", role: .destructive) {
-                    UIFlowLog.record("composer.userDiscarded")
-                    dismiss()
-                }
-                Button("Tiếp tục soạn", role: .cancel) {}
-            } message: {
-                Text("Nội dung bạn đã nhập sẽ không được lưu.")
-            }
             .safeAreaInset(edge: .bottom) {
                 // The form closes only after the server accepted the request; a
                 // failure keeps everything typed and shows the reason above.
@@ -1640,21 +1629,8 @@ struct RequestComposer: View {
             .foregroundStyle(.primary)
     }
 
-    private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
-        VStack(spacing: 0) {
-            dateRowHeader(title, selection: selection)
-            // Below the whole row rather than beside the pills: the calendar
-            // needs the card's full width.
-            if let open = expandedDateField, open.row == title {
-                RequestInlineDatePicker(selection: selection, minimum: range?.lowerBound, part: open.part)
-                    .padding(.bottom, 8)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-        }
-    }
-
     @ViewBuilder
-    private func dateRowHeader(_ title: String, selection: Binding<Date>) -> some View {
+    private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
         if usesCompactDateRows {
             // iOS 18's compact DatePicker has a large intrinsic width. Keeping
             // the label fixed and removing the flexible spacer prevents
@@ -1662,29 +1638,17 @@ struct RequestComposer: View {
             HStack(spacing: 6) {
                 requestDateLabel(title)
                     .fixedSize(horizontal: true, vertical: false)
-                dateTimePicker(title, selection: selection.wrappedValue)
+                dateTimePicker(selection: selection, range: range)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 requestDateLabel(title)
-                dateTimePicker(title, selection: selection.wrappedValue)
+                dateTimePicker(selection: selection, range: range)
             }
             .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
         }
-    }
-
-    /// The open part for the row `title`; opening one closes any other.
-    private func expandedPart(for title: String) -> Binding<RequestDateTimeChooser.Part?> {
-        Binding(
-            get: { expandedDateField?.row == title ? expandedDateField?.part : nil },
-            set: { part in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    expandedDateField = part.map { RequestExpandedDateField(row: title, part: $0) }
-                }
-            }
-        )
     }
 
     private func requestDateLabel(_ title: String) -> some View {
@@ -1703,9 +1667,9 @@ struct RequestComposer: View {
     /// A compact DatePicker decides on its own whether to show the full date
     /// ("Ngày 17 thg 10, 2026") or a short one ("18/10/26"), so the same form
     /// showed different formats per request kind. The app draws the time and
-    /// date itself and opens the system pickers inline on tap.
-    private func dateTimePicker(_ title: String, selection: Date) -> some View {
-        RequestDateTimeChooser(selection: selection, editing: expandedPart(for: title))
+    /// date itself and opens the system pickers in a popover on tap.
+    private func dateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+        RequestDateTimeChooser(selection: selection, minimum: range?.lowerBound)
     }
 
     private var durationValueMenu: some View {
@@ -1797,22 +1761,22 @@ struct RequestComposer: View {
 }
 
 /// Start or end of a request: "HH:mm" and "Ngày d thg M, yyyy" in Vietnam
-/// time, always in the same format. Tapping either toggles the matching
-/// system picker, which the form shows inline under the row
-/// (`RequestInlineDatePicker`).
+/// time, always in the same format. Tapping either opens the matching system
+/// picker in a popover.
 ///
-/// The pickers used to open in a `.popover` from inside the composer sheet.
-/// Tapping a pill then closed the whole composer before any value changed
-/// (debug.log: composer.disappear with no composer.user* line and
-/// scheduleEdited=false, three times running on iOS 27). The portal hosts
-/// each tab in its own UIHostingController under a UITabBarController, and a
-/// presentation nested in the sheet did not survive that. Inline pickers
-/// present nothing, so there is nothing left to close the sheet.
+/// The popover is presented by UIKit (`RequestPickerPopover`), not SwiftUI's
+/// `.popover`. With `.popover`, tapping a pill closed the whole composer
+/// before any value changed (debug.log on iOS 27: composer.disappear with no
+/// composer.user* line and scheduleEdited=false, three times running). The
+/// portal hosts each tab in its own UIHostingController under a
+/// UITabBarController, and SwiftUI appears to present a popover nested in the
+/// sheet from the controller already presenting the sheet, dismissing the
+/// sheet to make room. A view controller inside the sheet presents the
+/// popover from the sheet itself, which leaves the sheet alone.
 struct RequestDateTimeChooser: View {
-    let selection: Date
-    /// The part whose picker is open under this row, if any. Owned by the
-    /// form so that only one picker is open across all rows.
-    @Binding var editing: Part?
+    @Binding var selection: Date
+    let minimum: Date?
+    @State private var editing: Part?
 
     enum Part: String, Identifiable {
         case time, date
@@ -1828,8 +1792,8 @@ struct RequestDateTimeChooser: View {
 
     private func pill(_ text: String, part: Part, label: String) -> some View {
         Button {
-            UIFlowLog.record("composer.datePill", "part=\(part.rawValue) open=\(editing != part)")
-            editing = editing == part ? nil : part
+            UIFlowLog.record("composer.datePill", "part=\(part.rawValue)")
+            editing = part
         } label: {
             Text(text)
                 .font(.body)
@@ -1842,19 +1806,24 @@ struct RequestDateTimeChooser: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(label) \(text)")
-        .accessibilityHint(editing == part ? "Đóng bộ chọn" : "Mở bộ chọn")
+        // Behind the pill, so the popover's arrow points at it.
+        .background(
+            RequestPickerPopover(
+                isPresented: Binding(
+                    get: { editing == part },
+                    set: { if !$0, editing == part { editing = nil } }
+                ),
+                selection: $selection,
+                minimum: minimum,
+                part: part
+            )
+        )
     }
 }
 
-/// Which date row has a picker open inline, and for which part.
-struct RequestExpandedDateField: Equatable {
-    let row: String
-    let part: RequestDateTimeChooser.Part
-}
-
-/// The system picker for one part of a `RequestDateTimeChooser`, laid out in
-/// the form under its row: calendar for the date, wheel for the time.
-struct RequestInlineDatePicker: View {
+/// The system picker inside a request popover: calendar for the date, wheel
+/// for the time.
+private struct RequestPickerContent: View {
     @Binding var selection: Date
     let minimum: Date?
     let part: RequestDateTimeChooser.Part
@@ -1873,21 +1842,98 @@ struct RequestInlineDatePicker: View {
         .environment(\.timeZone, VietnamTime.timeZone)
         .environment(\.calendar, VietnamTime.calendar)
         .environment(\.locale, VietnamTime.locale)
-        // Centred in the card; narrower phones shrink it rather than clip it.
-        .frame(maxWidth: .infinity)
+        .padding(12)
     }
 }
 
-/// Calendar for the date, wheel for the time. Widths are caps, not fixed:
-/// inline in the card there can be less room than the popover had.
+/// Calendar for the date, wheel for the time.
 private struct RequestPickerStyle: ViewModifier {
     let part: RequestDateTimeChooser.Part
 
     func body(content: Content) -> some View {
         if part == .date {
-            content.datePickerStyle(.graphical).frame(maxWidth: 320)
+            content.datePickerStyle(.graphical).frame(width: 320)
         } else {
-            content.datePickerStyle(.wheel).frame(maxWidth: 260)
+            content.datePickerStyle(.wheel).frame(width: 260)
+        }
+    }
+}
+
+/// Presents `RequestPickerContent` in a UIKit popover anchored to the view it
+/// backs. SwiftUI embeds the anchor controller as a child inside the composer
+/// sheet, so UIKit presents the popover from the sheet rather than from the
+/// controller that presented the sheet. See `RequestDateTimeChooser`.
+private struct RequestPickerPopover: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    @Binding var selection: Date
+    let minimum: Date?
+    let part: RequestDateTimeChooser.Part
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let anchor = UIViewController()
+        anchor.view.backgroundColor = .clear
+        // Taps belong to the pill in front of it.
+        anchor.view.isUserInteractionEnabled = false
+        return anchor
+    }
+
+    func updateUIViewController(_ anchor: UIViewController, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onDismiss = { isPresented = false }
+        let content = RequestPickerContent(selection: $selection, minimum: minimum, part: part)
+
+        if let host = coordinator.host {
+            if isPresented {
+                host.rootView = content
+            } else {
+                coordinator.host = nil
+                host.dismiss(animated: true)
+            }
+            return
+        }
+        guard isPresented else { return }
+        guard anchor.view.window != nil, anchor.presentedViewController == nil else {
+            UIFlowLog.record("composer.pickerPopover", "skipped part=\(part.rawValue) inWindow=\(anchor.view.window != nil)")
+            DispatchQueue.main.async { isPresented = false }
+            return
+        }
+
+        let host = UIHostingController(rootView: content)
+        host.modalPresentationStyle = .popover
+        host.preferredContentSize = host.sizeThatFits(in: CGSize(width: 360, height: 520))
+        if let popover = host.popoverPresentationController {
+            popover.sourceView = anchor.view
+            popover.sourceRect = anchor.view.bounds
+            popover.permittedArrowDirections = [.up, .down]
+            popover.delegate = coordinator
+        }
+        coordinator.host = host
+        UIFlowLog.record("composer.pickerPopover", "present part=\(part.rawValue)")
+        anchor.present(host, animated: true)
+    }
+
+    static func dismantleUIViewController(_ anchor: UIViewController, coordinator: Coordinator) {
+        coordinator.host?.dismiss(animated: false)
+        coordinator.host = nil
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
+        var host: UIHostingController<RequestPickerContent>?
+        var onDismiss: () -> Void = {}
+
+        /// A popover on iPhone too, rather than the sheet UIKit adapts it to.
+        func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+            .none
+        }
+
+        /// Tapping outside the popover closes it.
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            UIFlowLog.record("composer.pickerPopover", "dismissed")
+            host = nil
+            onDismiss()
         }
     }
 }

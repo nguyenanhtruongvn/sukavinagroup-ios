@@ -217,6 +217,7 @@ struct NotificationsView: View {
                         await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                     }
                     .presentationDetents([.large])
+                    .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
                     .logsSheetFlow("notifications.resubmitting")
                 }
