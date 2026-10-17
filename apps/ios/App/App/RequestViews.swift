@@ -913,6 +913,11 @@ struct RequestComposer: View {
     /// Typed content when the form opened; closing after changing it asks
     /// first (Hủy or swipe down) instead of silently losing the text.
     @State private var initialInput: [String]?
+    /// Set when the employee changes a date or time. The form also assigns
+    /// `from`, `to` and `attendanceDate` itself, after it has appeared, from
+    /// the attendance month and the shift schedule; those must not count as
+    /// input, so only changes made through a picker binding set this.
+    @State private var scheduleEdited = false
     @State private var confirmingDiscard = false
     /// A rejected request this form starts from; nil for a new request.
     let template: EmployeeRequest?
@@ -1140,13 +1145,38 @@ struct RequestComposer: View {
     }
 
     private var hasUnsavedInput: Bool {
-        initialInput.map { $0 != currentInput } ?? false
+        scheduleEdited || (initialInput.map { $0 != currentInput } ?? false)
+    }
+
+    /// `binding`, marking the schedule as edited when a picker changes it.
+    /// Never use this for the form's own prefill: that writes to the state
+    /// directly so it stays out of `hasUnsavedInput`.
+    private func editedByEmployee(_ binding: Binding<Date>) -> Binding<Date> {
+        Binding(
+            get: { binding.wrappedValue },
+            set: { newValue in
+                markScheduleEdited(from: binding.wrappedValue, to: newValue)
+                binding.wrappedValue = newValue
+            }
+        )
+    }
+
+    /// Compared to the minute: `from` starts as `Date()` with seconds that no
+    /// hour-and-minute picker shows, so a picker handing back the same minute
+    /// without them is not an edit. Every real change moves at least a minute.
+    private func markScheduleEdited(from old: Date, to new: Date) {
+        if !VietnamTime.calendar.isDate(old, equalTo: new, toGranularity: .minute) {
+            scheduleEdited = true
+        }
     }
 
     private var requestStartBinding: Binding<Date> {
         Binding(
             get: { from },
-            set: { updateRequestStart($0) }
+            set: { newValue in
+                markScheduleEdited(from: from, to: newValue)
+                updateRequestStart(newValue)
+            }
         )
     }
 
@@ -1178,7 +1208,7 @@ struct RequestComposer: View {
             composerLabel(title, icon: icon)
             VStack(spacing: 10) {
                 dateRow("Bắt đầu", selection: requestStartBinding)
-                dateRow("Kết thúc", selection: $to, range: from...)
+                dateRow("Kết thúc", selection: editedByEmployee($to), range: from...)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -1221,30 +1251,30 @@ struct RequestComposer: View {
                     if kind == .attendance {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
-                            DatePicker("Ngày chấm công", selection: $attendanceDate, displayedComponents: .date)
+                            DatePicker("Ngày chấm công", selection: editedByEmployee($attendanceDate), displayedComponents: .date)
                                 .datePickerStyle(.compact)
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(spacing: 10) {
-                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: $from)
-                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: $to)
+                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: editedByEmployee($from))
+                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: editedByEmployee($to))
                                     }
                                 } else {
                                     HStack(spacing: 10) {
-                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: $from)
-                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: $to)
+                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: editedByEmployee($from))
+                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: editedByEmployee($to))
                                     }
                                 }
                             } else {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(alignment: .leading, spacing: 10) {
-                                        DatePicker("Giờ vào", selection: $from, displayedComponents: .hourAndMinute)
-                                        DatePicker("Giờ ra", selection: $to, displayedComponents: .hourAndMinute)
+                                        DatePicker("Giờ vào", selection: editedByEmployee($from), displayedComponents: .hourAndMinute)
+                                        DatePicker("Giờ ra", selection: editedByEmployee($to), displayedComponents: .hourAndMinute)
                                     }
                                 } else {
                                     HStack {
-                                        DatePicker("Giờ vào", selection: $from, displayedComponents: .hourAndMinute).labelsHidden()
-                                        DatePicker("Giờ ra", selection: $to, displayedComponents: .hourAndMinute).labelsHidden()
+                                        DatePicker("Giờ vào", selection: editedByEmployee($from), displayedComponents: .hourAndMinute).labelsHidden()
+                                        DatePicker("Giờ ra", selection: editedByEmployee($to), displayedComponents: .hourAndMinute).labelsHidden()
                                     }
                                 }
                                 Text("Chưa có dữ liệu: nhập cả giờ vào và giờ ra để gửi yêu cầu bổ sung.").foregroundStyle(AppTheme.muted)
@@ -1317,7 +1347,7 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
-                            DatePicker("Ngày xảy ra", selection: $from, displayedComponents: .date)
+                            DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
                                 .datePickerStyle(.compact)
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
@@ -1476,7 +1506,7 @@ struct RequestComposer: View {
             .onDisappear {
                 UIFlowLog.record(
                     "composer.disappear",
-                    "unsaved=\(hasUnsavedInput) submitting=\(isSubmitting) dismissDisabled=\(hasUnsavedInput || isSubmitting)"
+                    "unsaved=\(hasUnsavedInput) scheduleEdited=\(scheduleEdited) submitting=\(isSubmitting) dismissDisabled=\(hasUnsavedInput || isSubmitting)"
                 )
             }
             .interactiveDismissDisabled(hasUnsavedInput || isSubmitting)
