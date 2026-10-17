@@ -2060,9 +2060,11 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
                 pickerPresentationPending = true
                 transition.animate(alongsideTransition: nil) { [weak self] _ in
                     DispatchQueue.main.async {
+                        // Explicit `self.`: the weak capture belongs to the
+                        // outer closure, so this one cannot use implicit self.
                         guard let self else { return }
-                        pickerPresentationPending = false
-                        presentPicker(box, from: tile, logName: logName)
+                        self.pickerPresentationPending = false
+                        self.presentPicker(box, from: tile, logName: logName)
                     }
                 }
                 return
