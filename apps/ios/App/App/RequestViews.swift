@@ -1692,11 +1692,8 @@ struct RequestComposer: View {
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
         if usesCompactDateRows {
             HStack(spacing: 6) {
-                ViewThatFits(in: .horizontal) {
-                    requestDateLabel(title)
-                    requestDateLabel(title, stacked: true)
-                }
-                .accessibilityHidden(true)
+                requestDateLabel(title, besidePicker: true)
+                    .accessibilityHidden(true)
                 Spacer(minLength: 0)
                 dateTimePicker(title, selection: selection, range: range)
                     .fixedSize()
@@ -1712,28 +1709,19 @@ struct RequestComposer: View {
         }
     }
 
-    /// The icon beside the title, or, where a phone leaves too little room
-    /// beside the picker, the icon over a smaller title.
-    @ViewBuilder
-    private func requestDateLabel(_ title: String, stacked: Bool = false) -> some View {
-        let icon = Image(systemName: title == "Bắt đầu" ? "arrow.right.circle.fill" : "checkmark.circle.fill")
-        Group {
-            if stacked {
-                VStack(spacing: 2) {
-                    icon.font(.subheadline.weight(.semibold))
-                    Text(title)
-                        .font(.caption2.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-            } else {
-                HStack(spacing: 4) {
-                    icon.font(.subheadline.weight(.semibold))
-                    Text(title)
-                        .font(.body.weight(.semibold))
-                        .lineLimit(1)
-                }
-            }
+    /// The icon beside the title, the same way in both rows. Beside the
+    /// picker it is set one size smaller, so "Kết thúc", the longer title,
+    /// fits as "Bắt đầu" does (02708ca chose a layout per row and drew
+    /// "Kết thúc" as a small title under its icon). It shrinks a little,
+    /// never wraps, on the narrowest phones.
+    private func requestDateLabel(_ title: String, besidePicker: Bool = false) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: title == "Bắt đầu" ? "arrow.right.circle.fill" : "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+            Text(title)
+                .font(besidePicker ? .subheadline.weight(.semibold) : .body.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
         }
         .foregroundStyle(title == "Bắt đầu" ? AppTheme.red : Color.green)
     }

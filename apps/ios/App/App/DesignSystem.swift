@@ -483,23 +483,31 @@ struct TileFillingTimePicker: UIViewRepresentable {
     }
 }
 
-/// Holds a compact UIDatePicker at its own size under a drawn tile, and
-/// hands it every tap on the tile, so a tap anywhere, not only on the
-/// picker's small capsule, opens Apple's picker bubble. Put under a drawn
-/// face that takes no touches. Used by the booking Bắt đầu tile
-/// (MeetingBookingSheet on iOS 18, LegacyMeetingRoomsUIKit on iOS 17) and
-/// the Giờ vào / Giờ ra cards.
+/// Holds a compact UIDatePicker at its own size under a drawn tile, so a
+/// tap anywhere on the tile, not only on the picker's small capsule,
+/// opens Apple's picker bubble. Put under a drawn face that takes no
+/// touches. Used by the booking Bắt đầu tile (MeetingBookingSheet on iOS
+/// 18, LegacyMeetingRoomsUIKit on iOS 17) and the Giờ vào / Giờ ra cards.
 ///
-/// The picker is never stretched or scaled: Apple places its bubble from
-/// the picker's own frame, and c37b077 scaled the picker about three times
-/// over the tile, so the bubble came from an oversized, off-centre frame
-/// and did not sit as Apple's does. It sits centred along the tile's
-/// bottom, where the time is drawn, so the bubble opens from there; a tap
-/// elsewhere on the tile is handed to the control at the picker's centre.
-/// Every point of a tile is then well within the distance UIKit still
-/// counts as a tap on a control.
+/// What did not work:
+/// - stretching the picker to the tile (02708ca): its capsule stays at the
+///   trailing edge, so only taps near the chevron opened it;
+/// - scaling it about three times over the tile (c37b077): taps worked,
+///   but Apple places the bubble from the picker's frame, so it came from
+///   an oversized frame and did not open as Apple's does;
+/// - handing a tap elsewhere on the tile to the capsule (5f7e64d): the
+///   capsule ignores a touch that is not inside it.
+///
+/// So the picker keeps its own size and rests where the time is drawn,
+/// centred along the tile's bottom; when a touch lands elsewhere on the
+/// tile, the picker first moves just far enough to be under the finger.
+/// The touch is then a real tap inside Apple's capsule, and the bubble
+/// opens from the capsule at its own size, as Apple's does.
 final class TileFillingPickerView: UIView {
     let picker = UIDatePicker()
+    private var centerX: NSLayoutConstraint!
+    private var bottom: NSLayoutConstraint!
+    private static let restingBottom: CGFloat = -6
     private var loggedLayout = ""
 
     override init(frame: CGRect) {
@@ -507,25 +515,48 @@ final class TileFillingPickerView: UIView {
         picker.preferredDatePickerStyle = .compact
         picker.translatesAutoresizingMaskIntoConstraints = false
         addSubview(picker)
-        NSLayoutConstraint.activate([
-            picker.centerXAnchor.constraint(equalTo: centerXAnchor),
-            picker.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
-            picker.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
-        ])
+        centerX = picker.centerXAnchor.constraint(equalTo: centerXAnchor)
+        bottom = picker.bottomAnchor.constraint(equalTo: bottomAnchor, constant: Self.restingBottom)
         // Only if the picker reports no size of its own: a compact time picker's.
         let width = picker.widthAnchor.constraint(equalToConstant: 80)
         let height = picker.heightAnchor.constraint(equalToConstant: 34)
         width.priority = .fittingSizeLevel
         height.priority = .fittingSizeLevel
-        NSLayoutConstraint.activate([width, height])
+        NSLayoutConstraint.activate([centerX, bottom, width, height])
     }
 
     required init?(coder: NSCoder) { nil }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard isUserInteractionEnabled, !isHidden, self.point(inside: point, with: event) else { return nil }
-        let center = CGPoint(x: picker.bounds.midX, y: picker.bounds.midY)
-        return picker.hitTest(center, with: event) ?? picker
+        moveCapsule(under: point)
+        let inPicker = convert(point, to: picker)
+        return picker.hitTest(inPicker, with: event) ?? picker
+    }
+
+    /// Moves the picker from its resting place just far enough that
+    /// `point` lies inside it, with a little margin.
+    private func moveCapsule(under point: CGPoint) {
+        let size = picker.bounds.size
+        guard size.width > 0, size.height > 0 else { return }
+        let margin: CGFloat = 6
+        let resting = CGRect(
+            x: (bounds.width - size.width) / 2,
+            y: bounds.height + Self.restingBottom - size.height,
+            width: size.width,
+            height: size.height
+        )
+        func shift(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+            if value - margin < low { return value - margin - low }
+            if value + margin > high { return value + margin - high }
+            return 0
+        }
+        let dx = shift(point.x, resting.minX, resting.maxX)
+        let dy = shift(point.y, resting.minY, resting.maxY)
+        guard centerX.constant != dx || bottom.constant != Self.restingBottom + dy else { return }
+        centerX.constant = dx
+        bottom.constant = Self.restingBottom + dy
+        layoutIfNeeded()
     }
 
     override func layoutSubviews() {
