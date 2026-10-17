@@ -1764,15 +1764,10 @@ struct RequestComposer: View {
 /// time, always in the same format. Tapping either opens the matching system
 /// picker in a popover.
 ///
-/// The popover is presented by UIKit (`RequestPickerPopover`), not SwiftUI's
-/// `.popover`. With `.popover`, tapping a pill closed the whole composer
-/// before any value changed (debug.log on iOS 27: composer.disappear with no
-/// composer.user* line and scheduleEdited=false, three times running). The
-/// portal hosts each tab in its own UIHostingController under a
-/// UITabBarController, and SwiftUI appears to present a popover nested in the
-/// sheet from the controller already presenting the sheet, dismissing the
-/// sheet to make room. A view controller inside the sheet presents the
-/// popover from the sheet itself, which leaves the sheet alone.
+/// `.anchoredPopover`, not SwiftUI's `.popover`: with `.popover`, tapping a
+/// pill closed the whole composer before any value changed (debug.log on
+/// iOS 27: composer.disappear with no composer.user* line and
+/// scheduleEdited=false, three times running). See `View.anchoredPopover`.
 struct RequestDateTimeChooser: View {
     @Binding var selection: Date
     let minimum: Date?
@@ -1806,18 +1801,15 @@ struct RequestDateTimeChooser: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(label) \(text)")
-        // Behind the pill, so the popover's arrow points at it.
-        .background(
-            RequestPickerPopover(
-                isPresented: Binding(
-                    get: { editing == part },
-                    set: { if !$0, editing == part { editing = nil } }
-                ),
-                selection: $selection,
-                minimum: minimum,
-                part: part
-            )
-        )
+        .anchoredPopover(
+            isPresented: Binding(
+                get: { editing == part },
+                set: { if !$0, editing == part { editing = nil } }
+            ),
+            logName: "composer.\(part.rawValue)"
+        ) {
+            RequestPickerContent(selection: $selection, minimum: minimum, part: part)
+        }
     }
 }
 
@@ -1855,93 +1847,6 @@ private struct RequestPickerStyle: ViewModifier {
             content.datePickerStyle(.graphical).frame(width: 320)
         } else {
             content.datePickerStyle(.wheel).frame(width: 260)
-        }
-    }
-}
-
-/// Presents `RequestPickerContent` in a UIKit popover anchored to the view it
-/// backs. SwiftUI embeds the anchor controller as a child inside the composer
-/// sheet, so UIKit presents the popover from the sheet rather than from the
-/// controller that presented the sheet. See `RequestDateTimeChooser`.
-private struct RequestPickerPopover: UIViewControllerRepresentable {
-    @Binding var isPresented: Bool
-    @Binding var selection: Date
-    let minimum: Date?
-    let part: RequestDateTimeChooser.Part
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIViewController(context: Context) -> UIViewController {
-        let anchor = UIViewController()
-        anchor.view.backgroundColor = .clear
-        // Taps belong to the pill in front of it.
-        anchor.view.isUserInteractionEnabled = false
-        return anchor
-    }
-
-    func updateUIViewController(_ anchor: UIViewController, context: Context) {
-        let coordinator = context.coordinator
-        coordinator.onDismiss = { isPresented = false }
-        let content = RequestPickerContent(selection: $selection, minimum: minimum, part: part)
-
-        if let host = coordinator.host {
-            if isPresented {
-                host.rootView = content
-            } else {
-                coordinator.host = nil
-                host.dismiss(animated: true)
-            }
-            return
-        }
-        guard isPresented else { return }
-        guard anchor.view.window != nil, anchor.presentedViewController == nil else {
-            UIFlowLog.record("composer.pickerPopover", "skipped part=\(part.rawValue) inWindow=\(anchor.view.window != nil)")
-            DispatchQueue.main.async { isPresented = false }
-            return
-        }
-
-        let host = UIHostingController(rootView: content)
-        host.modalPresentationStyle = .popover
-        host.preferredContentSize = host.sizeThatFits(in: CGSize(width: 360, height: 520))
-        if let popover = host.popoverPresentationController {
-            popover.sourceView = anchor.view
-            popover.sourceRect = anchor.view.bounds
-            popover.permittedArrowDirections = [.up, .down]
-            popover.delegate = coordinator
-        }
-        coordinator.host = host
-        UIFlowLog.record("composer.pickerPopover", "present part=\(part.rawValue)")
-        anchor.present(host, animated: true)
-    }
-
-    static func dismantleUIViewController(_ anchor: UIViewController, coordinator: Coordinator) {
-        coordinator.host?.dismiss(animated: false)
-        coordinator.host = nil
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
-        var host: UIHostingController<RequestPickerContent>?
-        var onDismiss: () -> Void = {}
-
-        /// A popover on iPhone too, rather than the sheet UIKit adapts it to.
-        func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
-            .none
-        }
-
-        /// Tapping outside the popover closes it. The state is released here,
-        /// as the fade starts: `presentationControllerDidDismiss` runs only
-        /// once the fade has finished, which left the pill highlighted for a
-        /// visible beat after the popover was gone. A popover closed by a tap
-        /// outside cannot be cancelled midway, unlike a swiped sheet.
-        func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
-            UIFlowLog.record("composer.pickerPopover", "willDismiss")
-            host = nil
-            onDismiss()
-        }
-
-        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-            UIFlowLog.record("composer.pickerPopover", "dismissed")
         }
     }
 }

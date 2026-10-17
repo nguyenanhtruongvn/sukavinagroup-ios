@@ -280,6 +280,9 @@ struct MeetingBookingSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
+            // The wheels open in popovers pointing at their buttons, like the
+            // request composer's date and time. `.anchoredPopover`, not
+            // `.popover`: a SwiftUI popover inside this sheet closes the sheet.
             HStack(spacing: 10) {
                 timeAction(
                     title: "Bắt đầu",
@@ -287,7 +290,10 @@ struct MeetingBookingSheet: View {
                     icon: "clock.fill",
                     active: showStartPicker
                 ) {
-                    withAnimation(.snappy) { showStartPicker.toggle() }
+                    showStartPicker = true
+                }
+                .anchoredPopover(isPresented: $showStartPicker, logName: "booking.start") {
+                    startPicker
                 }
 
                 timeAction(
@@ -296,37 +302,11 @@ struct MeetingBookingSheet: View {
                     icon: "timer",
                     active: showDurationPicker
                 ) {
-                    withAnimation(.snappy) { showDurationPicker.toggle() }
+                    showDurationPicker = true
                 }
-            }
-
-            if showStartPicker {
-                HStack(spacing: 0) {
-                    pickerColumn("Giờ", selection: startHourBinding, values: Array(0...23))
-                    pickerColumn("Phút", selection: startMinuteBinding, values: Array(stride(from: 0, to: 60, by: MeetingBookingTime.minuteStep)))
+                .anchoredPopover(isPresented: $showDurationPicker, logName: "booking.duration") {
+                    durationPicker
                 }
-                .frame(height: 138)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            if showDurationPicker {
-                HStack(spacing: 0) {
-                    pickerColumn("Số", selection: $durationValue, values: durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120])
-                    Picker("Đơn vị", selection: $durationUnit) {
-                        Text("phút").tag("phút")
-                        Text("giờ").tag("giờ")
-                    }
-                    .pickerStyle(.wheel)
-                    .onChange(of: durationUnit) { _, unit in
-                        durationValue = unit == "giờ" ? 1 : 30
-                    }
-                }
-                .frame(height: 138)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             HStack(spacing: 9) {
@@ -704,6 +684,33 @@ struct MeetingBookingSheet: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    /// Hour and minute of the start, in the popover from "Bắt đầu".
+    private var startPicker: some View {
+        HStack(spacing: 0) {
+            pickerColumn("Giờ", selection: startHourBinding, values: Array(0...23))
+            pickerColumn("Phút", selection: startMinuteBinding, values: Array(stride(from: 0, to: 60, by: MeetingBookingTime.minuteStep)))
+        }
+        .frame(width: 240, height: 180)
+        .padding(8)
+    }
+
+    /// Amount and unit of the duration, in the popover from "Thời lượng".
+    private var durationPicker: some View {
+        HStack(spacing: 0) {
+            pickerColumn("Số", selection: $durationValue, values: durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120])
+            Picker("Đơn vị", selection: $durationUnit) {
+                Text("phút").tag("phút")
+                Text("giờ").tag("giờ")
+            }
+            .pickerStyle(.wheel)
+            .onChange(of: durationUnit) { _, unit in
+                durationValue = unit == "giờ" ? 1 : 30
+            }
+        }
+        .frame(width: 240, height: 180)
+        .padding(8)
     }
 
     private func pickerColumn(

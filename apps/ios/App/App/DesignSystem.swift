@@ -269,3 +269,112 @@ extension View {
 
 }
 
+extension View {
+    /// Shows `content` in a popover pointing at this view, presented by UIKit
+    /// rather than SwiftUI's `.popover`. Use it for popovers inside a sheet.
+    ///
+    /// SwiftUI's `.popover`, nested in a sheet, closed the sheet on the tap
+    /// that opened it (request composer, debug.log on iOS 27). The app hosts
+    /// its SwiftUI root in a UIHostingController that is a child of the root
+    /// view controller (`AppDelegate.mountRootView`), and SwiftUI appears to
+    /// present the popover from the controller already presenting the sheet,
+    /// dismissing the sheet to make room; that mechanism is inferred, not
+    /// traced. Here a child controller embedded in the sheet presents the
+    /// popover, so UIKit presents it from the sheet; the sheet stayed open
+    /// when tested on iOS 27.
+    ///
+    /// `logName` labels the popover in UIFlowLog.
+    func anchoredPopover<Content: View>(
+        isPresented: Binding<Bool>,
+        logName: String,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        background(AnchoredPopover(isPresented: isPresented, logName: logName, content: content))
+    }
+}
+
+/// See `View.anchoredPopover`.
+struct AnchoredPopover<Content: View>: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let logName: String
+    let content: () -> Content
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let anchor = UIViewController()
+        anchor.view.backgroundColor = .clear
+        // Taps belong to the view in front of it.
+        anchor.view.isUserInteractionEnabled = false
+        return anchor
+    }
+
+    func updateUIViewController(_ anchor: UIViewController, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.logName = logName
+        coordinator.onDismiss = { isPresented = false }
+
+        if let host = coordinator.host {
+            if isPresented {
+                // Keeps the popover showing the form's current values.
+                host.rootView = content()
+            } else {
+                coordinator.host = nil
+                host.dismiss(animated: true)
+            }
+            return
+        }
+        guard isPresented else { return }
+        guard anchor.view.window != nil, anchor.presentedViewController == nil else {
+            UIFlowLog.record("popover.skipped", "\(logName) inWindow=\(anchor.view.window != nil)")
+            DispatchQueue.main.async { isPresented = false }
+            return
+        }
+
+        let host = UIHostingController(rootView: content())
+        host.modalPresentationStyle = .popover
+        host.preferredContentSize = host.sizeThatFits(in: CGSize(width: 360, height: 520))
+        if let popover = host.popoverPresentationController {
+            popover.sourceView = anchor.view
+            popover.sourceRect = anchor.view.bounds
+            popover.permittedArrowDirections = [.up, .down]
+            popover.delegate = coordinator
+        }
+        coordinator.host = host
+        UIFlowLog.record("popover.present", logName)
+        anchor.present(host, animated: true)
+    }
+
+    static func dismantleUIViewController(_ anchor: UIViewController, coordinator: Coordinator) {
+        coordinator.host?.dismiss(animated: false)
+        coordinator.host = nil
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
+        var host: UIHostingController<Content>?
+        var logName = ""
+        var onDismiss: () -> Void = {}
+
+        /// A popover on iPhone too, rather than the sheet UIKit adapts it to.
+        func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+            .none
+        }
+
+        /// Tapping outside the popover closes it. The state is released here,
+        /// as the fade starts: `presentationControllerDidDismiss` runs only
+        /// once the fade has finished, which left the anchor highlighted for a
+        /// visible beat after the popover was gone. A popover closed by a tap
+        /// outside cannot be cancelled midway, unlike a swiped sheet.
+        func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+            UIFlowLog.record("popover.willDismiss", logName)
+            host = nil
+            onDismiss()
+        }
+
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            UIFlowLog.record("popover.dismissed", logName)
+        }
+    }
+}
+
