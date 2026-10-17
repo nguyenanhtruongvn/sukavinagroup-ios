@@ -1253,13 +1253,13 @@ struct RequestComposer: View {
                     if kind == .attendance {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
-                            // No inline label: "Ngày đối chiếu" above already names
-                            // it, and the label took the width the compact picker
-                            // needs for "Ngày 18 thg 10, 2026", so it fell back to
-                            // "18/10/26" and kept it. Re-created on a new day so it
-                            // measures the new date (see `dateTimePicker`).
+                            // The compact picker is sized to the date it first
+                            // measured; a longer one later ("Ngày 9 thg 9" to
+                            // "Ngày 18 thg 10") gets no more width, however much
+                            // space is free around it, and shows "18/10/26".
+                            // Re-created on a new day so it measures again (see
+                            // `dateTimePicker`).
                             DatePicker("Ngày chấm công", selection: editedByEmployee($attendanceDate), displayedComponents: .date)
-                                .labelsHidden()
                                 .datePickerStyle(.compact)
                                 .id(VietnamTime.calendar.startOfDay(for: attendanceDate))
                             if let day = attendanceDay {
@@ -1356,11 +1356,9 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
-                            // As "Ngày chấm công": named by the heading above, so
-                            // no inline label taking its width, and re-created on a
-                            // new day; switching to Đi trễ or Về sớm moves `from`.
+                            // Re-created on a new day, as "Ngày chấm công";
+                            // switching to Đi trễ or Về sớm also moves `from`.
                             DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
-                                .labelsHidden()
                                 .datePickerStyle(.compact)
                                 .id(VietnamTime.calendar.startOfDay(for: from))
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
