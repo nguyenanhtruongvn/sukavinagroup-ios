@@ -1929,11 +1929,19 @@ private struct RequestPickerPopover: UIViewControllerRepresentable {
             .none
         }
 
-        /// Tapping outside the popover closes it.
-        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-            UIFlowLog.record("composer.pickerPopover", "dismissed")
+        /// Tapping outside the popover closes it. The state is released here,
+        /// as the fade starts: `presentationControllerDidDismiss` runs only
+        /// once the fade has finished, which left the pill highlighted for a
+        /// visible beat after the popover was gone. A popover closed by a tap
+        /// outside cannot be cancelled midway, unlike a swiped sheet.
+        func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+            UIFlowLog.record("composer.pickerPopover", "willDismiss")
             host = nil
             onDismiss()
+        }
+
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            UIFlowLog.record("composer.pickerPopover", "dismissed")
         }
     }
 }
