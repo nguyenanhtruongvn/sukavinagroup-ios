@@ -278,17 +278,33 @@ struct MeetingBookingSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
-            // The system's own compact time picker and a system menu, as in
-            // the attendance request: smooth, and nothing that SwiftUI has to
-            // present inside this sheet.
-            HStack(spacing: 10) {
-                bookingTile(title: "Bắt đầu", icon: "clock.fill") {
-                    BookingStartTimePicker(selection: $start)
-                        .fixedSize()
+            // Laid out as in the request composer: the time beside its label
+            // in Apple's compact picker (as "Ngày xảy ra"), and the duration
+            // as two system menus (as Đi trễ's "Số lượng" and "Đơn vị").
+            HStack {
+                Text("Bắt đầu")
+                Spacer(minLength: 8)
+                BookingStartTimePicker(selection: $start)
+                    .fixedSize()
+            }
+
+            HStack(spacing: 12) {
+                durationField(title: "Số lượng", value: "\(durationValue)") {
+                    Picker("Số lượng", selection: $durationValue) {
+                        ForEach(durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { value in
+                            Text("\(value)").tag(value)
+                        }
+                    }
                 }
-                bookingTile(title: "Thời lượng", icon: "timer") {
-                    durationMenu
+                durationField(title: "Đơn vị", value: durationUnit) {
+                    Picker("Đơn vị", selection: $durationUnit) {
+                        Text("phút").tag("phút")
+                        Text("giờ").tag("giờ")
+                    }
                 }
+            }
+            .onChange(of: durationUnit) { _, unit in
+                durationValue = unit == "giờ" ? 1 : 30
             }
 
             HStack(spacing: 9) {
@@ -632,65 +648,40 @@ struct MeetingBookingSheet: View {
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
     }
 
-    /// A start or duration tile: icon and title over the control that edits it.
-    private func bookingTile<Content: View>(
+    /// A titled system menu, built as the request composer's duration fields
+    /// ("Số lượng", "Đơn vị"), in this sheet's system colours.
+    private func durationField<Content: View>(
         title: String,
-        icon: String,
+        value: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Image(systemName: icon)
-                .foregroundStyle(Color.red)
-            Text(title)
-                .font(.caption)
+            Text(title.uppercased())
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(Color(uiColor: .secondaryLabel))
-            content()
+            Menu {
+                content()
+            } label: {
+                HStack(spacing: 8) {
+                    Text(value)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color(uiColor: .label))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
+                }
+                .contentShape(Rectangle())
+                .padding(.horizontal, 14)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(Color(uiColor: .secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityValue(value)
         }
-        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    /// Every allowed duration in one system menu, minutes then hours, with
-    /// the same choices the duration wheels offered.
-    private var durationMenu: some View {
-        Menu {
-            Section("Phút") {
-                ForEach([5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { minutes in
-                    durationOption(minutes, unit: "phút")
-                }
-            }
-            Section("Giờ") {
-                ForEach(Array(1...8), id: \.self) { hours in
-                    durationOption(hours, unit: "giờ")
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Text("\(durationValue) \(durationUnit)")
-                    .font(.headline.weight(.bold).monospacedDigit())
-                    .foregroundStyle(Color(uiColor: .label))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
-            }
-        }
-        .accessibilityLabel("Thời lượng")
-        .accessibilityValue("\(durationValue) \(durationUnit)")
-    }
-
-    private func durationOption(_ value: Int, unit: String) -> some View {
-        Button {
-            durationUnit = unit
-            durationValue = value
-        } label: {
-            if durationUnit == unit && durationValue == value {
-                Label("\(value) \(unit)", systemImage: "checkmark")
-            } else {
-                Text("\(value) \(unit)")
-            }
-        }
     }
 
     private func searchField(

@@ -1289,7 +1289,8 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     // Built once and updated in place: re-creating the picker while its
     // system overlay is open would cut the employee off mid-choice.
     private let startTimePicker = UIDatePicker()
-    private let durationButton = UIButton(type: .system)
+    private let durationValueButton = UIButton(type: .system)
+    private let durationUnitButton = UIButton(type: .system)
     private let expectedLabel = UILabel()
     private let countBadge = UILabel()
     private let selectedSection = UIStackView()
@@ -1477,17 +1478,28 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         titleGroup.spacing = 7
         card.addArrangedSubview(titleGroup)
 
-        // The system's compact time picker and a system menu, as on iOS 18
-        // (MeetingBookingSheet) and in the attendance request.
+        // Laid out as in the request composer and on iOS 18
+        // (MeetingBookingSheet): the time beside its label in the compact
+        // picker, and the duration as two system menus.
         configureStartTimePicker()
-        configureDurationButton()
-        let tiles = UIStackView(arrangedSubviews: [
-            makeTile(title: "Bắt đầu", icon: "clock.fill", control: startTimePicker),
-            makeTile(title: "Thời lượng", icon: "timer", control: durationButton),
+        let startLabel = label("Bắt đầu", style: .body, color: .label)
+        startLabel.setContentHuggingPriority(.required, for: .horizontal)
+        startTimePicker.setContentHuggingPriority(.required, for: .horizontal)
+        let startSpacer = UIView()
+        startSpacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
+        let startRow = UIStackView(arrangedSubviews: [startLabel, startSpacer, startTimePicker])
+        startRow.alignment = .center
+        startRow.spacing = 8
+        card.addArrangedSubview(startRow)
+
+        let durationFields = UIStackView(arrangedSubviews: [
+            makeMenuField(title: "Số lượng", button: durationValueButton),
+            makeMenuField(title: "Đơn vị", button: durationUnitButton),
         ])
-        tiles.spacing = 10
-        tiles.distribution = .fillEqually
-        card.addArrangedSubview(tiles)
+        durationFields.spacing = 12
+        durationFields.distribution = .fillEqually
+        card.addArrangedSubview(durationFields)
+        renderDurationButtons()
 
         let clockIcon = UIImageView(image: UIImage(systemName: "clock.arrow.circlepath"))
         clockIcon.tintColor = red
@@ -1610,7 +1622,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             button.configuration = typeConfiguration(value: value, icon: icon, selected: value == meetingType)
         }
         if startTimePicker.date != start { startTimePicker.date = start }
-        renderDurationButton()
+        renderDurationButtons()
         expectedLabel.text = "\(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: endTime))"
         renderInvitees()
     }
@@ -1968,31 +1980,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         return configuration
     }
 
-    /// A start or duration tile: icon and title over the control that edits
-    /// it. Built once; `render()` only updates the control.
-    private func makeTile(title: String, icon: String, control: UIView) -> UIView {
-        let tile = UIView()
-        tile.backgroundColor = .secondarySystemBackground
-        tile.layer.cornerRadius = 14
-        tile.layer.cornerCurve = .continuous
-        let iconView = UIImageView(image: UIImage(systemName: icon))
-        iconView.tintColor = red
-        let titleLabel = label(title, style: .caption1, color: .secondaryLabel)
-        let stack = UIStackView(arrangedSubviews: [iconView, titleLabel, control])
-        stack.axis = .vertical
-        stack.alignment = .leading
-        stack.spacing = 7
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        tile.addSubview(stack)
-        NSLayoutConstraint.activate([
-            stack.topAnchor.constraint(equalTo: tile.topAnchor, constant: 12),
-            stack.bottomAnchor.constraint(equalTo: tile.bottomAnchor, constant: -12),
-            stack.leadingAnchor.constraint(equalTo: tile.leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: tile.trailingAnchor, constant: -12),
-        ])
-        return tile
-    }
-
     /// The system's compact time picker, in Vietnam time and 5-minute steps
     /// (`MeetingBookingTime.minuteStep`).
     private func configureStartTimePicker() {
@@ -2013,46 +2000,72 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         }, for: .valueChanged)
     }
 
-    /// The duration as a system menu, minutes then hours, as on iOS 18.
-    private func configureDurationButton() {
-        durationButton.showsMenuAsPrimaryAction = true
-        durationButton.contentHorizontalAlignment = .leading
-        renderDurationButton()
-    }
-
-    private func renderDurationButton() {
-        var configuration = UIButton.Configuration.plain()
-        configuration.contentInsets = .zero
-        configuration.image = UIImage(
+    /// A titled system menu, built as the request composer's duration fields
+    /// ("Số lượng", "Đơn vị"): caption over a box with the value and a
+    /// chevron. Built once; `renderDurationButtons()` updates the value and
+    /// the menu.
+    private func makeMenuField(title: String, button: UIButton) -> UIView {
+        let titleLabel = label(title.uppercased(), style: .caption1, weight: .semibold, color: .secondaryLabel)
+        button.showsMenuAsPrimaryAction = true
+        button.contentHorizontalAlignment = .leading
+        button.backgroundColor = .secondarySystemBackground
+        button.layer.cornerRadius = 14
+        button.layer.cornerCurve = .continuous
+        button.accessibilityLabel = title
+        let chevron = UIImageView(image: UIImage(
             systemName: "chevron.up.chevron.down",
             withConfiguration: UIImage.SymbolConfiguration(textStyle: .caption1, scale: .medium)
-        )
-        configuration.imagePlacement = .trailing
-        configuration.imagePadding = 6
-        configuration.baseForegroundColor = .label
-        configuration.imageColorTransformer = UIConfigurationColorTransformer { _ in .secondaryLabel }
-        var title = AttributedString("\(durationValue) \(durationUnit)")
-        title.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .headline).pointSize, weight: .bold)
-        configuration.attributedTitle = title
-        durationButton.configuration = configuration
-        durationButton.menu = UIMenu(children: [
-            durationSection("Phút", unit: "phút", values: durationMinutesChoices),
-            durationSection("Giờ", unit: "giờ", values: durationHoursChoices),
+        ))
+        chevron.tintColor = .secondaryLabel
+        chevron.isUserInteractionEnabled = false
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(chevron)
+        NSLayoutConstraint.activate([
+            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 50),
+            chevron.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -14),
+            chevron.centerYAnchor.constraint(equalTo: button.centerYAnchor),
         ])
-        durationButton.accessibilityLabel = "Thời lượng"
-        durationButton.accessibilityValue = "\(durationValue) \(durationUnit)"
+        let stack = UIStackView(arrangedSubviews: [titleLabel, button])
+        stack.axis = .vertical
+        stack.spacing = 7
+        return stack
     }
 
-    private func durationSection(_ title: String, unit: String, values: [Int]) -> UIMenu {
-        UIMenu(title: title, options: .displayInline, children: values.map { value in
-            let chosen = durationUnit == unit && durationValue == value
-            return UIAction(title: "\(value) \(unit)", state: chosen ? .on : .off) { [weak self] _ in
+    /// The duration's two menus, as on iOS 18: the amounts offered depend on
+    /// the unit, and a new unit starts again at 1 hour or 30 minutes.
+    private func renderDurationButtons() {
+        styleMenuButton(durationValueButton, value: "\(durationValue)")
+        let values = durationUnit == "giờ" ? durationHoursChoices : durationMinutesChoices
+        durationValueButton.menu = UIMenu(children: values.map { value in
+            UIAction(title: "\(value)", state: value == durationValue ? .on : .off) { [weak self] _ in
                 guard let self else { return }
-                durationUnit = unit
-                durationValue = value
-                render()
+                self.durationValue = value
+                self.render()
             }
         })
+        durationValueButton.accessibilityValue = "\(durationValue)"
+
+        styleMenuButton(durationUnitButton, value: durationUnit)
+        durationUnitButton.menu = UIMenu(children: ["phút", "giờ"].map { unit in
+            UIAction(title: unit, state: unit == durationUnit ? .on : .off) { [weak self] _ in
+                guard let self, unit != self.durationUnit else { return }
+                self.durationUnit = unit
+                self.durationValue = unit == "giờ" ? 1 : 30
+                self.render()
+            }
+        })
+        durationUnitButton.accessibilityValue = durationUnit
+    }
+
+    private func styleMenuButton(_ button: UIButton, value: String) {
+        var configuration = UIButton.Configuration.plain()
+        // Room on the trailing side for the chevron added in makeMenuField.
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 34)
+        configuration.baseForegroundColor = .label
+        var title = AttributedString(value)
+        title.font = UIFont.preferredFont(forTextStyle: .body).withWeight(.semibold)
+        configuration.attributedTitle = title
+        button.configuration = configuration
     }
 
     private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight? = nil, color: UIColor) -> UILabel {
