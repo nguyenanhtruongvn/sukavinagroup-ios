@@ -958,8 +958,11 @@ struct RequestComposer: View {
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
     private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
     private var singleDayEventName: String { kind == .late ? "đi trễ" : "về sớm" }
+    /// Pairs that belong together: whole-day absence (Xin nghỉ, Công tác),
+    /// shift deviations (Đi trễ, Về sớm), extra work (Làm thêm giờ, Làm chủ
+    /// nhật), then Ra cổng and Xác nhận giờ công. Same order on Android and web.
     private var compactRequestKinds: [EmployeeRequestKind] {
-        EmployeeRequestKind.allCases.filter { $0 != .attendance && $0 != .sunday }
+        [.leave, .business, .late, .early, .overtime, .sunday, .gate, .attendance]
     }
     private var durationMinutes: Int { durationUnit == .hours ? durationValue * 60 : durationValue }
     private var durationDescription: String { "\(durationValue) \(durationUnit.title.lowercased())" }
@@ -1209,10 +1212,6 @@ struct RequestComposer: View {
                         composerLabel("Loại đơn", icon: "square.grid.2x2")
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             ForEach(compactRequestKinds) { requestKindButton($0) }
-                        }
-                        HStack(spacing: 10) {
-                            requestKindButton(.sunday)
-                            requestKindButton(.attendance)
                         }
                     }
 
