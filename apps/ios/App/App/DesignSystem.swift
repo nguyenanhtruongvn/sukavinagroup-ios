@@ -512,12 +512,18 @@ struct TileFillingTimePicker: UIViewRepresentable {
 /// The touch is then a real tap inside Apple's capsule, and the bubble
 /// opens from the capsule at its own size, as Apple's does.
 ///
-/// Once its bubble had been closed by opening the Thời lượng menu, the
-/// booking's picker answered no tap at all until the sheet was reopened
-/// (1.0.84). A picker that has closed its bubble is therefore swapped for
-/// a fresh one, and so is one that never reported its bubble closed when
-/// a new tap reaches it with nothing presented. Taps, bubbles and swaps
-/// are logged ("tilePicker.*") with the tile's name.
+/// The Thời lượng menu blocked the bubble (debug.log, 1.0.85): a tap on
+/// the tile while the menu was still on screen reached the picker, the
+/// picker reported its bubble open, but the sheet was still presenting
+/// the menu (_UIContextMenuActionsOnlyViewController), so the bubble never
+/// appeared and never reported closing; the picker then counted itself
+/// open and the next tap only closed what was not there. So:
+/// - a touch on the tile while a context menu is presented closes the
+///   menu at once, before the tap reaches the picker, so its bubble can
+///   open on that same tap;
+/// - a picker that reports its bubble open while no bubble is presented
+///   is swapped for a fresh one, so no tap is lost on a stuck picker.
+/// Taps, bubbles, closed menus and swaps are logged ("tilePicker.*").
 final class TileFillingPickerView: UIView {
     private(set) var picker = UIDatePicker()
     /// Names the tile in debug.log.
@@ -578,18 +584,22 @@ final class TileFillingPickerView: UIView {
         guard sender === picker else { return }
         isOpen = true
         UIFlowLog.record("tilePicker.open", name)
+        // Did the bubble really appear? Its presentation takes well under
+        // this; a blocked one never comes.
+        Task { @MainActor [weak self, weak sender] in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            guard let self, let sender, sender === self.picker, self.isOpen else { return }
+            let presented = self.nearestViewController()?.presentedViewController
+            guard !Self.isDateBubble(presented) else { return }
+            UIFlowLog.record("tilePicker.openFailed", "\(self.name) presented=\(Self.typeName(presented))")
+            self.replacePicker(reason: "openFailed")
+        }
     }
 
     @objc private func bubbleClosed(_ sender: UIDatePicker) {
         guard sender === picker else { return }
         isOpen = false
         UIFlowLog.record("tilePicker.close", name)
-        // After the bubble's closing animation, which still uses this picker.
-        Task { @MainActor [weak self, weak sender] in
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            guard let self, let sender, sender === self.picker, !self.isOpen else { return }
-            self.replacePicker(reason: "afterClose")
-        }
     }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -603,19 +613,49 @@ final class TileFillingPickerView: UIView {
         return picker.hitTest(inPicker, with: event) ?? picker
     }
 
-    /// Logs a new touch; swaps a picker that still counts its bubble open
-    /// when nothing is presented any more.
+    /// Logs a new touch; closes a context menu still on screen, which would
+    /// block the bubble; swaps a picker that still counts its bubble open
+    /// when no bubble is presented.
     private func touchBegan(at point: CGPoint) {
-        let presented = nearestViewController()?.presentedViewController
-        let presentedName = presented.map { String(describing: type(of: $0)) } ?? "none"
+        let controller = nearestViewController()
+        let presented = controller?.presentedViewController
         let dismissing = presented?.isBeingDismissed ?? false
         UIFlowLog.record(
             "tilePicker.touch",
-            "\(name) at=\(Int(point.x)),\(Int(point.y)) open=\(isOpen) presented=\(presentedName) dismissing=\(dismissing) firstResponder=\(picker.isFirstResponder)"
+            "\(name) at=\(Int(point.x)),\(Int(point.y)) open=\(isOpen) presented=\(Self.typeName(presented)) dismissing=\(dismissing)"
         )
-        if isOpen, presented == nil || dismissing {
+        if let presented, Self.typeName(presented).contains("ContextMenu") {
+            // At once, not animated: the bubble is presented when this tap
+            // ends, a few hundredths of a second from now.
+            presented.dismiss(animated: false)
+            if let window { Self.dismissContextMenus(in: window) }
+            UIFlowLog.record(
+                "tilePicker.closedMenu",
+                "\(name) stillPresented=\(Self.typeName(controller?.presentedViewController))"
+            )
+        }
+        if isOpen, !Self.isDateBubble(controller?.presentedViewController) {
             replacePicker(reason: "stuckOpen")
         }
+    }
+
+    /// Lets every context menu interaction know its menu is gone.
+    private static func dismissContextMenus(in view: UIView) {
+        for case let interaction as UIContextMenuInteraction in view.interactions {
+            interaction.dismissMenu()
+        }
+        for subview in view.subviews {
+            dismissContextMenus(in: subview)
+        }
+    }
+
+    private static func isDateBubble(_ controller: UIViewController?) -> Bool {
+        guard let controller, !controller.isBeingDismissed else { return false }
+        return typeName(controller).contains("DatePicker")
+    }
+
+    private static func typeName(_ controller: UIViewController?) -> String {
+        controller.map { String(describing: type(of: $0)) } ?? "none"
     }
 
     private func nearestViewController() -> UIViewController? {
