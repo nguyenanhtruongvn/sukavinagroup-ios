@@ -1354,8 +1354,8 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
-                            // As "Ngày chấm công"; switching to Đi trễ or Về sớm
-                            // also moves `from`, which re-measures it too.
+                            // As "Ngày chấm công"; when switching to Đi trễ or Về
+                            // sớm moves `from`, the picker widens itself as well.
                             CompactDateRow(label: "Ngày xảy ra") {
                                 DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
                                     .labelsHidden()
