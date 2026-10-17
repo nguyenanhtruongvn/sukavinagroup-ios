@@ -1974,29 +1974,25 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     }
 
     /// The system's compact time picker, in Vietnam time and 5-minute steps
-    /// (`MeetingBookingTime.minuteStep`). Set up through `configure`, which
-    /// also sets up each fresh picker the tile swaps in.
+    /// (`MeetingBookingTime.minuteStep`).
     private func configureStartTimePicker() {
         startTileControl.name = "Bắt đầu"
-        startTileControl.configure = { [weak self] picker in
+        startTimePicker.datePickerMode = .time
+        startTimePicker.preferredDatePickerStyle = .compact
+        startTimePicker.minuteInterval = MeetingBookingTime.minuteStep
+        startTimePicker.timeZone = VietnamTime.timeZone
+        startTimePicker.calendar = VietnamTime.calendar
+        startTimePicker.locale = VietnamTime.locale
+        startTimePicker.date = start
+        startTimePicker.accessibilityLabel = "Bắt đầu"
+        startTimePicker.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            picker.datePickerMode = .time
-            picker.preferredDatePickerStyle = .compact
-            picker.minuteInterval = MeetingBookingTime.minuteStep
-            picker.timeZone = VietnamTime.timeZone
-            picker.calendar = VietnamTime.calendar
-            picker.locale = VietnamTime.locale
-            picker.date = self.start
-            picker.accessibilityLabel = "Bắt đầu"
-            picker.addAction(UIAction { [weak self, weak picker] _ in
-                guard let self, let picker else { return }
-                // Only the hour and minute, so the booking stays on its day.
-                let calendar = MeetingPresentation.calendar
-                let time = calendar.dateComponents([.hour, .minute], from: picker.date)
-                self.start = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: self.start) ?? self.start
-                self.render()
-            }, for: .valueChanged)
-        }
+            // Only the hour and minute, so the booking stays on its day.
+            let calendar = MeetingPresentation.calendar
+            let time = calendar.dateComponents([.hour, .minute], from: self.startTimePicker.date)
+            self.start = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: self.start) ?? self.start
+            self.render()
+        }, for: .valueChanged)
     }
 
     /// A start or duration tile, as on iOS 18: icon and chevron, caption,
