@@ -899,6 +899,8 @@ struct RequestComposer: View {
     @State private var reasonEditorHeight: CGFloat = 150
     @State private var reasonFocused = false
     @State private var leaveScheduleWasInitialized = false
+    /// The "Số lượng" wheel, open under the duration fields.
+    @State private var showsDurationWheel = false
     @FocusState private var focusedInput: RequestInputFocus?
 
     private enum RequestInputFocus: Hashable {
@@ -1365,8 +1367,12 @@ struct RequestComposer: View {
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)
                             HStack(spacing: 12) {
-                                durationValueMenu
+                                durationValueField
                                 durationUnitMenu
+                            }
+                            if showsDurationWheel {
+                                durationValueWheel
+                                    .transition(.opacity.combined(with: .move(edge: .top)))
                             }
                             Text("Thời lượng đã chọn: \(durationDescription).")
                                 .font(.footnote.weight(.medium))
@@ -1690,14 +1696,40 @@ struct RequestComposer: View {
         }
     }
 
-    private var durationValueMenu: some View {
-        durationMenu(title: "Số lượng", value: "\(durationValue)") {
-            Picker("Số lượng", selection: $durationValue) {
-                ForEach(1...durationUnit.maximumValue, id: \.self) { value in
-                    Text("\(value)").tag(value)
-                }
+    /// Opens Apple's wheel under the fields, already on the current value. A
+    /// system menu always opens at 1 and cannot be scrolled to the selection,
+    /// so with up to 60 minutes the chosen value was a long scroll away.
+    private var durationValueField: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            durationFieldTitle("Số lượng")
+            Button {
+                withAnimation(.snappy) { showsDurationWheel.toggle() }
+            } label: {
+                durationFieldBox(value: "\(durationValue)", symbol: showsDurationWheel ? "chevron.up" : "chevron.down")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Số lượng")
+            .accessibilityValue("\(durationValue)")
+            .accessibilityHint(showsDurationWheel ? "Thu gọn bánh xe" : "Mở bánh xe chọn số")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var durationValueWheel: some View {
+        Picker("Số lượng", selection: $durationValue) {
+            ForEach(1...durationUnit.maximumValue, id: \.self) { value in
+                Text("\(value)").tag(value)
             }
         }
+        .pickerStyle(.wheel)
+        .labelsHidden()
+        // Minutes and hours have different ranges; a new unit gets a new
+        // wheel rather than one re-counting its rows under the finger.
+        .id(durationUnit)
+        .frame(maxWidth: .infinity)
+        .frame(height: 150)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var durationUnitMenu: some View {
@@ -1713,31 +1745,40 @@ struct RequestComposer: View {
     @ViewBuilder
     private func durationMenu<Content: View>(title: String, value: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.muted)
+            durationFieldTitle(title)
             Menu {
                 content()
             } label: {
-                HStack(spacing: 8) {
-                    Text(value)
-                        .font(.body.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.muted)
-                }
-                .contentShape(Rectangle())
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .background(AppTheme.card)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                durationFieldBox(value: value, symbol: "chevron.up.chevron.down")
             }
             .buttonStyle(.plain)
             .accessibilityLabel(title)
             .accessibilityValue(value)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func durationFieldTitle(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(AppTheme.muted)
+    }
+
+    /// The box shared by "Số lượng" and "Đơn vị", so the two read as a pair.
+    private func durationFieldBox(value: String, symbol: String) -> some View {
+        HStack(spacing: 8) {
+            Text(value)
+                .font(.body.weight(.semibold))
+            Spacer(minLength: 0)
+            Image(systemName: symbol)
+                .font(.caption.weight(.bold))
+                .foregroundStyle(AppTheme.muted)
+        }
+        .contentShape(Rectangle())
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: 50)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     @ViewBuilder
