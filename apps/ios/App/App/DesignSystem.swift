@@ -288,9 +288,9 @@ extension View {
     /// The picker's own width is logged (UIFlowLog "datePicker.width") next
     /// to the width its long form needs.
     ///
-    /// Apply it to the picker alone, with `.labelsHidden()`, and lay it out
-    /// in a `CompactDateRow` (or a fallback of its own) so the wider picker
-    /// moves under its label instead of overflowing a narrow screen.
+    /// Apply it to the picker alone, with `.labelsHidden()`, and give it ONE
+    /// layout for its whole life (`CompactDateRow`, or a fixed stack): any
+    /// layout switch swaps in a second picker, which comes up short.
     func keepsFullCompactDate(day: Date, includesTime: Bool = false, logName: String) -> some View {
         modifier(FullCompactDate(
             day: VietnamTime.calendar.startOfDay(for: day),
@@ -373,31 +373,28 @@ struct FullCompactDate: ViewModifier {
     }
 }
 
-/// A label and a `keepsFullCompactDate` picker: side by side when the
-/// picker's full width fits beside the label, the picker under the label
-/// when it does not, never overflowing the row.
+/// A label and a `keepsFullCompactDate` picker on one row, as a labelled
+/// DatePicker lays out. The picker keeps its full width; a long label
+/// wraps instead.
+///
+/// One layout only. Choosing between a row and a stack (ViewThatFits, in
+/// 4e051cf) swapped in the other layout's picker whenever the date's
+/// length crossed the fit, and a new picker comes up at the old width and
+/// shows "18/10/26": "Ngày chấm công", the longest label, sat on that line
+/// and still shortened while "Ngày xảy ra" never did.
 struct CompactDateRow<Picker: View>: View {
     let label: String
     @ViewBuilder let picker: () -> Picker
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack {
-                labelText
-                Spacer(minLength: 8)
-                picker()
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                labelText
-                picker()
-                    .environment(\.compactDateAlignment, .leading)
-            }
+        HStack {
+            Text(label)
+                .lineLimit(2)
+                // VoiceOver reads the picker's own label instead.
+                .accessibilityHidden(true)
+            Spacer(minLength: 8)
+            picker()
+                .fixedSize()
         }
-    }
-
-    /// VoiceOver reads the picker's own label instead.
-    private var labelText: some View {
-        Text(label)
-            .accessibilityHidden(true)
     }
 }

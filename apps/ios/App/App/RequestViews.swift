@@ -879,6 +879,18 @@ struct RequestComposer: View {
         var id: String { rawValue }
         var title: String { self == .minutes ? "Phút" : "Giờ" }
         var maximumValue: Int { self == .minutes ? 60 : 24 }
+        /// Minutes in 5-minute steps: a system menu opens at its first item
+        /// and cannot scroll to the selection, and 60 single minutes put the
+        /// default 30 a long scroll away. Twelve steps fit on screen with the
+        /// current amount in view, as the booking form's duration. Hours one
+        /// by one.
+        var choices: [Int] {
+            self == .minutes ? Array(stride(from: 5, through: 60, by: 5)) : Array(1...24)
+        }
+
+        func nearestChoice(to value: Int) -> Int {
+            choices.min { abs($0 - value) < abs($1 - value) } ?? value
+        }
     }
 
     @Environment(\.dismiss) private var dismiss
@@ -1391,7 +1403,7 @@ struct RequestComposer: View {
                         .onChange(of: durationUnit) { previousUnit, unit in
                             durationValue = unit == .hours && previousUnit != .hours
                                 ? 1
-                                : min(durationValue, unit.maximumValue)
+                                : unit.nearestChoice(to: min(durationValue, unit.maximumValue))
                         }
                     }
 
@@ -1642,32 +1654,13 @@ struct RequestComposer: View {
             .foregroundStyle(.primary)
     }
 
-    @ViewBuilder
+    /// Always the label over the picker. The full date and time need about
+    /// 260pt, more than most phones have beside the label, and choosing
+    /// between two layouts (ViewThatFits) swapped in a second picker
+    /// whenever the date's length crossed the line: a new picker comes up
+    /// at the old width and shows "18/10/26" (see `keepsFullCompactDate`).
+    /// One layout keeps one picker for the life of the row.
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
-        if usesCompactDateRows {
-            // The picker is given the width of its full date and time
-            // (`keepsFullCompactDate`), which beside the label is more than
-            // most phones have; then it goes under the label instead of
-            // shortening the date or overflowing the card.
-            ViewThatFits(in: .horizontal) {
-                // iOS 18's compact DatePicker has a large intrinsic width.
-                // Keeping the label fixed and removing the flexible spacer
-                // prevents "Bắt đầu" and "Kết thúc" from being truncated.
-                HStack(spacing: 6) {
-                    requestDateLabel(title)
-                        .fixedSize(horizontal: true, vertical: false)
-                    dateTimePicker(title, selection: selection, range: range)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-                stackedDateRow(title, selection: selection, range: range)
-            }
-        } else {
-            stackedDateRow(title, selection: selection, range: range)
-        }
-    }
-
-    private func stackedDateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             requestDateLabel(title)
             dateTimePicker(title, selection: selection, range: range)
@@ -1713,10 +1706,18 @@ struct RequestComposer: View {
         }
     }
 
+    /// The menu's amounts. A resubmitted request keeps its own amount
+    /// selectable even when it is not a 5-minute step ("7 phút"), rather
+    /// than having it rounded away unseen.
+    private var durationValueChoices: [Int] {
+        let choices = durationUnit.choices
+        return choices.contains(durationValue) ? choices : (choices + [durationValue]).sorted()
+    }
+
     private var durationValueMenu: some View {
         durationMenu(title: "Số lượng", value: "\(durationValue)") {
             Picker("Số lượng", selection: $durationValue) {
-                ForEach(1...durationUnit.maximumValue, id: \.self) { value in
+                ForEach(durationValueChoices, id: \.self) { value in
                     Text("\(value)").tag(value)
                 }
             }

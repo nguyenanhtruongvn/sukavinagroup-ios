@@ -1289,8 +1289,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     // Built once and updated in place: re-creating the picker while its
     // system overlay is open would cut the employee off mid-choice.
     private let startTimePicker = UIDatePicker()
-    private let durationValueButton = UIButton(type: .system)
-    private let durationUnitButton = UIButton(type: .system)
+    private let durationButton = UIButton(type: .system)
     private let expectedLabel = UILabel()
     private let countBadge = UILabel()
     private let selectedSection = UIStackView()
@@ -1478,28 +1477,14 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         titleGroup.spacing = 7
         card.addArrangedSubview(titleGroup)
 
-        // Laid out as in the request composer and on iOS 18
-        // (MeetingBookingSheet): the time beside its label in the compact
-        // picker, and the duration as two system menus.
+        // The two facts of a booking, each beside its label, as on iOS 18
+        // (MeetingBookingSheet): when it starts (hh:mm, the compact time
+        // picker) and how long it lasts (a system menu, minutes or hours).
         configureStartTimePicker()
-        let startLabel = label("Bắt đầu", style: .body, color: .label)
-        startLabel.setContentHuggingPriority(.required, for: .horizontal)
-        startTimePicker.setContentHuggingPriority(.required, for: .horizontal)
-        let startSpacer = UIView()
-        startSpacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
-        let startRow = UIStackView(arrangedSubviews: [startLabel, startSpacer, startTimePicker])
-        startRow.alignment = .center
-        startRow.spacing = 8
-        card.addArrangedSubview(startRow)
-
-        let durationFields = UIStackView(arrangedSubviews: [
-            makeMenuField(title: "Số lượng", button: durationValueButton),
-            makeMenuField(title: "Đơn vị", button: durationUnitButton),
-        ])
-        durationFields.spacing = 12
-        durationFields.distribution = .fillEqually
-        card.addArrangedSubview(durationFields)
-        renderDurationButtons()
+        card.addArrangedSubview(labelledRow("Bắt đầu", control: startTimePicker))
+        durationButton.showsMenuAsPrimaryAction = true
+        card.addArrangedSubview(labelledRow("Thời lượng", control: durationButton))
+        renderDurationButton()
 
         let clockIcon = UIImageView(image: UIImage(systemName: "clock.arrow.circlepath"))
         clockIcon.tintColor = red
@@ -1622,7 +1607,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             button.configuration = typeConfiguration(value: value, icon: icon, selected: value == meetingType)
         }
         if startTimePicker.date != start { startTimePicker.date = start }
-        renderDurationButtons()
+        renderDurationButton()
         expectedLabel.text = "\(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: endTime))"
         renderInvitees()
     }
@@ -2000,72 +1985,56 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         }, for: .valueChanged)
     }
 
-    /// A titled system menu, built as the request composer's duration fields
-    /// ("Số lượng", "Đơn vị"): caption over a box with the value and a
-    /// chevron. Built once; `renderDurationButtons()` updates the value and
-    /// the menu.
-    private func makeMenuField(title: String, button: UIButton) -> UIView {
-        let titleLabel = label(title.uppercased(), style: .caption1, weight: .semibold, color: .secondaryLabel)
-        button.showsMenuAsPrimaryAction = true
-        button.contentHorizontalAlignment = .leading
-        button.backgroundColor = .secondarySystemBackground
-        button.layer.cornerRadius = 14
-        button.layer.cornerCurve = .continuous
-        button.accessibilityLabel = title
-        let chevron = UIImageView(image: UIImage(
-            systemName: "chevron.up.chevron.down",
-            withConfiguration: UIImage.SymbolConfiguration(textStyle: .caption1, scale: .medium)
-        ))
-        chevron.tintColor = .secondaryLabel
-        chevron.isUserInteractionEnabled = false
-        chevron.translatesAutoresizingMaskIntoConstraints = false
-        button.addSubview(chevron)
-        NSLayoutConstraint.activate([
-            button.heightAnchor.constraint(greaterThanOrEqualToConstant: 50),
-            chevron.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -14),
-            chevron.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-        ])
-        let stack = UIStackView(arrangedSubviews: [titleLabel, button])
-        stack.axis = .vertical
-        stack.spacing = 7
-        return stack
+    /// A label with its control at the trailing edge, as a labelled
+    /// DatePicker or menu Picker lays out. Built once.
+    private func labelledRow(_ title: String, control: UIView) -> UIView {
+        let titleLabel = label(title, style: .body, color: .label)
+        titleLabel.setContentHuggingPriority(.required, for: .horizontal)
+        control.setContentHuggingPriority(.required, for: .horizontal)
+        control.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let spacer = UIView()
+        spacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [titleLabel, spacer, control])
+        row.alignment = .center
+        row.spacing = 8
+        return row
     }
 
-    /// The duration's two menus, as on iOS 18: the amounts offered depend on
-    /// the unit, and a new unit starts again at 1 hour or 30 minutes.
-    private func renderDurationButtons() {
-        styleMenuButton(durationValueButton, value: "\(durationValue)")
-        let values = durationUnit == "giờ" ? durationHoursChoices : durationMinutesChoices
-        durationValueButton.menu = UIMenu(children: values.map { value in
-            UIAction(title: "\(value)", state: value == durationValue ? .on : .off) { [weak self] _ in
+    /// "Thời lượng" as the system menu picker shows it on iOS 18: the value
+    /// in the tint colour with an up-down chevron, minutes then hours in one
+    /// menu. Choosing an entry sets amount and unit together.
+    private func renderDurationButton() {
+        var configuration = UIButton.Configuration.plain()
+        configuration.contentInsets = .zero
+        configuration.baseForegroundColor = .tintColor
+        configuration.image = UIImage(
+            systemName: "chevron.up.chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(textStyle: .footnote, scale: .small)
+        )
+        configuration.imagePlacement = .trailing
+        configuration.imagePadding = 4
+        var title = AttributedString("\(durationValue) \(durationUnit)")
+        title.font = UIFont.preferredFont(forTextStyle: .body)
+        configuration.attributedTitle = title
+        durationButton.configuration = configuration
+        durationButton.menu = UIMenu(children: [
+            durationSection("Phút", unit: "phút", values: durationMinutesChoices),
+            durationSection("Giờ", unit: "giờ", values: durationHoursChoices),
+        ])
+        durationButton.accessibilityLabel = "Thời lượng"
+        durationButton.accessibilityValue = "\(durationValue) \(durationUnit)"
+    }
+
+    private func durationSection(_ title: String, unit: String, values: [Int]) -> UIMenu {
+        UIMenu(title: title, options: .displayInline, children: values.map { value in
+            let chosen = durationUnit == unit && durationValue == value
+            return UIAction(title: "\(value) \(unit)", state: chosen ? .on : .off) { [weak self] _ in
                 guard let self else { return }
+                self.durationUnit = unit
                 self.durationValue = value
                 self.render()
             }
         })
-        durationValueButton.accessibilityValue = "\(durationValue)"
-
-        styleMenuButton(durationUnitButton, value: durationUnit)
-        durationUnitButton.menu = UIMenu(children: ["phút", "giờ"].map { unit in
-            UIAction(title: unit, state: unit == durationUnit ? .on : .off) { [weak self] _ in
-                guard let self, unit != self.durationUnit else { return }
-                self.durationUnit = unit
-                self.durationValue = unit == "giờ" ? 1 : 30
-                self.render()
-            }
-        })
-        durationUnitButton.accessibilityValue = durationUnit
-    }
-
-    private func styleMenuButton(_ button: UIButton, value: String) {
-        var configuration = UIButton.Configuration.plain()
-        // Room on the trailing side for the chevron added in makeMenuField.
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 34)
-        configuration.baseForegroundColor = .label
-        var title = AttributedString(value)
-        title.font = UIFont.preferredFont(forTextStyle: .body).withWeight(.semibold)
-        configuration.attributedTitle = title
-        button.configuration = configuration
     }
 
     private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight? = nil, color: UIColor) -> UILabel {

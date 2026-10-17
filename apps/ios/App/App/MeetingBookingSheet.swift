@@ -278,9 +278,10 @@ struct MeetingBookingSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
-            // Laid out as in the request composer: the time beside its label
-            // in Apple's compact picker (as "Ngày xảy ra"), and the duration
-            // as two system menus (as Đi trễ's "Số lượng" and "Đơn vị").
+            // The two facts of a booking, each beside its label as in the
+            // request composer: when it starts (hh:mm, Apple's compact time
+            // picker) and how long it lasts (Apple's menu picker, minutes or
+            // hours in one list).
             HStack {
                 Text("Bắt đầu")
                 Spacer(minLength: 8)
@@ -288,23 +289,23 @@ struct MeetingBookingSheet: View {
                     .fixedSize()
             }
 
-            HStack(spacing: 12) {
-                durationField(title: "Số lượng", value: "\(durationValue)") {
-                    Picker("Số lượng", selection: $durationValue) {
-                        ForEach(durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { value in
-                            Text("\(value)").tag(value)
+            HStack {
+                Text("Thời lượng")
+                Spacer(minLength: 8)
+                Picker("Thời lượng", selection: durationChoice) {
+                    Section("Phút") {
+                        ForEach([5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { minutes in
+                            Text("\(minutes) phút").tag(DurationChoice(value: minutes, unit: "phút"))
+                        }
+                    }
+                    Section("Giờ") {
+                        ForEach(Array(1...8), id: \.self) { hours in
+                            Text("\(hours) giờ").tag(DurationChoice(value: hours, unit: "giờ"))
                         }
                     }
                 }
-                durationField(title: "Đơn vị", value: durationUnit) {
-                    Picker("Đơn vị", selection: $durationUnit) {
-                        Text("phút").tag("phút")
-                        Text("giờ").tag("giờ")
-                    }
-                }
-            }
-            .onChange(of: durationUnit) { _, unit in
-                durationValue = unit == "giờ" ? 1 : 30
+                .pickerStyle(.menu)
+                .labelsHidden()
             }
 
             HStack(spacing: 9) {
@@ -648,40 +649,15 @@ struct MeetingBookingSheet: View {
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
     }
 
-    /// A titled system menu, built as the request composer's duration fields
-    /// ("Số lượng", "Đơn vị"), in this sheet's system colours.
-    private func durationField<Content: View>(
-        title: String,
-        value: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color(uiColor: .secondaryLabel))
-            Menu {
-                content()
-            } label: {
-                HStack(spacing: 8) {
-                    Text(value)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Color(uiColor: .label))
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color(uiColor: .secondaryLabel))
-                }
-                .contentShape(Rectangle())
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    /// Amount and unit together, one choice in the "Thời lượng" menu.
+    private var durationChoice: Binding<DurationChoice> {
+        Binding(
+            get: { DurationChoice(value: durationValue, unit: durationUnit) },
+            set: { choice in
+                durationUnit = choice.unit
+                durationValue = choice.value
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(title)
-            .accessibilityValue(value)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        )
     }
 
     private func searchField(
@@ -853,4 +829,10 @@ private struct BookingStartTimePicker: UIViewRepresentable {
             ) ?? current
         }
     }
+}
+
+/// One entry of the booking duration menu: 30 phút, 2 giờ.
+private struct DurationChoice: Hashable {
+    let value: Int
+    let unit: String
 }
