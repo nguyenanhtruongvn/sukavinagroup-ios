@@ -1257,7 +1257,7 @@ private final class LegacyTimelineLabel: UIControl {
 /// discard confirmation. Presented as a sheet, like on iOS 18.
 @MainActor
 private final class LegacyMeetingBookingController: UIViewController, UITextFieldDelegate,
-    UIPickerViewDataSource, UIPickerViewDelegate {
+    UIPickerViewDataSource, UIPickerViewDelegate, UIPopoverPresentationControllerDelegate {
     private let session: SessionStore
     private let room: MeetingRoom
     private let day: Date
@@ -1484,22 +1484,24 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         let tiles = UIStackView(arrangedSubviews: [startTile, durationTile])
         tiles.spacing = 10
         tiles.distribution = .fillEqually
+        // The wheels open in popovers pointing at their tiles, as on iOS 18
+        // (MeetingBookingSheet), instead of expanding inside this card.
         startTile.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            showStartPicker.toggle()
-            render(animated: true)
+            showStartPicker = true
+            render()
+            presentPicker(startPickerBox, from: startTile, logName: "legacy.booking.start")
         }, for: .touchUpInside)
         durationTile.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            showDurationPicker.toggle()
-            render(animated: true)
+            showDurationPicker = true
+            render()
+            presentPicker(durationPickerBox, from: durationTile, logName: "legacy.booking.duration")
         }, for: .touchUpInside)
         card.addArrangedSubview(tiles)
 
         configurePicker(startPicker, box: startPickerBox, titles: ["Giờ", "Phút"])
         configurePicker(durationPicker, box: durationPickerBox, titles: ["Số", ""])
-        card.addArrangedSubview(startPickerBox)
-        card.addArrangedSubview(durationPickerBox)
 
         let clockIcon = UIImageView(image: UIImage(systemName: "clock.arrow.circlepath"))
         clockIcon.tintColor = red
@@ -1615,7 +1617,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     // MARK: Rendering
 
-    private func render(animated: Bool = false) {
+    private func render() {
         for case let button as UIButton in typeButtons.arrangedSubviews {
             let value = button.accessibilityIdentifier ?? ""
             let icon = value == "Nội bộ" ? "person.2.fill" : "person.badge.plus"
@@ -1624,20 +1626,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         fillTile(startTile, title: "Bắt đầu", value: MeetingPresentation.clock.string(from: start), icon: "clock.fill", active: showStartPicker)
         fillTile(durationTile, title: "Thời lượng", value: "\(durationValue) \(durationUnit)", icon: "timer", active: showDurationPicker)
         expectedLabel.text = "\(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: endTime))"
-        let changes = {
-            self.startPickerBox.isHidden = !self.showStartPicker
-            self.durationPickerBox.isHidden = !self.showDurationPicker
-            self.startPickerBox.alpha = self.showStartPicker ? 1 : 0
-            self.durationPickerBox.alpha = self.showDurationPicker ? 1 : 0
-        }
-        if animated {
-            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0, options: [], animations: {
-                changes()
-                self.content.layoutIfNeeded()
-            })
-        } else {
-            changes()
-        }
         syncPickers()
         renderInvitees()
     }
@@ -2031,6 +2019,9 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         tile.accessibilityLabel = "\(title): \(value)"
     }
 
+    /// Builds `box`: column headers over `picker`. The box is shown in a
+    /// popover (`presentPicker`), which sizes it, so it has no height or
+    /// background of its own.
     private func configurePicker(_ picker: UIPickerView, box: UIView, titles: [String]) {
         picker.dataSource = self
         picker.delegate = self
@@ -2042,19 +2033,40 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         stack.isLayoutMarginsRelativeArrangement = true
         stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0)
         stack.translatesAutoresizingMaskIntoConstraints = false
-        box.backgroundColor = .secondarySystemBackground
-        box.layer.cornerRadius = 15
-        box.layer.cornerCurve = .continuous
-        box.clipsToBounds = true
         box.addSubview(stack)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: box.topAnchor),
             stack.bottomAnchor.constraint(equalTo: box.bottomAnchor),
             stack.leadingAnchor.constraint(equalTo: box.leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: box.trailingAnchor),
-            box.heightAnchor.constraint(equalToConstant: 138),
         ])
-        box.isHidden = true
+    }
+
+    /// Shows `box` in a popover pointing at `tile`. Presented from this
+    /// controller, inside the booking sheet, so UIKit keeps the sheet open
+    /// under it. Closing it clears the tile's highlight in
+    /// `presentationControllerWillDismiss`.
+    private func presentPicker(_ box: UIView, from tile: UIView, logName: String) {
+        guard presentedViewController == nil else {
+            UIFlowLog.record("popover.skipped", "\(logName) busy")
+            showStartPicker = false
+            showDurationPicker = false
+            render()
+            return
+        }
+        // The keyboard would otherwise stay up under the popover.
+        view.endEditing(true)
+        let popover = LegacyPickerPopoverController(box: box)
+        popover.modalPresentationStyle = .popover
+        popover.preferredContentSize = CGSize(width: 256, height: 196)
+        if let presentation = popover.popoverPresentationController {
+            presentation.sourceView = tile
+            presentation.sourceRect = tile.bounds
+            presentation.permittedArrowDirections = [.up, .down]
+            presentation.delegate = self
+        }
+        UIFlowLog.record("popover.present", logName)
+        present(popover, animated: true)
     }
 
     private func syncPickers() {
@@ -2148,6 +2160,23 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
                 durationPicker.reloadComponent(0)
             }
         }
+        render()
+    }
+
+    // MARK: Picker popovers
+
+    /// A popover on iPhone too, rather than the sheet UIKit adapts it to.
+    func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+        .none
+    }
+
+    /// Tapping outside the popover closes it. The tiles drop their highlight
+    /// as the fade starts, not after it, so nothing lingers once it is gone.
+    func presentationControllerWillDismiss(_ presentationController: UIPresentationController) {
+        guard presentationController.presentedViewController is LegacyPickerPopoverController else { return }
+        UIFlowLog.record("popover.willDismiss", "legacy.booking")
+        showStartPicker = false
+        showDurationPicker = false
         render()
     }
 
@@ -3042,6 +3071,36 @@ private final class LegacyGradientView: UIView {
 
     private func applyColors() {
         (layer as! CAGradientLayer).colors = colors.map { $0.resolvedColor(with: traitCollection).cgColor }
+    }
+}
+
+/// Holds one of the booking form's picker boxes while it shows in a popover.
+/// The box and its picker belong to `LegacyMeetingBookingController`, which
+/// stays their data source; each popover borrows the box until it closes.
+@MainActor
+private final class LegacyPickerPopoverController: UIViewController {
+    private let box: UIView
+
+    init(box: UIView) {
+        self.box = box
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        box.removeFromSuperview()
+        box.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(box)
+        let margins = view.safeAreaLayoutGuide
+        NSLayoutConstraint.activate([
+            box.topAnchor.constraint(equalTo: margins.topAnchor, constant: 4),
+            box.bottomAnchor.constraint(equalTo: margins.bottomAnchor, constant: -4),
+            box.leadingAnchor.constraint(equalTo: margins.leadingAnchor, constant: 8),
+            box.trailingAnchor.constraint(equalTo: margins.trailingAnchor, constant: -8),
+        ])
     }
 }
 
