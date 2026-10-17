@@ -451,7 +451,7 @@ struct AttendanceCodeLegend: View {
         ("NN", "Ngày nghỉ (nghỉ hưởng chế độ, nghỉ bù)"),
         ("NVP", "Nghỉ văn phòng"),
         ("KCC", "Không chấm công"),
-        ("V", "Vắng (nhân sự xác nhận nghỉ không phép)"),
+        ("V", "Vắng"),
         ("NL", "Nghỉ lễ")
     ]
 
