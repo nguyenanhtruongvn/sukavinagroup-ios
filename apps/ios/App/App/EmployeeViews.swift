@@ -202,30 +202,30 @@ struct PreloadedAttendanceDayCell: View {
         })
     }
 
+    /// Text only, on the same rows and in the same size as the day shift beside it:
+    /// "CĐ" in the normal calendar, its workdays and overtime in the metrics one.
     private func nightShiftColumn(_ night: AttendanceNightShift) -> some View {
-        let indigo = Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
-        let text = colorScheme == .dark
+        let color = colorScheme == .dark
             ? Color(red: 165.0 / 255.0, green: 180.0 / 255.0, blue: 252.0 / 255.0)
-            : indigo
+            : Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
         return VStack(spacing: 0) {
-            Text("CĐ")
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .frame(height: 13)
             if showWorkMetrics {
                 Text(AttendanceMetrics.workFactorText(night.workdays))
-                    .frame(height: 12)
-                Text(AttendanceMetrics.hourText(night.overtimeHours) + "h")
-                    .frame(height: 12)
+                    .frame(height: 18, alignment: .top)
+                Text(AttendanceMetrics.hourText(night.overtimeHours))
+                    .frame(height: 18, alignment: .top)
+            } else {
+                Text("CĐ")
+                    .fontWeight(.heavy)
+                    .frame(height: 18, alignment: .top)
             }
         }
-        .font(.system(size: 9, weight: .semibold, design: .rounded))
+        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
         .monospacedDigit()
         .lineLimit(1)
         .minimumScaleFactor(0.7)
-        .foregroundStyle(text)
+        .foregroundStyle(color)
         .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
-        .background(indigo.opacity(0.18))
-        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 
     private func background(for statuses: [String], note: String?) -> AnyView {
