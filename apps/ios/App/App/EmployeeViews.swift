@@ -111,6 +111,7 @@ struct PreloadedAttendanceDayCell: View {
         .foregroundStyle(note == nil && statuses.contains("absent") ? Self.absentColor : Color.primary)
         .frame(maxWidth: .infinity, minHeight: cellHeight)
         .background(background(for: statuses, note: note))
+        .overlay(alignment: .bottom) { nightShiftBand() }
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch))
@@ -180,6 +181,27 @@ struct PreloadedAttendanceDayCell: View {
         return AnyView(Color.clear)
     }
 
+    /// Ca đêm takes the lower part of the cell, below the day shift.
+    private func nightShiftBand() -> AnyView {
+        guard let night = day.nightShift else { return AnyView(EmptyView()) }
+        let indigo = colorScheme == .dark
+            ? Color(red: 165.0 / 255.0, green: 180.0 / 255.0, blue: 252.0 / 255.0)
+            : Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
+        let text = showWorkMetrics
+            ? AttendanceMetrics.workFactorText(night.workdays) + " · " + AttendanceMetrics.hourText(night.overtimeHours)
+            : "CĐ"
+        return AnyView(
+            Text(text)
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(indigo)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity, minHeight: 16, maxHeight: 16)
+                .background(Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0).opacity(0.18))
+        )
+    }
+
     private func background(for statuses: [String], note: String?) -> AnyView {
         let coloredStatuses: Set<String> = [
             "present", "late", "early", "missing_checkin", "missing_checkout",
@@ -233,6 +255,22 @@ struct PreloadedAttendanceDayCell: View {
     }
 
     private func accessibilityLabel(
+        for dayNumber: Int,
+        note: String?,
+        statuses: [String],
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool
+    ) -> String {
+        let dayLabel = dayAccessibilityLabel(
+            for: dayNumber, note: note, statuses: statuses,
+            hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch
+        )
+        guard let night = day.nightShift else { return dayLabel }
+        return dayLabel + ". Ca đêm \(AttendanceMetrics.workFactorText(night.workdays)) công, "
+            + "\(AttendanceMetrics.hourText(night.overtimeHours)) giờ tăng ca"
+    }
+
+    private func dayAccessibilityLabel(
         for dayNumber: Int,
         note: String?,
         statuses: [String],

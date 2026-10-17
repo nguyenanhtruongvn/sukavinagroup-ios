@@ -203,7 +203,10 @@ struct ModernAttendanceHistoryView: View {
                 )
                 metricSummary(
                     AttendanceMetrics.hourText(
-                        data.days.reduce(0) { $0 + AttendanceMetrics.workMetrics($1, month: data).overtimeHours }
+                        data.days.reduce(0) {
+                            $0 + AttendanceMetrics.workMetrics($1, month: data).overtimeHours
+                                + AttendanceMetrics.nightShiftOvertimeHours($1)
+                        }
                     ),
                     "Tổng giờ tăng ca",
                     .orange
@@ -319,8 +322,8 @@ struct ModernAttendanceHistoryView: View {
         let violations = AttendanceMetrics.violationCount(data)
         return VStack(alignment: .leading, spacing: 14) {
             attendanceReportCard(title: "Chi tiết công", icon: "doc.text.fill", color: AppTheme.red) {
-                reportRow("Ngày công ca đêm thường", "0 ngày", color: .blue)
-                reportRow("Ngày công ca đêm chủ nhật", "0 ngày", color: .blue)
+                reportRow("Ngày công ca đêm thường", "\(AttendanceMetrics.workDayTotalText(AttendanceMetrics.nightShiftWorkdays(data, sunday: false))) ngày", color: .blue)
+                reportRow("Ngày công ca đêm chủ nhật", "\(AttendanceMetrics.workDayTotalText(AttendanceMetrics.nightShiftWorkdays(data, sunday: true))) ngày", color: .blue)
             }
             attendanceReportCard(title: "Chi tiết tăng ca", icon: "clock.fill", color: .orange) {
                 AttendanceOvertimeProgressRow(title: "Tăng ca thường", hours: regularOvertime, total: totalOvertime, color: .orange)

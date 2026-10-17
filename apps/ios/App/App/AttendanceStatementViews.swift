@@ -73,11 +73,7 @@ enum AttendanceMetrics {
               let date = vietnamCalendar.date(from: DateComponents(
                   year: components[0], month: components[1], day: components[2]
               )) else { return false }
-        if vietnamCalendar.isDateInToday(date) { return true }
-        // A night shift (CĐ) ends the next morning; its punches are complete by noon.
-        return day.overrideCode == "CĐ"
-            && vietnamCalendar.isDateInYesterday(date)
-            && vietnamCalendar.component(.hour, from: Date()) < 12
+        return vietnamCalendar.isDateInToday(date)
     }
 
     static func displayStatuses(_ day: AttendanceDay) -> [String] {
@@ -170,7 +166,7 @@ enum AttendanceMetrics {
         let excludedFromWorkdays = overtimeCategory(day) == "sunday"
             || (overtimeCategory(day) == "holiday" && overtime > 0)
         let coefficient: Double
-        if let verifiedFactor = day.workdayFactor {
+        if let verifiedFactor = dayShiftWorkdayFactor(day) {
             coefficient = verifiedFactor
         } else {
             coefficient = (fullWorkMinutes == 0 || excludedFromWorkdays)
@@ -186,8 +182,6 @@ enum AttendanceMetrics {
     static func overtimeHours(
         _ day: AttendanceDay, defaultStartTime: String?, defaultEndTime: String?
     ) -> Double {
-        // A night shift (CĐ) carries its overtime, computed over 18:30 → 07:30.
-        if let nightShiftOvertime = day.overtimeHours { return nightShiftOvertime }
         // Two valid punches are required to recognize overtime.
         guard let checkIn = instant(day.checkIn),
               let checkOut = instant(day.checkOut),
@@ -218,14 +212,38 @@ enum AttendanceMetrics {
     static func regularOvertimeHours(_ month: AttendanceMonth) -> Double {
         month.days
             .filter { overtimeCategory($0) == "regular" }
-            .reduce(0) { $0 + overtimeHours($1, defaultStartTime: month.startTime, defaultEndTime: month.endTime) }
+            .reduce(0) {
+                $0 + overtimeHours($1, defaultStartTime: month.startTime, defaultEndTime: month.endTime)
+                    + nightShiftOvertimeHours($1)
+            }
     }
 
     static func overtimeHours(for status: String, in month: AttendanceMonth) -> Double {
         let category = status == "overtime" ? "sunday" : status
         return month.days
             .filter { overtimeCategory($0) == category }
-            .reduce(0) { $0 + overtimeHours($1, defaultStartTime: month.startTime, defaultEndTime: month.endTime) }
+            .reduce(0) {
+                $0 + overtimeHours($1, defaultStartTime: month.startTime, defaultEndTime: month.endTime)
+                    + nightShiftOvertimeHours($1)
+            }
+    }
+
+    /// Night-shift overtime counts in the category of its date (weekday, Sunday, holiday).
+    static func nightShiftOvertimeHours(_ day: AttendanceDay) -> Double {
+        day.nightShift?.overtimeHours ?? 0
+    }
+
+    /// The day shift's own workday: the date's total minus the night shift.
+    static func dayShiftWorkdayFactor(_ day: AttendanceDay) -> Double? {
+        guard let total = day.workdayFactor else { return nil }
+        return max(0, total - (day.nightShift?.workdays ?? 0))
+    }
+
+    /// Night-shift workdays on Sundays, or on every other date.
+    static func nightShiftWorkdays(_ month: AttendanceMonth, sunday: Bool) -> Double {
+        month.days
+            .filter { $0.nightShift != nil && (overtimeCategory($0) == "sunday") == sunday }
+            .reduce(0) { $0 + ($1.nightShift?.workdays ?? 0) }
     }
 
     static func isPaidDay(_ day: AttendanceDay, month: AttendanceMonth) -> Bool {
@@ -454,7 +472,7 @@ struct AttendanceCodeLegend: View {
         ("P/2", "Nghỉ cả ngày có đơn, 0,5 ngày hưởng phép năm, 0,5 ngày không lương"),
         ("NTL", "Nghỉ trừ lương (do nhân sự xác nhận)"),
         ("CT", "Công tác"),
-        ("CĐ", "Ca đêm (18:30 – 7:30 hôm sau: 1 công + 4 giờ tăng ca)"),
+        ("CĐ", "Ca đêm (công và giờ tăng ca do nhân sự nhập, hiện ở nửa dưới ô ngày)"),
         ("NN", "Ngày nghỉ (nghỉ hưởng chế độ, nghỉ bù)"),
         ("NVP", "Nghỉ văn phòng"),
         ("KCC", "Không chấm công"),
