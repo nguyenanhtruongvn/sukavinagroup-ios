@@ -1073,18 +1073,42 @@ struct RequestComposer: View {
         .id(scrollID)
     }
 
+    /// A missing time is chosen like the booking's Bắt đầu: Apple's time
+    /// picker fills the card from underneath and the drawn card takes no
+    /// touches, so a tap anywhere on it opens Apple's time bubble, not
+    /// only a tap on the picker's small capsule.
     @ViewBuilder private func attendanceTimeCard(title: String, value: String?, missingPrompt: String, selection: Binding<Date>) -> some View {
+        if value == nil {
+            attendanceTimeCardFace(title: title, value: value, chosen: selection.wrappedValue)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .background(TileFillingTimePicker(selection: selection, accessibilityLabel: missingPrompt))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else {
+            attendanceTimeCardFace(title: title, value: value, chosen: nil)
+        }
+    }
+
+    private func attendanceTimeCardFace(title: String, value: String?, chosen: Date?) -> some View {
         let compact = dynamicTypeSize <= .large
-        VStack(alignment: .leading, spacing: compact ? 4 : 6) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+        return VStack(alignment: .leading, spacing: compact ? 4 : 6) {
+            HStack {
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+                Spacer(minLength: 4)
+                if chosen != nil {
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.muted)
+                }
+            }
             Text(attendanceTime(value))
                 .font(compact ? .headline.weight(.bold) : .title3.weight(.bold))
                 .monospacedDigit()
                 .foregroundStyle(value == nil ? AppTheme.red : .green)
-            if value == nil {
-                DatePicker(missingPrompt, selection: selection, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if let chosen {
+                Label(VietnamTime.clock.string(from: chosen), systemImage: "clock")
+                    .font(.body.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.primary)
             } else {
                 Text("Đã ghi nhận").font(.caption).foregroundStyle(Color.green.opacity(0.8))
             }

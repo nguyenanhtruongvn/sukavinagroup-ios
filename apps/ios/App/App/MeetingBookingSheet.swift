@@ -289,7 +289,11 @@ struct MeetingBookingSheet: View {
                 )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .background(TileFillingTimePicker(selection: $start))
+                .background(TileFillingTimePicker(
+                    selection: $start,
+                    minuteInterval: MeetingBookingTime.minuteStep,
+                    accessibilityLabel: "Bắt đầu"
+                ))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
                 Menu {
@@ -792,59 +796,5 @@ struct MeetingBookingErrorNotice: View {
         .background(Color.black.opacity(0.90), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.24), radius: 10, y: 4)
         .accessibilityLabel("Không thể đặt phòng: \(message)")
-    }
-}
-
-/// Apple's compact time picker for a booking's start, stretched over the
-/// Bắt đầu tile and drawn under it. The tile shows the time its own way; a
-/// tap anywhere on it lands on this picker, which opens Apple's own time
-/// bubble. Vietnam time, 5-minute steps (`MeetingBookingTime.minuteStep`);
-/// UIDatePicker because SwiftUI's DatePicker cannot set a minute interval.
-private struct TileFillingTimePicker: UIViewRepresentable {
-    @Binding var selection: Date
-
-    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
-
-    func makeUIView(context: Context) -> TileFillingPickerView {
-        let view = TileFillingPickerView()
-        let picker = view.picker
-        picker.datePickerMode = .time
-        picker.preferredDatePickerStyle = .compact
-        picker.minuteInterval = MeetingBookingTime.minuteStep
-        picker.timeZone = VietnamTime.timeZone
-        picker.calendar = VietnamTime.calendar
-        picker.locale = VietnamTime.locale
-        picker.date = selection
-        picker.accessibilityLabel = "Bắt đầu"
-        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        return view
-    }
-
-    func updateUIView(_ view: TileFillingPickerView, context: Context) {
-        context.coordinator.selection = $selection
-        if view.picker.date != selection { view.picker.date = selection }
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var selection: Binding<Date>
-
-        init(selection: Binding<Date>) {
-            self.selection = selection
-        }
-
-        /// Takes only the hour and minute from the picker, so the booking
-        /// stays on the day it was opened for.
-        @objc func changed(_ picker: UIDatePicker) {
-            let calendar = MeetingPresentation.calendar
-            let time = calendar.dateComponents([.hour, .minute], from: picker.date)
-            let current = selection.wrappedValue
-            selection.wrappedValue = calendar.date(
-                bySettingHour: time.hour ?? 0,
-                minute: time.minute ?? 0,
-                second: 0,
-                of: current
-            ) ?? current
-        }
     }
 }

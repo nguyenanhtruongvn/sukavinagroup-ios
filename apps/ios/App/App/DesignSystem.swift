@@ -356,86 +356,158 @@ struct CompactDateRow<Picker: View>: View {
     }
 }
 
-/// Apple's compact DatePicker that keeps the full date ("Ngày 18 thg 10,
-/// 2026", not "18/10/26").
+/// Apple's compact date picker (UIDatePicker) that keeps the full date
+/// ("18 thg 10, 2026", not "18/10/26").
 ///
-/// debug.log proved three things about the compact DatePicker. A new one
-/// is sized for today's date, whatever date it is given: 185pt for a date
-/// and 259pt for a date and time, so a later, wider date did not fit and
-/// was shortened (1.0.79: "Bắt đầu w=259 wanted=268" on Sunday). It is
-/// right when it does show today. And a picker already on screen widens
-/// itself when its date changes, by the employee or by code ("resize
-/// w=189 wanted=188").
+/// The compact picker draws its short form whenever its frame is
+/// narrower than its long form, and SwiftUI's DatePicker takes the width
+/// it measures when it is created, which fits today's date only. Đi trễ
+/// and Về sớm open on today, so they fit; any other day can be a few
+/// points wider in proportional digits ("attendanceDate w=185
+/// wanted=188", debug.log 1.0.79) and was shortened. Moving a new picker
+/// to its date after it appeared did not help either (1.0.81, Ngày chấm
+/// công).
 ///
-/// So this picker is never created with any date but now: it starts on
-/// the current time, the date it is sized for, and moves to its real date
-/// as soon as it appears, through the change that it handles correctly.
-/// It is SwiftUI's own DatePicker throughout; nothing is drawn in its
-/// place.
-struct SystemCompactDatePicker: View {
+/// So the width is not left to the picker: `sizeThatFits` gives it at
+/// least the width of its date's long form, worked out from the text
+/// (`CompactDateWidthLog.fullWidth`), with a few points to spare. A wider
+/// frame only leaves room before the picker, which sits at its trailing
+/// edge.
+struct SystemCompactDatePicker: UIViewRepresentable {
     @Binding var selection: Date
     let mode: UIDatePicker.Mode
     var minimum: Date? = nil
     let accessibilityLabel: String
 
-    /// What the picker shows: now at first, then always `selection`.
-    @State private var shown = Date()
-    /// Until the first move to `selection`, nothing the picker reports is
-    /// the employee's choice (it may only clamp now into its range).
-    @State private var synced = false
+    /// Room left beyond the computed long form, against rounding.
+    private static let spare: CGFloat = 8
 
-    var body: some View {
-        picker
-            .labelsHidden()
-            .datePickerStyle(.compact)
-            .environment(\.timeZone, VietnamTime.timeZone)
-            .environment(\.calendar, VietnamTime.calendar)
-            .environment(\.locale, VietnamTime.locale)
-            .onAppear {
-                synced = true
-                if shown != selection { shown = selection }
-            }
-            .onChange(of: selection) { _, value in
-                if shown != value { shown = value }
-            }
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    func makeUIView(context: Context) -> UIDatePicker {
+        let picker = UIDatePicker()
+        picker.preferredDatePickerStyle = .compact
+        picker.datePickerMode = mode
+        picker.timeZone = VietnamTime.timeZone
+        picker.calendar = VietnamTime.calendar
+        picker.locale = VietnamTime.locale
+        picker.minimumDate = minimum
+        picker.date = selection
+        picker.accessibilityLabel = accessibilityLabel
+        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        return picker
     }
 
-    private var components: DatePickerComponents {
-        mode == .date ? .date : [.date, .hourAndMinute]
+    func updateUIView(_ picker: UIDatePicker, context: Context) {
+        context.coordinator.selection = $selection
+        if picker.minimumDate != minimum { picker.minimumDate = minimum }
+        if picker.date != selection {
+            picker.date = selection
+            // The long form of the new date may be wider: measure again.
+            picker.invalidateIntrinsicContentSize()
+        }
     }
 
-    private var shownBinding: Binding<Date> {
-        Binding(
-            get: { shown },
-            set: { value in
-                shown = value
-                if synced, value != selection { selection = value }
-            }
-        )
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView picker: UIDatePicker, context: Context) -> CGSize? {
+        let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+        let longForm = CompactDateWidthLog.fullWidth(of: selection, includesTime: mode != .date)
+        let width = max(fitted.width, longForm) + Self.spare
+        let height = (20...80).contains(fitted.height) ? fitted.height : 34
+        return CGSize(width: ceil(width), height: ceil(height))
     }
 
-    @ViewBuilder
-    private var picker: some View {
-        if let minimum {
-            DatePicker(accessibilityLabel, selection: shownBinding, in: minimum..., displayedComponents: components)
-        } else {
-            DatePicker(accessibilityLabel, selection: shownBinding, displayedComponents: components)
+    @MainActor
+    final class Coordinator: NSObject {
+        var selection: Binding<Date>
+
+        init(selection: Binding<Date>) {
+            self.selection = selection
+        }
+
+        @objc func changed(_ picker: UIDatePicker) {
+            if selection.wrappedValue != picker.date { selection.wrappedValue = picker.date }
         }
     }
 }
 
-/// Holds a compact UIDatePicker scaled to fill its bounds, so its whole
-/// area, not just its small capsule, opens the picker. Put under a drawn
-/// tile that takes no touches: the tile shows the value, a tap anywhere on
-/// it opens Apple's own picker bubble. Used by the booking form on iOS 18
-/// (MeetingBookingSheet) and iOS 17 (LegacyMeetingRoomsUIKit).
+/// Apple's compact time picker filling a drawn tile from underneath, so
+/// a tap anywhere on the tile opens Apple's own time bubble. Put it in
+/// the tile's background and give the tile `.allowsHitTesting(false)`.
+/// Only the hour and minute are taken from the picker; the day stays.
+/// UIDatePicker because SwiftUI's DatePicker cannot set a minute interval.
+struct TileFillingTimePicker: UIViewRepresentable {
+    @Binding var selection: Date
+    var minuteInterval = 1
+    let accessibilityLabel: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    func makeUIView(context: Context) -> TileFillingPickerView {
+        let view = TileFillingPickerView()
+        let picker = view.picker
+        picker.datePickerMode = .time
+        picker.minuteInterval = minuteInterval
+        picker.timeZone = VietnamTime.timeZone
+        picker.calendar = VietnamTime.calendar
+        picker.locale = VietnamTime.locale
+        picker.date = selection
+        picker.accessibilityLabel = accessibilityLabel
+        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        return view
+    }
+
+    func updateUIView(_ view: TileFillingPickerView, context: Context) {
+        context.coordinator.selection = $selection
+        if view.picker.date != selection { view.picker.date = selection }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var selection: Binding<Date>
+
+        init(selection: Binding<Date>) {
+            self.selection = selection
+        }
+
+        @objc func changed(_ picker: UIDatePicker) {
+            let calendar = VietnamTime.calendar
+            let time = calendar.dateComponents([.hour, .minute], from: picker.date)
+            let current = selection.wrappedValue
+            selection.wrappedValue = calendar.date(
+                bySettingHour: time.hour ?? 0,
+                minute: time.minute ?? 0,
+                second: 0,
+                of: current
+            ) ?? current
+        }
+    }
+}
+
+/// Holds a compact UIDatePicker blown up over its whole area, so a tap
+/// anywhere on it, not only on the picker's small capsule, opens Apple's
+/// picker bubble. Put under a drawn face that takes no touches. Used by
+/// the booking Bắt đầu tile (MeetingBookingSheet on iOS 18,
+/// LegacyMeetingRoomsUIKit on iOS 17) and the Giờ vào / Giờ ra cards.
+///
+/// The picker is centred by Auto Layout, which sizes a compact picker to
+/// its capsule as it does anywhere else, and then scaled until the capsule
+/// overfills this view; what spills over is clipped. 1.0.81 measured the
+/// picker with `sizeToFit()` instead and left it at the tile's size, its
+/// capsule at the trailing edge: only taps near the chevron opened it.
 final class TileFillingPickerView: UIView {
     let picker = UIDatePicker()
     private var loggedLayout = ""
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        clipsToBounds = true
+        picker.preferredDatePickerStyle = .compact
+        picker.translatesAutoresizingMaskIntoConstraints = false
         addSubview(picker)
+        NSLayoutConstraint.activate([
+            picker.centerXAnchor.constraint(equalTo: centerXAnchor),
+            picker.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { nil }
@@ -443,38 +515,29 @@ final class TileFillingPickerView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let natural = naturalSize()
-        guard natural.width > 0, natural.height > 0, bounds.width > 0, bounds.height > 0 else {
-            picker.transform = .identity
-            picker.frame = bounds
-            return
-        }
-        picker.bounds = CGRect(origin: .zero, size: natural)
-        picker.center = CGPoint(x: bounds.midX, y: bounds.midY)
-        picker.transform = CGAffineTransform(
-            scaleX: bounds.width / natural.width,
-            y: bounds.height / natural.height
-        )
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        // Uniform, with room to spare: overfilling is harmless (clipped),
+        // falling short leaves dead edges.
+        let scale = max(bounds.width / natural.width, bounds.height / natural.height) * 1.15
+        picker.transform = CGAffineTransform(scaleX: scale, y: scale)
     }
 
-    /// The picker's own, unscaled size. Its `intrinsicContentSize` alone
-    /// left the tile answering taps on a small capsule in its middle only,
-    /// so it is first sized to fit, as UIKit sizes a compact picker; a
-    /// height the size of a wheel (216pt) is not the compact one and is
-    /// skipped. What was found is logged ("tilePicker.size").
+    /// The picker's unscaled size as Auto Layout gave it; if that is not a
+    /// compact picker's size, its fitting size, else an estimate.
     private func naturalSize() -> CGSize {
-        picker.transform = .identity
-        picker.sizeToFit()
-        let fitted = picker.bounds.size
-        let intrinsic = picker.intrinsicContentSize
-        let natural: CGSize
-        if fitted.width > 0, fitted.height > 0, fitted.height < 100 {
-            natural = fitted
-        } else if intrinsic.width > 0, intrinsic.height > 0, intrinsic.height < 100 {
-            natural = intrinsic
-        } else {
-            natural = .zero
+        func plausible(_ size: CGSize) -> Bool {
+            (20...400).contains(size.width) && (20...80).contains(size.height)
         }
-        let line = "fitted=\(Int(fitted.width))x\(Int(fitted.height)) intrinsic=\(Int(intrinsic.width))x\(Int(intrinsic.height)) tile=\(Int(bounds.width))x\(Int(bounds.height))"
+        let laidOut = picker.bounds.size
+        let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+        let natural: CGSize
+        if plausible(laidOut) {
+            natural = laidOut
+        } else {
+            natural = plausible(fitted) ? fitted : CGSize(width: 80, height: 34)
+            picker.bounds = CGRect(origin: .zero, size: natural)
+        }
+        let line = "laidOut=\(Int(laidOut.width))x\(Int(laidOut.height)) fitted=\(Int(fitted.width))x\(Int(fitted.height)) tile=\(Int(bounds.width))x\(Int(bounds.height))"
         if line != loggedLayout {
             loggedLayout = line
             UIFlowLog.record("tilePicker.size", line)
