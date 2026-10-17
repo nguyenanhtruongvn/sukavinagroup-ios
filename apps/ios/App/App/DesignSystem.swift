@@ -446,6 +446,9 @@ struct SystemCompactDatePicker: UIViewRepresentable {
 struct TileFillingTimePicker: UIViewRepresentable {
     @Binding var selection: Date
     var minuteInterval = 1
+    /// Earliest and latest time the bubble offers (on the day of `selection`).
+    var minimum: Date? = nil
+    var maximum: Date? = nil
     let accessibilityLabel: String
 
     func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
@@ -459,6 +462,8 @@ struct TileFillingTimePicker: UIViewRepresentable {
         picker.timeZone = VietnamTime.timeZone
         picker.calendar = VietnamTime.calendar
         picker.locale = VietnamTime.locale
+        picker.minimumDate = minimum
+        picker.maximumDate = maximum
         picker.date = selection
         picker.accessibilityLabel = accessibilityLabel
         picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
@@ -467,6 +472,8 @@ struct TileFillingTimePicker: UIViewRepresentable {
 
     func updateUIView(_ view: TileFillingPickerView, context: Context) {
         context.coordinator.selection = $selection
+        if view.picker.minimumDate != minimum { view.picker.minimumDate = minimum }
+        if view.picker.maximumDate != maximum { view.picker.maximumDate = maximum }
         if view.picker.date != selection { view.picker.date = selection }
     }
 

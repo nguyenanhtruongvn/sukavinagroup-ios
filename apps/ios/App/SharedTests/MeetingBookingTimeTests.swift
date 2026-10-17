@@ -36,15 +36,24 @@ final class MeetingBookingTimeTests: XCTestCase {
         XCTAssertEqual(VietnamTime.clock.string(from: start), "23:55")
     }
 
-    func testDurationsAreStandardMarksEachShownOnce() {
-        let choices = MeetingBookingTime.durationChoices
-        XCTAssertEqual(Set(choices).count, choices.count)
-        XCTAssertEqual(choices, choices.sorted())
-        XCTAssertEqual(
-            choices.map(MeetingBookingTime.durationTitle(minutes:)),
-            ["5 phút", "10 phút", "15 phút", "20 phút", "30 phút", "45 phút",
-             "1 giờ", "1 giờ 30 phút", "2 giờ", "3 giờ", "4 giờ", "5 giờ", "6 giờ", "7 giờ", "8 giờ"]
-        )
+    func testDurationClockRoundTripsEveryStep() {
+        for minutes in stride(from: 5, through: 480, by: 5) {
+            let clock = MeetingBookingTime.clockDate(forDuration: minutes, calendar: calendar)
+            XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: clock, calendar: calendar), minutes)
+        }
+        let ninety = MeetingBookingTime.clockDate(forDuration: 90, calendar: calendar)
+        XCTAssertEqual(VietnamTime.clock.string(from: ninety), "01:30")
+    }
+
+    func testDurationFromClockStaysOnStepAndInRange() throws {
+        let day = MeetingBookingTime.clockDate(forDuration: 0, calendar: calendar)
+        func clock(_ hour: Int, _ minute: Int) throws -> Date {
+            try XCTUnwrap(calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day))
+        }
+        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(0, 0), calendar: calendar), 5)
+        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(0, 7), calendar: calendar), 5)
+        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(1, 33), calendar: calendar), 95)
+        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(9, 30), calendar: calendar), 480)
     }
 
     func testDurationTitleSplitsHoursAndMinutes() {

@@ -1285,12 +1285,13 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     // Built once and updated in place: re-creating the picker while its
     // system overlay is open would cut the employee off mid-choice.
     // Each tile draws its value and lets a control underneath take the tap:
-    // Apple's compact time picker stretched over the Bắt đầu tile, a menu
-    // button over the Thời lượng tile. Apple's own bubble opens from each.
+    // Apple's compact time picker under each tile (TileFillingPickerView);
+    // Apple's own time bubble opens from each.
     private let startTileControl = TileFillingPickerView()
     private var startTimePicker: UIDatePicker { startTileControl.picker }
     private let startValueLabel = UILabel()
-    private let durationButton = UIButton(type: .system)
+    private let durationTileControl = TileFillingPickerView()
+    private var durationPicker: UIDatePicker { durationTileControl.picker }
     private let durationValueLabel = UILabel()
     private let expectedLabel = UILabel()
     private let countBadge = UILabel()
@@ -1480,18 +1481,19 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
         // The two facts of a booking as tiles, as on iOS 18
         // (MeetingBookingSheet): when it starts (hh:mm) and how long it
-        // lasts. A tap opens Apple's own bubble: the compact time picker's,
-        // or the system menu's.
+        // lasts. Both open Apple's compact time bubble, so one tap moves
+        // from either to the other (a system menu for Thời lượng could
+        // not hand over to the time bubble).
         configureStartTimePicker()
-        durationButton.showsMenuAsPrimaryAction = true
+        configureDurationPicker()
         let tiles = UIStackView(arrangedSubviews: [
             makeTile(title: "Bắt đầu", icon: "clock.fill", valueLabel: startValueLabel, control: startTileControl),
-            makeTile(title: "Thời lượng", icon: "timer", valueLabel: durationValueLabel, control: durationButton),
+            makeTile(title: "Thời lượng", icon: "timer", valueLabel: durationValueLabel, control: durationTileControl),
         ])
         tiles.spacing = 10
         tiles.distribution = .fillEqually
         card.addArrangedSubview(tiles)
-        renderDurationButton()
+        renderDuration()
 
         let clockIcon = UIImageView(image: UIImage(systemName: "clock.arrow.circlepath"))
         clockIcon.tintColor = red
@@ -1615,7 +1617,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         }
         if startTimePicker.date != start { startTimePicker.date = start }
         startValueLabel.text = MeetingPresentation.clock.string(from: start)
-        renderDurationButton()
+        renderDuration()
         expectedLabel.text = "\(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: endTime))"
         renderInvitees()
     }
@@ -2051,23 +2053,34 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         return tile
     }
 
-    /// The Thời lượng tile's value and its system menu of standard marks,
-    /// as on iOS 18 (MeetingBookingTime.durationChoices).
-    private func renderDurationButton() {
-        let title = MeetingBookingTime.durationTitle(minutes: durationMinutes)
-        durationValueLabel.text = title
-        durationButton.menu = UIMenu(children: MeetingBookingTime.durationChoices.map { minutes in
-            UIAction(
-                title: MeetingBookingTime.durationTitle(minutes: minutes),
-                state: minutes == durationMinutes ? .on : .off
-            ) { [weak self] _ in
-                guard let self else { return }
-                self.durationMinutes = minutes
-                self.render()
-            }
-        })
-        durationButton.accessibilityLabel = "Thời lượng"
-        durationButton.accessibilityValue = title
+    /// The system's compact time picker read as a length of time, as on
+    /// iOS 18: "01:30" is 1 giờ 30 phút; 5-minute steps, 00:05 to 08:00
+    /// (`MeetingBookingTime.durationRange`).
+    private func configureDurationPicker() {
+        let calendar = VietnamTime.calendar
+        durationTileControl.name = "Thời lượng"
+        durationPicker.datePickerMode = .time
+        durationPicker.preferredDatePickerStyle = .compact
+        durationPicker.minuteInterval = MeetingBookingTime.minuteStep
+        durationPicker.timeZone = VietnamTime.timeZone
+        durationPicker.calendar = calendar
+        durationPicker.locale = VietnamTime.locale
+        durationPicker.minimumDate = MeetingBookingTime.clockDate(forDuration: MeetingBookingTime.durationRange.lowerBound, calendar: calendar)
+        durationPicker.maximumDate = MeetingBookingTime.clockDate(forDuration: MeetingBookingTime.durationRange.upperBound, calendar: calendar)
+        durationPicker.date = MeetingBookingTime.clockDate(forDuration: durationMinutes, calendar: calendar)
+        durationPicker.accessibilityLabel = "Thời lượng"
+        durationPicker.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.durationMinutes = MeetingBookingTime.durationMinutes(fromClock: self.durationPicker.date, calendar: VietnamTime.calendar)
+            self.render()
+        }, for: .valueChanged)
+    }
+
+    /// The Thời lượng tile's value, and its picker kept on it.
+    private func renderDuration() {
+        durationValueLabel.text = MeetingBookingTime.durationTitle(minutes: durationMinutes)
+        let clock = MeetingBookingTime.clockDate(forDuration: durationMinutes, calendar: VietnamTime.calendar)
+        if durationPicker.date != clock { durationPicker.date = clock }
     }
 
     private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight? = nil, color: UIColor) -> UILabel {

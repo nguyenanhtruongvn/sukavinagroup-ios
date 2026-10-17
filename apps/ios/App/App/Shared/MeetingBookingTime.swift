@@ -6,10 +6,27 @@ enum MeetingBookingTime {
     /// Start times move in 5-minute steps.
     static let minuteStep = 5
 
-    /// The durations a booking offers, in minutes: short slots, then whole
-    /// and half hours up to 8 hours, each exactly once. The menu used to
-    /// list "60 phút" and "1 giờ", "120 phút" and "2 giờ", side by side.
-    static let durationChoices = [5, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 300, 360, 420, 480]
+    /// How long a booking can last, in minutes: 5 minutes to 8 hours, in
+    /// steps of `minuteStep`.
+    static let durationRange = 5...480
+
+    /// The duration is chosen with Apple's compact time picker, its hours
+    /// and minutes read as a length of time ("01:30" is 1 giờ 30 phút), so
+    /// it opens the same bubble as Bắt đầu. The picker's time sits on this
+    /// fixed day; only its hour and minute mean anything.
+    static func clockDate(forDuration minutes: Int, calendar: Calendar) -> Date {
+        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 0))
+        return calendar.date(byAdding: .minute, value: minutes, to: day) ?? day
+    }
+
+    /// The duration a picker time stands for, on `minuteStep` and within
+    /// `durationRange`.
+    static func durationMinutes(fromClock date: Date, calendar: Calendar) -> Int {
+        let time = calendar.dateComponents([.hour, .minute], from: date)
+        let minutes = (time.hour ?? 0) * 60 + (time.minute ?? 0)
+        let stepped = Int((Double(minutes) / Double(minuteStep)).rounded()) * minuteStep
+        return min(max(stepped, durationRange.lowerBound), durationRange.upperBound)
+    }
 
     /// "45 phút", "1 giờ", "1 giờ 30 phút".
     static func durationTitle(minutes: Int) -> String {

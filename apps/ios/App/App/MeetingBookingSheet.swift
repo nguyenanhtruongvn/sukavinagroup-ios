@@ -274,12 +274,16 @@ struct MeetingBookingSheet: View {
             }
 
             // The two facts of a booking as tiles: when it starts (hh:mm) and
-            // how long it lasts. Tapping a tile opens Apple's own bubble: the
-            // compact time picker's for Bắt đầu, the system menu's for Thời
-            // lượng. Nothing is presented by the app itself.
+            // how long it lasts. Both open Apple's compact time bubble, so
+            // one tap moves from either to the other. Thời lượng was a
+            // system menu, and a tap on Bắt đầu while it was open could only
+            // close it: the sheet presents one popup at a time, and two
+            // compact pickers hand over to each other while a menu and a
+            // picker do not (debug.log 1.0.86). Nothing is presented by the
+            // app itself.
             HStack(spacing: 10) {
-                // Apple's compact time picker lies under the tile, at its own
-                // size, along the tile's bottom; the drawn tile takes no
+                // Apple's compact time picker lies under each tile, at its
+                // own size, along the tile's bottom; the drawn tile takes no
                 // touches and every tap on it is handed to the picker
                 // (TileFillingPickerView). VoiceOver reads the picker.
                 bookingTile(
@@ -296,20 +300,29 @@ struct MeetingBookingSheet: View {
                 ))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                Menu {
-                    // Standard marks, each once: 5 phút ... 45 phút, 1 giờ,
-                    // 1 giờ 30 phút, 2 giờ ... 8 giờ.
-                    Picker("Thời lượng", selection: $durationMinutes) {
-                        ForEach(MeetingBookingTime.durationChoices, id: \.self) { minutes in
-                            Text(MeetingBookingTime.durationTitle(minutes: minutes)).tag(minutes)
-                        }
-                    }
-                } label: {
-                    bookingTile(title: "Thời lượng", value: MeetingBookingTime.durationTitle(minutes: durationMinutes), icon: "timer")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Thời lượng")
-                .accessibilityValue(MeetingBookingTime.durationTitle(minutes: durationMinutes))
+                // Hours and minutes of the bubble are the length: 01:30 is
+                // 1 giờ 30 phút; 5-minute steps, 00:05 to 08:00.
+                bookingTile(
+                    title: "Thời lượng",
+                    value: MeetingBookingTime.durationTitle(minutes: durationMinutes),
+                    icon: "timer"
+                )
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .background(TileFillingTimePicker(
+                    selection: durationClock,
+                    minuteInterval: MeetingBookingTime.minuteStep,
+                    minimum: MeetingBookingTime.clockDate(
+                        forDuration: MeetingBookingTime.durationRange.lowerBound,
+                        calendar: VietnamTime.calendar
+                    ),
+                    maximum: MeetingBookingTime.clockDate(
+                        forDuration: MeetingBookingTime.durationRange.upperBound,
+                        calendar: VietnamTime.calendar
+                    ),
+                    accessibilityLabel: "Thời lượng"
+                ))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
             HStack(spacing: 9) {
@@ -653,8 +666,16 @@ struct MeetingBookingSheet: View {
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
     }
 
+    /// `durationMinutes` as the time Apple's time picker shows ("01:30").
+    private var durationClock: Binding<Date> {
+        Binding(
+            get: { MeetingBookingTime.clockDate(forDuration: durationMinutes, calendar: VietnamTime.calendar) },
+            set: { durationMinutes = MeetingBookingTime.durationMinutes(fromClock: $0, calendar: VietnamTime.calendar) }
+        )
+    }
+
     /// A start or duration tile: icon and chevron, caption, value. Drawn
-    /// only; the control under or around it does the choosing.
+    /// only; the picker under it does the choosing.
     private func bookingTile(title: String, value: String, icon: String) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
