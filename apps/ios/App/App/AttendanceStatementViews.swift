@@ -446,15 +446,9 @@ struct AttendanceOvertimeProgressRow: View {
                 .frame(width: 116, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
 
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.gray.opacity(0.18))
-                    Capsule().fill(color)
-                        .frame(width: geometry.size.width * fraction)
-                }
-            }
-            .frame(height: 8)
-            .accessibilityHidden(true)
+            ProgressView(value: fraction)
+                .tint(color)
+                .accessibilityHidden(true)
 
             Text("\(AttendanceMetrics.hourText(hours)) giờ")
                 .font(.subheadline.weight(.semibold))

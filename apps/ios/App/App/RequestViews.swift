@@ -557,18 +557,19 @@ struct RequestsView: View {
         .animation(.easeInOut(duration: 0.22), value: filterIndex)
     }
 
+    /// Apple's prominent button in its circle shape, where the drawn red
+    /// circle was. It stays over the list: the navigation bar is hidden on
+    /// every tab, which draws its own title.
     private var createRequestButton: some View {
         Button { composing = true } label: {
             Image(systemName: "plus")
-                .font(.system(size: 22, weight: .bold))
-                .frame(width: 58, height: 58)
-                .background(AppTheme.red)
-                .foregroundStyle(.white)
-                .clipShape(Circle())
-                .shadow(color: AppTheme.red.opacity(0.38), radius: 18, y: 9)
+                .font(.title2.weight(.bold))
+                .frame(width: 44, height: 44)
         }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.circle)
+        .tint(AppTheme.red)
         .accessibilityLabel("Tạo đơn mới")
-        .buttonStyle(.plain)
     }
 
     private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
@@ -1044,18 +1045,6 @@ struct RequestComposer: View {
         guard usesDurationInput else { return cleanReason }
         return "\(kind.title): \(durationDescription). \(cleanReason)"
     }
-    @ViewBuilder private func businessTransportButton(_ title: String, key: String, icon: String) -> some View {
-        Button { transport = key } label: {
-            Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1).minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, minHeight: 42)
-                .background(transport == key ? EmployeeRequestKind.business.color.opacity(0.18) : AppTheme.card)
-                .foregroundStyle(transport == key ? EmployeeRequestKind.business.color : Color.primary)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(transport == key ? EmployeeRequestKind.business.color : Color.primary.opacity(0.1), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }.buttonStyle(.plain)
-    }
     @ViewBuilder private func labeledNumberField(
         _ title: String,
         placeholder: String,
@@ -1354,11 +1343,12 @@ struct RequestComposer: View {
                             .id("request-destination")
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("PHƯƠNG TIỆN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
-                                HStack(spacing: 8) {
-                                    businessTransportButton("Xe cá nhân", key: "personal_vehicle", icon: "car.fill")
-                                    businessTransportButton("Grab", key: "grab", icon: "location.fill")
-                                    businessTransportButton("Xe công ty", key: "company_vehicle", icon: "building.2.fill")
+                                Picker("Phương tiện", selection: $transport) {
+                                    Text("Xe cá nhân").tag("personal_vehicle")
+                                    Text("Grab").tag("grab")
+                                    Text("Xe công ty").tag("company_vehicle")
                                 }
+                                .pickerStyle(.segmented)
                             }
                             if transport == "personal_vehicle" {
                                 labeledNumberField(

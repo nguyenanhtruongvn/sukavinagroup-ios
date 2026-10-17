@@ -252,10 +252,11 @@ struct MeetingBookingSheet: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Color(uiColor: .label))
 
-            HStack(spacing: 10) {
-                meetingTypeButton("Nội bộ", icon: "person.2.fill")
-                meetingTypeButton("Tiếp khách", icon: "person.badge.plus")
+            Picker("Loại cuộc họp", selection: $meetingType) {
+                Text("Nội bộ").tag("Nội bộ")
+                Text("Tiếp khách").tag("Tiếp khách")
             }
+            .pickerStyle(.segmented)
 
             VStack(alignment: .leading, spacing: 7) {
                 Text("Nội dung cuộc họp")
@@ -343,26 +344,6 @@ struct MeetingBookingSheet: View {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(Color.black.opacity(0.06), lineWidth: 1)
         }
-    }
-
-    private func meetingTypeButton(_ value: String, icon: String) -> some View {
-        let selected = meetingType == value
-        return Button {
-            meetingType = value
-        } label: {
-            Label(value, systemImage: icon)
-                .font(.subheadline.weight(.bold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .foregroundStyle(selected ? .white : Color(uiColor: .label))
-                .background(selected ? Color(red: 0.0, green: 0.42, blue: 0.25) : Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .stroke(selected ? Color.clear : Color(uiColor: .separator), lineWidth: 1)
-                }
-        }
-        .buttonStyle(.plain)
     }
 
     private var inviteesCard: some View {

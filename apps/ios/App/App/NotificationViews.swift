@@ -747,14 +747,12 @@ private struct MeetingNotificationDetail: View {
                         .background(Color.red.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 if maximumExtensionMinutes >= 5 {
-                    Text("Gia hạn thêm \(extensionMinutes) phút")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(AppTheme.text(.green))
-                    HStack(spacing: 10) {
-                        Button("− 5 phút") { extensionMinutes = max(5, extensionMinutes - 5); actionError = nil }
-                            .buttonStyle(.bordered).disabled(isSubmitting)
-                        Button("+ 5 phút") { extensionMinutes = min(maximumExtensionMinutes, extensionMinutes + 5); actionError = nil }
-                            .buttonStyle(.bordered).disabled(isSubmitting || extensionMinutes >= maximumExtensionMinutes)
+                    Stepper(value: $extensionMinutes, in: 5...maximumExtensionMinutes, step: 5) {
+                        Text("Gia hạn thêm \(extensionMinutes) phút")
+                            .font(.subheadline.weight(.bold)).foregroundStyle(AppTheme.text(.green))
                     }
+                    .disabled(isSubmitting)
+                    .onChange(of: extensionMinutes) { _, _ in actionError = nil }
                     Button {
                         Task { await submit(details, action: "extend") }
                     } label: {

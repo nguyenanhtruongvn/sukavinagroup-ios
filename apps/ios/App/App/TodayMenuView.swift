@@ -140,7 +140,6 @@ struct TodayMenuView: View {
                     ? (menuStore.todayMenu?.day.featured ?? "...")
                     : [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
                 VStack(spacing: 18) {
-                    Capsule().fill(AppTheme.muted.opacity(0.35)).frame(width: 42, height: 5)
                     Image(systemName: cancelling ? "xmark.circle.fill" : (receiving ? "checkmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill")))
                         .font(.system(size: 28, weight: .bold))
                         .foregroundColor(cancelling ? .red : (receiving ? .green : (choice == "water" ? .cyan : .green)))
@@ -178,7 +177,8 @@ struct TodayMenuView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 22)
-                    .padding(.top, 14)
+                    // Room for Apple's drag indicator above the icon.
+                    .padding(.top, 24)
                     .padding(.bottom, 18)
                 .background {
                     GeometryReader { proxy in
@@ -193,7 +193,7 @@ struct TodayMenuView: View {
                 // In the menu card, a downward pull is a sheet-dismiss gesture;
                 // refreshing remains available from the dashboard itself.
                 .presentationContentInteraction(.resizes)
-                .presentationDragIndicator(.hidden)
+                .presentationDragIndicator(.visible)
                 .attachedMealSheetCorners()
                 .solidMealSheetBackground()
             }

@@ -1273,7 +1273,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private var cancellable: AnyCancellable?
 
     private let red = UIColor.systemRed
-    private let green = UIColor(red: 0, green: 0.42, blue: 0.25, alpha: 1)
 
     // Views that persist (text fields keep focus); the rest is re-rendered.
     private let scroll = UIScrollView()
@@ -1281,7 +1280,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private let titleField = UITextField()
     private let peopleField = UITextField()
     private let departmentField = UITextField()
-    private let typeButtons = UIStackView()
+    private let typeControl = UISegmentedControl(items: ["Nội bộ", "Tiếp khách"])
     // Built once and updated in place: re-creating the picker while its
     // system overlay is open would cut the employee off mid-choice.
     // Each tile draws its value and lets a control underneath take the tap:
@@ -1455,18 +1454,14 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         let card = cardStack()
         card.addArrangedSubview(sectionTitle("Thông tin cuộc họp", icon: "text.bubble.fill"))
 
-        typeButtons.axis = .horizontal
-        typeButtons.spacing = 10
-        typeButtons.distribution = .fillEqually
-        for (value, icon) in [("Nội bộ", "person.2.fill"), ("Tiếp khách", "person.badge.plus")] {
-            let button = UIButton(type: .system)
-            button.addAction(UIAction { [weak self] _ in self?.meetingType = value; self?.render() }, for: .touchUpInside)
-            button.accessibilityIdentifier = value
-            button.heightAnchor.constraint(equalToConstant: 44).isActive = true
-            button.configuration = typeConfiguration(value: value, icon: icon, selected: false)
-            typeButtons.addArrangedSubview(button)
-        }
-        card.addArrangedSubview(typeButtons)
+        // Apple's segmented control, as on iOS 18.
+        typeControl.accessibilityLabel = "Loại cuộc họp"
+        typeControl.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.meetingType = self.typeControl.titleForSegment(at: self.typeControl.selectedSegmentIndex) ?? self.meetingType
+            self.render()
+        }, for: .valueChanged)
+        card.addArrangedSubview(typeControl)
 
         let contentLabel = label("Nội dung cuộc họp", style: .caption1, weight: .semibold, color: .secondaryLabel)
         styleField(titleField, placeholder: "Ví dụ: Họp kế hoạch tuần", icon: nil, height: 48)
@@ -1608,11 +1603,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     // MARK: Rendering
 
     private func render() {
-        for case let button as UIButton in typeButtons.arrangedSubviews {
-            let value = button.accessibilityIdentifier ?? ""
-            let icon = value == "Nội bộ" ? "person.2.fill" : "person.badge.plus"
-            button.configuration = typeConfiguration(value: value, icon: icon, selected: value == meetingType)
-        }
+        typeControl.selectedSegmentIndex = meetingType == "Tiếp khách" ? 1 : 0
         if startTimePicker.date != start { startTimePicker.date = start }
         startValueLabel.text = MeetingPresentation.clock.string(from: start)
         renderDuration()
@@ -1955,22 +1946,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         row.spacing = 8
         row.alignment = .center
         return row
-    }
-
-    private func typeConfiguration(value: String, icon: String, selected: Bool) -> UIButton.Configuration {
-        var configuration = UIButton.Configuration.filled()
-        configuration.cornerStyle = .fixed
-        configuration.background.cornerRadius = 13
-        configuration.baseBackgroundColor = selected ? green : .secondarySystemBackground
-        configuration.baseForegroundColor = selected ? .white : .label
-        configuration.background.strokeColor = selected ? .clear : .separator
-        configuration.background.strokeWidth = 1
-        configuration.image = UIImage(systemName: icon)
-        configuration.imagePadding = 6
-        var title = AttributedString(value)
-        title.font = .preferredFont(forTextStyle: .subheadline).withWeight(.bold)
-        configuration.attributedTitle = title
-        return configuration
     }
 
     /// The system's compact time picker, in Vietnam time and 5-minute steps
@@ -2449,19 +2424,29 @@ private final class LegacyMeetingDetailController: UIViewController {
                 rows.append(padded(error, background: UIColor.systemRed.withAlphaComponent(0.1), radius: 12, inset: 10))
             }
             if maximumExtensionMinutes >= 5 {
-                rows.append(label("Gia hạn thêm \(extensionMinutes) phút", style: .subheadline, weight: .bold, color: UIColor(AppTheme.text(.green, chipAlpha: 0.08))))
-                let minus = borderedButton("− 5 phút") { [weak self] in
-                    guard let self else { return }
-                    extensionMinutes = max(5, extensionMinutes - 5); controlError = nil; render()
-                }
-                minus.isEnabled = !isSubmittingControl
-                let plus = borderedButton("+ 5 phút") { [weak self] in
-                    guard let self else { return }
-                    extensionMinutes = min(maximumExtensionMinutes, extensionMinutes + 5); controlError = nil; render()
-                }
-                plus.isEnabled = !isSubmittingControl && extensionMinutes < maximumExtensionMinutes
-                let steps = UIStackView(arrangedSubviews: [minus, plus, UIView()])
+                // Apple's stepper, as on iOS 18.
+                let amount = label("Gia hạn thêm \(extensionMinutes) phút", style: .subheadline, weight: .bold, color: UIColor(AppTheme.text(.green, chipAlpha: 0.08)))
+                let stepper = UIStepper()
+                stepper.minimumValue = 5
+                stepper.maximumValue = Double(maximumExtensionMinutes)
+                stepper.stepValue = 5
+                stepper.value = Double(extensionMinutes)
+                stepper.isEnabled = !isSubmittingControl
+                stepper.accessibilityLabel = "Gia hạn thêm"
+                stepper.addAction(UIAction { [weak self, weak amount, weak stepper] _ in
+                    guard let self, let stepper else { return }
+                    self.extensionMinutes = Int(stepper.value)
+                    amount?.text = "Gia hạn thêm \(self.extensionMinutes) phút"
+                    // Rebuilt only to clear an error: rebuilding on every
+                    // step would end a press-and-hold on the stepper.
+                    if self.controlError != nil {
+                        self.controlError = nil
+                        self.render()
+                    }
+                }, for: .valueChanged)
+                let steps = UIStackView(arrangedSubviews: [amount, stepper])
                 steps.spacing = 10
+                steps.alignment = .center
                 rows.append(steps)
                 let extending = isSubmittingControl && controlAction == "extend"
                 rows.append(prominentButton(extending ? "Đang gia hạn…" : "Xác nhận gia hạn", icon: "checkmark",
@@ -2600,17 +2585,6 @@ private final class LegacyMeetingDetailController: UIViewController {
         row.spacing = 6
         row.alignment = .firstBaseline
         return row
-    }
-
-    private func borderedButton(_ title: String, action: @escaping () -> Void) -> UIButton {
-        // SwiftUI's .bordered: tinted fill, body text.
-        var configuration = UIButton.Configuration.tinted()
-        var text = AttributedString(title)
-        text.font = .preferredFont(forTextStyle: .body)
-        configuration.attributedTitle = text
-        let button = UIButton(configuration: configuration)
-        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
-        return button
     }
 
     private func prominentButton(_ title: String, icon: String, color: UIColor, busy: Bool, action: @escaping () -> Void) -> UIButton {

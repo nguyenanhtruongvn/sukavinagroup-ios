@@ -264,25 +264,13 @@ struct MeetingBookingDetailSheet: View {
                 }
 
                 if maximumExtensionMinutes >= 5 {
-                    Text("Gia hạn thêm \(extensionMinutes) phút")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(AppTheme.text(.green, chipAlpha: 0.08))
-
-                    HStack(spacing: 10) {
-                        Button("− 5 phút") {
-                            extensionMinutes = max(5, extensionMinutes - 5)
-                            controlError = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(isSubmittingControl)
-
-                        Button("+ 5 phút") {
-                            extensionMinutes = min(maximumExtensionMinutes, extensionMinutes + 5)
-                            controlError = nil
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(isSubmittingControl || extensionMinutes >= maximumExtensionMinutes)
+                    Stepper(value: $extensionMinutes, in: 5...maximumExtensionMinutes, step: 5) {
+                        Text("Gia hạn thêm \(extensionMinutes) phút")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(AppTheme.text(.green, chipAlpha: 0.08))
                     }
+                    .disabled(isSubmittingControl)
+                    .onChange(of: extensionMinutes) { _, _ in controlError = nil }
 
                     Button {
                         Task { await submitMeetingControl("extend") }
