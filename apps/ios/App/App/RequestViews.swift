@@ -95,10 +95,13 @@ enum EmployeeRequestStatus: String, Codable, CaseIterable {
 }
 
 enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
-    case leave, late, early, overtime, business, attendance, gate
+    // "sunday" (Làm chủ nhật) only ever comes from EmployeeRequest.kind below:
+    // the API stores it as "overtime" with sundayWork, so released apps can
+    // still decode the request list.
+    case leave, late, early, overtime, business, attendance, gate, sunday
     var id: String { rawValue }
     var title: String {
-        switch self { case .leave: return "Xin nghỉ"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác"; case .attendance: return "Xác nhận giờ công"; case .gate: return "Ra cổng" }
+        switch self { case .leave: return "Xin nghỉ"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác"; case .attendance: return "Xác nhận giờ công"; case .gate: return "Ra cổng"; case .sunday: return "Làm chủ nhật" }
     }
     var icon: String {
         switch self {
@@ -107,6 +110,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .early: return "figure.walk.departure"
         case .overtime: return "moon.stars.fill"
         case .business: return "airplane"; case .attendance: return "checkmark.circle"; case .gate: return "rectangle.portrait.and.arrow.right"
+        case .sunday: return "calendar"
         }
     }
     var color: Color {
@@ -116,6 +120,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .early: return Color(red: 0.9, green: 0.22, blue: 0.52)
         case .overtime: return Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)
         case .business: return Color(red: 0.0, green: 0.5, blue: 0.5); case .attendance: return .green; case .gate: return .purple
+        case .sunday: return Color(red: 249.0 / 255.0, green: 115.0 / 255.0, blue: 22.0 / 255.0)
         }
     }
 }
@@ -127,7 +132,11 @@ struct EmployeeRequest: Codable, Identifiable {
         let department: String?
     }
     let id: String
-    let kind: EmployeeRequestKind
+    private let storedKind: EmployeeRequestKind
+    /// Set on "Làm chủ nhật" requests, which the API stores as "overtime".
+    let sundayWork: Bool?
+    /// The kind shown in the app.
+    var kind: EmployeeRequestKind { sundayWork == true && storedKind == .overtime ? .sunday : storedKind }
     let from: Date
     let to: Date
     let reason: String
@@ -144,7 +153,9 @@ struct EmployeeRequest: Codable, Identifiable {
     let businessExpense: Double?
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
+        case id, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
+        case storedKind = "kind"
+        case sundayWork
         case businessDestination, businessTransport, businessDistanceKm, businessExpense
         case from = "startsAt"
         case to = "endsAt"
@@ -948,12 +959,22 @@ struct RequestComposer: View {
     private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
     private var singleDayEventName: String { kind == .late ? "đi trễ" : "về sớm" }
     private var compactRequestKinds: [EmployeeRequestKind] {
-        EmployeeRequestKind.allCases.filter { $0 != .attendance }
+        EmployeeRequestKind.allCases.filter { $0 != .attendance && $0 != .sunday }
     }
     private var durationMinutes: Int { durationUnit == .hours ? durationValue * 60 : durationValue }
     private var durationDescription: String { "\(durationValue) \(durationUnit.title.lowercased())" }
     private var workStartTime: String? { session.dashboard?.workStartTime }
     private var workEndTime: String? { session.dashboard?.workEndTime }
+
+    /// The employee's usual shift on today's Sunday, or the next one.
+    private func applySundaySchedule(now: Date) {
+        let calendar = VietnamTime.calendar
+        let today = calendar.startOfDay(for: now)
+        let daysToSunday = (8 - calendar.component(.weekday, from: today)) % 7
+        let sunday = calendar.date(byAdding: .day, value: daysToSunday, to: today) ?? today
+        from = scheduledAttendanceTime(workStartTime, on: sunday, fallbackHour: 7, fallbackMinute: 30)
+        to = scheduledAttendanceTime(workEndTime, on: sunday, fallbackHour: 16, fallbackMinute: 30)
+    }
 
     private func applyInitialLeaveSchedule() {
         guard kind == .leave, !leaveScheduleWasInitialized else { return }
@@ -1094,6 +1115,10 @@ struct RequestComposer: View {
         if kind == .business && transport == "personal_vehicle" && !(localizedDecimal(distanceKm) ?? 0 > 0) {
             return "Nhập quãng đường khi đi bằng xe cá nhân."
         }
+        if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 {
+            return "Ngày bắt đầu phải là Chủ nhật."
+        }
+        if kind == .sunday && to <= from { return "Giờ kết thúc phải sau giờ bắt đầu." }
         if cleanReason.count < 10 { return "Lý do cần tối thiểu 10 ký tự (đã nhập \(cleanReason.count))." }
         let dates = submissionDates
         if dates.to < dates.from { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
@@ -1185,7 +1210,10 @@ struct RequestComposer: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             ForEach(compactRequestKinds) { requestKindButton($0) }
                         }
-                        requestKindButton(.attendance, fullWidth: true)
+                        HStack(spacing: 10) {
+                            requestKindButton(.sunday)
+                            requestKindButton(.attendance)
+                        }
                     }
 
                     if kind == .attendance {
@@ -1276,6 +1304,9 @@ struct RequestComposer: View {
                     }
                     if kind == .gate {
                         requestTimeRange(title: "Thời gian ra cổng", icon: "calendar.badge.clock")
+                    }
+                    if kind == .sunday {
+                        requestTimeRange(title: "Thời gian làm chủ nhật", icon: "calendar.badge.clock")
                     }
                     if kind == .leave {
                         requestTimeRange(title: "Thời gian xin nghỉ", icon: "calendar.badge.clock")
@@ -1516,6 +1547,8 @@ struct RequestComposer: View {
                 if newKind == .business || newKind == .gate {
                     from = now
                     to = now.addingTimeInterval(60 * 60)
+                } else if newKind == .sunday {
+                    applySundaySchedule(now: now)
                 } else if [.late, .early, .overtime].contains(newKind) {
                     durationValue = 30
                     durationUnit = .minutes
