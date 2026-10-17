@@ -430,8 +430,8 @@ struct SystemCompactDatePicker: UIViewRepresentable {
     }
 }
 
-/// Apple's compact time picker filling a drawn tile from underneath, so
-/// a tap anywhere on the tile opens Apple's own time bubble. Put it in
+/// Apple's compact time picker under a drawn tile, taking every tap on
+/// it, so a tap anywhere on the tile opens Apple's own time bubble. Put it in
 /// the tile's background and give the tile `.allowsHitTesting(false)`.
 /// Only the hour and minute are taken from the picker; the day stays.
 /// UIDatePicker because SwiftUI's DatePicker cannot set a minute interval.
@@ -483,65 +483,57 @@ struct TileFillingTimePicker: UIViewRepresentable {
     }
 }
 
-/// Holds a compact UIDatePicker blown up over its whole area, so a tap
-/// anywhere on it, not only on the picker's small capsule, opens Apple's
-/// picker bubble. Put under a drawn face that takes no touches. Used by
-/// the booking Bắt đầu tile (MeetingBookingSheet on iOS 18,
-/// LegacyMeetingRoomsUIKit on iOS 17) and the Giờ vào / Giờ ra cards.
+/// Holds a compact UIDatePicker at its own size under a drawn tile, and
+/// hands it every tap on the tile, so a tap anywhere, not only on the
+/// picker's small capsule, opens Apple's picker bubble. Put under a drawn
+/// face that takes no touches. Used by the booking Bắt đầu tile
+/// (MeetingBookingSheet on iOS 18, LegacyMeetingRoomsUIKit on iOS 17) and
+/// the Giờ vào / Giờ ra cards.
 ///
-/// The picker is centred by Auto Layout, which sizes a compact picker to
-/// its capsule as it does anywhere else, and then scaled until the capsule
-/// overfills this view; what spills over is clipped. 1.0.81 measured the
-/// picker with `sizeToFit()` instead and left it at the tile's size, its
-/// capsule at the trailing edge: only taps near the chevron opened it.
+/// The picker is never stretched or scaled: Apple places its bubble from
+/// the picker's own frame, and c37b077 scaled the picker about three times
+/// over the tile, so the bubble came from an oversized, off-centre frame
+/// and did not sit as Apple's does. It sits centred along the tile's
+/// bottom, where the time is drawn, so the bubble opens from there; a tap
+/// elsewhere on the tile is handed to the control at the picker's centre.
+/// Every point of a tile is then well within the distance UIKit still
+/// counts as a tap on a control.
 final class TileFillingPickerView: UIView {
     let picker = UIDatePicker()
     private var loggedLayout = ""
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        clipsToBounds = true
         picker.preferredDatePickerStyle = .compact
         picker.translatesAutoresizingMaskIntoConstraints = false
         addSubview(picker)
         NSLayoutConstraint.activate([
             picker.centerXAnchor.constraint(equalTo: centerXAnchor),
-            picker.centerYAnchor.constraint(equalTo: centerYAnchor),
+            picker.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            picker.topAnchor.constraint(greaterThanOrEqualTo: topAnchor),
         ])
+        // Only if the picker reports no size of its own: a compact time picker's.
+        let width = picker.widthAnchor.constraint(equalToConstant: 80)
+        let height = picker.heightAnchor.constraint(equalToConstant: 34)
+        width.priority = .fittingSizeLevel
+        height.priority = .fittingSizeLevel
+        NSLayoutConstraint.activate([width, height])
     }
 
     required init?(coder: NSCoder) { nil }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let natural = naturalSize()
-        guard bounds.width > 0, bounds.height > 0 else { return }
-        // Uniform, with room to spare: overfilling is harmless (clipped),
-        // falling short leaves dead edges.
-        let scale = max(bounds.width / natural.width, bounds.height / natural.height) * 1.15
-        picker.transform = CGAffineTransform(scaleX: scale, y: scale)
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard isUserInteractionEnabled, !isHidden, self.point(inside: point, with: event) else { return nil }
+        let center = CGPoint(x: picker.bounds.midX, y: picker.bounds.midY)
+        return picker.hitTest(center, with: event) ?? picker
     }
 
-    /// The picker's unscaled size as Auto Layout gave it; if that is not a
-    /// compact picker's size, its fitting size, else an estimate.
-    private func naturalSize() -> CGSize {
-        func plausible(_ size: CGSize) -> Bool {
-            (20...400).contains(size.width) && (20...80).contains(size.height)
-        }
-        let laidOut = picker.bounds.size
-        let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-        let natural: CGSize
-        if plausible(laidOut) {
-            natural = laidOut
-        } else {
-            natural = plausible(fitted) ? fitted : CGSize(width: 80, height: 34)
-            picker.bounds = CGRect(origin: .zero, size: natural)
-        }
-        let line = "laidOut=\(Int(laidOut.width))x\(Int(laidOut.height)) fitted=\(Int(fitted.width))x\(Int(fitted.height)) tile=\(Int(bounds.width))x\(Int(bounds.height))"
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let line = "picker=\(Int(picker.bounds.width))x\(Int(picker.bounds.height)) tile=\(Int(bounds.width))x\(Int(bounds.height))"
         if line != loggedLayout {
             loggedLayout = line
             UIFlowLog.record("tilePicker.size", line)
         }
-        return natural
     }
 }

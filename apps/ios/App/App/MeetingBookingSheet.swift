@@ -278,10 +278,10 @@ struct MeetingBookingSheet: View {
             // compact time picker's for Bắt đầu, the system menu's for Thời
             // lượng. Nothing is presented by the app itself.
             HStack(spacing: 10) {
-                // Apple's compact time picker fills the tile from underneath,
-                // as its background, so it is exactly the tile's size; the
-                // drawn tile takes no touches, so a tap anywhere on it
-                // reaches the picker. VoiceOver reads the picker.
+                // Apple's compact time picker lies under the tile, at its own
+                // size, along the tile's bottom; the drawn tile takes no
+                // touches and every tap on it is handed to the picker
+                // (TileFillingPickerView). VoiceOver reads the picker.
                 bookingTile(
                     title: "Bắt đầu",
                     value: MeetingPresentation.clock.string(from: start),
