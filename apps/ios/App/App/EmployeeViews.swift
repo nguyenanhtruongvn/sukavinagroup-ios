@@ -99,19 +99,17 @@ struct PreloadedAttendanceDayCell: View {
             Text(String(dayNumber))
                 .font(.subheadline.weight(.medium))
                 .frame(height: 20)
-            detail(
+            shifts(
                 note: note,
                 isHoliday: isHoliday,
                 hasCompletePunchPair: hasCompletePunchPair,
                 hasForgottenPunch: hasForgottenPunch
             )
-            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
         .foregroundStyle(note == nil && statuses.contains("absent") ? Self.absentColor : Color.primary)
         .frame(maxWidth: .infinity, minHeight: cellHeight)
         .background(background(for: statuses, note: note))
-        .overlay(alignment: .bottom) { nightShiftBand() }
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch))
@@ -129,6 +127,8 @@ struct PreloadedAttendanceDayCell: View {
                 Text(note)
                     .font(.system(size: 11, weight: .bold, design: .rounded))
                     .foregroundStyle(noteColor(note))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
@@ -181,25 +181,51 @@ struct PreloadedAttendanceDayCell: View {
         return AnyView(Color.clear)
     }
 
-    /// Ca đêm takes the lower part of the cell, below the day shift.
-    private func nightShiftBand() -> AnyView {
-        guard let night = day.nightShift else { return AnyView(EmptyView()) }
-        let indigo = colorScheme == .dark
-            ? Color(red: 165.0 / 255.0, green: 180.0 / 255.0, blue: 252.0 / 255.0)
-            : Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
-        let text = showWorkMetrics
-            ? AttendanceMetrics.workFactorText(night.workdays) + " · " + AttendanceMetrics.hourText(night.overtimeHours)
-            : "CĐ"
-        return AnyView(
-            Text(text)
-                .font(.system(size: 10, weight: .heavy, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(indigo)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity, minHeight: 16, maxHeight: 16)
-                .background(Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0).opacity(0.18))
+    /// The day shift, split vertically with ca đêm (right half) when the date has one.
+    private func shifts(
+        note: String?,
+        isHoliday: Bool,
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool
+    ) -> AnyView {
+        let dayShift = detail(
+            note: note,
+            isHoliday: isHoliday,
+            hasCompletePunchPair: hasCompletePunchPair,
+            hasForgottenPunch: hasForgottenPunch
         )
+        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
+        guard let night = day.nightShift else { return AnyView(dayShift) }
+        return AnyView(HStack(alignment: .top, spacing: 1) {
+            dayShift
+            nightShiftColumn(night)
+        })
+    }
+
+    private func nightShiftColumn(_ night: AttendanceNightShift) -> some View {
+        let indigo = Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
+        let text = colorScheme == .dark
+            ? Color(red: 165.0 / 255.0, green: 180.0 / 255.0, blue: 252.0 / 255.0)
+            : indigo
+        return VStack(spacing: 0) {
+            Text("CĐ")
+                .font(.system(size: 10, weight: .heavy, design: .rounded))
+                .frame(height: 13)
+            if showWorkMetrics {
+                Text(AttendanceMetrics.workFactorText(night.workdays))
+                    .frame(height: 12)
+                Text(AttendanceMetrics.hourText(night.overtimeHours) + "h")
+                    .frame(height: 12)
+            }
+        }
+        .font(.system(size: 9, weight: .semibold, design: .rounded))
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .foregroundStyle(text)
+        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
+        .background(indigo.opacity(0.18))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 
     private func background(for statuses: [String], note: String?) -> AnyView {
