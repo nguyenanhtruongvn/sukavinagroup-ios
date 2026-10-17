@@ -52,8 +52,6 @@ enum VietnamTime {
     static let clock = formatter("HH:mm")
     /// 14/10/2026
     static let shortDate = formatter("dd/MM/yyyy")
-    /// The date of a request's start/end, e.g. "Ngày 18 thg 10, 2026".
-    static let requestDate = formatter("'Ngày' d 'thg' M, yyyy")
     /// 14/10/2026 08:30
     static let dateTime = formatter("dd/MM/yyyy HH:mm")
     /// 08:30 14/10/2026

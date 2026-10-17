@@ -1664,12 +1664,30 @@ struct RequestComposer: View {
         .layoutPriority(1)
     }
 
-    /// A compact DatePicker decides on its own whether to show the full date
-    /// ("Ngày 17 thg 10, 2026") or a short one ("18/10/26"), so the same form
-    /// showed different formats per request kind. The app draws the time and
-    /// date itself and opens the system pickers in a popover on tap.
+    /// A compact DatePicker keeps the width it measured for its first date and
+    /// abbreviates a later, programmatically set date to fit it ("18/10/26"
+    /// instead of "Ngày 18 thg 10, 2026", e.g. after "Làm chủ nhật" moves the
+    /// form to Sunday). Re-creating it when the day changes measures it again,
+    /// so every request kind shows the same full date. Time changes keep it.
+    ///
+    /// The system picker, not a custom pill with a popover: a SwiftUI
+    /// `.popover` inside this sheet closed the whole composer when tapped
+    /// (debug.log on iOS 27), and the system's own compact picker, as in
+    /// the attendance request, is the smoother and steadier of the two.
     private func dateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        RequestDateTimeChooser(selection: selection, minimum: range?.lowerBound)
+        compactDateTimePicker(selection: selection, range: range)
+            .id(VietnamTime.calendar.startOfDay(for: selection.wrappedValue))
+    }
+
+    @ViewBuilder
+    private func compactDateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+        if let range {
+            DatePicker("", selection: selection, in: range, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden().datePickerStyle(.compact)
+        } else {
+            DatePicker("", selection: selection, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden().datePickerStyle(.compact)
+        }
     }
 
     private var durationValueMenu: some View {
@@ -1756,97 +1774,6 @@ struct RequestComposer: View {
         } else {
             DatePicker("", selection: selection, displayedComponents: .date)
                 .labelsHidden().datePickerStyle(.compact)
-        }
-    }
-}
-
-/// Start or end of a request: "HH:mm" and "Ngày d thg M, yyyy" in Vietnam
-/// time, always in the same format. Tapping either opens the matching system
-/// picker in a popover.
-///
-/// `.anchoredPopover`, not SwiftUI's `.popover`: with `.popover`, tapping a
-/// pill closed the whole composer before any value changed (debug.log on
-/// iOS 27: composer.disappear with no composer.user* line and
-/// scheduleEdited=false, three times running). See `View.anchoredPopover`.
-struct RequestDateTimeChooser: View {
-    @Binding var selection: Date
-    let minimum: Date?
-    @State private var editing: Part?
-
-    enum Part: String, Identifiable {
-        case time, date
-        var id: String { rawValue }
-    }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            pill(VietnamTime.clock.string(from: selection), part: .time, label: "Giờ")
-            pill(VietnamTime.requestDate.string(from: selection), part: .date, label: "Ngày")
-        }
-    }
-
-    private func pill(_ text: String, part: Part, label: String) -> some View {
-        Button {
-            UIFlowLog.record("composer.datePill", "part=\(part.rawValue)")
-            editing = part
-        } label: {
-            Text(text)
-                .font(.body)
-                .monospacedDigit()
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Color(.tertiarySystemFill), in: Capsule())
-                .foregroundStyle(editing == part ? Color.accentColor : Color.primary)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(label) \(text)")
-        .anchoredPopover(
-            isPresented: Binding(
-                get: { editing == part },
-                set: { if !$0, editing == part { editing = nil } }
-            ),
-            logName: "composer.\(part.rawValue)"
-        ) {
-            RequestPickerContent(selection: $selection, minimum: minimum, part: part)
-        }
-    }
-}
-
-/// The system picker inside a request popover: calendar for the date, wheel
-/// for the time.
-private struct RequestPickerContent: View {
-    @Binding var selection: Date
-    let minimum: Date?
-    let part: RequestDateTimeChooser.Part
-
-    var body: some View {
-        let components: DatePickerComponents = part == .date ? .date : .hourAndMinute
-        Group {
-            if let minimum {
-                DatePicker("", selection: $selection, in: minimum..., displayedComponents: components)
-            } else {
-                DatePicker("", selection: $selection, displayedComponents: components)
-            }
-        }
-        .labelsHidden()
-        .modifier(RequestPickerStyle(part: part))
-        .environment(\.timeZone, VietnamTime.timeZone)
-        .environment(\.calendar, VietnamTime.calendar)
-        .environment(\.locale, VietnamTime.locale)
-        .padding(12)
-    }
-}
-
-/// Calendar for the date, wheel for the time.
-private struct RequestPickerStyle: ViewModifier {
-    let part: RequestDateTimeChooser.Part
-
-    func body(content: Content) -> some View {
-        if part == .date {
-            content.datePickerStyle(.graphical).frame(width: 320)
-        } else {
-            content.datePickerStyle(.wheel).frame(width: 260)
         }
     }
 }
