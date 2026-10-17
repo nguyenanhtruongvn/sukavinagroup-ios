@@ -149,8 +149,24 @@ enum UIFlowLog {
         record("app.launch", "ios=\(UIDevice.current.systemVersion) app=\(version)(\(build))")
     }
 
-    static func clear() {
-        queue.async { try? FileManager.default.removeItem(at: fileURL) }
+    /// True when nothing has been recorded since the last clear, so the
+    /// account screen can say so instead of exporting an empty file.
+    static var isEmpty: Bool {
+        queue.sync {
+            guard let size = (try? FileManager.default.attributesOfItem(atPath: fileURL.path)[.size]) as? Int else {
+                return true
+            }
+            return size == 0
+        }
+    }
+
+    /// `completion` runs on the main queue once the file is gone, so the
+    /// caller can refresh what it shows.
+    static func clear(completion: @escaping () -> Void = {}) {
+        queue.async {
+            try? FileManager.default.removeItem(at: fileURL)
+            DispatchQueue.main.async(execute: completion)
+        }
     }
 
     private static func append(_ line: String) {

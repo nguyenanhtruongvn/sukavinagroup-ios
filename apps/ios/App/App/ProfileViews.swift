@@ -25,6 +25,10 @@ struct ProfileView: View {
     @State private var showPasswordChangeLimit = false
     @State private var legalPage: LegalPage?
     @State private var showSignOutConfirmation = false
+    // Temporary, with the debug log section below.
+    @State private var hasDebugLog = false
+    @State private var confirmingDebugLogClear = false
+    @State private var showEmptyDebugLogNotice = false
 
     var body: some View {
         NavigationView {
@@ -156,21 +160,49 @@ struct ProfileView: View {
                     // itself" report. Remove with UIFlowLog once confirmed.
                     accountSectionTitle("NHẬT KÝ GỠ LỖI")
                     VStack(spacing: 0) {
-                        ShareLink(item: UIFlowLog.fileURL) {
-                            accountLink(icon: "square.and.arrow.up", title: "Xuất nhật ký thao tác", opensExternally: false)
+                        // An empty file shares as an empty attachment, which
+                        // looks like a failure. Say it is empty instead.
+                        if hasDebugLog {
+                            ShareLink(item: UIFlowLog.fileURL) {
+                                accountLink(icon: "square.and.arrow.up", title: "Xuất nhật ký thao tác", opensExternally: false)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Button {
+                                showEmptyDebugLogNotice = true
+                            } label: {
+                                accountLink(icon: "square.and.arrow.up", title: "Xuất nhật ký thao tác", opensExternally: false)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                         Divider().padding(.leading, 58)
                         Button {
-                            UIFlowLog.clear()
-                            UIFlowLog.record("log.cleared")
+                            confirmingDebugLogClear = true
                         } label: {
                             accountLink(icon: "trash.fill", title: "Xóa nhật ký đã ghi", opensExternally: false)
                         }
                         .buttonStyle(.plain)
+                        .disabled(!hasDebugLog)
+                        .opacity(hasDebugLog ? 1 : 0.5)
                     }
                     .background(AppTheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .onAppear { hasDebugLog = !UIFlowLog.isEmpty }
+                    // Kept on this section rather than the screen, which
+                    // already stacks several alerts and sheets of its own.
+                    .alert("Xóa nhật ký đã ghi?", isPresented: $confirmingDebugLogClear) {
+                        Button("Hủy", role: .cancel) {}
+                        Button("Xóa", role: .destructive) {
+                            UIFlowLog.clear { hasDebugLog = false }
+                        }
+                    } message: {
+                        Text("Toàn bộ thao tác đã ghi trên máy này sẽ bị xóa và không khôi phục được. Hãy xuất nhật ký trước nếu bạn còn cần gửi đi.")
+                    }
+                    .alert("Nhật ký đang trống", isPresented: $showEmptyDebugLogNotice) {
+                        Button("Đã hiểu", role: .cancel) {}
+                    } message: {
+                        Text("Chưa có thao tác nào được ghi lại. Hãy dùng ứng dụng một lúc cho đến khi gặp lỗi, rồi quay lại đây để xuất nhật ký.")
+                    }
 
                     accountSectionTitle("PHIÊN ĐĂNG NHẬP")
                     Button {
