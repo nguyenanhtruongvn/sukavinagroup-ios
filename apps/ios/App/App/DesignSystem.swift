@@ -444,15 +444,21 @@ struct TileFillingTimePicker: UIViewRepresentable {
 
     func makeUIView(context: Context) -> TileFillingPickerView {
         let view = TileFillingPickerView()
-        let picker = view.picker
-        picker.datePickerMode = .time
-        picker.minuteInterval = minuteInterval
-        picker.timeZone = VietnamTime.timeZone
-        picker.calendar = VietnamTime.calendar
-        picker.locale = VietnamTime.locale
-        picker.date = selection
-        picker.accessibilityLabel = accessibilityLabel
-        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        view.name = accessibilityLabel
+        let coordinator = context.coordinator
+        let minuteInterval = minuteInterval
+        let accessibilityLabel = accessibilityLabel
+        // Run for the first picker and for each fresh one that replaces it.
+        view.configure = { picker in
+            picker.datePickerMode = .time
+            picker.minuteInterval = minuteInterval
+            picker.timeZone = VietnamTime.timeZone
+            picker.calendar = VietnamTime.calendar
+            picker.locale = VietnamTime.locale
+            picker.date = coordinator.selection.wrappedValue
+            picker.accessibilityLabel = accessibilityLabel
+            picker.addTarget(coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        }
         return view
     }
 
@@ -488,6 +494,8 @@ struct TileFillingTimePicker: UIViewRepresentable {
 /// opens Apple's picker bubble. Put under a drawn face that takes no
 /// touches. Used by the booking Bắt đầu tile (MeetingBookingSheet on iOS
 /// 18, LegacyMeetingRoomsUIKit on iOS 17) and the Giờ vào / Giờ ra cards.
+/// Set the picker up in `configure`, never on `picker` directly: the
+/// picker can be replaced by a fresh one (see below).
 ///
 /// What did not work:
 /// - stretching the picker to the tile (02708ca): its capsule stays at the
@@ -503,15 +511,38 @@ struct TileFillingTimePicker: UIViewRepresentable {
 /// tile, the picker first moves just far enough to be under the finger.
 /// The touch is then a real tap inside Apple's capsule, and the bubble
 /// opens from the capsule at its own size, as Apple's does.
+///
+/// Once its bubble had been closed by opening the Thời lượng menu, the
+/// booking's picker answered no tap at all until the sheet was reopened
+/// (1.0.84). A picker that has closed its bubble is therefore swapped for
+/// a fresh one, and so is one that never reported its bubble closed when
+/// a new tap reaches it with nothing presented. Taps, bubbles and swaps
+/// are logged ("tilePicker.*") with the tile's name.
 final class TileFillingPickerView: UIView {
-    let picker = UIDatePicker()
+    private(set) var picker = UIDatePicker()
+    /// Names the tile in debug.log.
+    var name = "tile"
+    /// Sets up a picker: the current one when assigned, and every fresh one.
+    var configure: (@MainActor (UIDatePicker) -> Void)? {
+        didSet { configure?(picker) }
+    }
+
     private var centerX: NSLayoutConstraint!
     private var bottom: NSLayoutConstraint!
     private static let restingBottom: CGFloat = -6
+    /// Between the picker's editingDidBegin and editingDidEnd: its bubble.
+    private var isOpen = false
+    private var lastTouchTimestamp: TimeInterval = -1
     private var loggedLayout = ""
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        install(picker)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    private func install(_ picker: UIDatePicker) {
         picker.preferredDatePickerStyle = .compact
         picker.translatesAutoresizingMaskIntoConstraints = false
         addSubview(picker)
@@ -523,15 +554,77 @@ final class TileFillingPickerView: UIView {
         width.priority = .fittingSizeLevel
         height.priority = .fittingSizeLevel
         NSLayoutConstraint.activate([centerX, bottom, width, height])
+        picker.addTarget(self, action: #selector(bubbleOpened(_:)), for: .editingDidBegin)
+        picker.addTarget(self, action: #selector(bubbleClosed(_:)), for: .editingDidEnd)
     }
 
-    required init?(coder: NSCoder) { nil }
+    /// Puts a fresh picker, set up by `configure` and on the same time, in
+    /// place of the current one.
+    private func replacePicker(reason: String) {
+        let old = picker
+        let fresh = UIDatePicker()
+        old.removeTarget(nil, action: nil, for: .allEvents)
+        old.removeFromSuperview()
+        install(fresh)
+        configure?(fresh)
+        fresh.date = old.date
+        picker = fresh
+        isOpen = false
+        layoutIfNeeded()
+        UIFlowLog.record("tilePicker.replaced", "\(name) \(reason)")
+    }
+
+    @objc private func bubbleOpened(_ sender: UIDatePicker) {
+        guard sender === picker else { return }
+        isOpen = true
+        UIFlowLog.record("tilePicker.open", name)
+    }
+
+    @objc private func bubbleClosed(_ sender: UIDatePicker) {
+        guard sender === picker else { return }
+        isOpen = false
+        UIFlowLog.record("tilePicker.close", name)
+        // After the bubble's closing animation, which still uses this picker.
+        Task { @MainActor [weak self, weak sender] in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard let self, let sender, sender === self.picker, !self.isOpen else { return }
+            self.replacePicker(reason: "afterClose")
+        }
+    }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard isUserInteractionEnabled, !isHidden, self.point(inside: point, with: event) else { return nil }
+        if let event, event.type == .touches, event.timestamp != lastTouchTimestamp {
+            lastTouchTimestamp = event.timestamp
+            touchBegan(at: point)
+        }
         moveCapsule(under: point)
         let inPicker = convert(point, to: picker)
         return picker.hitTest(inPicker, with: event) ?? picker
+    }
+
+    /// Logs a new touch; swaps a picker that still counts its bubble open
+    /// when nothing is presented any more.
+    private func touchBegan(at point: CGPoint) {
+        let presented = nearestViewController()?.presentedViewController
+        let presentedName = presented.map { String(describing: type(of: $0)) } ?? "none"
+        let dismissing = presented?.isBeingDismissed ?? false
+        UIFlowLog.record(
+            "tilePicker.touch",
+            "\(name) at=\(Int(point.x)),\(Int(point.y)) open=\(isOpen) presented=\(presentedName) dismissing=\(dismissing) firstResponder=\(picker.isFirstResponder)"
+        )
+        if isOpen, presented == nil || dismissing {
+            replacePicker(reason: "stuckOpen")
+        }
+    }
+
+    private func nearestViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
     }
 
     /// Moves the picker from its resting place just far enough that
