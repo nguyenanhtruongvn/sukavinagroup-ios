@@ -1253,8 +1253,15 @@ struct RequestComposer: View {
                     if kind == .attendance {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
+                            // No inline label: "Ngày đối chiếu" above already names
+                            // it, and the label took the width the compact picker
+                            // needs for "Ngày 18 thg 10, 2026", so it fell back to
+                            // "18/10/26" and kept it. Re-created on a new day so it
+                            // measures the new date (see `dateTimePicker`).
                             DatePicker("Ngày chấm công", selection: editedByEmployee($attendanceDate), displayedComponents: .date)
+                                .labelsHidden()
                                 .datePickerStyle(.compact)
+                                .id(VietnamTime.calendar.startOfDay(for: attendanceDate))
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(spacing: 10) {
@@ -1349,8 +1356,13 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
+                            // As "Ngày chấm công": named by the heading above, so
+                            // no inline label taking its width, and re-created on a
+                            // new day; switching to Đi trễ or Về sớm moves `from`.
                             DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
+                                .labelsHidden()
                                 .datePickerStyle(.compact)
+                                .id(VietnamTime.calendar.startOfDay(for: from))
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)

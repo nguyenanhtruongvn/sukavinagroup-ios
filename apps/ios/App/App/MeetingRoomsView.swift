@@ -632,6 +632,10 @@ struct MeetingRoomScheduleSheet: View {
                         // Past days cannot be booked; showing them only confused the list.
                         DatePicker("Ngày", selection: $selectedDay, in: VietnamTime.calendar.startOfDay(for: .now)..., displayedComponents: .date)
                             .datePickerStyle(.compact)
+                            // Re-created on a new day so the compact picker
+                            // measures the new date rather than shortening it to
+                            // "18/10/26". Before `.onChange`, which must persist.
+                            .id(MeetingPresentation.calendar.startOfDay(for: selectedDay))
                             .padding(.horizontal)
                             .padding(.bottom, 12)
                             .onChange(of: selectedDay) { _, value in
