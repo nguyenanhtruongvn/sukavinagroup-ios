@@ -464,7 +464,7 @@ struct TileFillingTimePicker: UIViewRepresentable {
 ///
 /// It lies in front of the face, its picker invisible (masked). Behind a
 /// SwiftUI face, even one that allows no hit testing, a tap on the face's
-/// text and icons did not reach it, only one on its empty parts (6a8eb26,
+/// text and icons did not reach it, only one on its empty parts (1.0.87,
 /// Bắt đầu). In front, every point of the tile is this view's. In UIKit
 /// (iOS 17) the face is a subview with user interaction off, which hit
 /// testing skips, so there it may stay on top. Used by the booking Bắt đầu tile (MeetingBookingSheet on iOS
