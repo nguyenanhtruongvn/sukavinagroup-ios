@@ -1627,25 +1627,12 @@ struct RequestComposer: View {
         .layoutPriority(1)
     }
 
-    /// A compact DatePicker keeps the width it measured for its first date and
-    /// abbreviates a later, programmatically set date to fit it ("18/10/26"
-    /// instead of "Ngày 18 thg 10, 2026", e.g. after "Làm chủ nhật" moves the
-    /// form to Sunday). Re-creating it when the day changes measures it again,
-    /// so every request kind shows the same full date. Time changes keep it.
+    /// A compact DatePicker decides on its own whether to show the full date
+    /// ("Ngày 17 thg 10, 2026") or a short one ("18/10/26"), so the same form
+    /// showed different formats per request kind. The app draws the time and
+    /// date itself and opens the system pickers on tap.
     private func dateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        compactDateTimePicker(selection: selection, range: range)
-            .id(VietnamTime.calendar.startOfDay(for: selection.wrappedValue))
-    }
-
-    @ViewBuilder
-    private func compactDateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        if let range {
-            DatePicker("", selection: selection, in: range, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden().datePickerStyle(.compact)
-        } else {
-            DatePicker("", selection: selection, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden().datePickerStyle(.compact)
-        }
+        RequestDateTimeChooser(selection: selection, minimum: range?.lowerBound)
     }
 
     private var durationValueMenu: some View {
@@ -1732,6 +1719,77 @@ struct RequestComposer: View {
         } else {
             DatePicker("", selection: selection, displayedComponents: .date)
                 .labelsHidden().datePickerStyle(.compact)
+        }
+    }
+}
+
+/// Start or end of a request: "HH:mm" and "Ngày d thg M, yyyy" in Vietnam
+/// time, always in the same format. Tapping either opens the matching system
+/// picker in a popover.
+struct RequestDateTimeChooser: View {
+    @Binding var selection: Date
+    let minimum: Date?
+    @State private var editing: Part?
+
+    enum Part: String, Identifiable {
+        case time, date
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            pill(VietnamTime.clock.string(from: selection), part: .time, label: "Giờ")
+            pill(VietnamTime.requestDate.string(from: selection), part: .date, label: "Ngày")
+        }
+        .popover(item: $editing) { part in
+            picker(for: part)
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+
+    private func pill(_ text: String, part: Part, label: String) -> some View {
+        Button { editing = part } label: {
+            Text(text)
+                .font(.body)
+                .monospacedDigit()
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(Color(.tertiarySystemFill), in: Capsule())
+                .foregroundStyle(editing == part ? Color.accentColor : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(label) \(text)")
+    }
+
+    @ViewBuilder
+    private func picker(for part: Part) -> some View {
+        let components: DatePickerComponents = part == .date ? .date : .hourAndMinute
+        Group {
+            if let minimum {
+                DatePicker("", selection: $selection, in: minimum..., displayedComponents: components)
+            } else {
+                DatePicker("", selection: $selection, displayedComponents: components)
+            }
+        }
+        .labelsHidden()
+        .modifier(RequestPickerStyle(part: part))
+        .environment(\.timeZone, VietnamTime.timeZone)
+        .environment(\.calendar, VietnamTime.calendar)
+        .environment(\.locale, VietnamTime.locale)
+        .padding(12)
+    }
+}
+
+/// Calendar for the date, wheel for the time.
+private struct RequestPickerStyle: ViewModifier {
+    let part: RequestDateTimeChooser.Part
+
+    func body(content: Content) -> some View {
+        if part == .date {
+            content.datePickerStyle(.graphical).frame(width: 320)
+        } else {
+            content.datePickerStyle(.wheel).frame(width: 260)
         }
     }
 }
