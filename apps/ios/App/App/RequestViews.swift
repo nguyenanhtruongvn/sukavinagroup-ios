@@ -918,6 +918,8 @@ struct RequestComposer: View {
     /// the attendance month and the shift schedule; those must not count as
     /// input, so only changes made through a picker binding set this.
     @State private var scheduleEdited = false
+    /// The one date or time picker open inline, across every date row.
+    @State private var expandedDateField: RequestExpandedDateField?
     @State private var confirmingDiscard = false
     /// A rejected request this form starts from; nil for a new request.
     let template: EmployeeRequest?
@@ -1638,8 +1640,21 @@ struct RequestComposer: View {
             .foregroundStyle(.primary)
     }
 
-    @ViewBuilder
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
+        VStack(spacing: 0) {
+            dateRowHeader(title, selection: selection)
+            // Below the whole row rather than beside the pills: the calendar
+            // needs the card's full width.
+            if let open = expandedDateField, open.row == title {
+                RequestInlineDatePicker(selection: selection, minimum: range?.lowerBound, part: open.part)
+                    .padding(.bottom, 8)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dateRowHeader(_ title: String, selection: Binding<Date>) -> some View {
         if usesCompactDateRows {
             // iOS 18's compact DatePicker has a large intrinsic width. Keeping
             // the label fixed and removing the flexible spacer prevents
@@ -1647,17 +1662,29 @@ struct RequestComposer: View {
             HStack(spacing: 6) {
                 requestDateLabel(title)
                     .fixedSize(horizontal: true, vertical: false)
-                dateTimePicker(selection: selection, range: range)
+                dateTimePicker(title, selection: selection.wrappedValue)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 requestDateLabel(title)
-                dateTimePicker(selection: selection, range: range)
+                dateTimePicker(title, selection: selection.wrappedValue)
             }
             .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
         }
+    }
+
+    /// The open part for the row `title`; opening one closes any other.
+    private func expandedPart(for title: String) -> Binding<RequestDateTimeChooser.Part?> {
+        Binding(
+            get: { expandedDateField?.row == title ? expandedDateField?.part : nil },
+            set: { part in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    expandedDateField = part.map { RequestExpandedDateField(row: title, part: $0) }
+                }
+            }
+        )
     }
 
     private func requestDateLabel(_ title: String) -> some View {
@@ -1676,9 +1703,9 @@ struct RequestComposer: View {
     /// A compact DatePicker decides on its own whether to show the full date
     /// ("Ngày 17 thg 10, 2026") or a short one ("18/10/26"), so the same form
     /// showed different formats per request kind. The app draws the time and
-    /// date itself and opens the system pickers on tap.
-    private func dateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        RequestDateTimeChooser(selection: selection, minimum: range?.lowerBound)
+    /// date itself and opens the system pickers inline on tap.
+    private func dateTimePicker(_ title: String, selection: Date) -> some View {
+        RequestDateTimeChooser(selection: selection, editing: expandedPart(for: title))
     }
 
     private var durationValueMenu: some View {
@@ -1770,12 +1797,22 @@ struct RequestComposer: View {
 }
 
 /// Start or end of a request: "HH:mm" and "Ngày d thg M, yyyy" in Vietnam
-/// time, always in the same format. Tapping either opens the matching system
-/// picker in a popover.
+/// time, always in the same format. Tapping either toggles the matching
+/// system picker, which the form shows inline under the row
+/// (`RequestInlineDatePicker`).
+///
+/// The pickers used to open in a `.popover` from inside the composer sheet.
+/// Tapping a pill then closed the whole composer before any value changed
+/// (debug.log: composer.disappear with no composer.user* line and
+/// scheduleEdited=false, three times running on iOS 27). The portal hosts
+/// each tab in its own UIHostingController under a UITabBarController, and a
+/// presentation nested in the sheet did not survive that. Inline pickers
+/// present nothing, so there is nothing left to close the sheet.
 struct RequestDateTimeChooser: View {
-    @Binding var selection: Date
-    let minimum: Date?
-    @State private var editing: Part?
+    let selection: Date
+    /// The part whose picker is open under this row, if any. Owned by the
+    /// form so that only one picker is open across all rows.
+    @Binding var editing: Part?
 
     enum Part: String, Identifiable {
         case time, date
@@ -1787,14 +1824,13 @@ struct RequestDateTimeChooser: View {
             pill(VietnamTime.clock.string(from: selection), part: .time, label: "Giờ")
             pill(VietnamTime.requestDate.string(from: selection), part: .date, label: "Ngày")
         }
-        .popover(item: $editing) { part in
-            picker(for: part)
-                .presentationCompactAdaptation(.popover)
-        }
     }
 
     private func pill(_ text: String, part: Part, label: String) -> some View {
-        Button { editing = part } label: {
+        Button {
+            UIFlowLog.record("composer.datePill", "part=\(part.rawValue) open=\(editing != part)")
+            editing = editing == part ? nil : part
+        } label: {
             Text(text)
                 .font(.body)
                 .monospacedDigit()
@@ -1806,10 +1842,24 @@ struct RequestDateTimeChooser: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(label) \(text)")
+        .accessibilityHint(editing == part ? "Đóng bộ chọn" : "Mở bộ chọn")
     }
+}
 
-    @ViewBuilder
-    private func picker(for part: Part) -> some View {
+/// Which date row has a picker open inline, and for which part.
+struct RequestExpandedDateField: Equatable {
+    let row: String
+    let part: RequestDateTimeChooser.Part
+}
+
+/// The system picker for one part of a `RequestDateTimeChooser`, laid out in
+/// the form under its row: calendar for the date, wheel for the time.
+struct RequestInlineDatePicker: View {
+    @Binding var selection: Date
+    let minimum: Date?
+    let part: RequestDateTimeChooser.Part
+
+    var body: some View {
         let components: DatePickerComponents = part == .date ? .date : .hourAndMinute
         Group {
             if let minimum {
@@ -1823,19 +1873,21 @@ struct RequestDateTimeChooser: View {
         .environment(\.timeZone, VietnamTime.timeZone)
         .environment(\.calendar, VietnamTime.calendar)
         .environment(\.locale, VietnamTime.locale)
-        .padding(12)
+        // Centred in the card; narrower phones shrink it rather than clip it.
+        .frame(maxWidth: .infinity)
     }
 }
 
-/// Calendar for the date, wheel for the time.
+/// Calendar for the date, wheel for the time. Widths are caps, not fixed:
+/// inline in the card there can be less room than the popover had.
 private struct RequestPickerStyle: ViewModifier {
     let part: RequestDateTimeChooser.Part
 
     func body(content: Content) -> some View {
         if part == .date {
-            content.datePickerStyle(.graphical).frame(width: 320)
+            content.datePickerStyle(.graphical).frame(maxWidth: 320)
         } else {
-            content.datePickerStyle(.wheel).frame(width: 260)
+            content.datePickerStyle(.wheel).frame(maxWidth: 260)
         }
     }
 }
