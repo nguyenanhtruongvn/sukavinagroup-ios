@@ -196,36 +196,46 @@ struct PreloadedAttendanceDayCell: View {
         )
         .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
         guard let night = day.nightShift else { return AnyView(dayShift) }
+        // Nothing to show for the day shift: the night shift alone is centred in
+        // the cell like any other code, not squeezed into a half.
+        if note == nil, day.checkIn == nil, day.checkOut == nil {
+            return AnyView(nightShiftColumn(night, whole: true))
+        }
         return AnyView(HStack(alignment: .top, spacing: 1) {
             dayShift
-            nightShiftColumn(night)
+            nightShiftColumn(night, whole: false)
         })
     }
 
-    /// Text only, on the same rows and in the same size as the day shift beside it:
-    /// "CĐ" in the normal calendar, its workdays and overtime in the metrics one.
-    private func nightShiftColumn(_ night: AttendanceNightShift) -> some View {
+    /// Ca đêm, text only. The metrics calendar shows its workdays and overtime on
+    /// the same two rows as a day shift's coefficient and overtime. The normal
+    /// calendar shows "CĐ": centred between the day shift's check-in and check-out
+    /// beside it, or on the first row like any other code when it is the whole day.
+    private func nightShiftColumn(_ night: AttendanceNightShift, whole: Bool) -> AnyView {
         let color = colorScheme == .dark
             ? Color(red: 165.0 / 255.0, green: 180.0 / 255.0, blue: 252.0 / 255.0)
             : Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
-        return VStack(spacing: 0) {
-            if showWorkMetrics {
+        if showWorkMetrics {
+            return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(night.workdays))
                     .frame(height: 18, alignment: .top)
                 Text(AttendanceMetrics.hourText(night.overtimeHours))
                     .frame(height: 18, alignment: .top)
-            } else {
-                Text("CĐ")
-                    .fontWeight(.heavy)
-                    .frame(height: 18, alignment: .top)
             }
+            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
         }
-        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-        .monospacedDigit()
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
-        .foregroundStyle(color)
-        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
+        return AnyView(Text("CĐ")
+            .font(.system(size: whole ? 11 : 10.5, weight: .heavy, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(color)
+            .frame(height: whole ? 18 : nil, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: whole ? .top : .center))
     }
 
     private func background(for statuses: [String], note: String?) -> AnyView {
