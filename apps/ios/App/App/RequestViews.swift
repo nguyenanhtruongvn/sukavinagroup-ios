@@ -1283,15 +1283,24 @@ struct RequestComposer: View {
                                     }
                                 }
                             } else {
+                                // SystemCompactDatePicker, so their bubbles also
+                                // put the keyboard away.
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(alignment: .leading, spacing: 10) {
-                                        DatePicker("Giờ vào", selection: editedByEmployee($from), displayedComponents: .hourAndMinute)
-                                        DatePicker("Giờ ra", selection: editedByEmployee($to), displayedComponents: .hourAndMinute)
+                                        CompactDateRow(label: "Giờ vào") {
+                                            SystemCompactDatePicker(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
+                                        }
+                                        CompactDateRow(label: "Giờ ra") {
+                                            SystemCompactDatePicker(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
+                                        }
                                     }
                                 } else {
                                     HStack {
-                                        DatePicker("Giờ vào", selection: editedByEmployee($from), displayedComponents: .hourAndMinute).labelsHidden()
-                                        DatePicker("Giờ ra", selection: editedByEmployee($to), displayedComponents: .hourAndMinute).labelsHidden()
+                                        SystemCompactDatePicker(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
+                                            .fixedSize()
+                                        SystemCompactDatePicker(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
+                                            .fixedSize()
+                                        Spacer(minLength: 0)
                                     }
                                 }
                                 Text("Chưa có dữ liệu: nhập cả giờ vào và giờ ra để gửi yêu cầu bổ sung.").foregroundStyle(AppTheme.muted)

@@ -353,6 +353,7 @@ struct SystemCompactDatePicker: UIViewRepresentable {
         picker.date = selection
         picker.accessibilityLabel = accessibilityLabel
         picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        picker.addTarget(context.coordinator, action: #selector(Coordinator.opened(_:)), for: .editingDidBegin)
         return picker
     }
 
@@ -368,7 +369,8 @@ struct SystemCompactDatePicker: UIViewRepresentable {
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView picker: UIDatePicker, context: Context) -> CGSize? {
         let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-        let longForm = CompactDateWidthLog.fullWidth(of: selection, includesTime: mode != .date)
+        // A time alone has no long and short form.
+        let longForm = mode == .time ? 0 : CompactDateWidthLog.fullWidth(of: selection, includesTime: mode != .date)
         let width = max(fitted.width, longForm) + Self.spare
         let height = (20...80).contains(fitted.height) ? fitted.height : 34
         // Which of the two set the width: if the picker's own measure is
@@ -392,6 +394,12 @@ struct SystemCompactDatePicker: UIViewRepresentable {
 
         @objc func changed(_ picker: UIDatePicker) {
             if selection.wrappedValue != picker.date { selection.wrappedValue = picker.date }
+        }
+
+        /// Its bubble opens: the keyboard goes, as `TileFillingPickerView`.
+        @objc func opened(_ picker: UIDatePicker) {
+            let hidKeyboard = picker.resignTextInputForBubble()
+            UIFlowLog.record("datePicker.open", "\(picker.accessibilityLabel ?? "") hidKeyboard=\(hidKeyboard)")
         }
     }
 }
@@ -536,8 +544,12 @@ final class TileFillingPickerView: UIView {
 
     required init?(coder: NSCoder) { nil }
 
+    /// The bubble opens: a keyboard left open by a text field goes, as
+    /// it does when moving from typing to choosing a date or time; the
+    /// keyboard stayed over the form with the bubble.
     @objc private func bubbleOpened() {
-        UIFlowLog.record("tilePicker.open", name)
+        let hidKeyboard = resignTextInputForBubble()
+        UIFlowLog.record("tilePicker.open", "\(name) hidKeyboard=\(hidKeyboard)")
     }
 
     @objc private func bubbleClosed() {
@@ -618,5 +630,25 @@ final class TileFillingPickerView: UIView {
             loggedLayout = line
             UIFlowLog.record("tilePicker.size", line)
         }
+    }
+}
+
+extension UIView {
+    /// Hides the keyboard when one of Apple's picker bubbles opens from this
+    /// view: resigns the text field or text view that holds it, and nothing
+    /// else, so the picker keeps its bubble. Returns whether a keyboard was
+    /// hidden.
+    @discardableResult
+    func resignTextInputForBubble() -> Bool {
+        guard let window, let input = Self.textInputHoldingKeyboard(in: window) else { return false }
+        return input.resignFirstResponder()
+    }
+
+    private static func textInputHoldingKeyboard(in view: UIView) -> UIView? {
+        if view is UITextField || view is UITextView, view.isFirstResponder { return view }
+        for subview in view.subviews {
+            if let input = textInputHoldingKeyboard(in: subview) { return input }
+        }
+        return nil
     }
 }
