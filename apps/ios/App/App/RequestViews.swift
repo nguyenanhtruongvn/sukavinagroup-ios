@@ -873,26 +873,11 @@ struct RequestDecisionView: View {
 }
 
 struct RequestComposer: View {
-    private enum DurationUnit: String, CaseIterable, Identifiable {
-        case minutes
-        case hours
-
-        var id: String { rawValue }
-        var title: String { self == .minutes ? "Phút" : "Giờ" }
-        var maximumValue: Int { self == .minutes ? 60 : 24 }
-        /// Minutes in 5-minute steps: a system menu opens at its first item
-        /// and cannot scroll to the selection, and 60 single minutes put the
-        /// default 30 a long scroll away. Twelve steps fit on screen with the
-        /// current amount in view, as the booking form's duration. Hours one
-        /// by one.
-        var choices: [Int] {
-            self == .minutes ? Array(stride(from: 5, through: 60, by: 5)) : Array(1...24)
-        }
-
-        func nearestChoice(to value: Int) -> Int {
-            choices.min { abs($0 - value) < abs($1 - value) } ?? value
-        }
-    }
+    /// Đi trễ, Về sớm and Làm thêm giờ last 5 minutes to 23 giờ 55 phút, in
+    /// 5-minute steps: what Apple's time picker can show as hh:mm
+    /// (`DurationClock`).
+    private static let durationRange = 5...1435
+    private static let durationStep = 5
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var session: SessionStore
@@ -907,8 +892,7 @@ struct RequestComposer: View {
     @State private var transport = "personal_vehicle"
     @State private var distanceKm = ""
     @State private var expense = ""
-    @State private var durationValue = 30
-    @State private var durationUnit: DurationUnit = .minutes
+    @State private var durationMinutes = 30
     @State private var reasonEditorHeight: CGFloat = 150
     @State private var reasonFocused = false
     @State private var leaveScheduleWasInitialized = false
@@ -958,9 +942,8 @@ struct RequestComposer: View {
         _transport = State(initialValue: template.businessTransport.flatMap { $0.isEmpty ? nil : $0 } ?? "personal_vehicle")
         _distanceKm = State(initialValue: template.businessDistanceKm.map(Self.plainNumber) ?? "")
         _expense = State(initialValue: template.businessExpense.map(Self.plainNumber) ?? "")
-        if let value = prefill.durationValue {
-            _durationValue = State(initialValue: value)
-            _durationUnit = State(initialValue: prefill.durationIsHours ? .hours : .minutes)
+        if let minutes = prefill.durationMinutes {
+            _durationMinutes = State(initialValue: minutes)
         }
         // Keep the template's own times on the first render.
         _leaveScheduleWasInitialized = State(initialValue: true)
@@ -985,8 +968,9 @@ struct RequestComposer: View {
     private var compactRequestKinds: [EmployeeRequestKind] {
         [.leave, .business, .late, .early, .overtime, .sunday, .gate, .attendance]
     }
-    private var durationMinutes: Int { durationUnit == .hours ? durationValue * 60 : durationValue }
-    private var durationDescription: String { "\(durationValue) \(durationUnit.title.lowercased())" }
+    /// "30 phút", "2 giờ", "1 giờ 30 phút": shown, and sent at the head of
+    /// the reason, where `RequestReasonPrefill` reads it back.
+    private var durationDescription: String { DurationClock.title(minutes: durationMinutes) }
     private var workStartTime: String? { session.dashboard?.workStartTime }
     private var workEndTime: String? { session.dashboard?.workEndTime }
 
@@ -1406,21 +1390,11 @@ struct RequestComposer: View {
                             Text("Chọn thời lượng \(kind.title.lowercased()) để gửi yêu cầu.")
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)
-                            HStack(spacing: 12) {
-                                durationValueMenu
-                                durationUnitMenu
-                            }
-                            Text("Thời lượng đã chọn: \(durationDescription).")
-                                .font(.footnote.weight(.medium))
+                            durationTile
                             Text(scheduledRequestPreview)
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)
                                 .foregroundStyle(kind.color)
-                        }
-                        .onChange(of: durationUnit) { previousUnit, unit in
-                            durationValue = unit == .hours && previousUnit != .hours
-                                ? 1
-                                : unit.nearestChoice(to: min(durationValue, unit.maximumValue))
                         }
                     }
 
@@ -1628,8 +1602,7 @@ struct RequestComposer: View {
                 } else if newKind == .sunday {
                     applySundaySchedule(now: now)
                 } else if [.late, .early, .overtime].contains(newKind) {
-                    durationValue = 30
-                    durationUnit = .minutes
+                    durationMinutes = 30
                     from = VietnamTime.calendar.startOfDay(for: now)
                     to = from.addingTimeInterval(30 * 60)
                 }
@@ -1738,61 +1711,55 @@ struct RequestComposer: View {
         )
     }
 
-    /// The menu's amounts. A resubmitted request keeps its own amount
-    /// selectable even when it is not a 5-minute step ("7 phút"), rather
-    /// than having it rounded away unseen.
-    private var durationValueChoices: [Int] {
-        let choices = durationUnit.choices
-        return choices.contains(durationValue) ? choices : (choices + [durationValue]).sorted()
-    }
-
-    private var durationValueMenu: some View {
-        durationMenu(title: "Số lượng", value: "\(durationValue)") {
-            Picker("Số lượng", selection: $durationValue) {
-                ForEach(durationValueChoices, id: \.self) { value in
-                    Text("\(value)").tag(value)
-                }
-            }
-        }
-    }
-
-    private var durationUnitMenu: some View {
-        durationMenu(title: "Đơn vị", value: durationUnit.title) {
-            Picker("Đơn vị", selection: $durationUnit) {
-                ForEach(DurationUnit.allCases) { unit in
-                    Text(unit.title).tag(unit)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func durationMenu<Content: View>(title: String, value: String, @ViewBuilder content: () -> Content) -> some View {
+    /// The duration as the booking's Thời lượng: icon and chevron, caption,
+    /// bold value, with Apple's compact time picker lying invisibly over it
+    /// (`TileFillingTimePicker`), so a tap anywhere opens Apple's time
+    /// bubble. Its hours and minutes are the length: 01:30 is 1 giờ 30 phút.
+    private var durationTile: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased())
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.muted)
-            Menu {
-                content()
-            } label: {
-                HStack(spacing: 8) {
-                    Text(value)
-                        .font(.body.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.muted)
-                }
-                .contentShape(Rectangle())
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .background(AppTheme.card)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            HStack {
+                Image(systemName: "timer")
+                    .foregroundStyle(kind.color)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.muted)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(title)
-            .accessibilityValue(value)
+            Text("Thời lượng")
+                .font(.caption)
+                .foregroundStyle(AppTheme.muted)
+            Text(durationDescription)
+                .font(.headline.weight(.bold).monospacedDigit())
+                .foregroundStyle(.primary)
         }
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .overlay(TileFillingTimePicker(
+            selection: durationClock,
+            minuteInterval: Self.durationStep,
+            minimum: DurationClock.date(forMinutes: Self.durationRange.lowerBound, calendar: VietnamTime.calendar),
+            maximum: DurationClock.date(forMinutes: Self.durationRange.upperBound, calendar: VietnamTime.calendar),
+            accessibilityLabel: "Thời lượng"
+        ))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    /// `durationMinutes` as the time Apple's time picker shows ("01:30").
+    private var durationClock: Binding<Date> {
+        Binding(
+            get: { DurationClock.date(forMinutes: durationMinutes, calendar: VietnamTime.calendar) },
+            set: {
+                durationMinutes = DurationClock.minutes(
+                    from: $0,
+                    step: Self.durationStep,
+                    range: Self.durationRange,
+                    calendar: VietnamTime.calendar
+                )
+            }
+        )
     }
 }

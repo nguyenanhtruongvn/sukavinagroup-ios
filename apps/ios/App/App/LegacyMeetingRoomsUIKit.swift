@@ -2038,21 +2038,21 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         durationPicker.timeZone = VietnamTime.timeZone
         durationPicker.calendar = calendar
         durationPicker.locale = VietnamTime.locale
-        durationPicker.minimumDate = MeetingBookingTime.clockDate(forDuration: MeetingBookingTime.durationRange.lowerBound, calendar: calendar)
-        durationPicker.maximumDate = MeetingBookingTime.clockDate(forDuration: MeetingBookingTime.durationRange.upperBound, calendar: calendar)
-        durationPicker.date = MeetingBookingTime.clockDate(forDuration: durationMinutes, calendar: calendar)
+        durationPicker.minimumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.lowerBound, calendar: calendar)
+        durationPicker.maximumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.upperBound, calendar: calendar)
+        durationPicker.date = DurationClock.date(forMinutes: durationMinutes, calendar: calendar)
         durationPicker.accessibilityLabel = "Thời lượng"
         durationPicker.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            self.durationMinutes = MeetingBookingTime.durationMinutes(fromClock: self.durationPicker.date, calendar: VietnamTime.calendar)
+            self.durationMinutes = DurationClock.minutes(from: self.durationPicker.date, step: MeetingBookingTime.minuteStep, range: MeetingBookingTime.durationRange, calendar: VietnamTime.calendar)
             self.render()
         }, for: .valueChanged)
     }
 
     /// The Thời lượng tile's value, and its picker kept on it.
     private func renderDuration() {
-        durationValueLabel.text = MeetingBookingTime.durationTitle(minutes: durationMinutes)
-        let clock = MeetingBookingTime.clockDate(forDuration: durationMinutes, calendar: VietnamTime.calendar)
+        durationValueLabel.text = DurationClock.title(minutes: durationMinutes)
+        let clock = DurationClock.date(forMinutes: durationMinutes, calendar: VietnamTime.calendar)
         if durationPicker.date != clock { durationPicker.date = clock }
     }
 

@@ -1,5 +1,35 @@
 import Foundation
 
+/// A length of time chosen with Apple's compact time picker, its hours and
+/// minutes read as a duration ("01:30" is 1 giờ 30 phút), so it opens the
+/// same bubble as a start time. Used by the booking's Thời lượng and by the
+/// Đi trễ / Về sớm / Làm thêm giờ requests.
+enum DurationClock {
+    /// The picker's time for `minutes`, on a fixed day; only its hour and
+    /// minute mean anything.
+    static func date(forMinutes minutes: Int, calendar: Calendar) -> Date {
+        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 0))
+        return calendar.date(byAdding: .minute, value: minutes, to: day) ?? day
+    }
+
+    /// The duration a picker time stands for, on `step` and within `range`.
+    static func minutes(from date: Date, step: Int, range: ClosedRange<Int>, calendar: Calendar) -> Int {
+        let time = calendar.dateComponents([.hour, .minute], from: date)
+        let minutes = (time.hour ?? 0) * 60 + (time.minute ?? 0)
+        let stepped = Int((Double(minutes) / Double(step)).rounded()) * step
+        return min(max(stepped, range.lowerBound), range.upperBound)
+    }
+
+    /// "45 phút", "1 giờ", "1 giờ 30 phút".
+    static func title(minutes: Int) -> String {
+        let hours = minutes / 60
+        let rest = minutes % 60
+        if hours == 0 { return "\(rest) phút" }
+        if rest == 0 { return "\(hours) giờ" }
+        return "\(hours) giờ \(rest) phút"
+    }
+}
+
 /// Start-time rules for booking a room. Mirrors Android
 /// `defaultBookingStart` / `bookingBlockReason` in MeetingBookingSheet.kt.
 enum MeetingBookingTime {
@@ -7,35 +37,8 @@ enum MeetingBookingTime {
     static let minuteStep = 5
 
     /// How long a booking can last, in minutes: 5 minutes to 8 hours, in
-    /// steps of `minuteStep`.
+    /// steps of `minuteStep` (`DurationClock`).
     static let durationRange = 5...480
-
-    /// The duration is chosen with Apple's compact time picker, its hours
-    /// and minutes read as a length of time ("01:30" is 1 giờ 30 phút), so
-    /// it opens the same bubble as Bắt đầu. The picker's time sits on this
-    /// fixed day; only its hour and minute mean anything.
-    static func clockDate(forDuration minutes: Int, calendar: Calendar) -> Date {
-        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 0))
-        return calendar.date(byAdding: .minute, value: minutes, to: day) ?? day
-    }
-
-    /// The duration a picker time stands for, on `minuteStep` and within
-    /// `durationRange`.
-    static func durationMinutes(fromClock date: Date, calendar: Calendar) -> Int {
-        let time = calendar.dateComponents([.hour, .minute], from: date)
-        let minutes = (time.hour ?? 0) * 60 + (time.minute ?? 0)
-        let stepped = Int((Double(minutes) / Double(minuteStep)).rounded()) * minuteStep
-        return min(max(stepped, durationRange.lowerBound), durationRange.upperBound)
-    }
-
-    /// "45 phút", "1 giờ", "1 giờ 30 phút".
-    static func durationTitle(minutes: Int) -> String {
-        let hours = minutes / 60
-        let rest = minutes % 60
-        if hours == 0 { return "\(rest) phút" }
-        if rest == 0 { return "\(hours) giờ" }
-        return "\(hours) giờ \(rest) phút"
-    }
 
     /// The current Vietnam time of day rounded up to the next 5-minute mark
     /// (09:07 -> 09:10), placed on `day`. Never rolls past 23:55.

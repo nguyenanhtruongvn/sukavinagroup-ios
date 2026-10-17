@@ -37,29 +37,30 @@ final class MeetingBookingTimeTests: XCTestCase {
     }
 
     func testDurationClockRoundTripsEveryStep() {
-        for minutes in stride(from: 5, through: 480, by: 5) {
-            let clock = MeetingBookingTime.clockDate(forDuration: minutes, calendar: calendar)
-            XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: clock, calendar: calendar), minutes)
+        for minutes in stride(from: 5, through: 1435, by: 5) {
+            let clock = DurationClock.date(forMinutes: minutes, calendar: calendar)
+            XCTAssertEqual(DurationClock.minutes(from: clock, step: 5, range: 5...1435, calendar: calendar), minutes)
         }
-        let ninety = MeetingBookingTime.clockDate(forDuration: 90, calendar: calendar)
+        let ninety = DurationClock.date(forMinutes: 90, calendar: calendar)
         XCTAssertEqual(VietnamTime.clock.string(from: ninety), "01:30")
     }
 
     func testDurationFromClockStaysOnStepAndInRange() throws {
-        let day = MeetingBookingTime.clockDate(forDuration: 0, calendar: calendar)
+        let day = DurationClock.date(forMinutes: 0, calendar: calendar)
         func clock(_ hour: Int, _ minute: Int) throws -> Date {
             try XCTUnwrap(calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day))
         }
-        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(0, 0), calendar: calendar), 5)
-        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(0, 7), calendar: calendar), 5)
-        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(1, 33), calendar: calendar), 95)
-        XCTAssertEqual(MeetingBookingTime.durationMinutes(fromClock: try clock(9, 30), calendar: calendar), 480)
+        let range = MeetingBookingTime.durationRange
+        XCTAssertEqual(DurationClock.minutes(from: try clock(0, 0), step: 5, range: range, calendar: calendar), 5)
+        XCTAssertEqual(DurationClock.minutes(from: try clock(0, 7), step: 5, range: range, calendar: calendar), 5)
+        XCTAssertEqual(DurationClock.minutes(from: try clock(1, 33), step: 5, range: range, calendar: calendar), 95)
+        XCTAssertEqual(DurationClock.minutes(from: try clock(9, 30), step: 5, range: range, calendar: calendar), 480)
     }
 
     func testDurationTitleSplitsHoursAndMinutes() {
-        XCTAssertEqual(MeetingBookingTime.durationTitle(minutes: 30), "30 phút")
-        XCTAssertEqual(MeetingBookingTime.durationTitle(minutes: 60), "1 giờ")
-        XCTAssertEqual(MeetingBookingTime.durationTitle(minutes: 150), "2 giờ 30 phút")
+        XCTAssertEqual(DurationClock.title(minutes: 30), "30 phút")
+        XCTAssertEqual(DurationClock.title(minutes: 60), "1 giờ")
+        XCTAssertEqual(DurationClock.title(minutes: 150), "2 giờ 30 phút")
     }
 
     func testPastStartAndOverCapacityAreBlockedWithAReason() throws {

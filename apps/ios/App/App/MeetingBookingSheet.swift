@@ -300,7 +300,7 @@ struct MeetingBookingSheet: View {
                 // 1 giờ 30 phút; 5-minute steps, 00:05 to 08:00.
                 bookingTile(
                     title: "Thời lượng",
-                    value: MeetingBookingTime.durationTitle(minutes: durationMinutes),
+                    value: DurationClock.title(minutes: durationMinutes),
                     icon: "timer"
                 )
                 .allowsHitTesting(false)
@@ -308,12 +308,12 @@ struct MeetingBookingSheet: View {
                 .overlay(TileFillingTimePicker(
                     selection: durationClock,
                     minuteInterval: MeetingBookingTime.minuteStep,
-                    minimum: MeetingBookingTime.clockDate(
-                        forDuration: MeetingBookingTime.durationRange.lowerBound,
+                    minimum: DurationClock.date(
+                        forMinutes: MeetingBookingTime.durationRange.lowerBound,
                         calendar: VietnamTime.calendar
                     ),
-                    maximum: MeetingBookingTime.clockDate(
-                        forDuration: MeetingBookingTime.durationRange.upperBound,
+                    maximum: DurationClock.date(
+                        forMinutes: MeetingBookingTime.durationRange.upperBound,
                         calendar: VietnamTime.calendar
                     ),
                     accessibilityLabel: "Thời lượng"
@@ -645,8 +645,8 @@ struct MeetingBookingSheet: View {
     /// `durationMinutes` as the time Apple's time picker shows ("01:30").
     private var durationClock: Binding<Date> {
         Binding(
-            get: { MeetingBookingTime.clockDate(forDuration: durationMinutes, calendar: VietnamTime.calendar) },
-            set: { durationMinutes = MeetingBookingTime.durationMinutes(fromClock: $0, calendar: VietnamTime.calendar) }
+            get: { DurationClock.date(forMinutes: durationMinutes, calendar: VietnamTime.calendar) },
+            set: { durationMinutes = DurationClock.minutes(from: $0, step: MeetingBookingTime.minuteStep, range: MeetingBookingTime.durationRange, calendar: VietnamTime.calendar) }
         )
     }
 
