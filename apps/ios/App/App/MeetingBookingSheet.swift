@@ -30,6 +30,8 @@ struct MeetingBookingSheet: View {
     @State private var selectedDepartments = Set<String>()
     @State private var selected = Set<String>()
     @State private var inviteesError: String?
+    @State private var showStartPicker = false
+    @State private var showDurationPicker = false
     @State private var isSubmittingBooking = false
     @State private var bookingErrorMessage: String?
     @State private var bookingErrorRevision = 0
@@ -278,16 +280,32 @@ struct MeetingBookingSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
-            // The system's own compact time picker and a system menu, as in
-            // the attendance request: smooth, and nothing that SwiftUI has to
-            // present inside this sheet.
+            // The wheels open in popovers pointing at their buttons, like the
+            // request composer's date and time. `.anchoredPopover`, not
+            // `.popover`: a SwiftUI popover inside this sheet closes the sheet.
             HStack(spacing: 10) {
-                bookingTile(title: "Bắt đầu", icon: "clock.fill") {
-                    BookingStartTimePicker(selection: $start)
-                        .fixedSize()
+                timeAction(
+                    title: "Bắt đầu",
+                    value: MeetingPresentation.clock.string(from: start),
+                    icon: "clock.fill",
+                    active: showStartPicker
+                ) {
+                    showStartPicker = true
                 }
-                bookingTile(title: "Thời lượng", icon: "timer") {
-                    durationMenu
+                .anchoredPopover(isPresented: $showStartPicker, logName: "booking.start") {
+                    startPicker
+                }
+
+                timeAction(
+                    title: "Thời lượng",
+                    value: "\(durationValue) \(durationUnit)",
+                    icon: "timer",
+                    active: showDurationPicker
+                ) {
+                    showDurationPicker = true
+                }
+                .anchoredPopover(isPresented: $showDurationPicker, logName: "booking.duration") {
+                    durationPicker
                 }
             }
 
@@ -632,65 +650,87 @@ struct MeetingBookingSheet: View {
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
     }
 
-    /// A start or duration tile: icon and title over the control that edits it.
-    private func bookingTile<Content: View>(
+    private func timeAction(
         title: String,
+        value: String,
         icon: String,
-        @ViewBuilder content: () -> Content
+        active: Bool,
+        action: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Image(systemName: icon)
-                .foregroundStyle(Color.red)
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(Color(uiColor: .secondaryLabel))
-            content()
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    /// Every allowed duration in one system menu, minutes then hours, with
-    /// the same choices the duration wheels offered.
-    private var durationMenu: some View {
-        Menu {
-            Section("Phút") {
-                ForEach([5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { minutes in
-                    durationOption(minutes, unit: "phút")
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Image(systemName: icon)
+                        .foregroundStyle(Color.red)
+                    Spacer()
+                    Image(systemName: active ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color(uiColor: .secondaryLabel))
                 }
-            }
-            Section("Giờ") {
-                ForEach(Array(1...8), id: \.self) { hours in
-                    durationOption(hours, unit: "giờ")
-                }
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Text("\(durationValue) \(durationUnit)")
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                Text(value)
                     .font(.headline.weight(.bold).monospacedDigit())
                     .foregroundStyle(Color(uiColor: .label))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(active ? Color.red.opacity(0.10) : Color(uiColor: .secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(active ? Color.red.opacity(0.35) : Color.clear, lineWidth: 1)
             }
         }
-        .accessibilityLabel("Thời lượng")
-        .accessibilityValue("\(durationValue) \(durationUnit)")
+        .buttonStyle(.plain)
     }
 
-    private func durationOption(_ value: Int, unit: String) -> some View {
-        Button {
-            durationUnit = unit
-            durationValue = value
-        } label: {
-            if durationUnit == unit && durationValue == value {
-                Label("\(value) \(unit)", systemImage: "checkmark")
-            } else {
-                Text("\(value) \(unit)")
+    /// Hour and minute of the start, in the popover from "Bắt đầu".
+    private var startPicker: some View {
+        HStack(spacing: 0) {
+            pickerColumn("Giờ", selection: startHourBinding, values: Array(0...23))
+            pickerColumn("Phút", selection: startMinuteBinding, values: Array(stride(from: 0, to: 60, by: MeetingBookingTime.minuteStep)))
+        }
+        .frame(width: 240, height: 180)
+        .padding(8)
+    }
+
+    /// Amount and unit of the duration, in the popover from "Thời lượng".
+    private var durationPicker: some View {
+        HStack(spacing: 0) {
+            pickerColumn("Số", selection: $durationValue, values: durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120])
+            Picker("Đơn vị", selection: $durationUnit) {
+                Text("phút").tag("phút")
+                Text("giờ").tag("giờ")
+            }
+            .pickerStyle(.wheel)
+            .onChange(of: durationUnit) { _, unit in
+                durationValue = unit == "giờ" ? 1 : 30
             }
         }
+        .frame(width: 240, height: 180)
+        .padding(8)
+    }
+
+    private func pickerColumn(
+        _ title: String,
+        selection: Binding<Int>,
+        values: [Int]
+    ) -> some View {
+        VStack(spacing: 0) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+                .padding(.top, 8)
+            Picker(title, selection: selection) {
+                ForEach(values, id: \.self) { value in
+                    Text(String(format: "%02d", value)).tag(value)
+                }
+            }
+            .pickerStyle(.wheel)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func searchField(
@@ -771,6 +811,24 @@ struct MeetingBookingSheet: View {
         MeetingBookingTime.defaultStart(on: day, now: Date(), calendar: MeetingPresentation.calendar)
     }
 
+    private var startHourBinding: Binding<Int> {
+        Binding(
+            get: { MeetingPresentation.calendar.component(.hour, from: start) },
+            set: { hour in
+                start = MeetingPresentation.calendar.date(bySettingHour: hour, minute: MeetingPresentation.calendar.component(.minute, from: start), second: 0, of: start) ?? start
+            }
+        )
+    }
+
+    private var startMinuteBinding: Binding<Int> {
+        Binding(
+            get: { MeetingPresentation.calendar.component(.minute, from: start) },
+            set: { minute in
+                start = MeetingPresentation.calendar.date(bySettingHour: MeetingPresentation.calendar.component(.hour, from: start), minute: minute, second: 0, of: start) ?? start
+            }
+        )
+    }
+
     private func createBooking() {
         guard canConfirmBooking else { return }
         isSubmittingBooking = true
@@ -811,55 +869,5 @@ struct MeetingBookingErrorNotice: View {
         .background(Color.black.opacity(0.90), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.24), radius: 10, y: 4)
         .accessibilityLabel("Không thể đặt phòng: \(message)")
-    }
-}
-
-/// The system's compact time picker for a booking's start, in Vietnam time
-/// and 5-minute steps (`MeetingBookingTime.minuteStep`). It is the control
-/// behind SwiftUI's compact DatePicker, used directly because DatePicker
-/// cannot set a minute interval.
-private struct BookingStartTimePicker: UIViewRepresentable {
-    @Binding var selection: Date
-
-    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
-
-    func makeUIView(context: Context) -> UIDatePicker {
-        let picker = UIDatePicker()
-        picker.datePickerMode = .time
-        picker.preferredDatePickerStyle = .compact
-        picker.minuteInterval = MeetingBookingTime.minuteStep
-        picker.timeZone = VietnamTime.timeZone
-        picker.calendar = VietnamTime.calendar
-        picker.locale = VietnamTime.locale
-        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        return picker
-    }
-
-    func updateUIView(_ picker: UIDatePicker, context: Context) {
-        context.coordinator.selection = $selection
-        if picker.date != selection { picker.date = selection }
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var selection: Binding<Date>
-
-        init(selection: Binding<Date>) {
-            self.selection = selection
-        }
-
-        /// Takes only the hour and minute from the picker, so the booking
-        /// stays on the day it was opened for.
-        @objc func changed(_ picker: UIDatePicker) {
-            let calendar = MeetingPresentation.calendar
-            let time = calendar.dateComponents([.hour, .minute], from: picker.date)
-            let current = selection.wrappedValue
-            selection.wrappedValue = calendar.date(
-                bySettingHour: time.hour ?? 0,
-                minute: time.minute ?? 0,
-                second: 0,
-                of: current
-            ) ?? current
-        }
     }
 }
