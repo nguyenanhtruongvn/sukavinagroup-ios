@@ -454,6 +454,9 @@ struct ModernAttendanceHistoryView: View {
             detailRow("Giờ vào", time(day.checkIn))
             detailRow("Giờ ra", time(day.checkOut))
             detailRow("Trạng thái", dayStatuses(day).map(statusTitle).joined(separator: " · "))
+            if day.adjustment != nil {
+                detailRow("Giờ công", "Đã điều chỉnh bởi nhân sự")
+            }
             detailRow(
                 "Khung giờ \(data.department ?? "phòng ban")",
                 "\(day.startTime ?? data.startTime ?? "--:--") - \(day.endTime ?? data.endTime ?? "--:--")"

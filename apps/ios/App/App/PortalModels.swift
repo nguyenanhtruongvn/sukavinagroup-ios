@@ -727,7 +727,17 @@ struct AttendanceDay: Codable, Identifiable {
     // Ca đêm entered by an administrator, beside the day shift. workdayFactor
     // is the date's total and already includes nightShift.workdays.
     let nightShift: AttendanceNightShift?
+    // Times adjusted by an administrator: checkIn/checkOut above already apply
+    // them; overtimeHours is set when the administrator typed the overtime.
+    let adjustment: AttendanceAdjustment?
+    let overtimeHours: Double?
     var id: String { date }
+}
+
+struct AttendanceAdjustment: Codable {
+    let checkIn: String?
+    let checkOut: String?
+    let overtimeHours: Double?
 }
 
 struct AttendanceNightShift: Codable {

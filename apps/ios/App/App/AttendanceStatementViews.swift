@@ -182,6 +182,8 @@ enum AttendanceMetrics {
     static func overtimeHours(
         _ day: AttendanceDay, defaultStartTime: String?, defaultEndTime: String?
     ) -> Double {
+        // Overtime typed by an administrator wins over the hours from the times.
+        if let typed = day.overtimeHours { return typed }
         // Two valid punches are required to recognize overtime.
         guard let checkIn = instant(day.checkIn),
               let checkOut = instant(day.checkOut),
