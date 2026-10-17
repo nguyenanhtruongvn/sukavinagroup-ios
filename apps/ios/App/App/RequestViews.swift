@@ -459,9 +459,10 @@ struct RequestsView: View {
                     await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
                     .presentationDetents([.large])
-                    // Let a downward pull dismiss the composer sheet instead
-                    // of being retained by its form scroll view.
-                    .presentationContentInteraction(.resizes)
+                    // Not .resizes: the sheet then takes the drag out of the
+                    // wheel and graphical date pickers, and with one detent to
+                    // sit in it closes the form while the employee is setting
+                    // a date or a time.
                     .presentationDragIndicator(.hidden)
                     .logsSheetFlow("requests.composing")
             }
@@ -470,7 +471,6 @@ struct RequestsView: View {
                     await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
                     .presentationDetents([.large])
-                    .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
                     .logsSheetFlow("requests.resubmitting")
             }
