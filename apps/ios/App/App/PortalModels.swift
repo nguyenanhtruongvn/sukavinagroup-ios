@@ -724,6 +724,9 @@ struct AttendanceDay: Codable, Identifiable {
     let workdayCode: String?
     let workdayFactor: Double?
     let overrideCode: String?
+    // Night shift (CĐ) overtime from the server: the shift ends the next
+    // morning, so it cannot be derived from endTime on the same date.
+    let overtimeHours: Double?
     var id: String { date }
 }
 
