@@ -1288,8 +1288,14 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private let typeButtons = UIStackView()
     // Built once and updated in place: re-creating the picker while its
     // system overlay is open would cut the employee off mid-choice.
-    private let startTimePicker = UIDatePicker()
+    // Each tile draws its value and lets a control underneath take the tap:
+    // Apple's compact time picker stretched over the Bắt đầu tile, a menu
+    // button over the Thời lượng tile. Apple's own bubble opens from each.
+    private let startTileControl = TileFillingPickerView()
+    private var startTimePicker: UIDatePicker { startTileControl.picker }
+    private let startValueLabel = UILabel()
     private let durationButton = UIButton(type: .system)
+    private let durationValueLabel = UILabel()
     private let expectedLabel = UILabel()
     private let countBadge = UILabel()
     private let selectedSection = UIStackView()
@@ -1477,13 +1483,19 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         titleGroup.spacing = 7
         card.addArrangedSubview(titleGroup)
 
-        // The two facts of a booking, each beside its label, as on iOS 18
-        // (MeetingBookingSheet): when it starts (hh:mm, the compact time
-        // picker) and how long it lasts (a system menu, minutes or hours).
+        // The two facts of a booking as tiles, as on iOS 18
+        // (MeetingBookingSheet): when it starts (hh:mm) and how long it
+        // lasts. A tap opens Apple's own bubble: the compact time picker's,
+        // or the system menu's.
         configureStartTimePicker()
-        card.addArrangedSubview(labelledRow("Bắt đầu", control: startTimePicker))
         durationButton.showsMenuAsPrimaryAction = true
-        card.addArrangedSubview(labelledRow("Thời lượng", control: durationButton))
+        let tiles = UIStackView(arrangedSubviews: [
+            makeTile(title: "Bắt đầu", icon: "clock.fill", valueLabel: startValueLabel, control: startTileControl),
+            makeTile(title: "Thời lượng", icon: "timer", valueLabel: durationValueLabel, control: durationButton),
+        ])
+        tiles.spacing = 10
+        tiles.distribution = .fillEqually
+        card.addArrangedSubview(tiles)
         renderDurationButton()
 
         let clockIcon = UIImageView(image: UIImage(systemName: "clock.arrow.circlepath"))
@@ -1607,6 +1619,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             button.configuration = typeConfiguration(value: value, icon: icon, selected: value == meetingType)
         }
         if startTimePicker.date != start { startTimePicker.date = start }
+        startValueLabel.text = MeetingPresentation.clock.string(from: start)
         renderDurationButton()
         expectedLabel.text = "\(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: endTime))"
         renderInvitees()
@@ -1975,6 +1988,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         startTimePicker.calendar = VietnamTime.calendar
         startTimePicker.locale = VietnamTime.locale
         startTimePicker.date = start
+        startTimePicker.accessibilityLabel = "Bắt đầu"
         startTimePicker.addAction(UIAction { [weak self] _ in
             guard let self else { return }
             // Only the hour and minute, so the booking stays on its day.
@@ -1985,38 +1999,66 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         }, for: .valueChanged)
     }
 
-    /// A label with its control at the trailing edge, as a labelled
-    /// DatePicker or menu Picker lays out. Built once.
-    private func labelledRow(_ title: String, control: UIView) -> UIView {
-        let titleLabel = label(title, style: .body, color: .label)
-        titleLabel.setContentHuggingPriority(.required, for: .horizontal)
-        control.setContentHuggingPriority(.required, for: .horizontal)
-        control.setContentCompressionResistancePriority(.required, for: .horizontal)
-        let spacer = UIView()
-        spacer.setContentHuggingPriority(UILayoutPriority(1), for: .horizontal)
-        let row = UIStackView(arrangedSubviews: [titleLabel, spacer, control])
-        row.alignment = .center
-        row.spacing = 8
-        return row
+    /// A start or duration tile, as on iOS 18: icon and chevron, caption,
+    /// value. `control` fills the tile underneath and takes every tap; the
+    /// drawn face on top covers it and takes none. Built once; `render()`
+    /// only updates `valueLabel`.
+    private func makeTile(title: String, icon: String, valueLabel: UILabel, control: UIView) -> UIView {
+        let tile = UIView()
+        tile.layer.cornerRadius = 14
+        tile.layer.cornerCurve = .continuous
+        tile.clipsToBounds = true
+
+        control.translatesAutoresizingMaskIntoConstraints = false
+        tile.addSubview(control)
+
+        let face = UIView()
+        face.backgroundColor = .secondarySystemBackground
+        face.isUserInteractionEnabled = false
+        // VoiceOver reads the control underneath instead.
+        face.accessibilityElementsHidden = true
+        face.translatesAutoresizingMaskIntoConstraints = false
+        tile.addSubview(face)
+
+        let iconView = UIImageView(image: UIImage(systemName: icon))
+        iconView.tintColor = red
+        let chevron = UIImageView(image: UIImage(
+            systemName: "chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(textStyle: .caption1, scale: .medium)
+        ))
+        chevron.tintColor = .secondaryLabel
+        let top = UIStackView(arrangedSubviews: [iconView, UIView(), chevron])
+        top.alignment = .center
+        let titleLabel = label(title, style: .caption1, color: .secondaryLabel)
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .headline).pointSize, weight: .bold)
+        valueLabel.textColor = .label
+        let stack = UIStackView(arrangedSubviews: [top, titleLabel, valueLabel])
+        stack.axis = .vertical
+        stack.spacing = 7
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        face.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            control.topAnchor.constraint(equalTo: tile.topAnchor),
+            control.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
+            control.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
+            control.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
+            face.topAnchor.constraint(equalTo: tile.topAnchor),
+            face.bottomAnchor.constraint(equalTo: tile.bottomAnchor),
+            face.leadingAnchor.constraint(equalTo: tile.leadingAnchor),
+            face.trailingAnchor.constraint(equalTo: tile.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: face.topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: face.bottomAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: face.leadingAnchor, constant: 12),
+            stack.trailingAnchor.constraint(equalTo: face.trailingAnchor, constant: -12),
+        ])
+        return tile
     }
 
-    /// "Thời lượng" as the system menu picker shows it on iOS 18: the value
-    /// in the tint colour with an up-down chevron, minutes then hours in one
-    /// menu. Choosing an entry sets amount and unit together.
+    /// The Thời lượng tile's value and its system menu: minutes then hours
+    /// in one list, so a choice sets amount and unit together.
     private func renderDurationButton() {
-        var configuration = UIButton.Configuration.plain()
-        configuration.contentInsets = .zero
-        configuration.baseForegroundColor = .tintColor
-        configuration.image = UIImage(
-            systemName: "chevron.up.chevron.down",
-            withConfiguration: UIImage.SymbolConfiguration(textStyle: .footnote, scale: .small)
-        )
-        configuration.imagePlacement = .trailing
-        configuration.imagePadding = 4
-        var title = AttributedString("\(durationValue) \(durationUnit)")
-        title.font = UIFont.preferredFont(forTextStyle: .body)
-        configuration.attributedTitle = title
-        durationButton.configuration = configuration
+        durationValueLabel.text = "\(durationValue) \(durationUnit)"
         durationButton.menu = UIMenu(children: [
             durationSection("Phút", unit: "phút", values: durationMinutesChoices),
             durationSection("Giờ", unit: "giờ", values: durationHoursChoices),

@@ -1267,10 +1267,12 @@ struct RequestComposer: View {
                             // picker), with the picker given the width of its full
                             // date; see `keepsFullCompactDate`.
                             CompactDateRow(label: "Ngày chấm công") {
-                                DatePicker("Ngày chấm công", selection: editedByEmployee($attendanceDate), displayedComponents: .date)
-                                    .labelsHidden()
-                                    .datePickerStyle(.compact)
-                                    .keepsFullCompactDate(day: attendanceDate, logName: "composer.attendanceDate")
+                                SystemCompactDatePicker(
+                                    selection: editedByEmployee($attendanceDate),
+                                    mode: .date,
+                                    accessibilityLabel: "Ngày chấm công"
+                                )
+                                .keepsFullCompactDate(day: attendanceDate, logName: "composer.attendanceDate")
                             }
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
@@ -1369,10 +1371,12 @@ struct RequestComposer: View {
                             // As "Ngày chấm công"; when switching to Đi trễ or Về
                             // sớm moves `from`, the picker widens itself as well.
                             CompactDateRow(label: "Ngày xảy ra") {
-                                DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
-                                    .labelsHidden()
-                                    .datePickerStyle(.compact)
-                                    .keepsFullCompactDate(day: from, logName: "composer.eventDate")
+                                SystemCompactDatePicker(
+                                    selection: editedByEmployee($from),
+                                    mode: .date,
+                                    accessibilityLabel: "Ngày xảy ra"
+                                )
+                                .keepsFullCompactDate(day: from, logName: "composer.eventDate")
                             }
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
@@ -1690,20 +1694,20 @@ struct RequestComposer: View {
     /// (debug.log on iOS 27), and the system's own compact picker, as in
     /// the attendance request, is the smoother and steadier of the two.
     private func dateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        compactDateTimePicker(selection: selection, range: range)
+        compactDateTimePicker(title, selection: selection, range: range)
             .keepsFullCompactDate(day: selection.wrappedValue, includesTime: true, logName: "composer.\(title)")
             .environment(\.compactDateAlignment, .leading)
     }
 
-    @ViewBuilder
-    private func compactDateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        if let range {
-            DatePicker("", selection: selection, in: range, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden().datePickerStyle(.compact)
-        } else {
-            DatePicker("", selection: selection, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden().datePickerStyle(.compact)
-        }
+    /// Apple's compact date and time picker, set to its date before it is
+    /// measured; see `SystemCompactDatePicker`.
+    private func compactDateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+        SystemCompactDatePicker(
+            selection: selection,
+            mode: .dateAndTime,
+            minimum: range?.lowerBound,
+            accessibilityLabel: title
+        )
     }
 
     /// The menu's amounts. A resubmitted request keeps its own amount

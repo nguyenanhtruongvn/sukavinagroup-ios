@@ -634,10 +634,13 @@ struct MeetingRoomScheduleSheet: View {
                         // given the width of its full date; see
                         // `keepsFullCompactDate`.
                         CompactDateRow(label: "Ngày") {
-                            DatePicker("Ngày", selection: $selectedDay, in: VietnamTime.calendar.startOfDay(for: .now)..., displayedComponents: .date)
-                                .labelsHidden()
-                                .datePickerStyle(.compact)
-                                .keepsFullCompactDate(day: selectedDay, logName: "rooms.scheduleDay")
+                            SystemCompactDatePicker(
+                                selection: $selectedDay,
+                                mode: .date,
+                                minimum: VietnamTime.calendar.startOfDay(for: .now),
+                                accessibilityLabel: "Ngày"
+                            )
+                            .keepsFullCompactDate(day: selectedDay, logName: "rooms.scheduleDay")
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 12)

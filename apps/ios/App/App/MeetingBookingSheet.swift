@@ -278,34 +278,44 @@ struct MeetingBookingSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
-            // The two facts of a booking, each beside its label as in the
-            // request composer: when it starts (hh:mm, Apple's compact time
-            // picker) and how long it lasts (Apple's menu picker, minutes or
-            // hours in one list).
-            HStack {
-                Text("Bắt đầu")
-                Spacer(minLength: 8)
-                BookingStartTimePicker(selection: $start)
-                    .fixedSize()
-            }
+            // The two facts of a booking as tiles: when it starts (hh:mm) and
+            // how long it lasts. Tapping a tile opens Apple's own bubble: the
+            // compact time picker's for Bắt đầu, the system menu's for Thời
+            // lượng. Nothing is presented by the app itself.
+            HStack(spacing: 10) {
+                // Apple's compact time picker fills the tile from underneath,
+                // as its background, so it is exactly the tile's size; the
+                // drawn tile takes no touches, so a tap anywhere on it
+                // reaches the picker. VoiceOver reads the picker.
+                bookingTile(
+                    title: "Bắt đầu",
+                    value: MeetingPresentation.clock.string(from: start),
+                    icon: "clock.fill"
+                )
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .background(TileFillingTimePicker(selection: $start))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            HStack {
-                Text("Thời lượng")
-                Spacer(minLength: 8)
-                Picker("Thời lượng", selection: durationChoice) {
-                    Section("Phút") {
-                        ForEach([5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { minutes in
-                            Text("\(minutes) phút").tag(DurationChoice(value: minutes, unit: "phút"))
+                Menu {
+                    Picker("Thời lượng", selection: durationChoice) {
+                        Section("Phút") {
+                            ForEach([5, 10, 15, 20, 30, 45, 60, 90, 120], id: \.self) { minutes in
+                                Text("\(minutes) phút").tag(DurationChoice(value: minutes, unit: "phút"))
+                            }
+                        }
+                        Section("Giờ") {
+                            ForEach(Array(1...8), id: \.self) { hours in
+                                Text("\(hours) giờ").tag(DurationChoice(value: hours, unit: "giờ"))
+                            }
                         }
                     }
-                    Section("Giờ") {
-                        ForEach(Array(1...8), id: \.self) { hours in
-                            Text("\(hours) giờ").tag(DurationChoice(value: hours, unit: "giờ"))
-                        }
-                    }
+                } label: {
+                    bookingTile(title: "Thời lượng", value: "\(durationValue) \(durationUnit)", icon: "timer")
                 }
-                .pickerStyle(.menu)
-                .labelsHidden()
+                .buttonStyle(.plain)
+                .accessibilityLabel("Thời lượng")
+                .accessibilityValue("\(durationValue) \(durationUnit)")
             }
 
             HStack(spacing: 9) {
@@ -649,6 +659,31 @@ struct MeetingBookingSheet: View {
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
     }
 
+    /// A start or duration tile: icon and chevron, caption, value. Drawn
+    /// only; the control under or around it does the choosing.
+    private func bookingTile(title: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundStyle(Color.red)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+            }
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+            Text(value)
+                .font(.headline.weight(.bold).monospacedDigit())
+                .foregroundStyle(Color(uiColor: .label))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
     /// Amount and unit together, one choice in the "Thời lượng" menu.
     private var durationChoice: Binding<DurationChoice> {
         Binding(
@@ -781,30 +816,34 @@ struct MeetingBookingErrorNotice: View {
     }
 }
 
-/// The system's compact time picker for a booking's start, in Vietnam time
-/// and 5-minute steps (`MeetingBookingTime.minuteStep`). It is the control
-/// behind SwiftUI's compact DatePicker, used directly because DatePicker
-/// cannot set a minute interval.
-private struct BookingStartTimePicker: UIViewRepresentable {
+/// Apple's compact time picker for a booking's start, stretched over the
+/// Bắt đầu tile and drawn under it. The tile shows the time its own way; a
+/// tap anywhere on it lands on this picker, which opens Apple's own time
+/// bubble. Vietnam time, 5-minute steps (`MeetingBookingTime.minuteStep`);
+/// UIDatePicker because SwiftUI's DatePicker cannot set a minute interval.
+private struct TileFillingTimePicker: UIViewRepresentable {
     @Binding var selection: Date
 
     func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
 
-    func makeUIView(context: Context) -> UIDatePicker {
-        let picker = UIDatePicker()
+    func makeUIView(context: Context) -> TileFillingPickerView {
+        let view = TileFillingPickerView()
+        let picker = view.picker
         picker.datePickerMode = .time
         picker.preferredDatePickerStyle = .compact
         picker.minuteInterval = MeetingBookingTime.minuteStep
         picker.timeZone = VietnamTime.timeZone
         picker.calendar = VietnamTime.calendar
         picker.locale = VietnamTime.locale
+        picker.date = selection
+        picker.accessibilityLabel = "Bắt đầu"
         picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        return picker
+        return view
     }
 
-    func updateUIView(_ picker: UIDatePicker, context: Context) {
+    func updateUIView(_ view: TileFillingPickerView, context: Context) {
         context.coordinator.selection = $selection
-        if picker.date != selection { picker.date = selection }
+        if view.picker.date != selection { view.picker.date = selection }
     }
 
     @MainActor

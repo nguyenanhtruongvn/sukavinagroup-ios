@@ -398,3 +398,108 @@ struct CompactDateRow<Picker: View>: View {
         }
     }
 }
+
+/// Apple's compact date picker — UIKit's UIDatePicker, the control behind
+/// SwiftUI's compact DatePicker — always sized to the date it shows.
+///
+/// SwiftUI's DatePicker measures its UIDatePicker while it still holds
+/// today's date and only then applies the selection, without measuring
+/// again. debug.log (1.0.79): every new picker came up at today's width
+/// (185pt date, 259pt date and time) whatever date it held, so a later
+/// date ("Làm chủ nhật" on Sunday, a chosen attendance day) did not fit
+/// and showed "18/10/26" until some later layout. Here the date is set
+/// before the picker is ever measured, and SwiftUI is given the picker's
+/// current size on every layout.
+///
+/// Times and dates are Vietnam time, as `VietnamTime`.
+struct SystemCompactDatePicker: UIViewRepresentable {
+    @Binding var selection: Date
+    let mode: UIDatePicker.Mode
+    var minimum: Date? = nil
+    var minuteInterval = 1
+    let accessibilityLabel: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    func makeUIView(context: Context) -> UIDatePicker {
+        let picker = UIDatePicker()
+        picker.preferredDatePickerStyle = .compact
+        picker.datePickerMode = mode
+        picker.minuteInterval = minuteInterval
+        picker.timeZone = VietnamTime.timeZone
+        picker.calendar = VietnamTime.calendar
+        picker.locale = VietnamTime.locale
+        picker.minimumDate = minimum
+        // Before anything measures it.
+        picker.date = selection
+        picker.accessibilityLabel = accessibilityLabel
+        picker.setContentHuggingPriority(.required, for: .horizontal)
+        picker.setContentCompressionResistancePriority(.required, for: .horizontal)
+        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        return picker
+    }
+
+    func updateUIView(_ picker: UIDatePicker, context: Context) {
+        context.coordinator.selection = $selection
+        if picker.minimumDate != minimum { picker.minimumDate = minimum }
+        if picker.date != selection {
+            picker.date = selection
+            picker.invalidateIntrinsicContentSize()
+        }
+    }
+
+    /// The picker's own size for its current date, asked on every layout.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIDatePicker, context: Context) -> CGSize? {
+        let size = uiView.intrinsicContentSize
+        // No intrinsic size yet: let SwiftUI measure it its own way.
+        guard size.width > 0, size.height > 0 else { return nil }
+        return size
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var selection: Binding<Date>
+
+        init(selection: Binding<Date>) {
+            self.selection = selection
+        }
+
+        @objc func changed(_ picker: UIDatePicker) {
+            selection.wrappedValue = picker.date
+            // A longer date needs more room; let SwiftUI ask again.
+            picker.invalidateIntrinsicContentSize()
+        }
+    }
+}
+
+/// Holds a compact UIDatePicker scaled to fill its bounds, so its whole
+/// area, not just its small capsule, opens the picker. Put under a drawn
+/// tile that takes no touches: the tile shows the value, a tap anywhere on
+/// it opens Apple's own picker bubble. Used by the booking form on iOS 18
+/// (MeetingBookingSheet) and iOS 17 (LegacyMeetingRoomsUIKit).
+final class TileFillingPickerView: UIView {
+    let picker = UIDatePicker()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        addSubview(picker)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        picker.transform = .identity
+        let natural = picker.intrinsicContentSize
+        guard natural.width > 0, natural.height > 0, bounds.width > 0, bounds.height > 0 else {
+            picker.frame = bounds
+            return
+        }
+        picker.bounds = CGRect(origin: .zero, size: natural)
+        picker.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        picker.transform = CGAffineTransform(
+            scaleX: bounds.width / natural.width,
+            y: bounds.height / natural.height
+        )
+    }
+}
