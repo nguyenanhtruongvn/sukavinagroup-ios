@@ -1074,15 +1074,14 @@ struct RequestComposer: View {
     }
 
     /// A missing time is chosen like the booking's Bắt đầu: Apple's time
-    /// picker fills the card from underneath and the drawn card takes no
-    /// touches, so a tap anywhere on it opens Apple's time bubble, not
-    /// only a tap on the picker's small capsule.
+    /// picker lies over the card, invisible, so a tap anywhere on it opens
+    /// Apple's time bubble, not only a tap on the picker's small capsule.
     @ViewBuilder private func attendanceTimeCard(title: String, value: String?, missingPrompt: String, selection: Binding<Date>) -> some View {
         if value == nil {
             attendanceTimeCardFace(title: title, value: value, chosen: selection.wrappedValue)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .background(TileFillingTimePicker(selection: selection, accessibilityLabel: missingPrompt))
+                .overlay(TileFillingTimePicker(selection: selection, accessibilityLabel: missingPrompt))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         } else {
             attendanceTimeCardFace(title: title, value: value, chosen: nil)

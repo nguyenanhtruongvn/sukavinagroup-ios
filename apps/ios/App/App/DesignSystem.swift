@@ -396,9 +396,10 @@ struct SystemCompactDatePicker: UIViewRepresentable {
     }
 }
 
-/// Apple's compact time picker under a drawn tile, taking every tap on
-/// it, so a tap anywhere on the tile opens Apple's own time bubble. Put it in
-/// the tile's background and give the tile `.allowsHitTesting(false)`.
+/// Apple's compact time picker over a drawn tile, invisible, taking every
+/// tap on it, so a tap anywhere on the tile opens Apple's own time bubble.
+/// Put it in the tile's `.overlay`, in front of the face, never behind it
+/// (see `TileFillingPickerView`).
 /// Only the hour and minute are taken from the picker; the day stays.
 /// UIDatePicker because SwiftUI's DatePicker cannot set a minute interval.
 struct TileFillingTimePicker: UIViewRepresentable {
@@ -457,10 +458,16 @@ struct TileFillingTimePicker: UIViewRepresentable {
     }
 }
 
-/// Holds a compact UIDatePicker at its own size under a drawn tile, so a
+/// Holds a compact UIDatePicker at its own size over a drawn tile, so a
 /// tap anywhere on the tile, not only on the picker's small capsule,
-/// opens Apple's picker bubble. Put under a drawn face that takes no
-/// touches. Used by the booking Bắt đầu tile (MeetingBookingSheet on iOS
+/// opens Apple's picker bubble.
+///
+/// It lies in front of the face, its picker invisible (masked). Behind a
+/// SwiftUI face, even one that allows no hit testing, a tap on the face's
+/// text and icons did not reach it, only one on its empty parts (6a8eb26,
+/// Bắt đầu). In front, every point of the tile is this view's. In UIKit
+/// (iOS 17) the face is a subview with user interaction off, which hit
+/// testing skips, so there it may stay on top. Used by the booking Bắt đầu tile (MeetingBookingSheet on iOS
 /// 18, LegacyMeetingRoomsUIKit on iOS 17) and the Giờ vào / Giờ ra cards.
 ///
 /// What did not work:
@@ -510,6 +517,9 @@ final class TileFillingPickerView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         picker.preferredDatePickerStyle = .compact
+        // In front of the drawn tile but not seen: an empty mask hides the
+        // picker's drawing and nothing else; hit-testing ignores masks.
+        picker.mask = UIView()
         picker.translatesAutoresizingMaskIntoConstraints = false
         addSubview(picker)
         centerX = picker.centerXAnchor.constraint(equalTo: centerXAnchor)

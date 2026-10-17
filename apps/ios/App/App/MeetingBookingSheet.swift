@@ -278,9 +278,8 @@ struct MeetingBookingSheet: View {
             // picker do not (debug.log 1.0.86). Nothing is presented by the
             // app itself.
             HStack(spacing: 10) {
-                // Apple's compact time picker lies under each tile, at its
-                // own size, along the tile's bottom; the drawn tile takes no
-                // touches and every tap on it is handed to the picker
+                // Apple's compact time picker lies over each tile, invisible,
+                // at its own size; every tap on the tile is handed to it
                 // (TileFillingPickerView). VoiceOver reads the picker.
                 bookingTile(
                     title: "Bắt đầu",
@@ -289,7 +288,7 @@ struct MeetingBookingSheet: View {
                 )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .background(TileFillingTimePicker(
+                .overlay(TileFillingTimePicker(
                     selection: $start,
                     minuteInterval: MeetingBookingTime.minuteStep,
                     accessibilityLabel: "Bắt đầu"
@@ -305,7 +304,7 @@ struct MeetingBookingSheet: View {
                 )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .background(TileFillingTimePicker(
+                .overlay(TileFillingTimePicker(
                     selection: durationClock,
                     minuteInterval: MeetingBookingTime.minuteStep,
                     minimum: MeetingBookingTime.clockDate(
