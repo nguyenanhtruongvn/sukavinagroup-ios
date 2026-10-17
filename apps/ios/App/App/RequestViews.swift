@@ -1253,15 +1253,18 @@ struct RequestComposer: View {
                     if kind == .attendance {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
-                            // The compact picker is sized to the date it first
-                            // measured; a longer one later ("Ngày 9 thg 9" to
-                            // "Ngày 18 thg 10") gets no more width, however much
-                            // space is free around it, and shows "18/10/26".
-                            // Re-created on a new day so it measures again (see
-                            // `dateTimePicker`).
-                            DatePicker("Ngày chấm công", selection: editedByEmployee($attendanceDate), displayedComponents: .date)
-                                .datePickerStyle(.compact)
-                                .id(VietnamTime.calendar.startOfDay(for: attendanceDate))
+                            // Laid out as a labelled DatePicker is (label, space,
+                            // picker), with the label beside it so the picker can
+                            // be measured alone; see `remeasuresCompactDate`.
+                            HStack {
+                                Text("Ngày chấm công")
+                                    .accessibilityHidden(true)
+                                Spacer(minLength: 8)
+                                DatePicker("Ngày chấm công", selection: editedByEmployee($attendanceDate), displayedComponents: .date)
+                                    .labelsHidden()
+                                    .datePickerStyle(.compact)
+                                    .remeasuresCompactDate(day: attendanceDate, logName: "composer.attendanceDate")
+                            }
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(spacing: 10) {
@@ -1356,11 +1359,17 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
-                            // Re-created on a new day, as "Ngày chấm công";
-                            // switching to Đi trễ or Về sớm also moves `from`.
-                            DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
-                                .datePickerStyle(.compact)
-                                .id(VietnamTime.calendar.startOfDay(for: from))
+                            // As "Ngày chấm công"; switching to Đi trễ or Về sớm
+                            // also moves `from`, which re-measures it too.
+                            HStack {
+                                Text("Ngày xảy ra")
+                                    .accessibilityHidden(true)
+                                Spacer(minLength: 8)
+                                DatePicker("Ngày xảy ra", selection: editedByEmployee($from), displayedComponents: .date)
+                                    .labelsHidden()
+                                    .datePickerStyle(.compact)
+                                    .remeasuresCompactDate(day: from, logName: "composer.eventDate")
+                            }
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
                                 .foregroundStyle(AppTheme.muted)
@@ -1654,14 +1663,14 @@ struct RequestComposer: View {
             HStack(spacing: 6) {
                 requestDateLabel(title)
                     .fixedSize(horizontal: true, vertical: false)
-                dateTimePicker(selection: selection, range: range)
+                dateTimePicker(title, selection: selection, range: range)
                     .fixedSize(horizontal: true, vertical: false)
             }
             .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 requestDateLabel(title)
-                dateTimePicker(selection: selection, range: range)
+                dateTimePicker(title, selection: selection, range: range)
             }
             .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
         }
@@ -1680,19 +1689,17 @@ struct RequestComposer: View {
         .layoutPriority(1)
     }
 
-    /// A compact DatePicker keeps the width it measured for its first date and
-    /// abbreviates a later, programmatically set date to fit it ("18/10/26"
-    /// instead of "Ngày 18 thg 10, 2026", e.g. after "Làm chủ nhật" moves the
-    /// form to Sunday). Re-creating it when the day changes measures it again,
-    /// so every request kind shows the same full date. Time changes keep it.
+    /// Re-measured on a new day and once the form has settled, so it keeps
+    /// the full date ("Ngày 18 thg 10, 2026", not "18/10/26"); see
+    /// `remeasuresCompactDate`.
     ///
     /// The system picker, not a custom pill with a popover: a SwiftUI
     /// `.popover` inside this sheet closed the whole composer when tapped
     /// (debug.log on iOS 27), and the system's own compact picker, as in
     /// the attendance request, is the smoother and steadier of the two.
-    private func dateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+    private func dateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
         compactDateTimePicker(selection: selection, range: range)
-            .id(VietnamTime.calendar.startOfDay(for: selection.wrappedValue))
+            .remeasuresCompactDate(day: selection.wrappedValue, logName: "composer.\(title)")
     }
 
     @ViewBuilder

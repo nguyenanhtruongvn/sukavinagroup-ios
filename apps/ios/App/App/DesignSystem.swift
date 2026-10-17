@@ -269,3 +269,61 @@ extension View {
 
 }
 
+extension View {
+    /// For a compact `DatePicker` showing `day`: makes it measure its date
+    /// again whenever it may have settled on the short form.
+    ///
+    /// A compact picker chooses between "Ngày 18 thg 10, 2026" and "18/10/26"
+    /// on its own when it is created, and keeps that width afterwards; free
+    /// space around it is not given to it. Re-creating it when the day
+    /// changes was not enough (1.0.75 still showed "18/10/26" in the
+    /// attendance request with plenty of room), which points at it choosing
+    /// while the form is still sliding in. So it is also re-created once,
+    /// after the form has settled. Its width is logged (UIFlowLog
+    /// "datePicker.width"): the long form is roughly twice as wide as the
+    /// short one, which shows which form appeared, and when.
+    ///
+    /// Apply it to the picker alone, with `.labelsHidden()`, so the logged
+    /// width is the picker's.
+    func remeasuresCompactDate(day: Date, logName: String) -> some View {
+        modifier(CompactDateRemeasure(day: VietnamTime.calendar.startOfDay(for: day), logName: logName))
+    }
+}
+
+/// See `View.remeasuresCompactDate`.
+struct CompactDateRemeasure: ViewModifier {
+    let day: Date
+    let logName: String
+    /// Bumped once after the form settles; part of the picker's identity.
+    @State private var settledPass = 0
+
+    private struct Identity: Hashable {
+        let day: Date
+        let pass: Int
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .id(Identity(day: day, pass: settledPass))
+            .background(
+                GeometryReader { geometry in
+                    Color.clear
+                        .onAppear { log(width: geometry.size.width, cause: "appear") }
+                        .onChange(of: geometry.size.width) { _, width in log(width: width, cause: "resize") }
+                }
+            )
+            // Outside the `.id`, so it runs once per appearance, not again
+            // for every re-creation it causes.
+            .task {
+                // A sheet takes about a third of a second to slide in.
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+                settledPass += 1
+            }
+    }
+
+    private func log(width: CGFloat, cause: String) {
+        UIFlowLog.record("datePicker.width", "\(logName) w=\(Int(width.rounded())) pass=\(settledPass) \(cause)")
+    }
+}
+

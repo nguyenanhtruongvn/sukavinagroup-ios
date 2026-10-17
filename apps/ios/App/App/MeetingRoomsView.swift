@@ -630,17 +630,23 @@ struct MeetingRoomScheduleSheet: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         // Past days cannot be booked; showing them only confused the list.
-                        DatePicker("Ngày", selection: $selectedDay, in: VietnamTime.calendar.startOfDay(for: .now)..., displayedComponents: .date)
-                            .datePickerStyle(.compact)
-                            // Re-created on a new day so the compact picker
-                            // measures the new date rather than shortening it to
-                            // "18/10/26". Before `.onChange`, which must persist.
-                            .id(MeetingPresentation.calendar.startOfDay(for: selectedDay))
-                            .padding(.horizontal)
-                            .padding(.bottom, 12)
-                            .onChange(of: selectedDay) { _, value in
-                                Task { await session.refreshMeetingSchedule(date: value) }
-                            }
+                        // Laid out as a labelled DatePicker is, with the label
+                        // beside it so the picker can be measured alone and keep
+                        // the full date; see `remeasuresCompactDate`.
+                        HStack {
+                            Text("Ngày")
+                                .accessibilityHidden(true)
+                            Spacer(minLength: 8)
+                            DatePicker("Ngày", selection: $selectedDay, in: VietnamTime.calendar.startOfDay(for: .now)..., displayedComponents: .date)
+                                .labelsHidden()
+                                .datePickerStyle(.compact)
+                                .remeasuresCompactDate(day: selectedDay, logName: "rooms.scheduleDay")
+                        }
+                        .padding(.horizontal)
+                        .padding(.bottom, 12)
+                        .onChange(of: selectedDay) { _, value in
+                            Task { await session.refreshMeetingSchedule(date: value) }
+                        }
                         // Type erase the heavy timeline separately from the
                         // enclosing NavigationStack on iOS 17.
                         AnyView(MeetingTimeline(bookings: bookings, date: selectedDay) {
