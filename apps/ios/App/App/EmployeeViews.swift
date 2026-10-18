@@ -426,7 +426,11 @@ struct PreloadedAttendanceDayCell: View {
 }
 
 struct DashboardView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes HomeState (greeting, punches, AI setting) and the menu only;
+    // observing the whole session redrew Home on every unrelated change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var home: HomeState
     @EnvironmentObject private var menuStore: MenuStore
     @State private var showTodayMenu = false
     @State private var showAttendanceHistory = false
@@ -444,9 +448,9 @@ struct DashboardView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Xin chào,")
                             .foregroundColor(AppTheme.muted)
-                        Text(session.dashboard?.name ?? session.profile?.name ?? "Nhân viên")
+                        Text(home.summary.name)
                             .font(.title2.bold())
-                        Text(session.dashboard?.employeeCode ?? session.profile?.employeeCode ?? "")
+                        Text(home.summary.employeeCode)
                             .font(.subheadline.monospaced())
                             .foregroundColor(AppTheme.redText)
                     }
@@ -528,7 +532,7 @@ struct DashboardView: View {
                     !showAttendanceHistory &&
                     !showAttendanceStatement &&
                     !showTodayMenu &&
-                    session.aiAssistantMobileEnabled {
+                    home.aiAssistantEnabled {
                     Button {
                         showAiAssistant = true
                     } label: {
@@ -567,7 +571,7 @@ struct DashboardView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.24), value: showAiAssistantLaunchLabel)
-            .animation(.easeInOut(duration: 0.20), value: session.aiAssistantMobileEnabled)
+            .animation(.easeInOut(duration: 0.20), value: home.aiAssistantEnabled)
             .sheet(isPresented: $showTodayMenu) {
                 TodayMenuView()
                     .sessionEnvironment(session)
@@ -592,7 +596,7 @@ struct DashboardView: View {
                 showAiAssistantLaunchLabel = false
             }
         }
-        .onChange(of: session.aiAssistantMobileEnabled) { _, enabled in
+        .onChange(of: home.aiAssistantEnabled) { _, enabled in
             if !enabled { showAiAssistant = false }
         }
     }
@@ -705,12 +709,12 @@ struct DashboardView: View {
     }
 
     private var checkInTime: String {
-        guard let value = session.dashboard?.attendanceCheckIn else { return "--:--" }
+        guard let value = home.summary.checkIn else { return "--:--" }
         return attendanceTime(value)
     }
 
     private var checkOutTime: String {
-        guard let value = session.dashboard?.attendanceCheckOut else { return "--:--" }
+        guard let value = home.summary.checkOut else { return "--:--" }
         return attendanceTime(value)
     }
 }
