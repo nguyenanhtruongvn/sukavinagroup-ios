@@ -18,7 +18,11 @@ struct ProfileView: View {
         var id: String { rawValue }
     }
 
-    @EnvironmentObject private var session: SessionStore
+    // Observes AccountState (profile, Face ID setting), not the whole
+    // session, which redrew this screen on every unrelated change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var account: AccountState
     @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
     @State private var showDelete = false
     @State private var showPasswordChange = false
@@ -35,12 +39,12 @@ struct ProfileView: View {
                         Circle().fill(AppTheme.red.opacity(0.18)).frame(width: 96, height: 96)
                         Text(initials).font(.title.bold()).foregroundColor(AppTheme.redText)
                     }
-                    Text(session.profile?.name ?? "Nhân viên").font(.title2.bold())
-                    Text(session.profile?.employeeCode ?? "").font(.subheadline.monospaced()).foregroundColor(AppTheme.muted)
+                    Text(account.profile?.name ?? "Nhân viên").font(.title2.bold())
+                    Text(account.profile?.employeeCode ?? "").font(.subheadline.monospaced()).foregroundColor(AppTheme.muted)
 
                     accountSectionTitle("THÔNG TIN TÀI KHOẢN")
                     VStack(spacing: 0) {
-                        ProfileLine(label: "Vai trò", value: session.profile?.role ?? "")
+                        ProfileLine(label: "Vai trò", value: account.profile?.role ?? "")
                         Divider().padding(.leading, 18)
                         ProfileLine(label: "Loại tài khoản", value: accountType)
                         Divider().padding(.leading, 18)
@@ -106,7 +110,7 @@ struct ProfileView: View {
                         Spacer(minLength: 8)
                         // Named for VoiceOver; the visible text sits beside it.
                         Toggle("Đăng nhập bằng \(session.biometricName)", isOn: Binding(
-                            get: { session.biometricsEnabled },
+                            get: { account.biometricsEnabled },
                             set: { enabled in
                                 Task { await session.setBiometricLogin(enabled: enabled) }
                             }
@@ -165,7 +169,7 @@ struct ProfileView: View {
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    if (session.profile?.protected != true || session.profile?.employeeCode == "DEMO") && session.profile?.accountType != "SUPER_ADMIN" {
+                    if (account.profile?.protected != true || account.profile?.employeeCode == "DEMO") && account.profile?.accountType != "SUPER_ADMIN" {
                         accountSectionTitle("VÙNG NGUY HIỂM")
                         Button("Yêu cầu xóa tài khoản", role: .destructive) { showDelete = true }
                             .font(.footnote.weight(.semibold))
@@ -213,11 +217,11 @@ struct ProfileView: View {
     }
 
     private var initials: String {
-        let words = (session.profile?.name ?? "NV").split(separator: " ")
+        let words = (account.profile?.name ?? "NV").split(separator: " ")
         return words.suffix(2).compactMap(\.first).map(String.init).joined().uppercased()
     }
     private var accountType: String {
-        switch session.profile?.accountType {
+        switch account.profile?.accountType {
         case "SUPER_ADMIN": return "Quản trị viên tổng"
         case "ADMIN": return "Quản trị viên"
         default: return "Nhân viên"
@@ -226,19 +230,19 @@ struct ProfileView: View {
     /// The session keeps the full profile (auth/me) for the signed-in account
     /// (a token renewal no longer blanks it), so read it directly.
     private var displayedManagerName: String {
-        let name = session.profile?.managerFullName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = account.profile?.managerFullName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? "Chưa cập nhật" : name
     }
 
     private var passwordChangedThisMonth: Bool {
         if isAdminAccount { return false }
-        guard let changedAt = session.profile?.passwordChangedAt else { return false }
+        guard let changedAt = account.profile?.passwordChangedAt else { return false }
         return VietnamTime.calendar.isDate(changedAt, equalTo: Date(), toGranularity: .month)
     }
     private var isAdminAccount: Bool {
-        session.profile?.accountType == "ADMIN" || session.profile?.accountType == "SUPER_ADMIN"
+        account.profile?.accountType == "ADMIN" || account.profile?.accountType == "SUPER_ADMIN"
     }
-    private var isDemoAccount: Bool { session.profile?.isDemoAccount == true }
+    private var isDemoAccount: Bool { account.profile?.isDemoAccount == true }
 
     private var passwordChangeDescription: String {
         isDemoAccount
@@ -351,7 +355,12 @@ struct NativeLegalView: View {
 }
 
 struct PasswordChangeView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes AccountState and the working flag (below) only: the form
+    // redrew while typing on every unrelated session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var account: AccountState
+    @State private var isSessionWorking = false
     @Environment(\.dismiss) private var dismiss
     /// Shown by the app container while the default password is in use: it
     /// cannot be closed, only completed or left by signing out.
@@ -365,18 +374,18 @@ struct PasswordChangeView: View {
     @State private var completed = false
     @State private var attemptedSubmit = false
 
-    private var isDemoAccount: Bool { session.profile?.isDemoAccount == true }
+    private var isDemoAccount: Bool { account.profile?.isDemoAccount == true }
 
     private var currentPasswordError: String? {
         guard isDemoAccount,
-              let message = session.passwordChangeError,
+              let message = account.passwordChangeError,
               message.localizedCaseInsensitiveContains("Mật khẩu hiện tại") else { return nil }
         return message
     }
 
     private var reusedPasswordError: String? {
         guard isDemoAccount,
-              let message = session.passwordChangeError,
+              let message = account.passwordChangeError,
               message.localizedCaseInsensitiveContains("Mật khẩu mới phải khác") else { return nil }
         return message
     }
@@ -386,7 +395,7 @@ struct PasswordChangeView: View {
     /// errors (no connection, ...) used to be shown nowhere.
     private var regularAccountError: String? {
         guard currentPasswordError == nil, reusedPasswordError == nil else { return nil }
-        return session.passwordChangeError
+        return account.passwordChangeError
     }
 
     var body: some View {
@@ -509,7 +518,7 @@ struct PasswordChangeView: View {
                         }
                     } label: {
                         HStack {
-                            if session.isWorking { ProgressView().tint(.white) }
+                            if isSessionWorking { ProgressView().tint(.white) }
                             Text(isDemoAccount || otpSent ? "Xác nhận đổi mật khẩu" : "Gửi mã OTP").fontWeight(.bold)
                             Spacer()
                             Image(systemName: isDemoAccount || otpSent ? "checkmark.shield.fill" : "arrow.right")
@@ -517,8 +526,8 @@ struct PasswordChangeView: View {
                     }
                     .buttonStyle(.plain).foregroundColor(.white).background(AppTheme.red)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .disabled(session.isWorking)
-                    .opacity(session.isWorking ? 0.55 : 1)
+                    .disabled(isSessionWorking)
+                    .opacity(isSessionWorking ? 0.55 : 1)
                 }
                 .padding(22)
             }
@@ -534,6 +543,7 @@ struct PasswordChangeView: View {
                 }
             }
             .interactiveDismissDisabled(isForced)
+            .onReceive(session.$isWorking) { isSessionWorking = $0 }
             .alert("Đổi mật khẩu thành công", isPresented: $completed) {
                 // Forced: the refreshed profile clears the flag and the app
                 // container closes this screen itself.
