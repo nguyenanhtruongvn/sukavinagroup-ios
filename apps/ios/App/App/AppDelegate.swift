@@ -102,22 +102,10 @@ struct ScenePhaseBridge<Content: View>: View {
     var body: some View {
         content
             .environment(\.scenePhase, phase)
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                UIFlowLog.record("scene.active")
-                phase = .active
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-                UIFlowLog.record("scene.inactive")
-                phase = .inactive
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
-                UIFlowLog.record("scene.background")
-                phase = .background
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                UIFlowLog.record("scene.foreground")
-                phase = .inactive
-            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in phase = .active }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in phase = .inactive }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in phase = .background }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in phase = .inactive }
     }
 }
 
@@ -131,7 +119,6 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        UIFlowLog.recordLaunch()
         // Before anything reads the session: Keychain items outlive an
         // uninstall, so a reinstalled app must not sign the previous user in.
         InstallationGuard.forgetPreviousInstallationIfNeeded()
@@ -400,9 +387,6 @@ private final class NativeAppContainerViewController: UIViewController {
         // iOS 17 and iOS 18+ and leaves the in-screen navigation untouched.
         let nextKind = currentScreenKind
         if renderedScreenKind != nextKind {
-            // Replacing the host tears down everything it presents, sheets
-            // included.
-            UIFlowLog.record("root.replaceHost", "to=\(nextKind)")
             launchLogger.notice("Replacing host with \(self.description(of: self.session.state), privacy: .public)")
             renderedScreenKind = nextKind
             if let host {
@@ -581,7 +565,6 @@ private final class NativeAppContainerViewController: UIViewController {
             controller.isModalInPresentation = true
             forcedPasswordController = controller
             if let presented = presentedViewController {
-                UIFlowLog.record("root.dismissForForcedPassword", "presented=\(type(of: presented))")
                 presented.dismiss(animated: false) { [weak self] in self?.present(controller, animated: true) }
             } else {
                 present(controller, animated: true)

@@ -574,7 +574,6 @@ struct DashboardView: View {
                 .sessionEnvironment(session)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
-                .logsSheetFlow("dashboard.aiAssistant")
         }
         .task(id: isActive) {
             guard isActive, !hasScheduledAiAssistantLaunchLabel else { return }
@@ -585,10 +584,7 @@ struct DashboardView: View {
             }
         }
         .onChange(of: session.aiAssistantMobileEnabled) { _, enabled in
-            if !enabled {
-                UIFlowLog.record("sheet.forceClose", "dashboard.aiAssistant cause=assistantDisabled")
-                showAiAssistant = false
-            }
+            if !enabled { showAiAssistant = false }
         }
     }
 

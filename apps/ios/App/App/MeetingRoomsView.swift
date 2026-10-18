@@ -212,16 +212,13 @@ struct MeetingRoomsView: View {
                 switch destination {
                 case .booking(let room, let selectedDay):
                     AnyView(MeetingBookingSheet(room: room, day: selectedDay)
-                        .sessionEnvironment(session)
-                        .logsSheetFlow("rooms.booking"))
+                        .sessionEnvironment(session))
                 case .schedule(let room, let selectedDay):
                     AnyView(MeetingRoomScheduleSheet(room: room, day: selectedDay)
-                        .sessionEnvironment(session)
-                        .logsSheetFlow("rooms.schedule"))
+                        .sessionEnvironment(session))
                 case .mine(let selectedDay):
                     AnyView(MyMeetingsSheet(day: selectedDay)
-                        .sessionEnvironment(session)
-                        .logsSheetFlow("rooms.myMeetings"))
+                        .sessionEnvironment(session))
                 }
             }
         }
@@ -639,7 +636,6 @@ struct MeetingRoomScheduleSheet: View {
                                 minimum: VietnamTime.calendar.startOfDay(for: .now),
                                 accessibilityLabel: "Ngày"
                             )
-                            .logsCompactDateWidth(day: selectedDay, logName: "rooms.scheduleDay")
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 12)

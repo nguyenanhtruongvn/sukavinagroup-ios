@@ -463,7 +463,6 @@ struct RequestsView: View {
                     // of being retained by its form scroll view.
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
-                    .logsSheetFlow("requests.composing")
             }
             .sheet(item: $resubmitting) { request in
                 RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
@@ -472,13 +471,11 @@ struct RequestsView: View {
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
-                    .logsSheetFlow("requests.resubmitting")
             }
             .sheet(item: $reviewing) { request in
                 RequestDecisionView(request: request) { approved, note in
                     await store.decide(token: session.token, id: request.id, approved: approved, note: note)
                 }
-                .logsSheetFlow("requests.reviewing")
             }
             .alert(item: $cancelling) { request in
                 Alert(
@@ -1272,7 +1269,6 @@ struct RequestComposer: View {
                                     mode: .date,
                                     accessibilityLabel: "Ngày chấm công"
                                 )
-                                .logsCompactDateWidth(day: attendanceDate, logName: "composer.attendanceDate")
                             }
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
@@ -1386,7 +1382,6 @@ struct RequestComposer: View {
                                     mode: .date,
                                     accessibilityLabel: "Ngày xảy ra"
                                 )
-                                .logsCompactDateWidth(day: from, logName: "composer.eventDate")
                             }
                             Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
                                 .font(.footnote)
@@ -1522,22 +1517,11 @@ struct RequestComposer: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Hủy") {
-                        UIFlowLog.record("composer.userTappedCancel", "unsaved=\(hasUnsavedInput)")
-                        dismiss()
-                    }
+                    Button("Hủy") { dismiss() }
                         .foregroundStyle(AppTheme.muted)
                 }
             }
             .onAppear { if initialInput == nil { initialInput = currentInput } }
-            // A disappear with no composer.user* line above it was not the
-            // employee's doing: the sheet closed on its own.
-            .onDisappear {
-                UIFlowLog.record(
-                    "composer.disappear",
-                    "unsaved=\(hasUnsavedInput) scheduleEdited=\(scheduleEdited) submitting=\(isSubmitting) dismissDisabled=\(hasUnsavedInput || isSubmitting)"
-                )
-            }
             .interactiveDismissDisabled(hasUnsavedInput || isSubmitting)
             .safeAreaInset(edge: .bottom) {
                 // The form closes only after the server accepted the request; a
@@ -1565,7 +1549,6 @@ struct RequestComposer: View {
                         if let error {
                             submitError = error
                         } else {
-                            UIFlowLog.record("composer.userSubmitted")
                             UINotificationFeedbackGenerator().notificationOccurred(.success)
                             dismiss()
                         }
@@ -1706,11 +1689,10 @@ struct RequestComposer: View {
     ///
     /// The system picker, not a custom pill with a popover: a SwiftUI
     /// `.popover` inside this sheet closed the whole composer when tapped
-    /// (debug.log on iOS 27), and the system's own compact picker, as in
+    /// (seen on iOS 27), and the system's own compact picker, as in
     /// the attendance request, is the smoother and steadier of the two.
     private func dateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
         compactDateTimePicker(title, selection: selection, range: range)
-            .logsCompactDateWidth(day: selection.wrappedValue, includesTime: true, logName: "composer.\(title)")
     }
 
     /// Apple's compact date and time picker, set to its date before it is

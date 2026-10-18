@@ -1409,10 +1409,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
                 MainActor.assumeIsolated { self?.keepFocusedFieldVisible(animated: true) }
             })
         }
-        UIFlowLog.record("sheet.appear", "legacy.booking")
         cancellable = session.meetings.$invitees.receive(on: RunLoop.main).sink { [weak self] value in
-            // Rebuilds the invitation card while the employee may be typing.
-            UIFlowLog.record("legacy.booking.renderInvitees", "cause=inviteesChanged")
             self?.invitees = value
             self?.renderInvitees()
         }
@@ -1951,7 +1948,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     /// Vietnam time and 5-minute steps (`MeetingBookingTime.minuteStep`), as
     /// on iOS 18 (`TimePopoverControl`). It keeps the booking's day.
     private func configureStartTimePicker() {
-        startTileControl.name = "Bắt đầu"
         startTileControl.minuteInterval = MeetingBookingTime.minuteStep
         startTileControl.date = start
         startTileControl.accessibilityLabel = "Bắt đầu"
@@ -2023,7 +2019,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     /// 5-minute steps, 00:05 to 08:00 (`MeetingBookingTime.durationRange`).
     private func configureDurationPicker() {
         let calendar = VietnamTime.calendar
-        durationTileControl.name = "Thời lượng"
         durationTileControl.minuteInterval = MeetingBookingTime.minuteStep
         durationTileControl.minimumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.lowerBound, calendar: calendar)
         durationTileControl.maximumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.upperBound, calendar: calendar)
@@ -2262,12 +2257,7 @@ private final class LegacyMeetingDetailController: UIViewController {
             content.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -20),
         ])
         details = session.cachedMeetingBookingDetails(id: meeting.id)
-        UIFlowLog.record("sheet.appear", "legacy.meetingDetail")
-        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in
-            // Rebuilds every subview of the open detail sheet.
-            UIFlowLog.record("legacy.meetingDetail.render", "cause=bookingsChanged")
-            self?.render()
-        }
+        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
         render()
         Task { [weak self] in
             guard let self else { return }
@@ -2959,11 +2949,6 @@ private final class LegacySheetNavigationController: UINavigationController {
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if isBeingDismissed || presentingViewController == nil {
-            let root = viewControllers.first.map { String(describing: type(of: $0)) } ?? "unknown"
-            UIFlowLog.record("sheet.disappear", "legacy root=\(root) animated=\(animated)")
-            onDismiss?()
-            onDismiss = nil
-        }
+        if isBeingDismissed || presentingViewController == nil { onDismiss?(); onDismiss = nil }
     }
 }

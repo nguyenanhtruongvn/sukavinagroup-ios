@@ -325,10 +325,7 @@ struct AiAssistantChatView: View {
         .background(AppTheme.ink.ignoresSafeArea())
         .task { await loadHistoryIfNeeded() }
         .onChange(of: session.aiAssistantMobileEnabled) { _, enabled in
-            if !enabled {
-                UIFlowLog.record("sheet.selfDismiss", "dashboard.aiAssistant cause=assistantDisabled")
-                dismiss()
-            }
+            if !enabled { dismiss() }
         }
         .interactiveDismissDisabled(isSending)
     }

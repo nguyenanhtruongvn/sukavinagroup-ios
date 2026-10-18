@@ -227,37 +227,8 @@ extension View {
 
 }
 
-extension View {
-    /// Logs a compact date picker's own width next to the width its long
-    /// date needs (UIFlowLog "datePicker.width"). The long form is about
-    /// twice as wide as "18/10/26", so debug.log shows which one appeared,
-    /// and when. Apply it to the picker alone.
-    func logsCompactDateWidth(day: Date, includesTime: Bool = false, logName: String) -> some View {
-        modifier(CompactDateWidthLog(
-            day: VietnamTime.calendar.startOfDay(for: day),
-            includesTime: includesTime,
-            logName: logName
-        ))
-    }
-}
-
-/// See `View.logsCompactDateWidth`.
-struct CompactDateWidthLog: ViewModifier {
-    let day: Date
-    let includesTime: Bool
-    let logName: String
-
-    func body(content: Content) -> some View {
-        let wanted = Self.fullWidth(of: day, includesTime: includesTime)
-        return content.background(
-            GeometryReader { geometry in
-                Color.clear
-                    .onAppear { log(geometry.size.width, wanted: wanted, cause: "appear") }
-                    .onChange(of: geometry.size.width) { _, width in log(width, wanted: wanted, cause: "resize") }
-            }
-        )
-    }
-
+/// The width a compact date picker needs for its long form.
+enum CompactDateWidth {
     /// Roughly the width of `day`'s long form as the compact picker draws
     /// it: each value in its own capsule of body text.
     static func fullWidth(of day: Date, includesTime: Bool) -> CGFloat {
@@ -283,13 +254,6 @@ struct CompactDateWidthLog: ViewModifier {
         formatter.timeStyle = .none
         return formatter
     }()
-
-    private func log(_ width: CGFloat, wanted: CGFloat, cause: String) {
-        UIFlowLog.record(
-            "datePicker.width",
-            "\(logName) w=\(Int(width.rounded())) wanted=\(Int(wanted.rounded())) \(cause)"
-        )
-    }
 }
 
 /// A label and a compact date picker on one row, as a labelled DatePicker
@@ -322,13 +286,13 @@ struct CompactDateRow<Picker: View>: View {
 /// it measures when it is created, which fits today's date only. Đi trễ
 /// and Về sớm open on today, so they fit; any other day can be a few
 /// points wider in proportional digits ("attendanceDate w=185
-/// wanted=188", debug.log 1.0.79) and was shortened. Moving a new picker
+/// wanted=188" on 1.0.79) and was shortened. Moving a new picker
 /// to its date after it appeared did not help either (1.0.81, Ngày chấm
 /// công).
 ///
 /// So the width is not left to the picker: `sizeThatFits` gives it at
 /// least the width of its date's long form, worked out from the text
-/// (`CompactDateWidthLog.fullWidth`), with a few points to spare. A wider
+/// (`CompactDateWidth.fullWidth`), with a few points to spare. A wider
 /// frame only leaves room before the picker, which sits at its trailing
 /// edge.
 struct SystemCompactDatePicker: UIViewRepresentable {
@@ -353,7 +317,6 @@ struct SystemCompactDatePicker: UIViewRepresentable {
         picker.date = selection
         picker.accessibilityLabel = accessibilityLabel
         picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        picker.addTarget(context.coordinator, action: #selector(Coordinator.opened(_:)), for: .editingDidBegin)
         return picker
     }
 
@@ -370,23 +333,15 @@ struct SystemCompactDatePicker: UIViewRepresentable {
     func sizeThatFits(_ proposal: ProposedViewSize, uiView picker: UIDatePicker, context: Context) -> CGSize? {
         let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
         // A time alone has no long and short form.
-        let longForm = mode == .time ? 0 : CompactDateWidthLog.fullWidth(of: selection, includesTime: mode != .date)
+        let longForm = mode == .time ? 0 : CompactDateWidth.fullWidth(of: selection, includesTime: mode != .date)
         let width = max(fitted.width, longForm) + Self.spare
         let height = (20...80).contains(fitted.height) ? fitted.height : 34
-        // Which of the two set the width: if the picker's own measure is
-        // always at least the long form, the estimate and spare can go.
-        let line = "\(accessibilityLabel) fitted=\(Int(fitted.width.rounded())) longForm=\(Int(longForm.rounded())) intrinsic=\(Int(picker.intrinsicContentSize.width.rounded())) frame=\(Int(picker.bounds.width.rounded()))"
-        if line != context.coordinator.lastSizeLog {
-            context.coordinator.lastSizeLog = line
-            UIFlowLog.record("datePicker.fit", line)
-        }
         return CGSize(width: ceil(width), height: ceil(height))
     }
 
     @MainActor
     final class Coordinator: NSObject {
         var selection: Binding<Date>
-        var lastSizeLog = ""
 
         init(selection: Binding<Date>) {
             self.selection = selection
@@ -396,10 +351,6 @@ struct SystemCompactDatePicker: UIViewRepresentable {
             if selection.wrappedValue != picker.date { selection.wrappedValue = picker.date }
         }
 
-        /// Its bubble opens (logged; a keyboard left open stays).
-        @objc func opened(_ picker: UIDatePicker) {
-            UIFlowLog.record("datePicker.open", picker.accessibilityLabel ?? "")
-        }
     }
 }
 
@@ -432,7 +383,6 @@ struct TimePopoverButton: UIViewRepresentable {
     }
 
     private func apply(to control: TimePopoverControl) {
-        control.name = accessibilityLabel
         control.minuteInterval = minuteInterval
         control.minimumDate = minimum
         control.maximumDate = maximum
@@ -480,10 +430,7 @@ struct TimePopoverButton: UIViewRepresentable {
 ///   popover once the closing transition ends (its own completion, no
 ///   timer).
 /// - A keyboard left open by a text field stays open.
-/// - debug.log: timePopover.open / .switch / .afterClose / .close /
-///   .blocked.
 final class TimePopoverControl: UIControl {
-    var name = "tile"
     var minuteInterval = 1
     var minimumDate: Date?
     var maximumDate: Date?
@@ -514,13 +461,11 @@ final class TimePopoverControl: UIControl {
         }
         guard let other = presented as? TimePopoverController else {
             // Something else is on screen (a confirmation): leave it be.
-            UIFlowLog.record("timePopover.blocked", "\(name) presented=\(String(describing: type(of: presented)))")
             return
         }
         if other.isBeingDismissed {
             // Closing already, from a tap outside it a moment ago: open this
             // one the moment it is gone, so that tap is not lost.
-            UIFlowLog.record("timePopover.afterClose", "\(other.sourceName) -> \(name)")
             other.transitionCoordinator?.animate(alongsideTransition: nil) { [weak self, weak presenter] _ in
                 guard let self, let presenter, presenter.presentedViewController == nil else { return }
                 self.present(from: presenter)
@@ -529,7 +474,6 @@ final class TimePopoverControl: UIControl {
         }
         // Another tile's popover, let through to here: close it now, then
         // open this one, so one tap moves from tile to tile.
-        UIFlowLog.record("timePopover.switch", "\(other.sourceName) -> \(name)")
         other.dismiss(animated: false) { [weak self, weak presenter] in
             guard let self, let presenter else { return }
             self.present(from: presenter)
@@ -537,7 +481,7 @@ final class TimePopoverControl: UIControl {
     }
 
     private func present(from presenter: UIViewController) {
-        let controller = TimePopoverController(sourceName: name)
+        let controller = TimePopoverController()
         let wheels = controller.picker
         wheels.datePickerMode = .time
         wheels.preferredDatePickerStyle = .wheels
@@ -561,7 +505,6 @@ final class TimePopoverControl: UIControl {
         }
         self.popover = controller
         presenter.present(controller, animated: true)
-        UIFlowLog.record("timePopover.open", name)
     }
 
     @objc private func wheelsChanged(_ wheels: UIDatePicker) {
@@ -599,15 +542,6 @@ final class TimePopoverControl: UIControl {
 /// The popover's content: Apple's time wheels at their own size.
 final class TimePopoverController: UIViewController, UIPopoverPresentationControllerDelegate {
     let picker = UIDatePicker()
-    let sourceName: String
-
-    init(sourceName: String) {
-        self.sourceName = sourceName
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
     override func viewDidLoad() {
         super.viewDidLoad()
         picker.translatesAutoresizingMaskIntoConstraints = false
@@ -628,9 +562,5 @@ final class TimePopoverController: UIViewController, UIPopoverPresentationContro
     /// A popover on iPhone too, not a sheet.
     func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
         .none
-    }
-
-    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
-        UIFlowLog.record("timePopover.close", sourceName)
     }
 }
