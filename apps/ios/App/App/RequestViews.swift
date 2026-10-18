@@ -1287,8 +1287,8 @@ struct RequestComposer: View {
                                     }
                                 }
                             } else {
-                                // SystemCompactDatePicker, so their bubbles also
-                                // put the keyboard away.
+                                // SystemCompactDatePicker, as the other date and
+                                // time fields.
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(alignment: .leading, spacing: 10) {
                                         CompactDateRow(label: "Giờ vào") {

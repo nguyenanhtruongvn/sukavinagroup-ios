@@ -396,10 +396,9 @@ struct SystemCompactDatePicker: UIViewRepresentable {
             if selection.wrappedValue != picker.date { selection.wrappedValue = picker.date }
         }
 
-        /// Its bubble opens: the keyboard goes, as for `TimePopoverControl`.
+        /// Its bubble opens (logged; a keyboard left open stays).
         @objc func opened(_ picker: UIDatePicker) {
-            let hidKeyboard = picker.resignTextInputForBubble()
-            UIFlowLog.record("datePicker.open", "\(picker.accessibilityLabel ?? "") hidKeyboard=\(hidKeyboard)")
+            UIFlowLog.record("datePicker.open", picker.accessibilityLabel ?? "")
         }
     }
 }
@@ -480,7 +479,7 @@ struct TimePopoverButton: UIViewRepresentable {
 /// - A tap on a tile while a popover is still closing opens the tile's
 ///   popover once the closing transition ends (its own completion, no
 ///   timer).
-/// - Opening it puts away a keyboard left by a text field.
+/// - A keyboard left open by a text field stays open.
 /// - debug.log: timePopover.open / .switch / .afterClose / .close /
 ///   .blocked.
 final class TimePopoverControl: UIControl {
@@ -509,7 +508,6 @@ final class TimePopoverControl: UIControl {
 
     @objc private func tapped() {
         guard let presenter = nearestViewController() else { return }
-        resignTextInputForBubble()
         guard let presented = presenter.presentedViewController else {
             present(from: presenter)
             return
@@ -634,25 +632,5 @@ final class TimePopoverController: UIViewController, UIPopoverPresentationContro
 
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         UIFlowLog.record("timePopover.close", sourceName)
-    }
-}
-
-extension UIView {
-    /// Hides the keyboard when one of Apple's picker bubbles opens from this
-    /// view: resigns the text field or text view that holds it, and nothing
-    /// else, so the picker keeps its bubble. Returns whether a keyboard was
-    /// hidden.
-    @discardableResult
-    func resignTextInputForBubble() -> Bool {
-        guard let window, let input = Self.textInputHoldingKeyboard(in: window) else { return false }
-        return input.resignFirstResponder()
-    }
-
-    private static func textInputHoldingKeyboard(in view: UIView) -> UIView? {
-        if view is UITextField || view is UITextView, view.isFirstResponder { return view }
-        for subview in view.subviews {
-            if let input = textInputHoldingKeyboard(in: subview) { return input }
-        }
-        return nil
     }
 }
