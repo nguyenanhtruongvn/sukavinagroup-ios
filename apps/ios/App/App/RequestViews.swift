@@ -1639,7 +1639,7 @@ struct RequestComposer: View {
     }
 
     /// One row per moment: the label, then the date and time at full width
-    /// ("18 thg 10, 2026  08:00"). Only the label adapts to the room left
+    /// ("08:00  18 thg 10, 2026"). Only the label adapts to the room left
     /// beside it. At accessibility text sizes the label goes over the value.
     @ViewBuilder
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {

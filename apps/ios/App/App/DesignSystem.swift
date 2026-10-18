@@ -264,16 +264,18 @@ struct DatePopoverField: View {
     let accessibilityLabel: String
 
     var body: some View {
+        // The time before the date, as Vietnamese writes it ("08:30 ngày
+        // 18/10/2026") and as Apple's compact picker showed them in vi_VN.
         HStack(spacing: 6) {
-            if mode != .time {
-                valueBox(Self.longDate.string(from: selection), mode: .date, label: accessibilityLabel)
-            }
             if mode != .date {
                 valueBox(
                     VietnamTime.clock.string(from: selection),
                     mode: .time,
                     label: mode == .time ? accessibilityLabel : "\(accessibilityLabel), giờ"
                 )
+            }
+            if mode != .time {
+                valueBox(Self.longDate.string(from: selection), mode: .date, label: accessibilityLabel)
             }
         }
         .fixedSize()
