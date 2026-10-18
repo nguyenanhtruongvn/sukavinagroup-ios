@@ -198,7 +198,7 @@ private enum MeetingLiveActivityAction {
         }
     }
 
-    private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static let baseURL = SukavinaServer.api
     private static var appGroup: String {
         let original = "group.net.sukavinagroup.user"
         let groups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]

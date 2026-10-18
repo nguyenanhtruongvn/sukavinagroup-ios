@@ -814,7 +814,7 @@ private final class LegacyRoomCardCell: UITableViewCell {
         photo.contentMode = .center
         photo.image = placeholder
         let value = room.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: value.hasPrefix("/") ? "https://sukavinagroup.net\(value)" : value),
+        guard let url = URL(string: value.hasPrefix("/") ? SukavinaServer.origin + value : value),
               url.scheme?.hasPrefix("http") == true else { return }
         if let cached = Self.imageCache.object(forKey: url as NSURL) {
             photo.contentMode = .scaleAspectFill
@@ -854,16 +854,6 @@ private final class LegacyMeetingScheduleController: UIViewController {
     private let dayControl = DatePopoverControl()
     private let dayValue = UILabel()
     private let header = UIStackView()
-    private static let longDate: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = VietnamTime.locale
-        formatter.calendar = VietnamTime.calendar
-        formatter.timeZone = VietnamTime.timeZone
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
-
     init(session: SessionStore, room: MeetingRoom, day: Date) {
         self.session = session; self.room = room; self.day = day
         super.init(nibName: nil, bundle: nil)
@@ -1008,7 +998,7 @@ private final class LegacyMeetingScheduleController: UIViewController {
     }
 
     private func renderDay() {
-        let text = Self.longDate.string(from: day)
+        let text = VietnamTime.mediumDate.string(from: day)
         dayValue.text = text
         dayControl.accessibilityValue = text
     }

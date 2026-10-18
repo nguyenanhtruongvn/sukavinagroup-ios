@@ -297,7 +297,7 @@ struct DatePopoverField: View {
                 )
             }
             if mode != .time {
-                valueBox(Self.longDate.string(from: selection), mode: .date, label: accessibilityLabel)
+                valueBox(VietnamTime.mediumDate.string(from: selection), mode: .date, label: accessibilityLabel)
             }
         }
         .fixedSize()
@@ -323,18 +323,6 @@ struct DatePopoverField: View {
                 accessibilityValue: text
             ))
     }
-
-    /// The system's medium date style in Vietnamese, the compact picker's
-    /// long form.
-    private static let longDate: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = VietnamTime.locale
-        formatter.calendar = VietnamTime.calendar
-        formatter.timeZone = VietnamTime.timeZone
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        return formatter
-    }()
 }
 
 /// A drawn field or tile's whole area as a button that opens Apple's

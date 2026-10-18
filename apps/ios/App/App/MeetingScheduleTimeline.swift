@@ -112,7 +112,9 @@ struct MeetingTimeline: View {
                 // The marker and its time label advance every minute instead
                 // of only when the timeline happens to redraw.
                 TimelineView(.everyMinute) { clock in
-                    if let currentOffset = currentOffset(at: clock.date) {
+                    if let currentOffset = MeetingScheduleLayout.currentOffset(
+                        day: date, now: clock.date, firstHour: firstHour, lastHour: lastHour, hourHeight: hourHeight
+                    ) {
                         ZStack(alignment: .topLeading) {
                             Rectangle()
                                 .fill(.red)
@@ -158,14 +160,6 @@ struct MeetingTimeline: View {
                 labelTop: slot.labelTop
             )
         }
-    }
-
-    private func currentOffset(at now: Date) -> CGFloat? {
-        guard MeetingPresentation.calendar.isDate(date, inSameDayAs: now) else { return nil }
-        let hour = MeetingPresentation.calendar.component(.hour, from: now)
-        guard hour >= firstHour && hour <= lastHour else { return nil }
-        let minute = MeetingPresentation.calendar.component(.minute, from: now)
-        return CGFloat(hour - firstHour) * hourHeight + CGFloat(minute) / 60 * hourHeight
     }
 
     private func bookingStyle(for booking: MeetingBooking) -> MeetingTimelineBookingStyle {

@@ -12,7 +12,7 @@ private enum WidgetStorage {
     /// window the timeline uses that state instead of fetching it again.
     private static let freshness: TimeInterval = 120
     private static let tokenKey = "attendance-widget-token"
-    private static let endpoint = "https://sukavinagroup.net/api/public/widget/attendance"
+    private static let endpoint = SukavinaServer.api.absoluteString + "public/widget/attendance"
 
     private static var appGroup: String {
         let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]

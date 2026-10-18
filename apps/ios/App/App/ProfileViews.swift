@@ -239,9 +239,7 @@ struct ProfileView: View {
     private var isAdminAccount: Bool {
         session.profile?.accountType == "ADMIN" || session.profile?.accountType == "SUPER_ADMIN"
     }
-    private var isDemoAccount: Bool {
-        session.profile?.accountType == "DEMO" || session.profile?.employeeCode.uppercased() == "DEMO"
-    }
+    private var isDemoAccount: Bool { session.profile?.isDemoAccount == true }
 
     private var passwordChangeDescription: String {
         isDemoAccount
@@ -368,9 +366,7 @@ struct PasswordChangeView: View {
     @State private var completed = false
     @State private var attemptedSubmit = false
 
-    private var isDemoAccount: Bool {
-        session.profile?.accountType == "DEMO" || session.profile?.employeeCode.uppercased() == "DEMO"
-    }
+    private var isDemoAccount: Bool { session.profile?.isDemoAccount == true }
 
     private var currentPasswordError: String? {
         guard isDemoAccount,
@@ -551,18 +547,9 @@ struct PasswordChangeView: View {
             isPasswordValid && newPassword == confirmPassword
     }
 
-    private var isPasswordValid: Bool {
-        newPassword.count >= 6 &&
-            newPassword.rangeOfCharacter(from: .letters) != nil &&
-            newPassword.rangeOfCharacter(from: .decimalDigits) != nil
-    }
+    private var isPasswordValid: Bool { passwordRuleError == nil }
 
-    private var passwordRuleError: String? {
-        if newPassword.count < 6 { return "Mật khẩu phải có ít nhất 6 ký tự." }
-        if newPassword.rangeOfCharacter(from: .letters) == nil { return "Mật khẩu phải có ít nhất một chữ cái." }
-        if newPassword.rangeOfCharacter(from: .decimalDigits) == nil { return "Mật khẩu phải có ít nhất một chữ số." }
-        return nil
-    }
+    private var passwordRuleError: String? { PasswordPolicy.problem(newPassword) }
 
     private func validationMessage(_ message: String) -> some View {
         Label(message, systemImage: "exclamationmark.circle.fill")

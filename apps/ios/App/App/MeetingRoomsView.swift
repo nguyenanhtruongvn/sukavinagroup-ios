@@ -582,7 +582,7 @@ struct MeetingRoomImage: View {
     private var imageURL: URL? {
         let value = room.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.hasPrefix("/") {
-            return URL(string: "https://sukavinagroup.net\(value)")
+            return URL(string: SukavinaServer.origin + value)
         }
         return URL(string: value)
     }

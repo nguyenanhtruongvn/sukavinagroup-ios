@@ -228,12 +228,7 @@ private struct ForgotPasswordView: View {
         _employeeCode = State(initialValue: initialEmployeeCode.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    private var passwordRuleError: String? {
-        if newPassword.count < 6 { return "Mật khẩu phải có ít nhất 6 ký tự." }
-        if !newPassword.contains(where: \.isLetter) { return "Mật khẩu phải có ít nhất một chữ cái." }
-        if !newPassword.contains(where: \.isNumber) { return "Mật khẩu phải có ít nhất một chữ số." }
-        return nil
-    }
+    private var passwordRuleError: String? { PasswordPolicy.problem(newPassword) }
 
     var body: some View {
         NavigationStack {

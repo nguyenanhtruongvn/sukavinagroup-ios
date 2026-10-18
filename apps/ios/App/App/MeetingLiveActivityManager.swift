@@ -1,6 +1,5 @@
 import ActivityKit
 import Foundation
-import Security
 
 enum MeetingLiveActivityManager {
     private static var activityUpdatesTask: Task<Void, Never>?
@@ -195,7 +194,7 @@ enum LiveActivityTokenLedger {
 /// scoped to one Live Activity.  The stream can provide a rotated token, so it
 /// remains observed for the lifetime of each active activity.
 private enum MeetingLiveActivityPushRegistration {
-    private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static let baseURL = SukavinaServer.api
     private static var observedActivityIDs = Set<String>()
     /// observe(_:) runs from the main thread and from ActivityKit's update
     /// stream; the set is shared.
@@ -224,7 +223,7 @@ private enum MeetingLiveActivityPushRegistration {
     }
 
     private static func upload(token: Data, bookingID: String) async {
-        guard !bookingID.isEmpty, let accessToken = accessToken() else { return }
+        guard !bookingID.isEmpty, let accessToken = KeychainStore.loadToken() else { return }
         let tokenValue = token.map { String(format: "%02x", $0) }.joined()
         guard !tokenValue.isEmpty else { return }
         let registration = LiveActivityTokenLedger.key(token: tokenValue, scope: bookingID)
@@ -248,20 +247,5 @@ private enum MeetingLiveActivityPushRegistration {
         } catch {
             ConnectionDiagnostics.record("Live Activity push token upload failed: \(error.localizedDescription)")
         }
-    }
-
-    private static func accessToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "net.sukavinagroup.user",
-            kSecAttrAccount as String: "access-token",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }

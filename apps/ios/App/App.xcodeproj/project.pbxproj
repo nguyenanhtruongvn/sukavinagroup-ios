@@ -15,6 +15,9 @@
 		FC0000000000000000000670 /* Shared/WidgetTokenKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000650 /* Shared/WidgetTokenKeychain.swift */; };
 		FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */; };
 		FC0000000000000000000720 /* Shared/AttendanceMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */; };
+		FC0000000000000000000820 /* Shared/SukavinaServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000810 /* Shared/SukavinaServer.swift */; };
+		FC0000000000000000000830 /* Shared/SukavinaServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000810 /* Shared/SukavinaServer.swift */; };
+		FC0000000000000000000920 /* Shared/PasswordPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000910 /* Shared/PasswordPolicy.swift */; };
 		FC0000000000000000000420 /* Shared/ReadableColor.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000410 /* Shared/ReadableColor.swift */; };
 		FC0000000000000000000120 /* Shared/MeetingBookingDeduplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */; };
 		FB0000000000000000000820 /* MeetingRoomsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB0000000000000000000810 /* MeetingRoomsView.swift */; };
@@ -104,6 +107,8 @@
 		FC0000000000000000000650 /* Shared/WidgetTokenKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/WidgetTokenKeychain.swift; sourceTree = "<group>"; };
 		FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingBookingTime.swift; sourceTree = "<group>"; };
 		FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/AttendanceMetrics.swift; sourceTree = "<group>"; };
+		FC0000000000000000000810 /* Shared/SukavinaServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SukavinaServer.swift; sourceTree = "<group>"; };
+		FC0000000000000000000910 /* Shared/PasswordPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/PasswordPolicy.swift; sourceTree = "<group>"; };
 		FC0000000000000000000410 /* Shared/ReadableColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/ReadableColor.swift; sourceTree = "<group>"; };
 		FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingBookingDeduplication.swift; sourceTree = "<group>"; };
 		FB0000000000000000000810 /* MeetingRoomsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeetingRoomsView.swift; sourceTree = "<group>"; };
@@ -201,6 +206,8 @@
 				FC0000000000000000000650 /* Shared/WidgetTokenKeychain.swift */,
 				FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */,
 				FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */,
+				FC0000000000000000000810 /* Shared/SukavinaServer.swift */,
+				FC0000000000000000000910 /* Shared/PasswordPolicy.swift */,
 				FC0000000000000000000410 /* Shared/ReadableColor.swift */,
 				FC0000000000000000000110 /* Shared/MeetingBookingDeduplication.swift */,
 				FB0000000000000000000810 /* MeetingRoomsView.swift */,
@@ -368,6 +375,8 @@
 				FC0000000000000000000660 /* Shared/WidgetTokenKeychain.swift in Sources */,
 				FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */,
 				FC0000000000000000000720 /* Shared/AttendanceMetrics.swift in Sources */,
+				FC0000000000000000000820 /* Shared/SukavinaServer.swift in Sources */,
+				FC0000000000000000000920 /* Shared/PasswordPolicy.swift in Sources */,
 				FC0000000000000000000420 /* Shared/ReadableColor.swift in Sources */,
 				FC0000000000000000000120 /* Shared/MeetingBookingDeduplication.swift in Sources */,
 				FB0000000000000000000820 /* MeetingRoomsView.swift in Sources */,
@@ -398,6 +407,7 @@
 				A10000000000000000000001 /* AttendanceWidget.swift in Sources */,
 				FA0000000000000000000130 /* VietnamTime.swift in Sources */,
 				FC0000000000000000000670 /* Shared/WidgetTokenKeychain.swift in Sources */,
+				FC0000000000000000000830 /* Shared/SukavinaServer.swift in Sources */,
 				D60000000000000000000003 /* MeetingLiveActivityAttributes.swift in Sources */,
 				D70000000000000000000002 /* MeetingLiveActivityActionIntent.swift in Sources */,
 			);

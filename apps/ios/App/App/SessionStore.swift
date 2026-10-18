@@ -1827,7 +1827,7 @@ final class SessionStore: ObservableObject {
             guard let self else { return }
             // The signed-in stream: company-wide changes plus this employee's
             // own. The anonymous public stream no longer says whose data changed.
-            guard let eventsURL = URL(string: "https://sukavinagroup.net/api/me/events") else { return }
+            guard let eventsURL = URL(string: "me/events", relativeTo: SukavinaServer.api)?.absoluteURL else { return }
             // Consecutive failures without receiving data; drives the backoff.
             var failures = 0
             // One immediate token renewal per failure streak, so a revoked

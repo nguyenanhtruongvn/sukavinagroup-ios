@@ -243,6 +243,13 @@ struct Profile: Codable, Equatable {
     let mustChangePassword: Bool?
 }
 
+extension Profile {
+    /// The demo account: it has no email, so its codes arrive in Notifications.
+    var isDemoAccount: Bool {
+        accountType == "DEMO" || employeeCode.uppercased() == "DEMO"
+    }
+}
+
 enum SessionCache {
     private static let profileKey = "cached-session-profile-v1"
     private static let meetingRoomsPrefix = "cached-meeting-rooms-v1-"
@@ -525,7 +532,7 @@ enum HTMLArticleParser {
         guard let value, !value.isEmpty else { return nil }
         if value.hasPrefix("//") { return URL(string: "https:" + value) }
         if let absolute = URL(string: value), absolute.scheme != nil { return absolute }
-        return URL(string: value, relativeTo: URL(string: "https://sukavinagroup.net"))?.absoluteURL
+        return URL(string: value, relativeTo: URL(string: SukavinaServer.origin))?.absoluteURL
     }
 }
 

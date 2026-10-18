@@ -163,7 +163,7 @@ final class APIClient {
     static let shared = APIClient()
     /// Bodies kept for conditional GETs; one per path, most recent first.
     private static let revalidationLimit = 64
-    private let baseURL = URL(string: "https://sukavinagroup.net/api/")
+    private let baseURL: URL? = SukavinaServer.api
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { value in
