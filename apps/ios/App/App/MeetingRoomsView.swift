@@ -70,6 +70,9 @@ struct MeetingRoomsView: View {
     let isActive: Bool
     @State private var day = Date()
     @State private var presentedDestination: MeetingRoomsDestination?
+    /// Set on a calendar change (midnight, clock change, return to the app)
+    /// so the status timeline is rebuilt (see refreshForCalendarChange).
+    @State private var calendarEpoch = Date()
 
     private var tomorrow: Date {
         MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: .now) ?? .now
@@ -86,6 +89,9 @@ struct MeetingRoomsView: View {
     }
 
     private func refreshForCalendarChange() {
+        // Rebuilds the status timeline: its times end at midnight, and an
+        // unchanged schedule no longer redraws this screen to renew them.
+        calendarEpoch = .now
         let today = MeetingPresentation.calendar.startOfDay(for: .now)
         let selectedDay = MeetingPresentation.calendar.startOfDay(for: day)
         if selectedDay < today {
@@ -97,7 +103,7 @@ struct MeetingRoomsView: View {
 
     /// Now, then each moment a room's status can change.
     private var statusChangeTimes: [Date] {
-        let now = Date()
+        let now = max(Date(), calendarEpoch)
         let boundaries = meetingStore.bookingsByRoom.values.joined().flatMap { [$0.startDate, $0.endDate] }.compactMap { $0 }
         return [now] + MeetingBookingTime.statusChangeTimes(after: now, boundaries: boundaries, calendar: MeetingPresentation.calendar)
     }
@@ -159,12 +165,16 @@ struct MeetingRoomsView: View {
                                 onBook: { presentedDestination = .booking(room: room, day: day) },
                                 onSchedule: { presentedDestination = .schedule(room: room, day: day) }
                             )
+                            // Long-press preview and lifted card in the card's own shape,
+                            // not the row's rectangle.
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 24, style: .continuous))
+                            .contentShape(.dragPreview, RoundedRectangle(cornerRadius: 24, style: .continuous))
                             .modifier(MeetingRoomMoveMenu(
                                 room: room,
                                 rooms: meetingStore.rooms,
                                 saveOrder: { session.reorderMeetingRooms($0) }
                             ))
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 16, trailing: 16))
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
                         }
@@ -178,7 +188,7 @@ struct MeetingRoomsView: View {
                     .scrollContentBackground(.hidden)
                     .scrollIndicators(.hidden)
                     .contentMargins(.top, 6, for: .scrollContent)
-                    .contentMargins(.bottom, 24, for: .scrollContent)
+                    .contentMargins(.bottom, 8, for: .scrollContent)
                 }
                 // Title and day buttons stay put; only the rooms scroll.
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -513,13 +523,28 @@ enum MeetingRoomPhotos {
         cache.object(forKey: url as NSURL)
     }
 
-    /// The cached photo, or downloads and decodes it (off the main thread)
-    /// and keeps it. Nil when it cannot be loaded.
+    /// The card photo's size, 88 × 108 pt, in pixels at up to 3×.
+    private static let thumbnailPixels = CGSize(width: 88 * 3, height: 108 * 3)
+
+    /// The cached photo, or downloads it and decodes it off the main thread,
+    /// scaled down to fill the card (a full-size camera photo decodes to tens
+    /// of megabytes), and keeps it. Nil when it cannot be loaded.
     static func load(_ url: URL) async -> UIImage? {
         if let image = cached(url) { return image }
         guard let (data, _) = try? await URLSession.shared.data(from: url),
               let decoded = UIImage(data: data) else { return nil }
-        let image = await decoded.byPreparingForDisplay() ?? decoded
+        let pixels = CGSize(width: decoded.size.width * decoded.scale, height: decoded.size.height * decoded.scale)
+        let fill = max(thumbnailPixels.width / max(pixels.width, 1), thumbnailPixels.height / max(pixels.height, 1))
+        let prepared: UIImage?
+        if fill < 1 {
+            // Aspect ratio kept: both sides scaled by the same factor.
+            prepared = await decoded.byPreparingThumbnail(
+                ofSize: CGSize(width: (pixels.width * fill).rounded(.up), height: (pixels.height * fill).rounded(.up))
+            )
+        } else {
+            prepared = await decoded.byPreparingForDisplay()
+        }
+        let image = prepared ?? decoded
         let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
         cache.setObject(image, forKey: url as NSURL, cost: cost)
         return image
@@ -546,7 +571,8 @@ struct MeetingRoomImage: View {
         .background(Color.green.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .task(id: url) {
-            guard let url, MeetingRoomPhotos.cached(url) == nil else { return }
+            // Kept here too: the shared cache may drop it (memory, limits).
+            guard let url else { return }
             if let image = await MeetingRoomPhotos.load(url) { loaded = (url, image) }
         }
     }
