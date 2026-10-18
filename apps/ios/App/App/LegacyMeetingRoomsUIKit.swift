@@ -853,6 +853,8 @@ private final class LegacyMeetingScheduleController: UIViewController {
     private let dayControl = DatePopoverControl()
     private let dayValue = UILabel()
     private let header = UIStackView()
+    /// Set in viewDidAppear; see viewDidLayoutSubviews.
+    private var hasAppeared = false
     init(session: SessionStore, room: MeetingRoom, day: Date) {
         self.session = session; self.room = room; self.day = day
         super.init(nibName: nil, bundle: nil)
@@ -932,29 +934,48 @@ private final class LegacyMeetingScheduleController: UIViewController {
         cancellable = session.meetings.$bookings.receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.reload() }
         reload()
-        // Like the sheet's .task: load, then centre today's current hour.
         Task { [weak self] in
             guard let self else { return }
             await session.refreshMeetingSchedule(date: day)
-            scrollToCurrentHour()
         }
     }
 
-    /// `proxy.scrollTo(hour, anchor: .center)`: the current hour's row centred.
-    private func scrollToCurrentHour() {
-        let calendar = MeetingPresentation.calendar
-        guard calendar.isDateInToday(day) else { return }
-        let hour = calendar.component(.hour, from: Date())
-        guard hour >= LegacyMeetingTimelineView.firstHour, hour <= LegacyMeetingTimelineView.lastHour else { return }
-        view.layoutIfNeeded()
-        let rowCenter = header.frame.maxY
-            + CGFloat(hour - LegacyMeetingTimelineView.firstHour) * LegacyMeetingTimelineView.hourHeight
-            + LegacyMeetingTimelineView.hourHeight / 2
+    /// Until the screen has appeared, every layout pass (each with the final
+    /// size and safe area once known) centres the current minute, so the
+    /// first frame already shows it in the middle: no waiting for the network
+    /// and no jump. It used to centre the hour's row after the refresh.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if !hasAppeared { centreCurrentMinute() }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        hasAppeared = true
+    }
+
+    /// The red marker's minute in the middle of the visible area (today only).
+    private func centreCurrentMinute() {
+        guard scrollView.bounds.height > 0,
+              let minute = MeetingScheduleLayout.currentOffset(
+                  day: day,
+                  now: Date(),
+                  firstHour: LegacyMeetingTimelineView.firstHour,
+                  lastHour: LegacyMeetingTimelineView.lastHour,
+                  hourHeight: LegacyMeetingTimelineView.hourHeight
+              ) else { return }
+        // The timeline's frame and the content size must be current.
+        scrollView.layoutIfNeeded()
+        // In the scroll view's content coordinates.
+        let nowY = timeline.convert(CGPoint(x: 0, y: minute), to: scrollView).y
         let inset = scrollView.adjustedContentInset
         let visible = scrollView.bounds.height - inset.top - inset.bottom
         let minOffset = -inset.top
         let maxOffset = max(minOffset, scrollView.contentSize.height + inset.bottom - scrollView.bounds.height)
-        scrollView.setContentOffset(CGPoint(x: 0, y: min(max(minOffset, rowCenter - inset.top - visible / 2), maxOffset)), animated: false)
+        let target = min(max(minOffset, nowY - inset.top - visible / 2), maxOffset)
+        if abs(scrollView.contentOffset.y - target) > 0.5 {
+            scrollView.setContentOffset(CGPoint(x: 0, y: target), animated: false)
+        }
     }
 
     private func reload() {

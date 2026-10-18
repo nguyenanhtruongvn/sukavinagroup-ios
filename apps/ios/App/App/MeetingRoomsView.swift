@@ -640,11 +640,15 @@ struct MeetingRoomScheduleSheet: View {
                     }
                 }
                     .scrollIndicators(.hidden)
+                // The current minute in the middle from the first frame: the
+                // timeline's geometry does not depend on the bookings, so
+                // this need not wait for the network (it centred the hour
+                // after the refresh, then jumped).
+                .onAppear {
+                    if isToday { proxy.scrollTo(MeetingTimeline.nowAnchorID, anchor: .center) }
+                }
                 .task {
                     await session.refreshMeetingSchedule(date: selectedDay)
-                    if isToday {
-                        proxy.scrollTo(MeetingPresentation.calendar.component(.hour, from: .now), anchor: .center)
-                    }
                 }
             }
             .navigationTitle(room.name)

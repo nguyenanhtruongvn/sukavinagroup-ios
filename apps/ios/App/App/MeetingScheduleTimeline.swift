@@ -69,6 +69,8 @@ struct MeetingTimeline: View {
     private let firstHour = 6
     private let lastHour = 23
     private let hourHeight: CGFloat = 72
+    /// ScrollViewReader id of the current-minute anchor (today only).
+    static let nowAnchorID = "meeting-timeline-now"
 
     private var timelineHeight: CGFloat {
         hourHeight * CGFloat(lastHour - firstHour + 1)
@@ -99,6 +101,20 @@ struct MeetingTimeline: View {
                                     .frame(height: 1)
                             }
                     }
+                }
+
+                // Where the current minute is laid out (the red marker below
+                // is only offset, which scrolling cannot target): the sheet
+                // centres this anchor when it opens.
+                if let nowOffset = MeetingScheduleLayout.currentOffset(
+                    day: date, now: Date(), firstHour: firstHour, lastHour: lastHour, hourHeight: hourHeight
+                ) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .padding(.top, nowOffset)
+                        .id(Self.nowAnchorID)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
                 }
 
                 MeetingScheduleLabelsOverlay(
