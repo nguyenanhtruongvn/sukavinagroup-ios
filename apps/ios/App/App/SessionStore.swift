@@ -259,7 +259,8 @@ final class DataRevisions: ObservableObject {
 final class HomeState: ObservableObject {
     struct Summary: Equatable {
         var name = "Nhân viên"
-        var employeeCode = ""
+        /// The job title (chức vụ) under the name.
+        var jobTitle = ""
         var checkIn: String?
         var checkOut: String?
     }
@@ -380,7 +381,7 @@ final class SessionStore: ObservableObject {
     private func syncHome() {
         let summary = HomeState.Summary(
             name: dashboard?.name ?? profile?.name ?? "Nhân viên",
-            employeeCode: dashboard?.employeeCode ?? profile?.employeeCode ?? "",
+            jobTitle: dashboard?.jobTitle?.nilIfEmpty ?? dashboard?.role.nilIfEmpty ?? profile?.role ?? "",
             checkIn: dashboard?.attendanceCheckIn,
             checkOut: dashboard?.attendanceCheckOut
         )
@@ -409,7 +410,13 @@ final class SessionStore: ObservableObject {
         if account.biometricsEnabled != biometricsEnabled { account.biometricsEnabled = biometricsEnabled }
         if account.passwordChangeError != passwordChangeError { account.passwordChangeError = passwordChangeError }
     }
-    @Published private(set) var isOfflineNoticeVisible = false
+    /// The connection banner the app container shows: "Mất kết nối internet"
+    /// when the connection is lost, then "Đã kết nối lại internet" when it
+    /// returns. Each hides itself after a few seconds.
+    enum ConnectivityNotice { case offline, restored }
+    @Published private(set) var connectivityNotice: ConnectivityNotice?
+    /// The connection was lost and has not come back yet.
+    private var isInOutage = false
     @Published private(set) var isNetworkAvailable = false
 
     private(set) var token: String?
@@ -504,7 +511,7 @@ final class SessionStore: ObservableObject {
     private var isMonitoringNetwork = false
     private var lastPathStatus: NWPath.Status?
     private var lastPathWasCellular: Bool?
-    private var offlineNoticeTask: Task<Void, Never>?
+    private var connectivityNoticeTask: Task<Void, Never>?
     private var foregroundRefreshTask: Task<Void, Never>?
     private var apnsTokenObserver: NSObjectProtocol?
     private var meetingPushObserver: NSObjectProtocol?
@@ -540,11 +547,8 @@ final class SessionStore: ObservableObject {
                 // @Published value still redraws every observing view.
                 if !self.isNetworkAvailable { self.isNetworkAvailable = true }
                 self.hasPresentedOfflineAlertForCurrentOutage = false
-                if self.offlineNoticeTask != nil {
-                    self.offlineNoticeTask?.cancel()
-                    self.offlineNoticeTask = nil
-                }
-                if self.isOfflineNoticeVisible { self.isOfflineNoticeVisible = false }
+                // A response from the server proves the connection is back.
+                self.connectionRestored()
             }
         }
         sessionRefreshedObserver = NotificationCenter.default.addObserver(
@@ -620,7 +624,7 @@ final class SessionStore: ObservableObject {
     }
 
     deinit {
-        offlineNoticeTask?.cancel()
+        connectivityNoticeTask?.cancel()
         if let transportReachabilityObserver {
             NotificationCenter.default.removeObserver(transportReachabilityObserver)
         }
@@ -1449,9 +1453,10 @@ final class SessionStore: ObservableObject {
         sessionRefreshTask = nil
         foregroundRefreshTask?.cancel()
         foregroundRefreshTask = nil
-        offlineNoticeTask?.cancel()
-        offlineNoticeTask = nil
-        isOfflineNoticeVisible = false
+        connectivityNoticeTask?.cancel()
+        connectivityNoticeTask = nil
+        connectivityNotice = nil
+        isInOutage = false
         registeredAPNsIdentity = nil
 
         // Remove account-scoped notification data from disk on sign-out.
@@ -1981,7 +1986,11 @@ final class SessionStore: ObservableObject {
                 self.lastPathStatus = path.status
                 self.lastPathWasCellular = isCellular
                 self.isNetworkAvailable = path.status == .satisfied
-                self.showOfflineNoticeIfNeeded(previousStatus: wasStatus, currentStatus: path.status)
+                if path.status == .satisfied {
+                    self.connectionRestored()
+                } else {
+                    self.showOfflineNoticeIfNeeded(previousStatus: wasStatus, currentStatus: path.status)
+                }
 
                 // The first callback only records the current path. Refresh after a real reconnect or handoff.
                 // In the background the stream is closed on purpose and
@@ -2010,13 +2019,25 @@ final class SessionStore: ObservableObject {
         // for intermediate unsatisfied/requires-connection transitions.
         guard currentStatus != .satisfied,
               previousStatus == nil || previousStatus == .satisfied else { return }
+        isInOutage = true
+        showConnectivityNotice(.offline, seconds: 5)
+    }
 
-        offlineNoticeTask?.cancel()
-        isOfflineNoticeVisible = true
-        offlineNoticeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
+    /// The path is satisfied again, or a server response arrived: after an
+    /// outage, say the connection is back (once per outage).
+    private func connectionRestored() {
+        guard isInOutage else { return }
+        isInOutage = false
+        showConnectivityNotice(.restored, seconds: 3)
+    }
+
+    private func showConnectivityNotice(_ notice: ConnectivityNotice, seconds: Double) {
+        connectivityNoticeTask?.cancel()
+        connectivityNotice = notice
+        connectivityNoticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled else { return }
-            self?.isOfflineNoticeVisible = false
+            self?.connectivityNotice = nil
         }
     }
 

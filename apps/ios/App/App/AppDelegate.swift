@@ -331,10 +331,10 @@ private final class NativeAppContainerViewController: UIViewController {
             self?.showErrorIfNeeded(message)
         }
         configureOfflineNotice()
-        offlineNoticeObservation = session.$isOfflineNoticeVisible.sink { [weak self] isVisible in
+        offlineNoticeObservation = session.$connectivityNotice.sink { [weak self] notice in
             guard let self else { return }
-            self.offlineNotice.isHidden = !isVisible
-            if isVisible {
+            self.renderConnectivityNotice(notice)
+            if notice != nil {
                 // Root SwiftUI hosts are replaced after session transitions.
                 // Keep this UIKit notice above the newly inserted host instead
                 // of letting it become visually hidden behind that host.
@@ -534,6 +534,27 @@ private final class NativeAppContainerViewController: UIViewController {
             ? UIColor(red: 0.07, green: 0.07, blue: 0.09, alpha: 1)
             : .systemBackground
         launchTitle.textColor = isDark ? UIColor(white: 0.82, alpha: 1) : .label
+    }
+
+    /// "Mất kết nối internet" on dark grey, "Đã kết nối lại internet" on
+    /// green, announced to VoiceOver; nil hides the banner.
+    private func renderConnectivityNotice(_ notice: SessionStore.ConnectivityNotice?) {
+        guard let notice else {
+            offlineNotice.isHidden = true
+            return
+        }
+        let text: String
+        switch notice {
+        case .offline:
+            text = "Mất kết nối internet"
+            offlineNotice.backgroundColor = UIColor(white: 0.11, alpha: 0.96)
+        case .restored:
+            text = "Đã kết nối lại internet"
+            offlineNotice.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.96)
+        }
+        offlineNotice.text = "  \(text)  "
+        offlineNotice.isHidden = false
+        UIAccessibility.post(notification: .announcement, argument: text)
     }
 
     private func configureOfflineNotice() {

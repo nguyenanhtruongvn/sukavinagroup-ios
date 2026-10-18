@@ -653,6 +653,9 @@ struct Dashboard: Codable {
     let employeeCode: String
     let fullName: String
     let role: String
+    /// The employee's job title (chức vụ). Optional: `role` carries the same
+    /// title for employees but "Quản trị viên" for administrators.
+    var jobTitle: String? = nil
     let remainingLeaveDays: Double
     let remainingLeaveDaysExact: Double?
     let attendanceStatus: String

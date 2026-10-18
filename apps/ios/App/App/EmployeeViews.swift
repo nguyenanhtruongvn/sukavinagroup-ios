@@ -450,9 +450,12 @@ struct DashboardView: View {
                             .foregroundColor(AppTheme.muted)
                         Text(home.summary.name)
                             .font(.title2.bold())
-                        Text(home.summary.employeeCode)
-                            .font(.subheadline.monospacedDigit())
-                            .foregroundColor(AppTheme.redText)
+                        // The job title (chức vụ), where the employee code was.
+                        if !home.summary.jobTitle.isEmpty {
+                            Text(home.summary.jobTitle)
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.redText)
+                        }
                     }
 
                     // A "Bảng lương" tile sat here with no destination. Placeholder
