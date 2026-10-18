@@ -269,7 +269,10 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     private var statusTimer: Timer?
     private var needsReload = false
     private var isVisible = false
-    private var rooms: [MeetingRoom] { session.meetings.rooms }
+    /// The rooms as the table last loaded them. Its row count dates from
+    /// that reloadData, so cells index this copy, not the live store (which
+    /// changes a run-loop turn before the coalesced reload).
+    private var rooms: [MeetingRoom] = []
 
     init(session: SessionStore) {
         self.session = session
@@ -424,6 +427,7 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     }
 
     private func reload() {
+        rooms = session.meetings.rooms
         tableView.reloadData()
         tableView.backgroundView = stateView()
         scheduleNextStatusChange()

@@ -590,8 +590,9 @@ private final class NativeAppContainerViewController: UIViewController {
         // error for good.
         var presenter: UIViewController = self
         while let next = presenter.presentedViewController {
-            if next.isBeingDismissed, let coordinator = next.transitionCoordinator {
-                // Wait until it is gone, then present from what remains.
+            if next.isBeingDismissed || next.isBeingPresented, let coordinator = next.transitionCoordinator {
+                // Presenting during a transition fails: wait until the screen
+                // has finished appearing or is gone, then present.
                 coordinator.animate(alongsideTransition: nil) { [weak self] _ in
                     guard let self else { return }
                     self.showErrorIfNeeded(self.session.errorMessage)

@@ -458,6 +458,9 @@ enum MeetingLiveActivityExpiry {
             }
             guard !Task.isCancelled else { return }
             await endIfExpired(bookingID: bookingID)
+            lock.lock()
+            pending[bookingID] = nil
+            lock.unlock()
         }
         lock.lock()
         let previous = pending.updateValue(task, forKey: bookingID)
