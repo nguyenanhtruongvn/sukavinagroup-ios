@@ -82,7 +82,7 @@ struct MeetingBookingDetailSheet: View {
                                 .background(accent.opacity(0.12)).clipShape(Capsule())
                         }
                         Text(currentBooking.title.isEmpty ? "Cuộc họp" : currentBooking.title)
-                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                            .font(.title.bold())
                         Label(roleTitle, systemImage: roleIcon)
                             .font(.subheadline.weight(.semibold)).foregroundStyle(accent)
                     }
@@ -502,7 +502,7 @@ struct MyMeetingsSheet: View {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Lịch của tôi")
-                        .font(.system(size: 29, weight: .bold, design: .rounded))
+                        .font(.title.bold())
                     Text(dateLabel)
                         .font(.subheadline)
                         .foregroundStyle(Color(uiColor: .secondaryLabel))

@@ -471,7 +471,7 @@ struct MeetingScheduleLabel: View {
             Spacer(minLength: 2)
 
             Text(MeetingPresentation.range(booking))
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.system(size: 9, weight: .medium).monospacedDigit())
                 .foregroundStyle(style.meta)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)

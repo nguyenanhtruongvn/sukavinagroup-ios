@@ -128,14 +128,14 @@ struct PreloadedAttendanceDayCell: View {
         if let note {
             return AnyView(VStack(spacing: 0) {
                 Text(note)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(noteColor(note))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                     .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(AppTheme.text(holidayColor))
                         .frame(height: 18, alignment: .top)
                 } else {
@@ -151,7 +151,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
@@ -164,7 +164,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text("0")
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72)))
         }
@@ -175,7 +175,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text(time(day.checkOut))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
@@ -279,7 +279,7 @@ struct PreloadedAttendanceDayCell: View {
         VStack(spacing: 0) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                 Text(line.text)
-                    .font(.system(size: line.size, weight: line.bold ? .heavy : .semibold, design: .rounded))
+                    .font(.system(size: line.size, weight: line.bold ? .heavy : .semibold))
                     .monospacedDigit()
                     .foregroundStyle(line.color)
                     .lineLimit(1)
@@ -307,7 +307,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text(AttendanceMetrics.hourText(night.overtimeHours))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.7)
@@ -315,7 +315,7 @@ struct PreloadedAttendanceDayCell: View {
             .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
         }
         return AnyView(Text("CĐ")
-            .font(.system(size: whole ? 11 : 10.5, weight: .heavy, design: .rounded))
+            .font(.system(size: whole ? 11 : 10.5, weight: .heavy))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .foregroundStyle(color)
@@ -451,7 +451,7 @@ struct DashboardView: View {
                         Text(home.summary.name)
                             .font(.title2.bold())
                         Text(home.summary.employeeCode)
-                            .font(.subheadline.monospaced())
+                            .font(.subheadline.monospacedDigit())
                             .foregroundColor(AppTheme.redText)
                     }
 

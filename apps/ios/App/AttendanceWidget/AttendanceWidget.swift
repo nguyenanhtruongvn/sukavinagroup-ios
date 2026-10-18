@@ -305,7 +305,7 @@ private struct AttendanceWidgetView: View {
                         .minimumScaleFactor(0.6)
                         .frame(maxWidth: .infinity)
                     Text(day.number)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 16, weight: .semibold).monospacedDigit())
                         .foregroundStyle(day.isToday && renderingMode == .fullColor ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
@@ -357,7 +357,7 @@ private struct AttendanceWidgetView: View {
     private var monthCalendar: some View {
         VStack(spacing: 6) {
             Text(monthTitle)
-                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -373,7 +373,7 @@ private struct AttendanceWidgetView: View {
                 }
                 ForEach(monthDays) { day in
                     Text(day.number)
-                        .font(.system(size: 13, weight: day.isToday ? .bold : .medium, design: .rounded).monospacedDigit())
+                        .font(.system(size: 13, weight: day.isToday ? .bold : .medium).monospacedDigit())
                         .foregroundStyle(
                             day.isToday && renderingMode == .fullColor
                                 ? Color.white
@@ -479,7 +479,7 @@ private struct AttendanceWidgetView: View {
                     .minimumScaleFactor(0.7)
             }
             Text(value)
-                .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(size: 20, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
@@ -549,7 +549,7 @@ private struct MeetingLiveActivityWidget: Widget {
                             .fixedSize()
 
                             Text("\(context.attributes.title) · \(context.attributes.roomName)")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.92))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.65)
@@ -557,7 +557,7 @@ private struct MeetingLiveActivityWidget: Widget {
                                 .layoutPriority(1)
 
                             Text(timerInterval: meetingCountdown(context), countsDown: true)
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .font(.system(size: 13, weight: .bold))
                                 .monospacedDigit()
                                 .foregroundStyle(accent)
                                 .lineLimit(1)
@@ -568,7 +568,7 @@ private struct MeetingLiveActivityWidget: Widget {
 
                         HStack(spacing: 8) {
                             Text(VietnamTime.clock.string(from: context.attributes.startsAt))
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 10, weight: .semibold))
                                 .monospacedDigit()
                                 .foregroundStyle(accent)
                                 .lineLimit(1)
@@ -599,7 +599,7 @@ private struct MeetingLiveActivityWidget: Widget {
             } compactTrailing: {
                 // Keep the countdown complete while avoiding unnecessary width.
                 Text(timerInterval: meetingCountdown(context), countsDown: true)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold).monospacedDigit())
                     .monospacedDigit()
                     .foregroundStyle(accent)
                     .lineLimit(1)

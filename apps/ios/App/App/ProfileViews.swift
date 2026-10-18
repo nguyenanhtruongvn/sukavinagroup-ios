@@ -41,7 +41,7 @@ struct ProfileView: View {
                         Text(initials).font(.title.bold()).foregroundColor(AppTheme.redText)
                     }
                     Text(account.profile?.name ?? "Nhân viên").font(.title2.bold())
-                    Text(account.profile?.employeeCode ?? "").font(.subheadline.monospaced()).foregroundColor(AppTheme.muted)
+                    Text(account.profile?.employeeCode ?? "").font(.subheadline.monospacedDigit()).foregroundColor(AppTheme.muted)
 
                     accountSectionTitle("THÔNG TIN TÀI KHOẢN")
                     VStack(spacing: 0) {

@@ -1252,7 +1252,7 @@ struct RequestComposer: View {
                         .frame(width: 52, height: 52)
 
                         Text(template == nil ? "Tạo đơn mới" : "Tạo lại đơn")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .font(.title.bold())
                         Text(template == nil
                              ? "Điền thông tin rõ ràng để đơn được xử lý nhanh hơn."
                              : "Nội dung lấy từ đơn bị từ chối. Sửa lại nếu cần rồi gửi.")

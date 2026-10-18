@@ -160,11 +160,18 @@ private enum LegacyMeetingUI {
         controller.present(alert, animated: true)
     }
 
-    /// PortalPageTitle: 30 pt bold rounded, scaled with Dynamic Type.
-    static var pageTitleFont: UIFont {
-        let base = UIFont.systemFont(ofSize: 30, weight: .bold)
-        let rounded = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: 30) } ?? base
-        return UIFontMetrics(forTextStyle: .largeTitle).scaledFont(for: rounded)
+    /// PortalPageTitle: Apple's Large Title, bold.
+    static var pageTitleFont: UIFont { boldFont(.largeTitle) }
+
+    /// Apple's text style in bold, the system font scaled with Dynamic Type
+    /// (the UIKit form of SwiftUI's `.title.bold()`). Labels using it set
+    /// adjustsFontForContentSizeCategory.
+    static func boldFont(_ style: UIFont.TextStyle) -> UIFont {
+        let defaultSize = UIFont.preferredFont(
+            forTextStyle: style,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: .large)
+        ).pointSize
+        return UIFontMetrics(forTextStyle: style).scaledFont(for: .systemFont(ofSize: defaultSize, weight: .bold))
     }
 
     /// The room's state on `day`, same rules as MeetingRoomCard (iOS 18+):
@@ -2470,8 +2477,8 @@ private final class LegacyMeetingDetailController: UIViewController {
         let title = UILabel()
         title.text = current.title.isEmpty ? "Cuộc họp" : current.title
         title.numberOfLines = 0
-        let rounded = UIFont.systemFont(ofSize: 27, weight: .bold).fontDescriptor.withDesign(.rounded)
-        title.font = rounded.map { UIFont(descriptor: $0, size: 27) } ?? .systemFont(ofSize: 27, weight: .bold)
+        title.font = LegacyMeetingUI.boldFont(.title1)
+        title.adjustsFontForContentSizeCategory = true
         let role = iconLabel(roleTitle, icon: roleIcon, style: .subheadline, weight: .semibold, color: accent)
         let stack = UIStackView(arrangedSubviews: [top, title, role])
         stack.axis = .vertical
@@ -2769,8 +2776,8 @@ private final class LegacyMyMeetingsController: UIViewController {
     private func header() -> UIView {
         let title = UILabel()
         title.text = "Lịch của tôi"
-        let rounded = UIFont.systemFont(ofSize: 29, weight: .bold).fontDescriptor.withDesign(.rounded)
-        title.font = rounded.map { UIFont(descriptor: $0, size: 29) } ?? .systemFont(ofSize: 29, weight: .bold)
+        title.font = LegacyMeetingUI.boldFont(.title1)
+        title.adjustsFontForContentSizeCategory = true
         let date = UILabel()
         date.text = VietnamTime.weekdayLongDayMonth.string(from: day).capitalized
         date.font = .preferredFont(forTextStyle: .subheadline)

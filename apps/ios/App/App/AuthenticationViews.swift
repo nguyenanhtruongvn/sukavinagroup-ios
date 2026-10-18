@@ -57,7 +57,7 @@ struct AuthenticationView: View {
                                 .tracking(3.5)
                                 .foregroundColor(.red.opacity(0.9))
                             Text("Chào mừng trở lại")
-                                .font(.system(size: 34, weight: .bold, design: .rounded))
+                                .font(.largeTitle.bold())
                             Text("Thông tin công việc của bạn, trong một ứng dụng native gọn gàng.")
                                 .foregroundColor(AppTheme.muted)
                         }
@@ -241,7 +241,7 @@ private struct ForgotPasswordView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     Text(completed ? "Đã đặt lại mật khẩu" : "Khôi phục mật khẩu")
-                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                        .font(.title.bold())
                     Text(completed
                          ? "Bạn có thể đăng nhập bằng mật khẩu mới."
                          : "Nhập MSNV. Mã OTP sẽ được gửi tới email đã liên kết với tài khoản.")

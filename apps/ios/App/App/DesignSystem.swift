@@ -189,7 +189,7 @@ struct PortalPageTitle: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 30, weight: .bold, design: .rounded))
+            .font(.largeTitle.bold())
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityAddTraits(.isHeader)
     }

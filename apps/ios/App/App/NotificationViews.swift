@@ -614,7 +614,7 @@ private struct MeetingNotificationDetail: View {
                                 .background(accent.opacity(0.12)).clipShape(Capsule())
                         }
                         Text(title.isEmpty ? "Cuộc họp" : title)
-                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                            .font(.title.bold())
                         Label(
                             notification.type == "meeting_reminder"
                                 ? "Hãy chuẩn bị tham gia đúng giờ"
@@ -773,7 +773,7 @@ struct ArticleDetailView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppTheme.redText)
                 Text(item.title)
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.largeTitle.bold())
                 Divider().overlay(Color.white.opacity(0.12))
                 ForEach(blocks) { block in
                     ArticleBlockView(block: block)
@@ -875,7 +875,7 @@ struct ArticleBlockView: View {
         case .tableRow:
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(block.text.replacingOccurrences(of: "\n", with: "  |  "))
-                    .font(.system(.subheadline, design: .rounded))
+                    .font(.subheadline)
                     .textSelection(.enabled)
                     .padding(14)
             }
@@ -901,9 +901,9 @@ struct ArticleBlockView: View {
 
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .system(size: 27, weight: .bold, design: .rounded)
-        case 2: return .system(size: 23, weight: .bold, design: .rounded)
-        default: return .system(size: 19, weight: .bold, design: .rounded)
+        case 1: return .title.bold()
+        case 2: return .title2.bold()
+        default: return .title3.bold()
         }
     }
 }
