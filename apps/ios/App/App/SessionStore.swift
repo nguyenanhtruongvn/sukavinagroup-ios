@@ -215,6 +215,9 @@ extension View {
             .environmentObject(session.requests)
             .environmentObject(session.badge)
             .environmentObject(session.revisions)
+            .environmentObject(session.home)
+            .environmentObject(session.inbox)
+            .environmentObject(session.account)
             .environment(\.sessionActions, SessionActions(weakStore: session))
     }
 }
@@ -235,6 +238,41 @@ final class DataRevisions: ObservableObject {
 }
 
 /// The Notifications tab badge. Only the tab bar observes it.
+/// What Home shows from the session. Home observed the whole SessionStore and
+/// redrew on every working flag, error, badge, news or notification change;
+/// this publishes only when the greeting, today's punches or the AI
+/// assistant setting change. Kept by SessionStore (`syncHome`).
+@MainActor
+final class HomeState: ObservableObject {
+    struct Summary: Equatable {
+        var name = "Nhân viên"
+        var employeeCode = ""
+        var checkIn: String?
+        var checkOut: String?
+    }
+    @Published fileprivate(set) var summary = Summary()
+    @Published fileprivate(set) var aiAssistantEnabled = true
+}
+
+/// The news and request notifications the Notifications screen lists, with
+/// the news unread state. Published only when they change (see HomeState).
+@MainActor
+final class InboxState: ObservableObject {
+    @Published fileprivate(set) var articles: [ContentItem] = []
+    @Published fileprivate(set) var unreadCount = 0
+    @Published fileprivate(set) var unreadArticleIDs: Set<String> = []
+    @Published fileprivate(set) var requestNotifications: [RequestNotification] = []
+}
+
+/// The signed-in account for Profile and the password change, published
+/// only when it changes (see HomeState).
+@MainActor
+final class AccountState: ObservableObject {
+    @Published fileprivate(set) var profile: Profile?
+    @Published fileprivate(set) var biometricsEnabled = false
+    @Published fileprivate(set) var passwordChangeError: String?
+}
+
 @MainActor
 final class NotificationBadgeState: ObservableObject {
     @Published fileprivate(set) var count = 0
@@ -274,15 +312,15 @@ final class SessionStore: ObservableObject {
     // UIKit presents this stable launch screen while credentials are resolved.
     // The result, rather than a timer, decides which screen is shown next.
     @Published var state: State = .restoring
-    @Published var profile: Profile?
-    @Published var dashboard: Dashboard?
+    @Published var profile: Profile? { didSet { syncHome(); syncAccount() } }
+    @Published var dashboard: Dashboard? { didSet { syncHome(); syncInboxArticles() } }
     @Published var errorMessage: String?
     @Published var errorTitle = "Chưa thể thực hiện"
     @Published var errorOffersSettings = false
     @Published var isWorking = false
-    @Published var unreadCount = 0
+    @Published var unreadCount = 0 { didSet { syncInboxUnread() } }
     /// News articles not opened yet, by id (the "Mới" badge). Mirrors Android.
-    @Published private(set) var unreadArticleIDs: Set<String> = []
+    @Published private(set) var unreadArticleIDs: Set<String> = [] { didSet { syncInboxUnread() } }
     @Published var requestUnreadCount = 0
     let badge = NotificationBadgeState()
     /// Stored in `badge`, so only the tab bar redraws when it changes.
@@ -290,9 +328,9 @@ final class SessionStore: ObservableObject {
         get { badge.count }
         set { if badge.count != newValue { badge.count = newValue } }
     }
-    @Published var biometricsEnabled = BiometricPreferences.enabled
+    @Published var biometricsEnabled = BiometricPreferences.enabled { didSet { syncAccount() } }
     @Published var passwordChangeRequiresEmail = false
-    @Published var passwordChangeError: String?
+    @Published var passwordChangeError: String? { didSet { syncAccount() } }
     @Published var forgotPasswordError: String?
     /// Feature stores. Views that render this data observe the store itself;
     /// the forwarding properties below keep the session's networking code
@@ -317,8 +355,46 @@ final class SessionStore: ObservableObject {
         get { meetings.invitees }
         set { meetings.invitees = newValue }
     }
-    @Published private(set) var aiAssistantMobileEnabled = true
+    @Published private(set) var aiAssistantMobileEnabled = true { didSet { syncHome() } }
     let revisions = DataRevisions()
+    /// Read-only copies for Home, Notifications and Profile, kept by the
+    /// didSets above and published only when the value they show changes.
+    let home = HomeState()
+    let inbox = InboxState()
+    let account = AccountState()
+
+    private func syncHome() {
+        let summary = HomeState.Summary(
+            name: dashboard?.name ?? profile?.name ?? "Nhân viên",
+            employeeCode: dashboard?.employeeCode ?? profile?.employeeCode ?? "",
+            checkIn: dashboard?.attendanceCheckIn,
+            checkOut: dashboard?.attendanceCheckOut
+        )
+        if home.summary != summary { home.summary = summary }
+        if home.aiAssistantEnabled != aiAssistantMobileEnabled { home.aiAssistantEnabled = aiAssistantMobileEnabled }
+    }
+
+    private func syncInboxArticles() {
+        let articles = dashboard?.contentItems ?? []
+        if inbox.articles != articles { inbox.articles = articles }
+    }
+
+    private func syncInboxUnread() {
+        if inbox.unreadCount != unreadCount { inbox.unreadCount = unreadCount }
+        if inbox.unreadArticleIDs != unreadArticleIDs { inbox.unreadArticleIDs = unreadArticleIDs }
+    }
+
+    private func syncInboxRequests() {
+        if inbox.requestNotifications != latestRequestNotifications {
+            inbox.requestNotifications = latestRequestNotifications
+        }
+    }
+
+    private func syncAccount() {
+        if account.profile != profile { account.profile = profile }
+        if account.biometricsEnabled != biometricsEnabled { account.biometricsEnabled = biometricsEnabled }
+        if account.passwordChangeError != passwordChangeError { account.passwordChangeError = passwordChangeError }
+    }
     @Published private(set) var isOfflineNoticeVisible = false
     @Published private(set) var isNetworkAvailable = false
 
@@ -335,7 +411,7 @@ final class SessionStore: ObservableObject {
     private let acknowledgedNotificationBadgePrefix = "acknowledged-native-notification-badge-"
     private let acknowledgedNotificationBadgeDatePrefix = "acknowledged-native-notification-badge-date-"
     /// The inbox's server notifications; the Notifications screen mirrors it.
-    @Published private(set) var latestRequestNotifications: [RequestNotification] = []
+    @Published private(set) var latestRequestNotifications: [RequestNotification] = [] { didSet { syncInboxRequests() } }
     /// One shared `me/requests/notifications` request (count badge and screen).
     private var requestNotificationsTask: Task<[RequestNotification]?, Never>?
     private var requestNotificationsRerun = false
@@ -521,6 +597,12 @@ final class SessionStore: ObservableObject {
             nil,
             .deliverImmediately
         )
+        // Property observers do not run for values set in this initializer.
+        syncHome()
+        syncInboxArticles()
+        syncInboxUnread()
+        syncInboxRequests()
+        syncAccount()
     }
 
     deinit {

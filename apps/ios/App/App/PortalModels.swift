@@ -355,7 +355,7 @@ enum SessionCache {
     }
 }
 
-struct ContentItem: Codable, Identifiable {
+struct ContentItem: Codable, Identifiable, Equatable {
     let id: String
     let page: String
     let key: String
