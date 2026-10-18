@@ -627,10 +627,10 @@ struct MeetingRoomScheduleSheet: View {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
                         // Past days cannot be booked; showing them only confused the list.
-                        // Laid out as a labelled DatePicker is, the picker at
-                        // its full date; see `SystemCompactDatePicker`.
+                        // Laid out as a labelled DatePicker is; see
+                        // `DatePopoverField`.
                         CompactDateRow(label: "Ngày") {
-                            SystemCompactDatePicker(
+                            DatePopoverField(
                                 selection: $selectedDay,
                                 mode: .date,
                                 minimum: VietnamTime.calendar.startOfDay(for: .now),

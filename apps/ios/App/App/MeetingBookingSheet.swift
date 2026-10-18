@@ -272,7 +272,7 @@ struct MeetingBookingSheet: View {
 
             // The two facts of a booking as tiles: when it starts (hh:mm) and
             // how long it lasts. Each tile is wholly a button opening Apple's
-            // popover with Apple's time wheels (TimePopoverButton); from one
+            // popover with Apple's time wheels (DatePopoverButton); from one
             // popover, a tap on the other tile opens that one at once.
             HStack(spacing: 10) {
                 bookingTile(
@@ -282,7 +282,7 @@ struct MeetingBookingSheet: View {
                 )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .overlay(TimePopoverButton(
+                .overlay(DatePopoverButton(
                     selection: $start,
                     minuteInterval: MeetingBookingTime.minuteStep,
                     accessibilityLabel: "Bắt đầu",
@@ -299,7 +299,7 @@ struct MeetingBookingSheet: View {
                 )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .overlay(TimePopoverButton(
+                .overlay(DatePopoverButton(
                     selection: durationClock,
                     minuteInterval: MeetingBookingTime.minuteStep,
                     minimum: DurationClock.date(

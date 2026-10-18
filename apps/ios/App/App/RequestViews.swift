@@ -1045,13 +1045,13 @@ struct RequestComposer: View {
 
     /// A missing time is chosen like the booking's Bắt đầu: the whole card
     /// is a button opening Apple's popover with Apple's time wheels
-    /// (`TimePopoverButton`).
+    /// (`DatePopoverButton`).
     @ViewBuilder private func attendanceTimeCard(title: String, value: String?, missingPrompt: String, selection: Binding<Date>) -> some View {
         if value == nil {
             attendanceTimeCardFace(title: title, value: value, chosen: selection.wrappedValue)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .overlay(TimePopoverButton(
+                .overlay(DatePopoverButton(
                     selection: selection,
                     accessibilityLabel: missingPrompt,
                     accessibilityValue: VietnamTime.clock.string(from: selection.wrappedValue)
@@ -1261,10 +1261,9 @@ struct RequestComposer: View {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
                             // Laid out as a labelled DatePicker is (label, space,
-                            // picker), the picker at its full date; see
-                            // `SystemCompactDatePicker`.
+                            // value); see `DatePopoverField`.
                             CompactDateRow(label: "Ngày chấm công") {
-                                SystemCompactDatePicker(
+                                DatePopoverField(
                                     selection: editedByEmployee($attendanceDate),
                                     mode: .date,
                                     accessibilityLabel: "Ngày chấm công"
@@ -1283,22 +1282,22 @@ struct RequestComposer: View {
                                     }
                                 }
                             } else {
-                                // SystemCompactDatePicker, as the other date and
+                                // DatePopoverField, as the other date and
                                 // time fields.
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(alignment: .leading, spacing: 10) {
                                         CompactDateRow(label: "Giờ vào") {
-                                            SystemCompactDatePicker(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
+                                            DatePopoverField(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
                                         }
                                         CompactDateRow(label: "Giờ ra") {
-                                            SystemCompactDatePicker(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
+                                            DatePopoverField(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
                                         }
                                     }
                                 } else {
                                     HStack {
-                                        SystemCompactDatePicker(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
+                                        DatePopoverField(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
                                             .fixedSize()
-                                        SystemCompactDatePicker(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
+                                        DatePopoverField(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
                                             .fixedSize()
                                         Spacer(minLength: 0)
                                     }
@@ -1374,10 +1373,9 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
-                            // As "Ngày chấm công"; when switching to Đi trễ or Về
-                            // sớm moves `from`, the picker widens itself as well.
+                            // As "Ngày chấm công".
                             CompactDateRow(label: "Ngày xảy ra") {
-                                SystemCompactDatePicker(
+                                DatePopoverField(
                                     selection: editedByEmployee($from),
                                     mode: .date,
                                     accessibilityLabel: "Ngày xảy ra"
@@ -1640,12 +1638,9 @@ struct RequestComposer: View {
             .foregroundStyle(.primary)
     }
 
-    /// One row per moment: the label, then the picker at its full width
-    /// (about 270pt for "18 thg 10, 2026  08:00"). Only the label adapts to
-    /// the room left beside it; the picker is never swapped for another,
-    /// which a layout choice around it (ViewThatFits) would do, and a new
-    /// picker would come up at the old width (see `SystemCompactDatePicker`).
-    /// At accessibility text sizes the label goes over the picker.
+    /// One row per moment: the label, then the date and time at full width
+    /// ("18 thg 10, 2026  08:00"). Only the label adapts to the room left
+    /// beside it. At accessibility text sizes the label goes over the value.
     @ViewBuilder
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
         if usesCompactDateRows {
@@ -1684,21 +1679,11 @@ struct RequestComposer: View {
         .foregroundStyle(title == "Bắt đầu" ? AppTheme.red : Color.green)
     }
 
-    /// Apple's compact picker, so it keeps "18 thg 10, 2026" rather than
-    /// "18/10/26"; see `SystemCompactDatePicker`.
-    ///
-    /// The system picker, not a custom pill with a popover: a SwiftUI
-    /// `.popover` inside this sheet closed the whole composer when tapped
-    /// (seen on iOS 27), and the system's own compact picker, as in
-    /// the attendance request, is the smoother and steadier of the two.
+    /// The date and time, opening Apple's popover with its wheels
+    /// (`DatePopoverField`). UIKit presents it: a SwiftUI `.popover` inside
+    /// this sheet closed the whole composer when tapped (seen on iOS 27).
     private func dateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        compactDateTimePicker(title, selection: selection, range: range)
-    }
-
-    /// Apple's compact date and time picker, set to its date before it is
-    /// measured; see `SystemCompactDatePicker`.
-    private func compactDateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        SystemCompactDatePicker(
+        DatePopoverField(
             selection: selection,
             mode: .dateAndTime,
             minimum: range?.lowerBound,
@@ -1708,7 +1693,7 @@ struct RequestComposer: View {
 
     /// The duration as the booking's Thời lượng: icon and chevron, caption,
     /// bold value, the whole tile a button opening Apple's popover with
-    /// Apple's time wheels (`TimePopoverButton`). Their hours and minutes
+    /// Apple's time wheels (`DatePopoverButton`). Their hours and minutes
     /// are the length: 01:30 is 1 giờ 30 phút.
     private var durationTile: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -1733,7 +1718,7 @@ struct RequestComposer: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .overlay(TimePopoverButton(
+        .overlay(DatePopoverButton(
             selection: durationClock,
             minuteInterval: Self.durationStep,
             minimum: DurationClock.date(forMinutes: Self.durationRange.lowerBound, calendar: VietnamTime.calendar),

@@ -227,24 +227,79 @@ extension View {
 
 }
 
-/// The width a compact date picker needs for its long form.
-enum CompactDateWidth {
-    /// Roughly the width of `day`'s long form as the compact picker draws
-    /// it: each value in its own capsule of body text.
-    static func fullWidth(of day: Date, includesTime: Bool) -> CGFloat {
-        let font = UIFont.preferredFont(forTextStyle: .body)
-        func textWidth(_ text: String) -> CGFloat {
-            ceil((text as NSString).size(withAttributes: [.font: font]).width)
+/// A label and a date or time field on one row, as a labelled DatePicker
+/// lays out. The field keeps its full width; a long label wraps instead.
+struct CompactDateRow<Picker: View>: View {
+    let label: String
+    @ViewBuilder let picker: () -> Picker
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .lineLimit(2)
+                // VoiceOver reads the field's own label instead.
+                .accessibilityHidden(true)
+            Spacer(minLength: 8)
+            picker()
+                .fixedSize()
         }
-        let capsule: CGFloat = 26
-        var width = textWidth(longDate.string(from: day)) + capsule
-        if includesTime {
-            width += 8 + textWidth(VietnamTime.clock.string(from: day)) + capsule
+    }
+}
+
+/// A date, time, or date and time field: the value in the system's
+/// tertiary fill, as the compact picker shows it ("18 thg 10, 2026",
+/// "08:30"), and a tap on it opens Apple's popover with Apple's wheels
+/// (`DatePopoverButton`).
+///
+/// It was Apple's compact picker. Its bubble takes the input focus when
+/// it opens, so a keyboard left open by a text field closed; the popover
+/// with wheels, as Thời lượng opens, leaves the keyboard open (1.0.89).
+/// The value is set as text, so it is never cut to its short form
+/// ("18/10/26"), which the compact picker fell back to whenever its frame
+/// was narrower than its long form.
+struct DatePopoverField: View {
+    @Binding var selection: Date
+    let mode: UIDatePicker.Mode
+    var minimum: Date? = nil
+    let accessibilityLabel: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if mode != .time { valueBox(Self.longDate.string(from: selection)) }
+            if mode != .date { valueBox(VietnamTime.clock.string(from: selection)) }
         }
-        return width
+        .fixedSize()
+        .accessibilityHidden(true)
+        .overlay(DatePopoverButton(
+            selection: $selection,
+            mode: mode,
+            minimum: minimum,
+            accessibilityLabel: accessibilityLabel,
+            accessibilityValue: valueText
+        ))
     }
 
-    /// The system's medium date style in Vietnamese, the long form.
+    private var valueText: String {
+        switch mode {
+        case .time: return VietnamTime.clock.string(from: selection)
+        case .date: return Self.longDate.string(from: selection)
+        default: return "\(Self.longDate.string(from: selection)) \(VietnamTime.clock.string(from: selection))"
+        }
+    }
+
+    private func valueBox(_ text: String) -> some View {
+        Text(text)
+            .font(.body)
+            .monospacedDigit()
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    /// The system's medium date style in Vietnamese, the compact picker's
+    /// long form.
     private static let longDate: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = VietnamTime.locale
@@ -256,133 +311,37 @@ enum CompactDateWidth {
     }()
 }
 
-/// A label and a compact date picker on one row, as a labelled DatePicker
-/// lays out. The picker keeps its full width; a long label wraps instead.
-///
-/// One layout only: a picker swapped in by a layout change is a new one
-/// (see `SystemCompactDatePicker`).
-struct CompactDateRow<Picker: View>: View {
-    let label: String
-    @ViewBuilder let picker: () -> Picker
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .lineLimit(2)
-                // VoiceOver reads the picker's own label instead.
-                .accessibilityHidden(true)
-            Spacer(minLength: 8)
-            picker()
-                .fixedSize()
-        }
-    }
-}
-
-/// Apple's compact date picker (UIDatePicker) that keeps the full date
-/// ("18 thg 10, 2026", not "18/10/26").
-///
-/// The compact picker draws its short form whenever its frame is
-/// narrower than its long form, and SwiftUI's DatePicker takes the width
-/// it measures when it is created, which fits today's date only. Đi trễ
-/// and Về sớm open on today, so they fit; any other day can be a few
-/// points wider in proportional digits ("attendanceDate w=185
-/// wanted=188" on 1.0.79) and was shortened. Moving a new picker
-/// to its date after it appeared did not help either (1.0.81, Ngày chấm
-/// công).
-///
-/// So the width is not left to the picker: `sizeThatFits` gives it at
-/// least the width of its date's long form, worked out from the text
-/// (`CompactDateWidth.fullWidth`), with a few points to spare. A wider
-/// frame only leaves room before the picker, which sits at its trailing
-/// edge.
-struct SystemCompactDatePicker: UIViewRepresentable {
+/// A drawn field or tile's whole area as a button that opens Apple's
+/// popover with Apple's wheels (`DatePopoverControl`). Put it in the
+/// face's `.overlay`; it is transparent.
+struct DatePopoverButton: UIViewRepresentable {
     @Binding var selection: Date
-    let mode: UIDatePicker.Mode
-    var minimum: Date? = nil
-    let accessibilityLabel: String
-
-    /// Room left beyond the computed long form, against rounding.
-    private static let spare: CGFloat = 8
-
-    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
-
-    func makeUIView(context: Context) -> UIDatePicker {
-        let picker = UIDatePicker()
-        picker.preferredDatePickerStyle = .compact
-        picker.datePickerMode = mode
-        picker.timeZone = VietnamTime.timeZone
-        picker.calendar = VietnamTime.calendar
-        picker.locale = VietnamTime.locale
-        picker.minimumDate = minimum
-        picker.date = selection
-        picker.accessibilityLabel = accessibilityLabel
-        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        return picker
-    }
-
-    func updateUIView(_ picker: UIDatePicker, context: Context) {
-        context.coordinator.selection = $selection
-        if picker.minimumDate != minimum { picker.minimumDate = minimum }
-        if picker.date != selection {
-            picker.date = selection
-            // The long form of the new date may be wider: measure again.
-            picker.invalidateIntrinsicContentSize()
-        }
-    }
-
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView picker: UIDatePicker, context: Context) -> CGSize? {
-        let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-        // A time alone has no long and short form.
-        let longForm = mode == .time ? 0 : CompactDateWidth.fullWidth(of: selection, includesTime: mode != .date)
-        let width = max(fitted.width, longForm) + Self.spare
-        let height = (20...80).contains(fitted.height) ? fitted.height : 34
-        return CGSize(width: ceil(width), height: ceil(height))
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var selection: Binding<Date>
-
-        init(selection: Binding<Date>) {
-            self.selection = selection
-        }
-
-        @objc func changed(_ picker: UIDatePicker) {
-            if selection.wrappedValue != picker.date { selection.wrappedValue = picker.date }
-        }
-
-    }
-}
-
-/// A drawn time tile's whole area as a button that opens Apple's popover
-/// with Apple's time wheels (`TimePopoverControl`). Put it in the tile's
-/// `.overlay`; it is transparent. Only the hour and minute are taken from
-/// the wheels; the day of `selection` stays.
-struct TimePopoverButton: UIViewRepresentable {
-    @Binding var selection: Date
+    /// `.time` keeps the day of `selection`; `.date` keeps its time.
+    var mode: UIDatePicker.Mode = .time
     var minuteInterval = 1
-    /// Earliest and latest time the wheels offer (on the day of `selection`).
+    /// Earliest and latest value the wheels offer.
     var minimum: Date? = nil
     var maximum: Date? = nil
     let accessibilityLabel: String
-    /// What the tile shows ("06:30", "1 giờ 30 phút"), for VoiceOver.
+    /// What the face shows ("06:30", "1 giờ 30 phút"), for VoiceOver.
     let accessibilityValue: String
 
     func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
 
-    func makeUIView(context: Context) -> TimePopoverControl {
-        let control = TimePopoverControl()
+    func makeUIView(context: Context) -> DatePopoverControl {
+        let control = DatePopoverControl()
         control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
         apply(to: control)
         return control
     }
 
-    func updateUIView(_ control: TimePopoverControl, context: Context) {
+    func updateUIView(_ control: DatePopoverControl, context: Context) {
         context.coordinator.selection = $selection
         apply(to: control)
     }
 
-    private func apply(to control: TimePopoverControl) {
+    private func apply(to control: DatePopoverControl) {
+        control.mode = mode
         control.minuteInterval = minuteInterval
         control.minimumDate = minimum
         control.maximumDate = maximum
@@ -399,18 +358,19 @@ struct TimePopoverButton: UIViewRepresentable {
             self.selection = selection
         }
 
-        @objc func changed(_ control: TimePopoverControl) {
+        @objc func changed(_ control: DatePopoverControl) {
             if selection.wrappedValue != control.date { selection.wrappedValue = control.date }
         }
     }
 }
 
-/// A transparent button over a whole drawn time tile (Bắt đầu, Thời lượng,
-/// Giờ vào / Giờ ra). A tap anywhere on it opens Apple's popover from the
-/// tile, holding Apple's time wheels (UIDatePicker); every turn of the
-/// wheels is sent as `.valueChanged`, the hour and minute set on the day
-/// of `date`. Used by SwiftUI (`TimePopoverButton`, iOS 18) and UIKit
-/// (LegacyMeetingRoomsUIKit, iOS 17) alike.
+/// A transparent button over a whole drawn field or tile (Bắt đầu, Thời
+/// lượng, Giờ vào / Giờ ra, every date). A tap anywhere on it opens Apple's
+/// popover from it, holding Apple's wheels (UIDatePicker); every turn of
+/// the wheels is sent as `.valueChanged`. In `.time` mode the hour and
+/// minute are set on the day of `date`; in `.date` mode the day is set at
+/// the time of `date`. Used by SwiftUI (`DatePopoverButton`, iOS 18) and
+/// UIKit (LegacyMeetingRoomsUIKit, iOS 17) alike.
 ///
 /// Apple offers no way to open the compact picker's own bubble from code:
 /// it opens only for a touch inside its small capsule. Every way of
@@ -421,27 +381,29 @@ struct TimePopoverButton: UIViewRepresentable {
 /// popover, depends on nothing of the kind.
 ///
 /// - The popover is the system's (`UIPopoverPresentationController`, kept
-///   a popover on iPhone), anchored to the tile.
-/// - From an open popover, a tap on another time tile closes it at once
-///   and opens that tile's: the other tiles pass touches through the
-///   popover. A tap on its own tile or anywhere else only closes it, as
+///   a popover on iPhone), anchored to the field.
+/// - From an open popover, a tap on another field closes it at once and
+///   opens that field's: the other fields pass touches through the
+///   popover. A tap on its own field or anywhere else only closes it, as
 ///   any popover.
-/// - A tap on a tile while a popover is still closing opens the tile's
+/// - A tap on a field while a popover is still closing opens the field's
 ///   popover once the closing transition ends (its own completion, no
 ///   timer).
 /// - A keyboard left open by a text field stays open.
-final class TimePopoverControl: UIControl {
+final class DatePopoverControl: UIControl {
+    var mode: UIDatePicker.Mode = .time
     var minuteInterval = 1
     var minimumDate: Date?
     var maximumDate: Date?
-    /// The time shown, and the day the chosen hour and minute are set on.
+    /// The value shown; in `.time` mode also the day the chosen hour and
+    /// minute are set on, in `.date` mode the time the chosen day keeps.
     var date = Date() {
         didSet {
             if let wheels = popover?.picker, wheels.date != date { wheels.date = date }
         }
     }
 
-    private weak var popover: TimePopoverController?
+    private weak var popover: DatePopoverController?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -459,7 +421,7 @@ final class TimePopoverControl: UIControl {
             present(from: presenter)
             return
         }
-        guard let other = presented as? TimePopoverController else {
+        guard let other = presented as? DatePopoverController else {
             // Something else is on screen (a confirmation): leave it be.
             return
         }
@@ -472,8 +434,8 @@ final class TimePopoverControl: UIControl {
             }
             return
         }
-        // Another tile's popover, let through to here: close it now, then
-        // open this one, so one tap moves from tile to tile.
+        // Another field's popover, let through to here: close it now, then
+        // open this one, so one tap moves from field to field.
         other.dismiss(animated: false) { [weak self, weak presenter] in
             guard let self, let presenter else { return }
             self.present(from: presenter)
@@ -481,9 +443,9 @@ final class TimePopoverControl: UIControl {
     }
 
     private func present(from presenter: UIViewController) {
-        let controller = TimePopoverController()
+        let controller = DatePopoverController()
         let wheels = controller.picker
-        wheels.datePickerMode = .time
+        wheels.datePickerMode = mode
         wheels.preferredDatePickerStyle = .wheels
         wheels.minuteInterval = minuteInterval
         wheels.timeZone = VietnamTime.timeZone
@@ -501,7 +463,7 @@ final class TimePopoverControl: UIControl {
             popover.sourceRect = bounds
             popover.permittedArrowDirections = [.up, .down]
             popover.delegate = controller
-            popover.passthroughViews = otherTimeTiles()
+            popover.passthroughViews = otherFields()
         }
         self.popover = controller
         presenter.present(controller, animated: true)
@@ -509,24 +471,38 @@ final class TimePopoverControl: UIControl {
 
     @objc private func wheelsChanged(_ wheels: UIDatePicker) {
         let calendar = VietnamTime.calendar
-        let time = calendar.dateComponents([.hour, .minute], from: wheels.date)
-        let chosen = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: date) ?? date
+        let chosen: Date
+        switch mode {
+        case .time:
+            let time = calendar.dateComponents([.hour, .minute], from: wheels.date)
+            chosen = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: date) ?? date
+        case .date:
+            let time = calendar.dateComponents([.hour, .minute, .second], from: date)
+            chosen = calendar.date(
+                bySettingHour: time.hour ?? 0,
+                minute: time.minute ?? 0,
+                second: time.second ?? 0,
+                of: wheels.date
+            ) ?? wheels.date
+        default:
+            chosen = wheels.date
+        }
         guard chosen != date else { return }
         date = chosen
         sendActions(for: .valueChanged)
     }
 
-    /// The other time tiles on screen, which a tap may reach through this
-    /// tile's popover.
-    private func otherTimeTiles() -> [UIView] {
+    /// The other date and time fields on screen, which a tap may reach
+    /// through this field's popover.
+    private func otherFields() -> [UIView] {
         guard let window else { return [] }
-        var tiles: [UIView] = []
+        var fields: [UIView] = []
         func collect(_ view: UIView) {
-            if let tile = view as? TimePopoverControl, tile !== self { tiles.append(tile) }
+            if let field = view as? DatePopoverControl, field !== self { fields.append(field) }
             view.subviews.forEach(collect)
         }
         collect(window)
-        return tiles
+        return fields
     }
 
     private func nearestViewController() -> UIViewController? {
@@ -539,9 +515,10 @@ final class TimePopoverControl: UIControl {
     }
 }
 
-/// The popover's content: Apple's time wheels at their own size.
-final class TimePopoverController: UIViewController, UIPopoverPresentationControllerDelegate {
+/// The popover's content: Apple's wheels at their own size.
+final class DatePopoverController: UIViewController, UIPopoverPresentationControllerDelegate {
     let picker = UIDatePicker()
+
     override func viewDidLoad() {
         super.viewDidLoad()
         picker.translatesAutoresizingMaskIntoConstraints = false

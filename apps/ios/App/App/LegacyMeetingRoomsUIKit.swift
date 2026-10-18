@@ -835,8 +835,20 @@ private final class LegacyMeetingScheduleController: UIViewController {
     private var cancellable: AnyCancellable?
     private let scrollView = UIScrollView()
     private let timeline = LegacyMeetingTimelineView()
-    private let datePicker = UIDatePicker()
+    /// The day, as iOS 18's DatePopoverField: the value in the system's
+    /// tertiary fill, opening Apple's popover with its wheels.
+    private let dayControl = DatePopoverControl()
+    private let dayValue = UILabel()
     private let header = UIStackView()
+    private static let longDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = VietnamTime.locale
+        formatter.calendar = VietnamTime.calendar
+        formatter.timeZone = VietnamTime.timeZone
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 
     init(session: SessionStore, room: MeetingRoom, day: Date) {
         self.session = session; self.room = room; self.day = day
@@ -851,21 +863,19 @@ private final class LegacyMeetingScheduleController: UIViewController {
         navigationItem.largeTitleDisplayMode = .always
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(closeSheet))
 
-        // "Ngày" and a compact day picker inside the scrolling content, as in
+        // "Ngày" and the day inside the scrolling content, as in
         // MeetingRoomScheduleSheet; past days cannot be booked.
         let dayLabel = UILabel()
         dayLabel.text = "Ngày"
         dayLabel.font = .preferredFont(forTextStyle: .body)
         dayLabel.adjustsFontForContentSizeCategory = true
-        datePicker.datePickerMode = .date
-        datePicker.preferredDatePickerStyle = .compact
-        datePicker.locale = Locale(identifier: "vi_VN")
-        datePicker.timeZone = VietnamTime.timeZone
-        datePicker.calendar = VietnamTime.calendar
-        datePicker.minimumDate = VietnamTime.calendar.startOfDay(for: Date())
-        datePicker.date = day
-        datePicker.addTarget(self, action: #selector(dayChanged), for: .valueChanged)
-        [dayLabel, UIView(), datePicker].forEach(header.addArrangedSubview)
+        dayControl.mode = .date
+        dayControl.minimumDate = VietnamTime.calendar.startOfDay(for: Date())
+        dayControl.date = day
+        dayControl.accessibilityLabel = "Ngày"
+        dayControl.addTarget(self, action: #selector(dayChanged), for: .valueChanged)
+        [dayLabel, UIView(), makeDayField()].forEach(header.addArrangedSubview)
+        renderDay()
         header.alignment = .center
         header.isLayoutMarginsRelativeArrangement = true
         header.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 12, trailing: 16)
@@ -949,8 +959,49 @@ private final class LegacyMeetingScheduleController: UIViewController {
         timeline.update(bookings: session.meetings.bookingsByRoom[room.id] ?? [], day: day)
     }
 
+    /// The day's text in the system's tertiary fill, with the control that
+    /// opens the popover over all of it.
+    private func makeDayField() -> UIView {
+        dayValue.font = .monospacedDigitSystemFont(ofSize: UIFont.preferredFont(forTextStyle: .body).pointSize, weight: .regular)
+        dayValue.textColor = .label
+        dayValue.translatesAutoresizingMaskIntoConstraints = false
+        let box = UIView()
+        box.backgroundColor = .tertiarySystemFill
+        box.layer.cornerRadius = 8
+        box.layer.cornerCurve = .continuous
+        box.isUserInteractionEnabled = false
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(dayValue)
+        let field = UIView()
+        field.addSubview(box)
+        dayControl.translatesAutoresizingMaskIntoConstraints = false
+        field.addSubview(dayControl)
+        NSLayoutConstraint.activate([
+            dayValue.topAnchor.constraint(equalTo: box.topAnchor, constant: 6),
+            dayValue.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -6),
+            dayValue.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 11),
+            dayValue.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -11),
+            box.topAnchor.constraint(equalTo: field.topAnchor),
+            box.bottomAnchor.constraint(equalTo: field.bottomAnchor),
+            box.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            box.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+            dayControl.topAnchor.constraint(equalTo: field.topAnchor),
+            dayControl.bottomAnchor.constraint(equalTo: field.bottomAnchor),
+            dayControl.leadingAnchor.constraint(equalTo: field.leadingAnchor),
+            dayControl.trailingAnchor.constraint(equalTo: field.trailingAnchor),
+        ])
+        return field
+    }
+
+    private func renderDay() {
+        let text = Self.longDate.string(from: day)
+        dayValue.text = text
+        dayControl.accessibilityValue = text
+    }
+
     @objc private func dayChanged() {
-        day = datePicker.date
+        day = dayControl.date
+        renderDay()
         reload()
         Task { await session.refreshMeetingSchedule(date: day) }
     }
@@ -1285,10 +1336,10 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     // system overlay is open would cut the employee off mid-choice.
     // Each tile draws its value over a control filling it that takes every
     // tap and opens Apple's popover with Apple's time wheels
-    // (TimePopoverControl).
-    private let startTileControl = TimePopoverControl()
+    // (DatePopoverControl).
+    private let startTileControl = DatePopoverControl()
     private let startValueLabel = UILabel()
-    private let durationTileControl = TimePopoverControl()
+    private let durationTileControl = DatePopoverControl()
     private let durationValueLabel = UILabel()
     private let expectedLabel = UILabel()
     private let countBadge = UILabel()
@@ -1946,7 +1997,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     /// The Bắt đầu tile opens Apple's popover with Apple's time wheels, in
     /// Vietnam time and 5-minute steps (`MeetingBookingTime.minuteStep`), as
-    /// on iOS 18 (`TimePopoverControl`). It keeps the booking's day.
+    /// on iOS 18 (`DatePopoverControl`). It keeps the booking's day.
     private func configureStartTimePicker() {
         startTileControl.minuteInterval = MeetingBookingTime.minuteStep
         startTileControl.date = start
