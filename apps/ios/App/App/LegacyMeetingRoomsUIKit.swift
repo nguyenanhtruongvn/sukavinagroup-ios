@@ -2224,6 +2224,7 @@ private final class LegacyMeetingDetailController: UIViewController {
     private var cancellable: AnyCancellable?
     private let scroll = UIScrollView()
     private let content = UIStackView()
+    private var statusTimer: Timer?
 
     init(session: SessionStore, room: MeetingRoom, meeting: MeetingBooking) {
         self.session = session; self.room = room; self.meeting = meeting
@@ -2256,8 +2257,7 @@ private final class LegacyMeetingDetailController: UIViewController {
     }
     private var durationTitle: String {
         guard let start = current.startDate, let end = current.endDate else { return "—" }
-        let minutes = max(0, Int(end.timeIntervalSince(start) / 60))
-        return minutes >= 60 ? "\(minutes / 60) giờ\(minutes % 60 == 0 ? "" : " \(minutes % 60) phút")" : "\(minutes) phút"
+        return DurationClock.title(minutes: max(0, Int(end.timeIntervalSince(start) / 60)))
     }
     private var canCancel: Bool {
         guard isOwner, current.status == "confirmed", let start = current.startDate else { return false }
@@ -2266,15 +2266,11 @@ private final class LegacyMeetingDetailController: UIViewController {
     private var canShowMeetingControls: Bool { isOwner && current.status == "confirmed" && meetingStarted }
     private var nextBooking: MeetingBooking? {
         guard let end = current.endDate else { return nil }
-        return session.meetings.bookings
-            .filter { $0.roomId == current.roomId && $0.id != current.id }
-            .filter { ($0.startDate ?? .distantPast) > end }
-            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+        return session.meetings.nextBooking(after: end, inRoom: current.roomId, excluding: current.id)
     }
     private var maximumExtensionMinutes: Int {
         guard let end = current.endDate else { return 0 }
-        guard let nextStart = nextBooking?.startDate else { return 120 }
-        return min(120, max(0, Int(nextStart.timeIntervalSince(end) / 60) - 5))
+        return MeetingExtension.maximumMinutes(end: end, nextStart: nextBooking?.startDate)
     }
     private var extensionBlockMessage: String {
         guard let nextBooking else { return "Không thể gia hạn vì lịch phòng đang được cập nhật." }
@@ -2321,9 +2317,29 @@ private final class LegacyMeetingDetailController: UIViewController {
 
     @objc private func close() { dismiss(animated: true) }
 
+    deinit { statusTimer?.invalidate() }
+
+    /// Renders again once when the meeting starts or ends, so "Hủy lịch"
+    /// gives way to the controls, and the controls to "đã kết thúc", on time
+    /// while this screen stays open (the SwiftUI sheet uses TimelineView).
+    private func scheduleStatusChange() {
+        statusTimer?.invalidate()
+        statusTimer = nil
+        let now = Date()
+        guard let next = [current.startDate, current.endDate].compactMap({ $0 }).filter({ $0 > now }).min() else { return }
+        let timer = Timer(fire: next.addingTimeInterval(0.5), interval: 0, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.render() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        statusTimer = timer
+    }
+
     // MARK: Rendering
 
     private func render() {
+        scheduleStatusChange()
+        // A booking added meanwhile can lower the extension limit.
+        extensionMinutes = min(extensionMinutes, max(MeetingExtension.step, maximumExtensionMinutes))
         content.arrangedSubviews.forEach { $0.removeFromSuperview() }
         content.addArrangedSubview(heroCard())
 
@@ -2460,7 +2476,7 @@ private final class LegacyMeetingDetailController: UIViewController {
             }
             if maximumExtensionMinutes >= 5 {
                 // Apple's stepper, as on iOS 18.
-                let amount = label("Gia hạn thêm \(extensionMinutes) phút", style: .subheadline, weight: .bold, color: UIColor(AppTheme.text(.green, chipAlpha: 0.08)))
+                let amount = label("Gia hạn thêm \(extensionMinutes) phút", style: .subheadline, weight: .bold, color: green)
                 let stepper = UIStepper()
                 stepper.minimumValue = 5
                 stepper.maximumValue = Double(maximumExtensionMinutes)

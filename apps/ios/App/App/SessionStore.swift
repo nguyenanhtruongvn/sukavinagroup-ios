@@ -69,6 +69,16 @@ final class MeetingStore: ObservableObject {
         bookingsByRoom = Dictionary(grouping: live, by: \.roomId)
         bookings = live
     }
+
+    /// The room's next booking once a meeting ending at `end` is over: what
+    /// limits extending it (`MeetingExtension`).
+    func nextBooking(after end: Date, inRoom roomId: String, excluding bookingID: String) -> MeetingBooking? {
+        let others = (bookingsByRoom[roomId] ?? []).filter { $0.id != bookingID }
+        guard let start = MeetingExtension.nextStart(after: end, among: others.compactMap(\.startDate)) else {
+            return nil
+        }
+        return others.first { $0.startDate == start }
+    }
 }
 
 /// Canteen menu feature state (Android: `MenuStore`).
@@ -2523,10 +2533,9 @@ final class SessionStore: ObservableObject {
     /// endpoint remains unchanged for older clients; only the optional minute
     /// choice is new UI state sent to the existing extend API.
     func performMeetingControl(bookingID: String, action: String, extensionMinutes: Int = 5) async -> String? {
+        // Callers show the message next to the control (not globally too).
         guard let token else {
-            let message = "Phiên đăng nhập đã hết hạn. Vui lòng mở ứng dụng và đăng nhập lại."
-            errorMessage = message
-            return message
+            return "Phiên đăng nhập đã hết hạn. Vui lòng mở ứng dụng và đăng nhập lại."
         }
         do {
             switch action {

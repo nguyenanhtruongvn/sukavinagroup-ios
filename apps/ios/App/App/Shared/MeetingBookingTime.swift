@@ -73,3 +73,26 @@ enum MeetingBookingTime {
         return Array(Set(boundaries.filter { $0 > now && $0 < tomorrow } + [tomorrow])).sorted()
     }
 }
+
+/// How far the organiser can extend an active meeting: in 5-minute steps, at
+/// most two hours, keeping five minutes free before the room's next booking.
+/// Shared by the booking detail, the meeting notification and the iOS 17
+/// UIKit detail so all three offer the same limit.
+enum MeetingExtension {
+    static let step = 5
+    static let limitMinutes = 120
+    static let changeoverMinutes = 5
+
+    /// The first of `starts` at or after `end`. A meeting that begins exactly
+    /// when this one ends counts: it leaves no room to extend.
+    static func nextStart(after end: Date, among starts: [Date]) -> Date? {
+        starts.filter { $0 >= end }.min()
+    }
+
+    /// Minutes that can still be added to a meeting ending at `end`.
+    static func maximumMinutes(end: Date, nextStart: Date?) -> Int {
+        guard let nextStart else { return limitMinutes }
+        let free = Int(nextStart.timeIntervalSince(end) / 60) - changeoverMinutes
+        return min(limitMinutes, max(0, free))
+    }
+}

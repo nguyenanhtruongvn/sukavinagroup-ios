@@ -69,4 +69,23 @@ final class MeetingBookingTimeTests: XCTestCase {
         XCTAssertNil(MeetingBookingTime.blockReason(start: try date("2026-10-15T14:20:00+07:00"), now: now, attendeeCount: 1, capacity: 10, calendar: calendar))
         XCTAssertNotNil(MeetingBookingTime.blockReason(start: try date("2026-10-16T09:00:00+07:00"), now: now, attendeeCount: 11, capacity: 10, calendar: calendar))
     }
+
+    func testBackToBackMeetingLeavesNoExtension() throws {
+        let end = try date("2026-10-15T10:00:00+07:00")
+        let earlier = try date("2026-10-15T09:00:00+07:00")
+        let backToBack = try date("2026-10-15T10:00:00+07:00")
+        let later = try date("2026-10-15T11:00:00+07:00")
+        let next = MeetingExtension.nextStart(after: end, among: [later, earlier, backToBack])
+        XCTAssertEqual(next, backToBack)
+        XCTAssertEqual(MeetingExtension.maximumMinutes(end: end, nextStart: next), 0)
+    }
+
+    func testExtensionKeepsChangeoverAndTwoHourLimit() throws {
+        let end = try date("2026-10-15T10:00:00+07:00")
+        XCTAssertEqual(MeetingExtension.maximumMinutes(end: end, nextStart: try date("2026-10-15T10:30:00+07:00")), 25)
+        XCTAssertEqual(MeetingExtension.maximumMinutes(end: end, nextStart: try date("2026-10-15T10:04:00+07:00")), 0)
+        XCTAssertEqual(MeetingExtension.maximumMinutes(end: end, nextStart: try date("2026-10-15T15:00:00+07:00")), 120)
+        XCTAssertEqual(MeetingExtension.maximumMinutes(end: end, nextStart: nil), 120)
+        XCTAssertNil(MeetingExtension.nextStart(after: end, among: [try date("2026-10-15T09:00:00+07:00")]))
+    }
 }

@@ -499,17 +499,14 @@ struct NotificationsView: View {
 }
 
 private struct MeetingNotificationDetail: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let notification: RequestNotification
     @State private var details: MeetingBookingDetails?
     @State private var isLoading = false
-    @State private var extensionMinutes = 5
-    @State private var isSubmitting = false
-    @State private var confirmingEnd = false
-    @State private var submittingAction: String?
-    @State private var actionError: String?
 
     private var accent: Color {
         // The ten-minute warning is sent to the meeting organiser. Use green
@@ -546,36 +543,9 @@ private struct MeetingNotificationDetail: View {
     private var endDate: Date? {
         effectiveEndsAt.flatMap { MeetingPresentation.date(from: $0) }
     }
-    private var meetingEnded: Bool { endDate.map { $0 <= Date() } ?? false }
     private var isOrganizer: Bool {
         guard let details, let employeeCode = session.profile?.employeeCode else { return false }
         return details.employee.employeeCode.caseInsensitiveCompare(employeeCode) == .orderedSame
-    }
-    private var nextBooking: MeetingBooking? {
-        guard let details, let endDate else { return nil }
-        return meetingStore.bookings
-            .filter { $0.roomId == details.roomId && $0.id != details.id }
-            .filter { booking in
-                guard let start = booking.startDate else { return false }
-                return start > endDate
-            }
-            .sorted { left, right in
-                (left.startDate ?? .distantFuture)
-                    < (right.startDate ?? .distantFuture)
-            }
-            .first
-    }
-    private var maximumExtensionMinutes: Int {
-        guard let endDate else { return 0 }
-        guard let nextStart = nextBooking.flatMap({ $0.startDate }) else { return 120 }
-        return min(120, max(0, Int(nextStart.timeIntervalSince(endDate) / 60) - 5))
-    }
-    private var extensionBlockMessage: String {
-        guard let nextBooking else {
-            return "Không thể gia hạn vì lịch phòng đang được cập nhật."
-        }
-        let title = nextBooking.title.isEmpty ? "cuộc họp tiếp theo" : "“\(nextBooking.title)”"
-        return "Không thể gia hạn vì \(details?.room.name ?? "phòng họp") có \(title) lúc \(MeetingPresentation.time(nextBooking.startsAt))."
     }
 
     var body: some View {
@@ -680,7 +650,12 @@ private struct MeetingNotificationDetail: View {
                     }
 
                     if isEndingSoonReminder, let details, isOrganizer {
-                        meetingControlCard(details)
+                        MeetingControlCard(
+                            bookingID: details.id,
+                            roomId: details.roomId,
+                            roomName: details.room.name,
+                            endDate: endDate
+                        )
                     }
 
                     Text("Mở Lịch của tôi để xem thời gian và thông tin phòng họp mới nhất.")
@@ -723,104 +698,6 @@ private struct MeetingNotificationDetail: View {
         .frame(maxWidth: .infinity, alignment: .leading).padding(18)
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    @ViewBuilder
-    private func meetingControlCard(_ details: MeetingBookingDetails) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(meetingEnded ? "Cuộc họp đã kết thúc" : "Điều khiển cuộc họp", systemImage: meetingEnded ? "checkmark.circle.fill" : "slider.horizontal.3")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(meetingEnded ? .green : accent)
-            if meetingEnded {
-                Text("Cuộc họp đã kết thúc. Bạn không thể gia hạn hoặc kết thúc lại.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                if let actionError {
-                    Text(actionError).font(.caption.weight(.semibold)).foregroundStyle(.red)
-                        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.red.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                if maximumExtensionMinutes >= 5 {
-                    Stepper(value: $extensionMinutes, in: 5...maximumExtensionMinutes, step: 5) {
-                        Text("Gia hạn thêm \(extensionMinutes) phút")
-                            .font(.subheadline.weight(.bold)).foregroundStyle(AppTheme.text(.green))
-                    }
-                    .disabled(isSubmitting)
-                    .onChange(of: extensionMinutes) { _, _ in actionError = nil }
-                    Button {
-                        Task { await submit(details, action: "extend") }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isSubmitting && submittingAction == "extend" {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Image(systemName: "checkmark")
-                            }
-                            Text(isSubmitting && submittingAction == "extend" ? "Đang gia hạn…" : "Xác nhận gia hạn")
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent).tint(.green).disabled(isSubmitting)
-                } else {
-                    Button {
-                        // Keep the unavailable action visible so the organiser
-                        // understands why it cannot be used for this meeting.
-                    } label: {
-                        Label("Gia hạn không khả dụng", systemImage: "clock.badge.exclamationmark")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.secondary)
-                    .disabled(true)
-                    Text(extensionBlockMessage)
-                        .font(.caption.weight(.semibold)).foregroundStyle(.red)
-                }
-                Button(role: .destructive) {
-                    // Irreversible: ask first.
-                    confirmingEnd = true
-                } label: {
-                    HStack(spacing: 8) {
-                        if isSubmitting && submittingAction == "end" {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "stop.fill")
-                        }
-                        Text(isSubmitting && submittingAction == "end" ? "Đang kết thúc…" : "Kết thúc cuộc họp")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent).disabled(isSubmitting)
-                .confirmationDialog("Kết thúc cuộc họp?", isPresented: $confirmingEnd, titleVisibility: .visible) {
-                    Button("Kết thúc", role: .destructive) { Task { await submit(details, action: "end") } }
-                    Button("Tiếp tục họp", role: .cancel) {}
-                } message: {
-                    Text("Phòng sẽ được giải phóng ngay để người khác có thể đặt. Không thể hoàn tác.")
-                }
-            }
-        }
-        .padding(18)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    @MainActor
-    private func submit(_ details: MeetingBookingDetails, action: String) async {
-        guard !isSubmitting else { return }
-        isSubmitting = true
-        submittingAction = action
-        actionError = nil
-
-        actionError = await session.performMeetingControl(
-            bookingID: details.id,
-            action: action,
-            extensionMinutes: extensionMinutes
-        )
-
-        if actionError == nil {
-            extensionMinutes = 5
-        }
-        submittingAction = nil
-        isSubmitting = false
     }
 }
 
