@@ -683,73 +683,10 @@ enum AttendanceWidgetBridge {
     }
 }
 
-struct AttendanceMonth: Codable {
-    let month: String
-    let startTime: String?
-    let endTime: String?
-    let department: String?
-    let days: [AttendanceDay]
-    let leaveSummary: AttendanceLeaveSummary?
-    let leaveSummaryExact: AttendanceLeaveSummary?
-}
-
-struct AttendanceLeaveSummary: Codable {
-    let openingBalance: Double
-    let accruedDays: Double
-    let usedDays: Double
-    let unpaidDays: Double
-    let sickDays: Double
-    let closingBalance: Double
-}
-
 struct AttendanceReport: Codable, Identifiable {
     let month: String
     let releasedAt: String?
     var id: String { month }
-}
-
-struct AttendanceDay: Codable, Identifiable {
-    let date: String
-    let checkIn: String?
-    let checkOut: String?
-    let classification: String?
-    let punchCount: Int
-    let status: String?
-    let statuses: [String]?
-    let startTime: String?
-    let endTime: String?
-    let sources: [String]?
-    let punches: [AttendancePunch]?
-    // Additive API fields: old cached responses without them remain decodable.
-    let workdayCode: String?
-    let workdayFactor: Double?
-    let overrideCode: String?
-    // Ca đêm entered by an administrator, beside the day shift. workdayFactor
-    // is the date's total and already includes nightShift.workdays.
-    let nightShift: AttendanceNightShift?
-    // Times adjusted by an administrator: checkIn/checkOut above already apply
-    // them; overtimeHours is set when the administrator typed the overtime.
-    let adjustment: AttendanceAdjustment?
-    let overtimeHours: Double?
-    var id: String { date }
-}
-
-struct AttendanceAdjustment: Codable {
-    let checkIn: String?
-    let checkOut: String?
-    let overtimeHours: Double?
-}
-
-struct AttendanceNightShift: Codable {
-    let workdays: Double
-    let overtimeHours: Double
-}
-
-struct AttendancePunch: Codable, Identifiable {
-    let id: String
-    let punchedAt: String
-    let source: String
-    let machineNo: Int
 }
 
 struct AiAssistantSettings: Codable {

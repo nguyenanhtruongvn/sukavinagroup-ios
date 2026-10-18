@@ -151,7 +151,7 @@ The employee UI is split by feature (each file stays well under 1,000 lines):
 
 Types shared between these files are internal (no `private`); keep their names unique in the App target.
 
-`App/Shared/` holds Foundation-only logic (`VietnamTime`, `RealtimeEvent`, `RequestReasonPrefill`, `MeetingBookingDeduplication`). These files are compiled into the App target and also by `apps/ios/App/Package.swift`, whose tests in `apps/ios/App/SharedTests/` run in CI (`swift test --package-path apps/ios/App`, job `shared-logic-tests`). Keep logic that can be tested without UIKit/SwiftUI there and add a test with it.
+`App/Shared/` holds Foundation-only logic (`VietnamTime`, `RealtimeEvent`, `RequestReasonPrefill`, `MeetingBookingDeduplication`, `MeetingBookingTime`, `AttendanceMetrics`). These files are compiled into the App target and also by `apps/ios/App/Package.swift`, whose tests in `apps/ios/App/SharedTests/` run in CI (`swift test --package-path apps/ios/App`, job `shared-logic-tests`). Keep logic that can be tested without UIKit/SwiftUI there and add a test with it.
 
 `App/Shared/VietnamTime.swift` is compiled into both the app and the widget extension and may only import Foundation.
 
