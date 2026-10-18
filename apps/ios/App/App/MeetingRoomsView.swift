@@ -595,8 +595,6 @@ struct MeetingRoomScheduleSheet: View {
     let day: Date
     @State private var selectedDay: Date
     @State private var presentedDestination: MeetingScheduleDestination?
-    /// The user moved the schedule: it is no longer re-centred on now.
-    @State private var userHasScrolled = false
 
     init(room: MeetingRoom, day: Date) {
         self.room = room
@@ -649,20 +647,6 @@ struct MeetingRoomScheduleSheet: View {
                 .onAppear {
                     if isToday { proxy.scrollTo(MeetingTimeline.nowAnchorID, anchor: .center) }
                 }
-                // The sheet lays its content out before it settles on its
-                // final height (TestFlight 133: centred for a taller view,
-                // the schedule opened near 07:00 with the line off screen).
-                // Centre again each time the scroll view's height changes,
-                // until the user scrolls it.
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                    guard height > 0, !userHasScrolled, isToday else { return }
-                    proxy.scrollTo(MeetingTimeline.nowAnchorID, anchor: .center)
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 4).onChanged { _ in
-                        if !userHasScrolled { userHasScrolled = true }
-                    }
-                )
                 .task {
                     await session.refreshMeetingSchedule(date: selectedDay)
                 }
