@@ -66,26 +66,15 @@ struct MeetingTimeline: View {
     let date: Date
     let onSelect: (MeetingBooking) -> Void
 
-    /// The hours shown and their height (06:00 to 24:00, 72 pt an hour).
-    static let firstHour = 6
-    static let lastHour = 23
-    static let hourHeight: CGFloat = 72
-    static var timelineHeight: CGFloat { hourHeight * CGFloat(lastHour - firstHour + 1) }
-    private let firstHour = MeetingTimeline.firstHour
-    private let lastHour = MeetingTimeline.lastHour
-    private let hourHeight = MeetingTimeline.hourHeight
+    private let firstHour = 6
+    private let lastHour = 23
+    private let hourHeight: CGFloat = 72
     /// ScrollViewReader id of the current-minute anchor (today only).
     static let nowAnchorID = "meeting-timeline-now"
 
-    /// The red line's centre from the top of the timeline when `day` is
-    /// today and now is within the shown hours.
-    static func nowLineCentre(day: Date, now: Date = Date()) -> CGFloat? {
-        MeetingScheduleLayout.currentOffset(
-            day: day, now: now, firstHour: firstHour, lastHour: lastHour, hourHeight: hourHeight
-        ).map { $0 + 1 }
+    private var timelineHeight: CGFloat {
+        hourHeight * CGFloat(lastHour - firstHour + 1)
     }
-
-    private var timelineHeight: CGFloat { Self.timelineHeight }
 
     var body: some View {
         HStack(alignment: .top, spacing: 0) {

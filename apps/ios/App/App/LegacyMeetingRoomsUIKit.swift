@@ -970,22 +970,11 @@ private final class LegacyMeetingScheduleController: UIViewController {
         scrollView.layoutIfNeeded()
         // In the scroll view's content coordinates.
         let nowY = timeline.convert(CGPoint(x: 0, y: minute + 1), to: scrollView).y // the 2 pt line's centre
-        // The bars' and safe area's share of the insets, without our own.
-        let barsTop = scrollView.adjustedContentInset.top - scrollView.contentInset.top
-        let barsBottom = scrollView.adjustedContentInset.bottom - scrollView.contentInset.bottom
-        let visible = scrollView.bounds.height - barsTop - barsBottom
-        // Near 06:00 or 24:00 the line is too close to an end to be centred:
-        // room beyond that end, only as much as half the visible height lacks.
-        let roomAbove = max(0, visible / 2 - nowY)
-        let roomBelow = max(0, visible / 2 - (scrollView.contentSize.height - nowY))
-        if abs(scrollView.contentInset.top - roomAbove) > 0.5 || abs(scrollView.contentInset.bottom - roomBelow) > 0.5 {
-            scrollView.contentInset.top = roomAbove
-            scrollView.contentInset.bottom = roomBelow
-        }
         let inset = scrollView.adjustedContentInset
+        let visible = scrollView.bounds.height - inset.top - inset.bottom
         let minOffset = -inset.top
         let maxOffset = max(minOffset, scrollView.contentSize.height + inset.bottom - scrollView.bounds.height)
-        let target = min(max(minOffset, nowY - barsTop - visible / 2), maxOffset)
+        let target = min(max(minOffset, nowY - inset.top - visible / 2), maxOffset)
         if abs(scrollView.contentOffset.y - target) > 0.5 {
             scrollView.setContentOffset(CGPoint(x: 0, y: target), animated: false)
         }
