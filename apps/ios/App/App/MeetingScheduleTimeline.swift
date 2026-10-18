@@ -109,14 +109,19 @@ struct MeetingTimeline: View {
                 if let nowOffset = MeetingScheduleLayout.currentOffset(
                     day: date, now: Date(), firstHour: firstHour, lastHour: lastHour, hourHeight: hourHeight
                 ) {
-                    // The id on the 2 pt anchor itself, before the padding:
-                    // centring it centres the red line, not the padded span.
-                    Color.clear
-                        .frame(width: 1, height: 2)
-                        .id(Self.nowAnchorID)
-                        .padding(.top, nowOffset)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
+                    // The anchor is its own 2 pt view below a spacer, so the
+                    // identified frame is exactly the red line's. With the
+                    // id on a padded view (even before the padding) scrollTo
+                    // centred the padded span: half way to the line, which
+                    // opened the schedule near 07:00 at 18:54 (TestFlight 133).
+                    VStack(spacing: 0) {
+                        Color.clear.frame(width: 1, height: nowOffset)
+                        Color.clear
+                            .frame(width: 1, height: 2)
+                            .id(Self.nowAnchorID)
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 }
 
                 MeetingScheduleLabelsOverlay(
