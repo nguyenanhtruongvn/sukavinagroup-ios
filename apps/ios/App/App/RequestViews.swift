@@ -1046,15 +1046,19 @@ struct RequestComposer: View {
         .id(scrollID)
     }
 
-    /// A missing time is chosen like the booking's Bắt đầu: Apple's time
-    /// picker lies over the card, invisible, so a tap anywhere on it opens
-    /// Apple's time bubble, not only a tap on the picker's small capsule.
+    /// A missing time is chosen like the booking's Bắt đầu: the whole card
+    /// is a button opening Apple's popover with Apple's time wheels
+    /// (`TimePopoverButton`).
     @ViewBuilder private func attendanceTimeCard(title: String, value: String?, missingPrompt: String, selection: Binding<Date>) -> some View {
         if value == nil {
             attendanceTimeCardFace(title: title, value: value, chosen: selection.wrappedValue)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .overlay(TileFillingTimePicker(selection: selection, accessibilityLabel: missingPrompt))
+                .overlay(TimePopoverButton(
+                    selection: selection,
+                    accessibilityLabel: missingPrompt,
+                    accessibilityValue: VietnamTime.clock.string(from: selection.wrappedValue)
+                ))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         } else {
             attendanceTimeCardFace(title: title, value: value, chosen: nil)
@@ -1721,9 +1725,9 @@ struct RequestComposer: View {
     }
 
     /// The duration as the booking's Thời lượng: icon and chevron, caption,
-    /// bold value, with Apple's compact time picker lying invisibly over it
-    /// (`TileFillingTimePicker`), so a tap anywhere opens Apple's time
-    /// bubble. Its hours and minutes are the length: 01:30 is 1 giờ 30 phút.
+    /// bold value, the whole tile a button opening Apple's popover with
+    /// Apple's time wheels (`TimePopoverButton`). Their hours and minutes
+    /// are the length: 01:30 is 1 giờ 30 phút.
     private var durationTile: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
@@ -1747,17 +1751,18 @@ struct RequestComposer: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .allowsHitTesting(false)
         .accessibilityHidden(true)
-        .overlay(TileFillingTimePicker(
+        .overlay(TimePopoverButton(
             selection: durationClock,
             minuteInterval: Self.durationStep,
             minimum: DurationClock.date(forMinutes: Self.durationRange.lowerBound, calendar: VietnamTime.calendar),
             maximum: DurationClock.date(forMinutes: Self.durationRange.upperBound, calendar: VietnamTime.calendar),
-            accessibilityLabel: "Thời lượng"
+            accessibilityLabel: "Thời lượng",
+            accessibilityValue: durationDescription
         ))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    /// `durationMinutes` as the time Apple's time picker shows ("01:30").
+    /// `durationMinutes` as the time Apple's time wheels show ("01:30").
     private var durationClock: Binding<Date> {
         Binding(
             get: { DurationClock.date(forMinutes: durationMinutes, calendar: VietnamTime.calendar) },

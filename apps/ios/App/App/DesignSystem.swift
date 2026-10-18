@@ -396,7 +396,7 @@ struct SystemCompactDatePicker: UIViewRepresentable {
             if selection.wrappedValue != picker.date { selection.wrappedValue = picker.date }
         }
 
-        /// Its bubble opens: the keyboard goes, as `TileFillingPickerView`.
+        /// Its bubble opens: the keyboard goes, as for `TimePopoverControl`.
         @objc func opened(_ picker: UIDatePicker) {
             let hidKeyboard = picker.resignTextInputForBubble()
             UIFlowLog.record("datePicker.open", "\(picker.accessibilityLabel ?? "") hidKeyboard=\(hidKeyboard)")
@@ -404,44 +404,42 @@ struct SystemCompactDatePicker: UIViewRepresentable {
     }
 }
 
-/// Apple's compact time picker over a drawn tile, invisible, taking every
-/// tap on it, so a tap anywhere on the tile opens Apple's own time bubble.
-/// Put it in the tile's `.overlay`, in front of the face, never behind it
-/// (see `TileFillingPickerView`).
-/// Only the hour and minute are taken from the picker; the day stays.
-/// UIDatePicker because SwiftUI's DatePicker cannot set a minute interval.
-struct TileFillingTimePicker: UIViewRepresentable {
+/// A drawn time tile's whole area as a button that opens Apple's popover
+/// with Apple's time wheels (`TimePopoverControl`). Put it in the tile's
+/// `.overlay`; it is transparent. Only the hour and minute are taken from
+/// the wheels; the day of `selection` stays.
+struct TimePopoverButton: UIViewRepresentable {
     @Binding var selection: Date
     var minuteInterval = 1
-    /// Earliest and latest time the bubble offers (on the day of `selection`).
+    /// Earliest and latest time the wheels offer (on the day of `selection`).
     var minimum: Date? = nil
     var maximum: Date? = nil
     let accessibilityLabel: String
+    /// What the tile shows ("06:30", "1 giờ 30 phút"), for VoiceOver.
+    let accessibilityValue: String
 
     func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
 
-    func makeUIView(context: Context) -> TileFillingPickerView {
-        let view = TileFillingPickerView()
-        view.name = accessibilityLabel
-        let picker = view.picker
-        picker.datePickerMode = .time
-        picker.minuteInterval = minuteInterval
-        picker.timeZone = VietnamTime.timeZone
-        picker.calendar = VietnamTime.calendar
-        picker.locale = VietnamTime.locale
-        picker.minimumDate = minimum
-        picker.maximumDate = maximum
-        picker.date = selection
-        picker.accessibilityLabel = accessibilityLabel
-        picker.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
-        return view
+    func makeUIView(context: Context) -> TimePopoverControl {
+        let control = TimePopoverControl()
+        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        apply(to: control)
+        return control
     }
 
-    func updateUIView(_ view: TileFillingPickerView, context: Context) {
+    func updateUIView(_ control: TimePopoverControl, context: Context) {
         context.coordinator.selection = $selection
-        if view.picker.minimumDate != minimum { view.picker.minimumDate = minimum }
-        if view.picker.maximumDate != maximum { view.picker.maximumDate = maximum }
-        if view.picker.date != selection { view.picker.date = selection }
+        apply(to: control)
+    }
+
+    private func apply(to control: TimePopoverControl) {
+        control.name = accessibilityLabel
+        control.minuteInterval = minuteInterval
+        control.minimumDate = minimum
+        control.maximumDate = maximum
+        if control.date != selection { control.date = selection }
+        control.accessibilityLabel = accessibilityLabel
+        control.accessibilityValue = accessibilityValue
     }
 
     @MainActor
@@ -452,141 +450,142 @@ struct TileFillingTimePicker: UIViewRepresentable {
             self.selection = selection
         }
 
-        @objc func changed(_ picker: UIDatePicker) {
-            let calendar = VietnamTime.calendar
-            let time = calendar.dateComponents([.hour, .minute], from: picker.date)
-            let current = selection.wrappedValue
-            selection.wrappedValue = calendar.date(
-                bySettingHour: time.hour ?? 0,
-                minute: time.minute ?? 0,
-                second: 0,
-                of: current
-            ) ?? current
+        @objc func changed(_ control: TimePopoverControl) {
+            if selection.wrappedValue != control.date { selection.wrappedValue = control.date }
         }
     }
 }
 
-/// Holds a compact UIDatePicker at its own size over a drawn tile, so a
-/// tap anywhere on the tile, not only on the picker's small capsule,
-/// opens Apple's picker bubble.
+/// A transparent button over a whole drawn time tile (Bắt đầu, Thời lượng,
+/// Giờ vào / Giờ ra). A tap anywhere on it opens Apple's popover from the
+/// tile, holding Apple's time wheels (UIDatePicker); every turn of the
+/// wheels is sent as `.valueChanged`, the hour and minute set on the day
+/// of `date`. Used by SwiftUI (`TimePopoverButton`, iOS 18) and UIKit
+/// (LegacyMeetingRoomsUIKit, iOS 17) alike.
 ///
-/// It lies in front of the face, its picker invisible (masked). Behind a
-/// SwiftUI face, even one that allows no hit testing, a tap on the face's
-/// text and icons did not reach it, only one on its empty parts (1.0.87,
-/// Bắt đầu). In front, every point of the tile is this view's. In UIKit
-/// (iOS 17) the face is a subview with user interaction off, which hit
-/// testing skips, so there it may stay on top. Used by the booking Bắt đầu tile (MeetingBookingSheet on iOS
-/// 18, LegacyMeetingRoomsUIKit on iOS 17) and the Giờ vào / Giờ ra cards.
+/// Apple offers no way to open the compact picker's own bubble from code:
+/// it opens only for a touch inside its small capsule. Every way of
+/// stretching that capsule over a tile (stretched, scaled, touches handed
+/// over, moved under the finger, laid invisibly in front) depended on how
+/// iOS routes touches inside Apple's control, and failed in turn
+/// (02708ca … 1.0.88). A button that is the tile, opening the system
+/// popover, depends on nothing of the kind.
 ///
-/// What did not work:
-/// - stretching the picker to the tile (02708ca): its capsule stays at the
-///   trailing edge, so only taps near the chevron opened it;
-/// - scaling it about three times over the tile (c37b077): taps worked,
-///   but Apple places the bubble from the picker's frame, so it came from
-///   an oversized frame and did not open as Apple's does;
-/// - handing a tap elsewhere on the tile to the capsule (5f7e64d): the
-///   capsule ignores a touch that is not inside it.
-///
-/// So the picker keeps its own size and rests where the time is drawn,
-/// centred along the tile's bottom; when a touch lands elsewhere on the
-/// tile, the picker first moves just far enough to be under the finger.
-/// The touch is then a real tap inside Apple's capsule, and the bubble
-/// opens from the capsule at its own size, as Apple's does.
-///
-/// The picker is only given a tap it can act on. Its bubble is presented
-/// by the sheet, and the sheet presents one thing at a time: a tap while
-/// the Thời lượng menu was still on screen (presented
-/// _UIContextMenuActionsOnlyViewController) made the picker report its
-/// bubble open although none could be presented, and it then never
-/// reported it closed, so it counted itself open and ignored the next tap
-/// (debug.log, 1.0.85). So a touch that lands on the tile while the sheet
-/// presents anything but a date bubble is kept from the picker: it only
-/// closes what is open, as a tap outside a menu does. The menu cannot be
-/// closed sooner from here: dismissing it, even unanimated, left it
-/// presented for that touch (1.0.86, "after=_UIContextMenu...").
-/// A date bubble already open is left to Apple: from it, a tap on another
-/// time tile opens that one, and a tap on its own tile closes it.
-/// Touches, kept touches and the bubble opening and closing are logged
-/// ("tilePicker.*").
-final class TileFillingPickerView: UIView {
-    let picker = UIDatePicker()
-    /// Names the tile in debug.log.
+/// - The popover is the system's (`UIPopoverPresentationController`, kept
+///   a popover on iPhone), anchored to the tile.
+/// - From an open popover, a tap on another time tile closes it at once
+///   and opens that tile's: the other tiles pass touches through the
+///   popover. A tap on its own tile or anywhere else only closes it, as
+///   any popover.
+/// - A tap on a tile while a popover is still closing opens the tile's
+///   popover once the closing transition ends (its own completion, no
+///   timer).
+/// - Opening it puts away a keyboard left by a text field.
+/// - debug.log: timePopover.open / .switch / .afterClose / .close /
+///   .blocked.
+final class TimePopoverControl: UIControl {
     var name = "tile"
+    var minuteInterval = 1
+    var minimumDate: Date?
+    var maximumDate: Date?
+    /// The time shown, and the day the chosen hour and minute are set on.
+    var date = Date() {
+        didSet {
+            if let wheels = popover?.picker, wheels.date != date { wheels.date = date }
+        }
+    }
 
-    private var centerX: NSLayoutConstraint!
-    private var bottom: NSLayoutConstraint!
-    private static let restingBottom: CGFloat = -6
-    /// The touch being hit-tested, and whether it goes to the picker:
-    /// UIKit can hit-test one touch more than once.
-    private var touchTimestamp: TimeInterval = -1
-    private var touchGoesToPicker = true
-    private var loggedLayout = ""
+    private weak var popover: TimePopoverController?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        picker.preferredDatePickerStyle = .compact
-        // In front of the drawn tile but not seen: an empty mask hides the
-        // picker's drawing and nothing else; hit-testing ignores masks.
-        picker.mask = UIView()
-        picker.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(picker)
-        centerX = picker.centerXAnchor.constraint(equalTo: centerXAnchor)
-        bottom = picker.bottomAnchor.constraint(equalTo: bottomAnchor, constant: Self.restingBottom)
-        // Only if the picker reports no size of its own: a compact time picker's.
-        let width = picker.widthAnchor.constraint(equalToConstant: 80)
-        let height = picker.heightAnchor.constraint(equalToConstant: 34)
-        width.priority = .fittingSizeLevel
-        height.priority = .fittingSizeLevel
-        NSLayoutConstraint.activate([centerX, bottom, width, height])
-        picker.addTarget(self, action: #selector(bubbleOpened), for: .editingDidBegin)
-        picker.addTarget(self, action: #selector(bubbleClosed), for: .editingDidEnd)
+        backgroundColor = .clear
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        addTarget(self, action: #selector(tapped), for: .touchUpInside)
     }
 
     required init?(coder: NSCoder) { nil }
 
-    /// The bubble opens: a keyboard left open by a text field goes, as
-    /// it does when moving from typing to choosing a date or time; the
-    /// keyboard stayed over the form with the bubble.
-    @objc private func bubbleOpened() {
-        let hidKeyboard = resignTextInputForBubble()
-        UIFlowLog.record("tilePicker.open", "\(name) hidKeyboard=\(hidKeyboard)")
-    }
-
-    @objc private func bubbleClosed() {
-        UIFlowLog.record("tilePicker.close", name)
-    }
-
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        guard isUserInteractionEnabled, !isHidden, self.point(inside: point, with: event) else { return nil }
-        if let event, event.type == .touches, event.timestamp != touchTimestamp {
-            touchTimestamp = event.timestamp
-            touchGoesToPicker = clearPresentation(forTouchAt: point)
+    @objc private func tapped() {
+        guard let presenter = nearestViewController() else { return }
+        resignTextInputForBubble()
+        guard let presented = presenter.presentedViewController else {
+            present(from: presenter)
+            return
         }
-        guard touchGoesToPicker else { return self }
-        moveCapsule(under: point)
-        let inPicker = convert(point, to: picker)
-        return picker.hitTest(inPicker, with: event) ?? picker
+        guard let other = presented as? TimePopoverController else {
+            // Something else is on screen (a confirmation): leave it be.
+            UIFlowLog.record("timePopover.blocked", "\(name) presented=\(String(describing: type(of: presented)))")
+            return
+        }
+        if other.isBeingDismissed {
+            // Closing already, from a tap outside it a moment ago: open this
+            // one the moment it is gone, so that tap is not lost.
+            UIFlowLog.record("timePopover.afterClose", "\(other.sourceName) -> \(name)")
+            other.transitionCoordinator?.animate(alongsideTransition: nil) { [weak self, weak presenter] _ in
+                guard let self, let presenter, presenter.presentedViewController == nil else { return }
+                self.present(from: presenter)
+            }
+            return
+        }
+        // Another tile's popover, let through to here: close it now, then
+        // open this one, so one tap moves from tile to tile.
+        UIFlowLog.record("timePopover.switch", "\(other.sourceName) -> \(name)")
+        other.dismiss(animated: false) { [weak self, weak presenter] in
+            guard let self, let presenter else { return }
+            self.present(from: presenter)
+        }
     }
 
-    /// Whether a new touch can go to the picker: nothing but a date bubble
-    /// is presented.
-    private func clearPresentation(forTouchAt point: CGPoint) -> Bool {
-        let presented = nearestViewController()?.presentedViewController
-        let free = presented == nil || Self.isDateBubble(presented)
-        UIFlowLog.record(
-            "tilePicker.touch",
-            "\(name) at=\(Int(point.x)),\(Int(point.y)) presented=\(Self.typeName(presented)) toPicker=\(free)"
-        )
-        return free
+    private func present(from presenter: UIViewController) {
+        let controller = TimePopoverController(sourceName: name)
+        let wheels = controller.picker
+        wheels.datePickerMode = .time
+        wheels.preferredDatePickerStyle = .wheels
+        wheels.minuteInterval = minuteInterval
+        wheels.timeZone = VietnamTime.timeZone
+        wheels.calendar = VietnamTime.calendar
+        wheels.locale = VietnamTime.locale
+        wheels.minimumDate = minimumDate
+        wheels.maximumDate = maximumDate
+        wheels.date = date
+        wheels.accessibilityLabel = accessibilityLabel
+        wheels.addTarget(self, action: #selector(wheelsChanged(_:)), for: .valueChanged)
+
+        controller.modalPresentationStyle = .popover
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = self
+            popover.sourceRect = bounds
+            popover.permittedArrowDirections = [.up, .down]
+            popover.delegate = controller
+            popover.passthroughViews = otherTimeTiles()
+        }
+        self.popover = controller
+        presenter.present(controller, animated: true)
+        UIFlowLog.record("timePopover.open", name)
     }
 
-    private static func isDateBubble(_ controller: UIViewController?) -> Bool {
-        guard let controller, !controller.isBeingDismissed else { return false }
-        return typeName(controller).contains("DatePicker")
+    @objc private func wheelsChanged(_ wheels: UIDatePicker) {
+        let calendar = VietnamTime.calendar
+        let time = calendar.dateComponents([.hour, .minute], from: wheels.date)
+        let chosen = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: date) ?? date
+        guard chosen != date else { return }
+        date = chosen
+        sendActions(for: .valueChanged)
     }
 
-    private static func typeName(_ controller: UIViewController?) -> String {
-        controller.map { String(describing: type(of: $0)) } ?? "none"
+    /// The other time tiles on screen, which a tap may reach through this
+    /// tile's popover.
+    private func otherTimeTiles() -> [UIView] {
+        guard let window else { return [] }
+        var tiles: [UIView] = []
+        func collect(_ view: UIView) {
+            if let tile = view as? TimePopoverControl, tile !== self { tiles.append(tile) }
+            view.subviews.forEach(collect)
+        }
+        collect(window)
+        return tiles
     }
 
     private func nearestViewController() -> UIViewController? {
@@ -597,39 +596,44 @@ final class TileFillingPickerView: UIView {
         }
         return nil
     }
+}
 
-    /// Moves the picker from its resting place just far enough that
-    /// `point` lies inside it, with a little margin.
-    private func moveCapsule(under point: CGPoint) {
-        let size = picker.bounds.size
-        guard size.width > 0, size.height > 0 else { return }
-        let margin: CGFloat = 6
-        let resting = CGRect(
-            x: (bounds.width - size.width) / 2,
-            y: bounds.height + Self.restingBottom - size.height,
-            width: size.width,
-            height: size.height
-        )
-        func shift(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
-            if value - margin < low { return value - margin - low }
-            if value + margin > high { return value + margin - high }
-            return 0
-        }
-        let dx = shift(point.x, resting.minX, resting.maxX)
-        let dy = shift(point.y, resting.minY, resting.maxY)
-        guard centerX.constant != dx || bottom.constant != Self.restingBottom + dy else { return }
-        centerX.constant = dx
-        bottom.constant = Self.restingBottom + dy
-        layoutIfNeeded()
+/// The popover's content: Apple's time wheels at their own size.
+final class TimePopoverController: UIViewController, UIPopoverPresentationControllerDelegate {
+    let picker = UIDatePicker()
+    let sourceName: String
+
+    init(sourceName: String) {
+        self.sourceName = sourceName
+        super.init(nibName: nil, bundle: nil)
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let line = "picker=\(Int(picker.bounds.width))x\(Int(picker.bounds.height)) tile=\(Int(bounds.width))x\(Int(bounds.height))"
-        if line != loggedLayout {
-            loggedLayout = line
-            UIFlowLog.record("tilePicker.size", line)
-        }
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        picker.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(picker)
+        NSLayoutConstraint.activate([
+            picker.topAnchor.constraint(equalTo: view.topAnchor),
+            picker.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            picker.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            picker.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+        preferredContentSize = CGSize(
+            width: max(fitted.width, 240),
+            height: fitted.height > 100 ? fitted.height : 216
+        )
+    }
+
+    /// A popover on iPhone too, not a sheet.
+    func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+        .none
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        UIFlowLog.record("timePopover.close", sourceName)
     }
 }
 

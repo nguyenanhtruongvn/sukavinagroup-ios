@@ -1283,14 +1283,12 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private let typeControl = UISegmentedControl(items: ["Nội bộ", "Tiếp khách"])
     // Built once and updated in place: re-creating the picker while its
     // system overlay is open would cut the employee off mid-choice.
-    // Each tile draws its value and lets a control underneath take the tap:
-    // Apple's compact time picker under each tile (TileFillingPickerView);
-    // Apple's own time bubble opens from each.
-    private let startTileControl = TileFillingPickerView()
-    private var startTimePicker: UIDatePicker { startTileControl.picker }
+    // Each tile draws its value over a control filling it that takes every
+    // tap and opens Apple's popover with Apple's time wheels
+    // (TimePopoverControl).
+    private let startTileControl = TimePopoverControl()
     private let startValueLabel = UILabel()
-    private let durationTileControl = TileFillingPickerView()
-    private var durationPicker: UIDatePicker { durationTileControl.picker }
+    private let durationTileControl = TimePopoverControl()
     private let durationValueLabel = UILabel()
     private let expectedLabel = UILabel()
     private let countBadge = UILabel()
@@ -1604,8 +1602,9 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     private func render() {
         typeControl.selectedSegmentIndex = meetingType == "Tiếp khách" ? 1 : 0
-        if startTimePicker.date != start { startTimePicker.date = start }
+        if startTileControl.date != start { startTileControl.date = start }
         startValueLabel.text = MeetingPresentation.clock.string(from: start)
+        startTileControl.accessibilityValue = startValueLabel.text
         renderDuration()
         expectedLabel.text = "\(MeetingPresentation.clock.string(from: start)) – \(MeetingPresentation.clock.string(from: endTime))"
         renderInvitees()
@@ -1948,24 +1947,17 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         return row
     }
 
-    /// The system's compact time picker, in Vietnam time and 5-minute steps
-    /// (`MeetingBookingTime.minuteStep`).
+    /// The Bắt đầu tile opens Apple's popover with Apple's time wheels, in
+    /// Vietnam time and 5-minute steps (`MeetingBookingTime.minuteStep`), as
+    /// on iOS 18 (`TimePopoverControl`). It keeps the booking's day.
     private func configureStartTimePicker() {
         startTileControl.name = "Bắt đầu"
-        startTimePicker.datePickerMode = .time
-        startTimePicker.preferredDatePickerStyle = .compact
-        startTimePicker.minuteInterval = MeetingBookingTime.minuteStep
-        startTimePicker.timeZone = VietnamTime.timeZone
-        startTimePicker.calendar = VietnamTime.calendar
-        startTimePicker.locale = VietnamTime.locale
-        startTimePicker.date = start
-        startTimePicker.accessibilityLabel = "Bắt đầu"
-        startTimePicker.addAction(UIAction { [weak self] _ in
+        startTileControl.minuteInterval = MeetingBookingTime.minuteStep
+        startTileControl.date = start
+        startTileControl.accessibilityLabel = "Bắt đầu"
+        startTileControl.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            // Only the hour and minute, so the booking stays on its day.
-            let calendar = MeetingPresentation.calendar
-            let time = calendar.dateComponents([.hour, .minute], from: self.startTimePicker.date)
-            self.start = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: self.start) ?? self.start
+            self.start = self.startTileControl.date
             self.render()
         }, for: .valueChanged)
     }
@@ -2026,34 +2018,36 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         return tile
     }
 
-    /// The system's compact time picker read as a length of time, as on
-    /// iOS 18: "01:30" is 1 giờ 30 phút; 5-minute steps, 00:05 to 08:00
-    /// (`MeetingBookingTime.durationRange`).
+    /// The Thời lượng tile opens Apple's popover with Apple's time wheels
+    /// read as a length of time, as on iOS 18: "01:30" is 1 giờ 30 phút;
+    /// 5-minute steps, 00:05 to 08:00 (`MeetingBookingTime.durationRange`).
     private func configureDurationPicker() {
         let calendar = VietnamTime.calendar
         durationTileControl.name = "Thời lượng"
-        durationPicker.datePickerMode = .time
-        durationPicker.preferredDatePickerStyle = .compact
-        durationPicker.minuteInterval = MeetingBookingTime.minuteStep
-        durationPicker.timeZone = VietnamTime.timeZone
-        durationPicker.calendar = calendar
-        durationPicker.locale = VietnamTime.locale
-        durationPicker.minimumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.lowerBound, calendar: calendar)
-        durationPicker.maximumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.upperBound, calendar: calendar)
-        durationPicker.date = DurationClock.date(forMinutes: durationMinutes, calendar: calendar)
-        durationPicker.accessibilityLabel = "Thời lượng"
-        durationPicker.addAction(UIAction { [weak self] _ in
+        durationTileControl.minuteInterval = MeetingBookingTime.minuteStep
+        durationTileControl.minimumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.lowerBound, calendar: calendar)
+        durationTileControl.maximumDate = DurationClock.date(forMinutes: MeetingBookingTime.durationRange.upperBound, calendar: calendar)
+        durationTileControl.date = DurationClock.date(forMinutes: durationMinutes, calendar: calendar)
+        durationTileControl.accessibilityLabel = "Thời lượng"
+        durationTileControl.addAction(UIAction { [weak self] _ in
             guard let self else { return }
-            self.durationMinutes = DurationClock.minutes(from: self.durationPicker.date, step: MeetingBookingTime.minuteStep, range: MeetingBookingTime.durationRange, calendar: VietnamTime.calendar)
+            self.durationMinutes = DurationClock.minutes(
+                from: self.durationTileControl.date,
+                step: MeetingBookingTime.minuteStep,
+                range: MeetingBookingTime.durationRange,
+                calendar: VietnamTime.calendar
+            )
             self.render()
         }, for: .valueChanged)
     }
 
-    /// The Thời lượng tile's value, and its picker kept on it.
+    /// The Thời lượng tile's value, and its control kept on it.
     private func renderDuration() {
-        durationValueLabel.text = DurationClock.title(minutes: durationMinutes)
+        let title = DurationClock.title(minutes: durationMinutes)
+        durationValueLabel.text = title
+        durationTileControl.accessibilityValue = title
         let clock = DurationClock.date(forMinutes: durationMinutes, calendar: VietnamTime.calendar)
-        if durationPicker.date != clock { durationPicker.date = clock }
+        if durationTileControl.date != clock { durationTileControl.date = clock }
     }
 
     private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight? = nil, color: UIColor) -> UILabel {

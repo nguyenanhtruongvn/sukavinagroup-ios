@@ -271,17 +271,10 @@ struct MeetingBookingSheet: View {
             }
 
             // The two facts of a booking as tiles: when it starts (hh:mm) and
-            // how long it lasts. Both open Apple's compact time bubble, so
-            // one tap moves from either to the other. Thời lượng was a
-            // system menu, and a tap on Bắt đầu while it was open could only
-            // close it: the sheet presents one popup at a time, and two
-            // compact pickers hand over to each other while a menu and a
-            // picker do not (debug.log 1.0.86). Nothing is presented by the
-            // app itself.
+            // how long it lasts. Each tile is wholly a button opening Apple's
+            // popover with Apple's time wheels (TimePopoverButton); from one
+            // popover, a tap on the other tile opens that one at once.
             HStack(spacing: 10) {
-                // Apple's compact time picker lies over each tile, invisible,
-                // at its own size; every tap on the tile is handed to it
-                // (TileFillingPickerView). VoiceOver reads the picker.
                 bookingTile(
                     title: "Bắt đầu",
                     value: MeetingPresentation.clock.string(from: start),
@@ -289,14 +282,15 @@ struct MeetingBookingSheet: View {
                 )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .overlay(TileFillingTimePicker(
+                .overlay(TimePopoverButton(
                     selection: $start,
                     minuteInterval: MeetingBookingTime.minuteStep,
-                    accessibilityLabel: "Bắt đầu"
+                    accessibilityLabel: "Bắt đầu",
+                    accessibilityValue: MeetingPresentation.clock.string(from: start)
                 ))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                // Hours and minutes of the bubble are the length: 01:30 is
+                // Hours and minutes of the wheels are the length: 01:30 is
                 // 1 giờ 30 phút; 5-minute steps, 00:05 to 08:00.
                 bookingTile(
                     title: "Thời lượng",
@@ -305,7 +299,7 @@ struct MeetingBookingSheet: View {
                 )
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
-                .overlay(TileFillingTimePicker(
+                .overlay(TimePopoverButton(
                     selection: durationClock,
                     minuteInterval: MeetingBookingTime.minuteStep,
                     minimum: DurationClock.date(
@@ -316,7 +310,8 @@ struct MeetingBookingSheet: View {
                         forMinutes: MeetingBookingTime.durationRange.upperBound,
                         calendar: VietnamTime.calendar
                     ),
-                    accessibilityLabel: "Thời lượng"
+                    accessibilityLabel: "Thời lượng",
+                    accessibilityValue: DurationClock.title(minutes: durationMinutes)
                 ))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
