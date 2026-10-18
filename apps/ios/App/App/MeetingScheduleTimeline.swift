@@ -163,36 +163,63 @@ struct MeetingTimeline: View {
     }
 
     private func bookingStyle(for booking: MeetingBooking) -> MeetingTimelineBookingStyle {
-        if booking.isOwner == true {
-            // Organiser: richer green pastel, still soft on a light schedule.
-            return MeetingTimelineBookingStyle(
-                fill: Color(red: 220.0 / 255.0, green: 239.0 / 255.0, blue: 226.0 / 255.0),
-                border: Color(red: 143.0 / 255.0, green: 198.0 / 255.0, blue: 160.0 / 255.0),
-                foreground: Color(red: 46.0 / 255.0, green: 106.0 / 255.0, blue: 67.0 / 255.0),
-                meta: Color(red: 92.0 / 255.0, green: 127.0 / 255.0, blue: 104.0 / 255.0),
-                line: Color(red: 166.0 / 255.0, green: 207.0 / 255.0, blue: 178.0 / 255.0)
-            )
-        }
-
-        if booking.isMine == true {
-            // Invitee: calm blue pastel, distinct from organiser green.
-            return MeetingTimelineBookingStyle(
-                fill: Color(red: 220.0 / 255.0, green: 233.0 / 255.0, blue: 250.0 / 255.0),
-                border: Color(red: 142.0 / 255.0, green: 180.0 / 255.0, blue: 232.0 / 255.0),
-                foreground: Color(red: 49.0 / 255.0, green: 92.0 / 255.0, blue: 145.0 / 255.0),
-                meta: Color(red: 96.0 / 255.0, green: 126.0 / 255.0, blue: 167.0 / 255.0),
-                line: Color(red: 168.0 / 255.0, green: 195.0 / 255.0, blue: 232.0 / 255.0)
-            )
-        }
-
-        // Unrelated: neutral grey pastel, readable but intentionally quieter.
+        let colors = MeetingTimelinePalette.colors(for: booking)
         return MeetingTimelineBookingStyle(
-            fill: Color(red: 229.0 / 255.0, green: 231.0 / 255.0, blue: 235.0 / 255.0),
-            border: Color(red: 184.0 / 255.0, green: 190.0 / 255.0, blue: 199.0 / 255.0),
-            foreground: Color(red: 89.0 / 255.0, green: 97.0 / 255.0, blue: 109.0 / 255.0),
-            meta: Color(red: 119.0 / 255.0, green: 127.0 / 255.0, blue: 137.0 / 255.0),
-            line: Color(red: 195.0 / 255.0, green: 200.0 / 255.0, blue: 207.0 / 255.0)
+            fill: Color(uiColor: colors.fill),
+            border: Color(uiColor: colors.border),
+            foreground: Color(uiColor: colors.foreground),
+            meta: Color(uiColor: colors.meta),
+            line: Color(uiColor: colors.line)
         )
+    }
+}
+
+/// A booking's colours on the day timeline: organiser green, invitee blue,
+/// others a quieter grey. Each has a dark-appearance variant (the light
+/// pastels glared on the dark schedule). Shared by the SwiftUI timeline and
+/// the iOS 17 UIKit one.
+enum MeetingTimelinePalette {
+    struct Colors {
+        let fill: UIColor
+        let border: UIColor
+        let foreground: UIColor
+        let meta: UIColor
+        let line: UIColor
+    }
+
+    static func colors(for booking: MeetingBooking) -> Colors {
+        if booking.isOwner == true { return organiser }
+        if booking.isMine == true { return invitee }
+        return other
+    }
+
+    private static let organiser = Colors(
+        fill: adaptive((220, 239, 226), (31, 56, 40)),
+        border: adaptive((143, 198, 160), (64, 112, 80)),
+        foreground: adaptive((46, 106, 67), (163, 214, 178)),
+        meta: adaptive((92, 127, 104), (125, 170, 140)),
+        line: adaptive((166, 207, 178), (72, 122, 88))
+    )
+    private static let invitee = Colors(
+        fill: adaptive((220, 233, 250), (28, 44, 70)),
+        border: adaptive((142, 180, 232), (66, 100, 150)),
+        foreground: adaptive((49, 92, 145), (163, 195, 238)),
+        meta: adaptive((96, 126, 167), (125, 155, 195)),
+        line: adaptive((168, 195, 232), (74, 108, 160))
+    )
+    private static let other = Colors(
+        fill: adaptive((229, 231, 235), (44, 46, 51)),
+        border: adaptive((184, 190, 199), (82, 87, 95)),
+        foreground: adaptive((89, 97, 109), (196, 200, 207)),
+        meta: adaptive((119, 127, 137), (148, 153, 161)),
+        line: adaptive((195, 200, 207), (92, 97, 105))
+    )
+
+    private static func adaptive(_ light: (CGFloat, CGFloat, CGFloat), _ dark: (CGFloat, CGFloat, CGFloat)) -> UIColor {
+        UIColor { traits in
+            let value = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: value.0 / 255, green: value.1 / 255, blue: value.2 / 255, alpha: 1)
+        }
     }
 }
 
@@ -611,7 +638,11 @@ enum MeetingScheduleLayout {
         guard let start = booking.startDate, let end = booking.endDate else { return nil }
         let calendar = MeetingPresentation.calendar
         let startMinute = calendar.component(.hour, from: start) * 60 + calendar.component(.minute, from: start)
-        let endMinute = calendar.component(.hour, from: end) * 60 + calendar.component(.minute, from: end)
+        // A booking that runs past midnight fills the rest of this day; its
+        // end time of day alone (00:30) came before its start and hid it.
+        let endMinute = calendar.isDate(end, inSameDayAs: start)
+            ? calendar.component(.hour, from: end) * 60 + calendar.component(.minute, from: end)
+            : 24 * 60
         let visibleStart = max(startMinute, firstHour * 60)
         let visibleEnd = min(endMinute, (lastHour + 1) * 60)
         guard visibleEnd > visibleStart else { return nil }

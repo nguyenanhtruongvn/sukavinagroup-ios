@@ -20,6 +20,18 @@ struct RequestNotification: Codable, Identifiable, Equatable {
     let startsAt: Date? = nil
     let endsAt: Date? = nil
 }
+
+extension RequestNotification {
+    /// The organiser's "ending in 10 minutes" reminder. One rule for the list
+    /// and the detail (each had its own copy); the title check is kept for
+    /// reminders that do not carry the meeting_ending_soon type.
+    var isMeetingEndingSoon: Bool {
+        type == "meeting_ending_soon" || title.hasPrefix("Còn 10 phút")
+    }
+
+    /// Opens the meeting detail rather than a request.
+    var isMeeting: Bool { type.hasPrefix("meeting_") || isMeetingEndingSoon }
+}
 struct UpdateCount: Decodable { let count: Int }
 
 struct NotificationsView: View {
@@ -315,7 +327,7 @@ struct NotificationsView: View {
             return
         }
 
-        let isMeetingNotification = item.type.hasPrefix("meeting_") || item.title.hasPrefix("Còn 10 phút")
+        let isMeetingNotification = item.isMeeting
 
         // Meeting notifications should open immediately. Previously the sheet
         // waited for the read PATCH round-trip before appearing, which made a
@@ -459,8 +471,6 @@ struct NotificationsView: View {
         if type == "attendance_monthly_report" { return "calendar.badge.checkmark" }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
         if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
-        if type == "meeting_invite" { return "person.2.fill" }
-        if type == "meeting_reminder" { return "clock.badge.fill" }
         if type.contains("rejected") { return "xmark.circle.fill" }
         if type.contains("cancelled") { return "minus.circle.fill" }
         if type.contains("auto_approved") { return "timer.circle.fill" }
@@ -476,8 +486,6 @@ struct NotificationsView: View {
         if type == "attendance_monthly_report" { return .green }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
         if type == "request_pending" { return .orange }
-        if type == "meeting_invite" { return .blue }
-        if type == "meeting_reminder" { return .orange }
         if type.contains("rejected") { return AppTheme.red }
         if type.contains("cancelled") { return .gray }
         return .green
@@ -549,10 +557,16 @@ private struct MeetingNotificationDetail: View {
         notification.message.split(separator: "·", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
     private var deliveryDate: String {
-        notification.createdAt.formatted(.dateTime.locale(Locale(identifier: "vi_VN")).weekday(.wide).day().month(.wide).year().hour().minute())
+        // In Vietnam time (AGENTS.md), as every other date: the style used the
+        // device's time zone.
+        var style = Date.FormatStyle.dateTime.weekday(.wide).day().month(.wide).year().hour().minute()
+        style.locale = VietnamTime.locale
+        style.calendar = VietnamTime.calendar
+        style.timeZone = VietnamTime.timeZone
+        return notification.createdAt.formatted(style)
     }
     private var isEndingSoonReminder: Bool {
-        notification.type == "meeting_ending_soon" || notification.title.hasPrefix("Còn 10 phút")
+        notification.isMeetingEndingSoon
     }
     private var currentScheduleBooking: MeetingBooking? {
         guard let id = details?.id else { return nil }

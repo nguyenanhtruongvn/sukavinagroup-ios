@@ -662,15 +662,16 @@ struct MeetingRoomScheduleSheet: View {
                 Button("Đóng") { dismiss() }
             }
             .overlay(alignment: .bottomTrailing) {
+                // Apple's prominent circle button, as "Tạo đơn mới" in
+                // Requests (it was a drawn green circle with a shadow).
                 Button { presentedDestination = .booking } label: {
                     Image(systemName: "plus")
-                        .font(.title2.bold())
-                        .foregroundStyle(.white)
-                        .frame(width: 58, height: 58)
-                        .background(Color.green)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+                        .font(.title2.weight(.bold))
+                        .frame(width: 44, height: 44)
                 }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .tint(.green)
                 .accessibilityLabel("Đặt phòng \(room.name)")
                 .padding(22)
             }

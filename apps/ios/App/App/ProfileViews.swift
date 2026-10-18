@@ -27,7 +27,7 @@ struct ProfileView: View {
     @State private var showSignOutConfirmation = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
                     PortalPageTitle("Tài khoản")
@@ -187,7 +187,6 @@ struct ProfileView: View {
                 Text("Thao tác này không thể hoàn tác. Tài khoản, dữ liệu cá nhân, đơn từ, lựa chọn món và dữ liệu ứng dụng liên quan sẽ bị xóa. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.")
             }
         }
-        .navigationViewStyle(.stack)
         .sheet(isPresented: $showPasswordChange) {
             PasswordChangeView().sessionEnvironment(session)
         }
@@ -382,13 +381,16 @@ struct PasswordChangeView: View {
         return message
     }
 
+    /// The error under the form, unless it is shown under its field (the
+    /// demo account's current/reused password). A demo account's other
+    /// errors (no connection, ...) used to be shown nowhere.
     private var regularAccountError: String? {
-        guard !isDemoAccount else { return nil }
+        guard currentPasswordError == nil, reusedPasswordError == nil else { return nil }
         return session.passwordChangeError
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -445,7 +447,7 @@ struct PasswordChangeView: View {
                         VStack(spacing: 14) {
                             if isDemoAccount {
                                 NativeSecureField(title: "Mật khẩu hiện tại", text: $currentPassword)
-                                    .onChange(of: currentPassword) { _ in session.clearPasswordChangeError() }
+                                    .onChange(of: currentPassword) { _, _ in session.clearPasswordChangeError() }
                                 if attemptedSubmit && currentPassword.isEmpty {
                                     validationMessage("Vui lòng nhập mật khẩu hiện tại.")
                                 }
@@ -464,7 +466,7 @@ struct PasswordChangeView: View {
                                 }
                             }
                             NativeSecureField(title: "Mật khẩu mới, ít nhất 6 ký tự gồm chữ và số", text: $newPassword)
-                                .onChange(of: newPassword) { _ in session.clearPasswordChangeError() }
+                                .onChange(of: newPassword) { _, _ in session.clearPasswordChangeError() }
                             if let reusedPasswordError {
                                 Label(reusedPasswordError, systemImage: "exclamationmark.circle.fill")
                                     .font(.caption).foregroundColor(AppTheme.redText).frame(maxWidth: .infinity, alignment: .leading)
@@ -539,7 +541,7 @@ struct PasswordChangeView: View {
             } message: {
                 Text("Các thiết bị khác đang đăng nhập tài khoản này đã được đăng xuất; thiết bị này vẫn tiếp tục sử dụng bình thường.")
             }
-        }.navigationViewStyle(.stack)
+        }
     }
 
     private var canConfirm: Bool {

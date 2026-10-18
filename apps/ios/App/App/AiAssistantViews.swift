@@ -323,6 +323,13 @@ struct AiAssistantChatView: View {
                 .onChange(of: scrollToLatestRequest) { _, _ in
                     scrollToLatest(using: proxy)
                 }
+                // The visible chat height changes while the keyboard moves.
+                // Scroll again once it has its final frame, so the newest
+                // bubble stays above it (this used to wait a fixed 280 ms).
+                .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidChangeFrameNotification)) { _ in
+                    guard isInputFocused else { return }
+                    scrollToLatest(using: proxy)
+                }
             }
 
             inputBar
@@ -451,15 +458,6 @@ struct AiAssistantChatView: View {
 
     private func requestScrollToLatest() {
         scrollToLatestRequest += 1
-
-        // The visible chat height changes while the keyboard animates in.
-        // Scroll once more after that resize so the newest bubble stays above
-        // the keyboard instead of being hidden underneath it.
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 280_000_000)
-            guard isInputFocused else { return }
-            scrollToLatestRequest += 1
-        }
     }
 
     private func scrollToLatest(using proxy: ScrollViewProxy) {

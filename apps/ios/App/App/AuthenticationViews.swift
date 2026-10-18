@@ -33,7 +33,7 @@ struct AuthenticationView: View {
     @EnvironmentObject private var session: SessionStore
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 LinearGradient(
                     colors: [AppTheme.ink, AppTheme.loginAccent, AppTheme.ink],
@@ -75,9 +75,8 @@ struct AuthenticationView: View {
                     .padding(22)
                 }
             }
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .navigationViewStyle(.stack)
     }
 }
 
@@ -252,7 +251,7 @@ private struct ForgotPasswordView: View {
                     if !completed {
                         NativeField(title: "MSNV", text: $employeeCode, icon: "person.text.rectangle")
                             .disabled(otpSent)
-                            .onChange(of: employeeCode) { _ in formError = nil; session.clearForgotPasswordError() }
+                            .onChange(of: employeeCode) { _, _ in formError = nil; session.clearForgotPasswordError() }
 
                         if otpSent {
                             if let maskedEmail {
@@ -270,10 +269,10 @@ private struct ForgotPasswordView: View {
                                 passwordRuleMessage("Mã OTP phải gồm đủ 6 chữ số.")
                             }
                             NativeSecureField(title: "Mật khẩu mới", text: $newPassword)
-                                .onChange(of: newPassword) { _ in formError = nil; session.clearForgotPasswordError() }
+                                .onChange(of: newPassword) { _, _ in formError = nil; session.clearForgotPasswordError() }
                             if attemptedSubmit, let passwordRuleError { passwordRuleMessage(passwordRuleError) }
                             NativeSecureField(title: "Nhập lại mật khẩu mới", text: $confirmation)
-                                .onChange(of: confirmation) { _ in formError = nil; session.clearForgotPasswordError() }
+                                .onChange(of: confirmation) { _, _ in formError = nil; session.clearForgotPasswordError() }
                             if attemptedSubmit && confirmation != newPassword {
                                 passwordRuleMessage("Mật khẩu nhập lại không khớp.")
                             }

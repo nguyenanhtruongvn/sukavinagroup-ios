@@ -1077,6 +1077,11 @@ private final class LegacyMeetingTimelineView: UIView {
         nowLabel.isUserInteractionEnabled = false
         addSubview(nowLine)
         addSubview(nowLabel)
+        // Light / dark switch: the pills and connectors are redrawn in the
+        // new appearance's colours.
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: LegacyMeetingTimelineView, _: UITraitCollection) in
+            view.renderLabels()
+        }
     }
     required init?(coder: NSCoder) { nil }
 
@@ -1132,7 +1137,7 @@ private final class LegacyMeetingTimelineView: UIView {
             bookings: bookings, firstHour: Self.firstHour, lastHour: Self.lastHour, hourHeight: Self.hourHeight
         )
         for slot in slots {
-            let style = LegacyTimelineStyle(for: slot.item.booking)
+            let style = LegacyTimelineStyle(for: slot.item.booking, traits: traitCollection)
             let geometry: (left: CGFloat, width: CGFloat)
             switch slot.lane {
             case .center: geometry = ((width - centeredWidth) / 2, centeredWidth)
@@ -1229,7 +1234,8 @@ private final class LegacyMeetingTimelineView: UIView {
     }
 }
 
-/// UIKit colours of `MeetingTimeline.bookingStyle(for:)`.
+/// `MeetingTimelinePalette` resolved for the timeline's appearance: layer
+/// colours (borders, connectors) are CGColors and do not adapt by themselves.
 private struct LegacyTimelineStyle {
     let fill: UIColor
     let border: UIColor
@@ -1237,15 +1243,13 @@ private struct LegacyTimelineStyle {
     let meta: UIColor
     let line: UIColor
 
-    init(for booking: MeetingBooking) {
-        func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> UIColor { UIColor(red: r / 255, green: g / 255, blue: b / 255, alpha: 1) }
-        if booking.isOwner == true {
-            fill = rgb(220, 239, 226); border = rgb(143, 198, 160); foreground = rgb(46, 106, 67); meta = rgb(92, 127, 104); line = rgb(166, 207, 178)
-        } else if booking.isMine == true {
-            fill = rgb(220, 233, 250); border = rgb(142, 180, 232); foreground = rgb(49, 92, 145); meta = rgb(96, 126, 167); line = rgb(168, 195, 232)
-        } else {
-            fill = rgb(229, 231, 235); border = rgb(184, 190, 199); foreground = rgb(89, 97, 109); meta = rgb(119, 127, 137); line = rgb(195, 200, 207)
-        }
+    init(for booking: MeetingBooking, traits: UITraitCollection) {
+        let colors = MeetingTimelinePalette.colors(for: booking)
+        fill = colors.fill.resolvedColor(with: traits)
+        border = colors.border.resolvedColor(with: traits)
+        foreground = colors.foreground.resolvedColor(with: traits)
+        meta = colors.meta.resolvedColor(with: traits)
+        line = colors.line.resolvedColor(with: traits)
     }
 }
 

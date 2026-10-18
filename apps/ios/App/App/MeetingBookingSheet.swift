@@ -337,7 +337,7 @@ struct MeetingBookingSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(AppTheme.cardBorder, lineWidth: 1)
         }
     }
 
@@ -450,7 +450,7 @@ struct MeetingBookingSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(AppTheme.cardBorder, lineWidth: 1)
         }
     }
 
@@ -734,12 +734,13 @@ struct MeetingBookingSheet: View {
                     .font(.headline.weight(.bold))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .foregroundStyle(.white)
-            .background(canConfirmBooking ? Color.red : Color(uiColor: .systemGray3))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        // Apple's prominent button (it was a drawn red rectangle); disabled,
+        // the system greys it.
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.roundedRectangle(radius: 16))
+        .controlSize(.large)
+        .tint(.red)
         .disabled(!canConfirmBooking)
     }
 

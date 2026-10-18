@@ -22,7 +22,7 @@ struct TodayMenuView: View {
     @State private var mealSheetHeight: CGFloat = 420
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 5) {

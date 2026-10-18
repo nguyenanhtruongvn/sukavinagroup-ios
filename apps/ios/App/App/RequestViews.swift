@@ -1024,7 +1024,6 @@ struct RequestComposer: View {
     }
 
     private var submissionDates: (from: Date, to: Date) {
-        let calendar = VietnamTime.calendar
         switch kind {
         case .late, .early, .overtime:
             return scheduledRequestDates
@@ -1572,12 +1571,14 @@ struct RequestComposer: View {
                         Text(isSubmitting ? "Đang gửi…" : "Gửi đơn")
                     }
                     .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .background(canSubmit ? AppTheme.red : AppTheme.red.opacity(0.32))
-                    .foregroundStyle(canSubmit ? Color.white : Color.white.opacity(0.72))
-                    .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                    .shadow(color: canSubmit ? AppTheme.red.opacity(0.28) : .clear, radius: 16, y: 7)
+                    .frame(maxWidth: .infinity)
                 }
+                // Apple's prominent button (it was a drawn red rectangle with
+                // a shadow); disabled, the system dims it.
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 17))
+                .controlSize(.large)
+                .tint(AppTheme.red)
                 .disabled(!canSubmit)
                 // Same compact rounded frosted backing as meeting booking.
                 // Only the area around the button is blurred (iOS 17+).

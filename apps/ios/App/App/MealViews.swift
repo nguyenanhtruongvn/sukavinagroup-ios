@@ -270,22 +270,35 @@ final class MealScannerViewController: UIViewController, AVCaptureMetadataOutput
     }
 
     private func configureCamera() {
-        guard !configured,
-              let camera = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: camera),
-              captureSession.canAddInput(input) else { showCameraUnavailable(); return }
-        captureSession.addInput(input)
-        let output = AVCaptureMetadataOutput()
-        guard captureSession.canAddOutput(output) else { showCameraUnavailable(); return }
-        captureSession.addOutput(output)
-        output.setMetadataObjectsDelegate(self, queue: .main)
-        output.metadataObjectTypes = [.qr]
+        guard !configured else { return }
+        configured = true
         let preview = AVCaptureVideoPreviewLayer(session: captureSession)
         preview.videoGravity = .resizeAspectFill
         view.layer.insertSublayer(preview, at: 0)
         previewLayer = preview
-        configured = true
-        sessionQueue.async { [captureSession] in captureSession.startRunning() }
+        // Opening the camera and configuring the session block too: on the
+        // session queue with start/stop, as Apple asks, not on the main thread.
+        sessionQueue.async { [weak self, captureSession] in
+            guard let camera = AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: camera),
+                  captureSession.canAddInput(input) else {
+                DispatchQueue.main.async { self?.showCameraUnavailable() }
+                return
+            }
+            let output = AVCaptureMetadataOutput()
+            captureSession.beginConfiguration()
+            captureSession.addInput(input)
+            guard captureSession.canAddOutput(output) else {
+                captureSession.commitConfiguration()
+                DispatchQueue.main.async { self?.showCameraUnavailable() }
+                return
+            }
+            captureSession.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            output.metadataObjectTypes = [.qr]
+            captureSession.commitConfiguration()
+            captureSession.startRunning()
+        }
     }
 
     func setScanning(_ active: Bool) {

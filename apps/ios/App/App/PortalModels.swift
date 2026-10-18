@@ -645,9 +645,7 @@ final class NotificationManager {
     }
 
     func clearBadge() {
-        DispatchQueue.main.async {
-            UIApplication.shared.applicationIconBadgeNumber = 0
-        }
+        UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
     }
 }
 

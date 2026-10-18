@@ -437,7 +437,7 @@ struct DashboardView: View {
     let isActive: Bool
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     PortalPageTitle("Trang chủ")
@@ -454,10 +454,9 @@ struct DashboardView: View {
                     // A "Bảng lương" tile sat here with no destination. Placeholder
                     // features read as broken and App Review 2.1 rejects them, so
                     // it returns with the payslip feature itself.
-                    NavigationLink(
-                        destination: AttendanceStatementListView(),
-                        isActive: $showAttendanceStatement
-                    ) {
+                    Button {
+                        showAttendanceStatement = true
+                    } label: {
                         AttendanceStatementShortcut()
                     }
                     .buttonStyle(.plain)
@@ -575,8 +574,10 @@ struct DashboardView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .navigationDestination(isPresented: $showAttendanceStatement) {
+                AttendanceStatementListView()
+            }
         }
-        .navigationViewStyle(.stack)
         .sheet(isPresented: $showAiAssistant) {
             AiAssistantChatView()
                 .sessionEnvironment(session)

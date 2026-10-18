@@ -1718,7 +1718,8 @@ final class SessionStore: ObservableObject {
     }
 
     private func syncApplicationBadge() {
-        UIApplication.shared.applicationIconBadgeNumber = max(0, notificationBadgeCount)
+        // setBadgeCount replaces applicationIconBadgeNumber (deprecated in iOS 17).
+        UNUserNotificationCenter.current().setBadgeCount(max(0, notificationBadgeCount)) { _ in }
     }
 
     func dismissError() {
@@ -2112,7 +2113,16 @@ final class SessionStore: ObservableObject {
                 "auth/password-change/request", method: "POST", token: token
             )
         } catch {
-            if error.localizedDescription.localizedCaseInsensitiveContains("email") {
+            // Whether the account lacks an email is a fact of its profile, not
+            // of the error's wording (any message mentioning "email" used to
+            // count). Re-read the profile: the copy on the device may predate
+            // the change. A failed read keeps it and shows the server's text.
+            if let token = self.token,
+               let current: Profile = try? await APIClient.shared.request("auth/me", token: token) {
+                profile = current
+                SessionCache.save(profile: current)
+            }
+            if !hasLinkedEmail {
                 passwordChangeRequiresEmail = true
                 passwordChangeError = "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email."
             } else {
