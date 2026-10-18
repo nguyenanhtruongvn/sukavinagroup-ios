@@ -35,7 +35,11 @@ extension RequestNotification {
 struct UpdateCount: Decodable { let count: Int }
 
 struct NotificationsView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes InboxState (news, unread state, request notifications), not
+    // the whole session, which redrew this list on every unrelated change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var inbox: InboxState
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     // Shared with the Requests tab: one cache decode and one request per refresh.
     @EnvironmentObject private var requestStore: EmployeeRequestStore
@@ -53,11 +57,11 @@ struct NotificationsView: View {
     @State private var reloadAgain = false
     @State private var reloadAgainWithDashboard = false
     @State private var isReloadingNotifications = false
-    private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
+    private var items: [ContentItem] { inbox.articles.filter { !hiddenArticleIDs.contains($0.id) } }
     private var inboxRequestNotifications: [RequestNotification] {
         requestNotifications.filter { !session.isAttendanceNotificationType($0.type) }
     }
-    private var totalUnread: Int { session.unreadCount + inboxRequestNotifications.filter { !$0.read }.count }
+    private var totalUnread: Int { inbox.unreadCount + inboxRequestNotifications.filter { !$0.read }.count }
     private var notificationCornerRadius: CGFloat {
         if #available(iOS 26.0, *) { return 20 }
         return 0
@@ -123,7 +127,7 @@ struct NotificationsView: View {
                         .listRowInsets(notificationRowInsets)
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let isUnread = session.unreadArticleIDs.contains(item.id)
+                        let isUnread = inbox.unreadArticleIDs.contains(item.id)
                         NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -204,7 +208,7 @@ struct NotificationsView: View {
                 // a read on another device) are fetched once by SessionStore,
                 // for the badge; this list mirrors that result instead of
                 // requesting the same notifications a second time.
-                .onChange(of: session.latestRequestNotifications) { _, values in
+                .onChange(of: inbox.requestNotifications) { _, values in
                     if requestNotifications != values { requestNotifications = values }
                 }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
