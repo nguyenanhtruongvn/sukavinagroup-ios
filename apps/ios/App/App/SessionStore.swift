@@ -322,12 +322,6 @@ final class SessionStore: ObservableObject {
     @Published private(set) var isOfflineNoticeVisible = false
     @Published private(set) var isNetworkAvailable = false
 
-    /// `false` only after NWPathMonitor has confirmed an offline path. Before
-    /// its first callback callers may still make their normal initial request.
-    var hasConfirmedOfflineConnection: Bool {
-        lastPathStatus != nil && !isNetworkAvailable
-    }
-
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
@@ -823,10 +817,6 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func restore() async {
-        beginRestore()
-    }
-
     private func completeRestore(accessToken savedToken: String?, refreshToken savedRefreshToken: String?, attemptID: UUID) {
         guard activeRestoreAttempt == attemptID else { return }
         activeRestoreAttempt = nil
@@ -904,15 +894,6 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// Lets the native UIKit host recover from a restore task that never
-    /// resumes on an older OS. Credentials stay in Keychain so a subsequent
-    /// normal restore or sign-in can still use them.
-    func abandonRestore() {
-        guard state == .restoring else { return }
-        activeRestoreAttempt = nil
-        state = .signedOut
-    }
-
     func appBecameActive() {
         guard state == .signedIn else { return }
         // Reopen the realtime stream closed when the app went to background.
@@ -972,8 +953,7 @@ final class SessionStore: ObservableObject {
             let response: LoginResponse = try await APIClient.shared.request(
                 "auth/login",
                 method: "POST",
-                body: LoginBody(loginId: normalizedLoginId, password: password),
-                allowTransportFallback: true
+                body: LoginBody(loginId: normalizedLoginId, password: password)
             )
             applySession(response)
 
@@ -1117,26 +1097,6 @@ final class SessionStore: ObservableObject {
             let value: TodayMenu = try await APIClient.shared.request(
                 "me/menu/selection",
                 method: "DELETE",
-                token: token
-            )
-            todayMenu = value
-            todayMenuLoadedAt = Date()
-            saveTodayMenuCache(value)
-        } catch {
-            present(error)
-        }
-    }
-
-    func receiveMealSelection() async {
-        guard let token else { return }
-        todayMenuRefreshTask?.cancel()
-        todayMenuRefreshTask = nil
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            let value: TodayMenu = try await APIClient.shared.request(
-                "me/menu/selection/received",
-                method: "PATCH",
                 token: token
             )
             todayMenu = value

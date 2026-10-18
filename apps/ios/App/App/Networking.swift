@@ -193,8 +193,7 @@ final class APIClient {
         method: String = "GET",
         token: String? = nil,
         body: Body? = nil,
-        allowSessionRefresh: Bool = true,
-        allowTransportFallback: Bool = false
+        allowSessionRefresh: Bool = true
     ) async throws -> Response {
         guard let baseURL, let url = URL(string: path, relativeTo: baseURL) else {
             throw NetworkError.invalidResponse
@@ -330,8 +329,7 @@ final class APIClient {
                     method: method,
                     token: refreshed.accessToken,
                     body: body,
-                    allowSessionRefresh: false,
-                    allowTransportFallback: allowTransportFallback
+                    allowSessionRefresh: false
                 )
             }
             if token != nil && http.statusCode == 401 {
@@ -370,7 +368,7 @@ final class APIClient {
             } catch let error as URLError where error.code == .cancelled {
                 // -999 is also emitted by CFNetwork during some interface
                 // handoffs. Only treat it as task cancellation when Swift
-                // actually cancelled the task; otherwise let fallback recover.
+                // actually cancelled the task; otherwise let the retry below handle it.
                 if Task.isCancelled {
                     ConnectionDiagnostics.record("API \(hostRole) task cancelled: path=\(path)")
                     throw CancellationError()

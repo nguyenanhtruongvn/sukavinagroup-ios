@@ -644,20 +644,6 @@ final class NotificationManager {
         }
     }
 
-    func notifyAttendance(isCheckIn: Bool, time: String) {
-        let action = isCheckIn ? "vào" : "ra"
-        let content = UNMutableNotificationContent()
-        content.title = "Chấm công \(action) thành công"
-        content.body = "Giờ \(action) đã được ghi nhận lúc \(time)."
-        content.sound = .default
-        let request = UNNotificationRequest(
-            identifier: "attendance-\(UUID().uuidString)",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
-    }
-
     func clearBadge() {
         DispatchQueue.main.async {
             UIApplication.shared.applicationIconBadgeNumber = 0
@@ -817,15 +803,6 @@ struct ForgotPasswordRequestResponse: Decodable {
     let maskedEmail: String?
     let expiresInMinutes: Int
 }
-struct RegisterBody: Encodable {
-    let employeeCode: String
-    let fullName: String
-    let phoneNumber: String?
-    let gmailEmail: String
-    let password: String
-}
-struct VerifyBody: Encodable { let employeeCode: String; let gmailEmail: String; let code: String }
-struct ResendBody: Encodable { let employeeCode: String; let gmailEmail: String }
 struct DeleteAccountBody: Encodable { let confirmation: String }
 struct PasswordChangeConfirmBody: Encodable { let code: String; let currentPassword: String?; let newPassword: String }
 struct MessageResponse: Decodable { let message: String }
@@ -833,10 +810,4 @@ struct PasswordChangeRequestResponse: Decodable {
     let message: String
     let email: String
     let expiresInMinutes: Int
-}
-struct RegistrationResponse: Decodable {
-    let id: String
-    let employeeCode: String
-    let message: String
-    let requiresVerification: Bool
 }

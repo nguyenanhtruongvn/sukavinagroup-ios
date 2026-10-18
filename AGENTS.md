@@ -104,7 +104,6 @@ Important behavior:
 - `APIClient.shared` is the main JSON API client.
 - Primary API base URL is `https://sukavinagroup.net/api/`.
 - GET/HEAD requests can retry selected transient network failures.
-- A fallback host exists for retryable reads.
 - Authenticated requests can refresh the session after HTTP 401.
 - Access and refresh tokens are stored in Keychain.
 - Biometric refresh credentials use a separate Keychain item protected by `SecAccessControl`.
@@ -134,7 +133,6 @@ Owns authentication UI and related flows:
 
 - sign in
 - forgot password
-- verification/registration support
 - root signed-in/signed-out SwiftUI switching helpers
 
 ### Employee portal views

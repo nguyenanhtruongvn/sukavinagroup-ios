@@ -138,25 +138,24 @@ struct TodayMenuView: View {
             .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
-                let receiving = choice == "received"
                 let title = choice == "water" ? "Món nước" : "Món chay"
                 let detail = choice == "water"
                     ? (menuStore.todayMenu?.day.featured ?? "...")
                     : [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
                 VStack(spacing: 18) {
-                    Image(systemName: cancelling ? "xmark.circle.fill" : (receiving ? "checkmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill")))
+                    Image(systemName: cancelling ? "xmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill"))
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(cancelling ? .red : (receiving ? .green : (choice == "water" ? .cyan : .green)))
+                        .foregroundColor(cancelling ? .red : (choice == "water" ? .cyan : .green))
                         .frame(width: 64, height: 64)
                         .background((cancelling ? Color.red : (choice == "water" ? Color.cyan : Color.green)).opacity(0.13))
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                     VStack(spacing: 7) {
-                        Text(cancelling ? "Hủy lựa chọn hôm nay?" : (receiving ? "Bạn đã nhận món?" : "Xác nhận \(title)"))
+                        Text(cancelling ? "Hủy lựa chọn hôm nay?" : "Xác nhận \(title)")
                             .font(.title2.bold())
-                        Text(cancelling ? "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." : (receiving ? "Xác nhận sau khi bạn đã nhận đúng phần ăn đã đặt." : "Kiểm tra món trước khi xác nhận đặt."))
+                        Text(cancelling ? "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." : "Kiểm tra món trước khi xác nhận đặt.")
                             .font(.subheadline).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
                     }
-                    if !cancelling && !receiving {
+                    if !cancelling {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(title.uppercased()).font(.caption.bold()).tracking(1).foregroundColor(AppTheme.muted)
                             Text(detail.isEmpty ? "..." : detail).font(.headline)
@@ -168,13 +167,12 @@ struct TodayMenuView: View {
                         pendingChoice = nil
                         Task {
                             if cancelling { await session.cancelMealSelection() }
-                            else if receiving { await session.receiveMealSelection() }
                             else { await session.selectMeal(choice) }
                         }
                     } label: {
-                        Text(cancelling ? "Xác nhận hủy" : (receiving ? "Xác nhận đã nhận" : "Xác nhận đặt món"))
+                        Text(cancelling ? "Xác nhận hủy" : "Xác nhận đặt món")
                             .font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 15)
-                            .background(cancelling ? Color.red : (receiving ? Color.green : AppTheme.red)).clipShape(RoundedRectangle(cornerRadius: 16))
+                            .background(cancelling ? Color.red : AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     Button("Quay lại") { pendingChoice = nil }
                         .font(.headline).foregroundColor(AppTheme.muted).padding(.vertical, 5)
@@ -199,7 +197,6 @@ struct TodayMenuView: View {
                 .presentationContentInteraction(.resizes)
                 .presentationDragIndicator(.visible)
                 .attachedMealSheetCorners()
-                .solidMealSheetBackground()
             }
         }
     }
@@ -283,11 +280,6 @@ extension View {
         } else {
             presentationCornerRadius(28)
         }
-    }
-
-    @ViewBuilder
-    func solidMealSheetBackground() -> some View {
-        self
     }
 
     @ViewBuilder
