@@ -12,7 +12,10 @@ import WebKit
 import UniformTypeIdentifiers
 
 struct TodayMenuView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes only `isWorking` (below), not every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @State private var isSessionWorking = false
     @EnvironmentObject private var menuStore: MenuStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var pendingChoice: String?
@@ -131,6 +134,7 @@ struct TodayMenuView: View {
             .task {
                 await session.refreshTodayMenu()
             }
+            .onReceive(session.$isWorking) { isSessionWorking = $0 }
             .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
@@ -251,7 +255,7 @@ struct TodayMenuView: View {
             .shadow(color: Color.black.opacity(selected ? 0.05 : 0.03), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
-        .disabled(session.isWorking || !available)
+        .disabled(isSessionWorking || !available)
         .opacity(available ? 1 : 0.58)
     }
 }

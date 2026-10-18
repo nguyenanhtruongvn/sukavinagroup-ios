@@ -91,6 +91,8 @@ struct PreloadedAttendanceDayCell: View {
         let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
         let hasForgottenPunch = statuses.contains { ["missing_checkin", "missing_checkout", "incomplete"].contains($0) }
         let dayNumber = Int(day.date.suffix(2)) ?? 0
+        // Once per cell: detail, split shifts and the label all need it.
+        let metrics = AttendanceMetrics.workMetrics(day, month: month)
 
         return VStack(spacing: 2) {
             // Keep the date/detail blocks stable while distributing the spare
@@ -103,7 +105,8 @@ struct PreloadedAttendanceDayCell: View {
                 note: note,
                 isHoliday: isHoliday,
                 hasCompletePunchPair: hasCompletePunchPair,
-                hasForgottenPunch: hasForgottenPunch
+                hasForgottenPunch: hasForgottenPunch,
+                metrics: metrics
             )
             Spacer(minLength: 0)
         }
@@ -112,16 +115,16 @@ struct PreloadedAttendanceDayCell: View {
         .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch))
+        .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch, metrics: metrics))
     }
 
     private func detail(
         note: String?,
         isHoliday: Bool,
         hasCompletePunchPair: Bool,
-        hasForgottenPunch: Bool
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
     ) -> AnyView {
-        let metrics = AttendanceMetrics.workMetrics(day, month: month)
         if let note {
             return AnyView(VStack(spacing: 0) {
                 Text(note)
@@ -186,13 +189,15 @@ struct PreloadedAttendanceDayCell: View {
         note: String?,
         isHoliday: Bool,
         hasCompletePunchPair: Bool,
-        hasForgottenPunch: Bool
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
     ) -> AnyView {
         let dayShift = detail(
             note: note,
             isHoliday: isHoliday,
             hasCompletePunchPair: hasCompletePunchPair,
-            hasForgottenPunch: hasForgottenPunch
+            hasForgottenPunch: hasForgottenPunch,
+            metrics: metrics
         )
         .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
         guard let night = day.nightShift else { return AnyView(dayShift) }
@@ -206,7 +211,8 @@ struct PreloadedAttendanceDayCell: View {
             note: note,
             isHoliday: isHoliday,
             hasCompletePunchPair: hasCompletePunchPair,
-            hasForgottenPunch: hasForgottenPunch
+            hasForgottenPunch: hasForgottenPunch,
+            metrics: metrics
         )
     }
 
@@ -226,9 +232,9 @@ struct PreloadedAttendanceDayCell: View {
         note: String?,
         isHoliday: Bool,
         hasCompletePunchPair: Bool,
-        hasForgottenPunch: Bool
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
     ) -> AnyView {
-        let metrics = AttendanceMetrics.workMetrics(day, month: month)
         let muted = Color.primary.opacity(0.72)
         let compact = !showWorkMetrics && note == nil
         var dayLines: [SplitLine] = []
@@ -374,11 +380,13 @@ struct PreloadedAttendanceDayCell: View {
         note: String?,
         statuses: [String],
         hasCompletePunchPair: Bool,
-        hasForgottenPunch: Bool
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
     ) -> String {
         let dayLabel = dayAccessibilityLabel(
             for: dayNumber, note: note, statuses: statuses,
-            hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch
+            hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch,
+            metrics: metrics
         )
         guard let night = day.nightShift else { return dayLabel }
         return dayLabel + ". Ca đêm \(AttendanceMetrics.workFactorText(night.workdays)) công, "
@@ -390,11 +398,12 @@ struct PreloadedAttendanceDayCell: View {
         note: String?,
         statuses: [String],
         hasCompletePunchPair: Bool,
-        hasForgottenPunch: Bool
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
     ) -> String {
         if let note {
             let overtime = hasCompletePunchPair && statuses.contains("holiday") && showWorkMetrics
-                ? AttendanceMetrics.workMetrics(day, month: month).overtimeHours : 0
+                ? metrics.overtimeHours : 0
             return "Ngày \(dayNumber). Mã công \(note)" + (overtime > 0
                 ? ". Tăng ca \(AttendanceMetrics.hourText(overtime)) giờ" : "")
         }
@@ -402,7 +411,6 @@ struct PreloadedAttendanceDayCell: View {
             return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
         }
         if hasCompletePunchPair {
-            let metrics = AttendanceMetrics.workMetrics(day, month: month)
             return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
         }
         if hasForgottenPunch {

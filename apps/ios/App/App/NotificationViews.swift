@@ -764,7 +764,16 @@ struct ArticleDetailView: View {
             .padding(22)
             .padding(.bottom, 90)
         }
-        .task(id: item.id) { blocks = item.parseArticleBlocks() }
+        .task(id: item.id) {
+            // Up to 750k characters of HTML through regular expressions: off
+            // the main thread, so opening a long article does not stall.
+            let body = item.body
+            let parsed = await Task.detached(priority: .userInitiated) {
+                HTMLArticleParser.parse(body)
+            }.value
+            guard !Task.isCancelled else { return }
+            blocks = parsed
+        }
         .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)

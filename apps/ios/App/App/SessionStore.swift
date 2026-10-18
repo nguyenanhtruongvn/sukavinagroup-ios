@@ -777,12 +777,16 @@ final class SessionStore: ObservableObject {
         return mergedRequestNotifications(cached.value)
     }
 
-    private func saveRequestNotificationsCache(_ values: [RequestNotification]) {
+    /// Returns false when there is no account to save for yet.
+    private func saveRequestNotificationsCache(_ values: [RequestNotification]) -> Bool {
         let inboxValues = values.filter { !isAttendanceNotificationType($0.type) }
         guard let employeeCode = cacheEmployeeCode,
-              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: inboxValues)) else { return }
+              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: inboxValues)) else { return false }
         AccountDocumentStore.shared.set(data, forKey: requestNotificationsCachePrefix + employeeCode)
+        return true
     }
+    /// The list last written to the cache (nil: unknown, write the next one).
+    private var savedRequestNotifications: [RequestNotification]?
 
     /// Starts restoration directly from the UIKit lifecycle. This deliberately
     /// avoids a first Swift Concurrency task at launch on iOS 17, where that
@@ -1415,6 +1419,7 @@ final class SessionStore: ObservableObject {
         todayMenuRefreshTask = nil
         todayMenuLoadedAt = nil
         latestRequestNotifications = []
+        savedRequestNotifications = nil
         requestNotificationsTask?.cancel()
         requestNotificationsTask = nil
         attendanceMonthTasks.values.forEach { $0.cancel() }
@@ -1689,8 +1694,12 @@ final class SessionStore: ObservableObject {
 
     func updateRequestUnreadCount(_ values: [RequestNotification]) {
         let inboxValues = mergedRequestNotifications(values)
-        latestRequestNotifications = inboxValues
-        saveRequestNotificationsCache(inboxValues)
+        // Every load and read mark lands here: publish and rewrite the cache
+        // only when the list changed.
+        if latestRequestNotifications != inboxValues { latestRequestNotifications = inboxValues }
+        if savedRequestNotifications != inboxValues, saveRequestNotificationsCache(inboxValues) {
+            savedRequestNotifications = inboxValues
+        }
         requestUnreadCount = inboxValues.filter { !$0.read }.count
         let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
         let acknowledged = UserDefaults.standard.stringArray(forKey: acknowledgedNotificationBadgePrefix + employeeCode)

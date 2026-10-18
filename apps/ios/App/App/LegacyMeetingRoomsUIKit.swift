@@ -267,6 +267,7 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
     /// Fires at the next moment a room's status can change (a meeting start
     /// or end, or midnight), not every minute.
     private var statusTimer: Timer?
+    private var needsReload = false
     private var isVisible = false
     private var rooms: [MeetingRoom] { session.meetings.rooms }
 
@@ -346,7 +347,7 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
         session.meetings.$rooms
             .combineLatest(session.meetings.$bookingsByRoom, session.meetings.$scheduleLoaded, session.meetings.$scheduleError)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _, _, _, _ in self?.reload() }
+            .sink { [weak self] _, _, _, _ in self?.setNeedsReload() }
             .store(in: &cancellables)
         updateDayButtons()
         // Midnight, a clock change and returning to the app: like
@@ -407,6 +408,19 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
         let selected = day
         Task { await session.refreshMeetingSchedule(date: selected) }
         reload()
+    }
+
+    /// One schedule refresh sets rooms, bookings and the loaded flag in a
+    /// row; each reached the sink and reloaded the whole table. Changes in
+    /// the same run-loop turn now share one reload.
+    private func setNeedsReload() {
+        guard !needsReload else { return }
+        needsReload = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.needsReload = false
+            self.reload()
+        }
     }
 
     private func reload() {
@@ -2304,7 +2318,7 @@ private final class LegacyMeetingDetailController: UIViewController {
             content.trailingAnchor.constraint(equalTo: scroll.frameLayoutGuide.trailingAnchor, constant: -20),
         ])
         details = session.cachedMeetingBookingDetails(id: meeting.id)
-        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in self?.render() }
+        cancellable = session.meetings.$bookings.receive(on: RunLoop.main).sink { [weak self] _ in self?.renderIfBookingChanged() }
         render()
         Task { [weak self] in
             guard let self else { return }
@@ -2336,7 +2350,26 @@ private final class LegacyMeetingDetailController: UIViewController {
 
     // MARK: Rendering
 
+    /// What this screen shows from the schedule: this booking and the next
+    /// one in the room (the extension limit).
+    private var bookingState: String {
+        let next = nextBooking
+        return [
+            current.startsAt, current.endsAt, current.status, current.title, "\(current.attendeeCount)",
+            next?.id ?? "", next?.startsAt ?? "", next?.title ?? "",
+        ].joined(separator: "|")
+    }
+    private var renderedBookingState: String?
+
+    /// Every schedule refresh publishes all bookings; rebuilding the screen
+    /// for an unrelated change also rebuilt the stepper under the finger.
+    private func renderIfBookingChanged() {
+        guard bookingState != renderedBookingState else { return }
+        render()
+    }
+
     private func render() {
+        renderedBookingState = bookingState
         scheduleStatusChange()
         // A booking added meanwhile can lower the extension limit.
         extensionMinutes = min(extensionMinutes, max(MeetingExtension.step, maximumExtensionMinutes))

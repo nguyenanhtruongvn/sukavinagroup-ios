@@ -445,14 +445,24 @@ private enum MeetingLiveActivityAction {
 /// alive, then validate the activity's *current* end time before closing so an
 /// earlier timer cannot end a meeting that was subsequently extended.
 enum MeetingLiveActivityExpiry {
+    /// One pending close per booking: every update (extension, refresh)
+    /// used to add another sleeping task for the same activity.
+    private static var pending: [String: Task<Void, Never>] = [:]
+    private static let lock = NSLock()
+
     static func schedule(bookingID: String, endsAt: Date) {
         let delay = max(0, endsAt.timeIntervalSinceNow)
-        Task {
+        let task = Task {
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
+            guard !Task.isCancelled else { return }
             await endIfExpired(bookingID: bookingID)
         }
+        lock.lock()
+        let previous = pending.updateValue(task, forKey: bookingID)
+        lock.unlock()
+        previous?.cancel()
     }
 
     static func removeExpiredActivities() {

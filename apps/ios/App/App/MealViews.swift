@@ -133,7 +133,10 @@ struct MealQRCodeAccessCard: View {
 }
 
 struct CanteenScannerView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods; the root is rebuilt when the profile
+    // changes, so this view need not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @State private var scanning = true
     @State private var result: MealScanResponse?
 

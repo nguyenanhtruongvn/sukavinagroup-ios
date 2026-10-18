@@ -12,6 +12,18 @@ enum MeetingLiveActivityManager {
               let startsAt = date(userInfo["starts_at"] as? String),
               endsAt > Date() else { return }
 
+        // iOS 17.2+ receives the same warning through ActivityKit
+        // Push-to-Start. Creating another Activity from the ordinary APNs
+        // reminder races that remote start and produces two lock-screen cards
+        // for the same booking. On these systems the ordinary notification is
+        // data/UI refresh only; ActivityKit owns creation.
+        if #available(iOS 17.2, *) {
+            Task {
+                await removeDuplicateActivities(for: bookingID)
+            }
+            return
+        }
+
         let attributes = MeetingLiveActivityAttributes(
             bookingID: bookingID,
             title: nonEmpty(userInfo["meeting_title"] as? String) ?? "Cuộc họp",
@@ -25,18 +37,6 @@ enum MeetingLiveActivityManager {
             extensionMinutes: 0,
             isChoosingExtension: false
         )
-
-        // iOS 17.2+ receives the same warning through ActivityKit
-        // Push-to-Start. Creating another Activity from the ordinary APNs
-        // reminder races that remote start and produces two lock-screen cards
-        // for the same booking. On these systems the ordinary notification is
-        // data/UI refresh only; ActivityKit owns creation.
-        if #available(iOS 17.2, *) {
-            Task {
-                await removeDuplicateActivities(for: bookingID)
-            }
-            return
-        }
 
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
@@ -197,6 +197,9 @@ enum LiveActivityTokenLedger {
 private enum MeetingLiveActivityPushRegistration {
     private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
     private static var observedActivityIDs = Set<String>()
+    /// observe(_:) runs from the main thread and from ActivityKit's update
+    /// stream; the set is shared.
+    private static let observedLock = NSLock()
 
     static func observe(_ activity: Activity<MeetingLiveActivityAttributes>) {
         // Re-upload the current token whenever lifecycle/session restoration
@@ -209,7 +212,10 @@ private enum MeetingLiveActivityPushRegistration {
         }
 
         // Only the long-lived async stream needs de-duplication.
-        guard observedActivityIDs.insert(activity.id).inserted else { return }
+        observedLock.lock()
+        let isNew = observedActivityIDs.insert(activity.id).inserted
+        observedLock.unlock()
+        guard isNew else { return }
         Task {
             for await token in activity.pushTokenUpdates {
                 await upload(token: token, bookingID: activity.attributes.bookingID)

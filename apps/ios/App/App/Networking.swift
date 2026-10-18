@@ -285,7 +285,11 @@ final class APIClient {
                   let revalidationKey,
                   let etag = http.value(forHTTPHeaderField: "ETag"), !etag.isEmpty {
             AccountDocumentStore.revalidation.set(RevalidationEntry(etag: etag, body: data).stored, forKey: revalidationKey)
-            AccountDocumentStore.revalidation.trim(prefix: "revalidation-", keeping: Self.revalidationLimit)
+            // Only a new URL adds a document; replacing one never needs the
+            // directory listing that trimming does.
+            if revalidation == nil {
+                AccountDocumentStore.revalidation.trim(prefix: "revalidation-", keeping: Self.revalidationLimit)
+            }
         }
         guard (200..<300).contains(status) else {
             if token == nil && path == "auth/login" && (http.statusCode == 401 || http.statusCode == 403) {

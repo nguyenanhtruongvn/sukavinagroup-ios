@@ -173,8 +173,10 @@ final class EmployeeRequestStore: ObservableObject {
         let approvals: [EmployeeRequest]
     }
 
-    @Published private(set) var requests: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
-    @Published private(set) var approvals: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
+    // Every change of these two lists ends with one rebuildIndex() call
+    // (a didSet on each rebuilt it two or three times per change).
+    @Published private(set) var requests: [EmployeeRequest] = []
+    @Published private(set) var approvals: [EmployeeRequest] = []
     /// Derived once per change of the lists, not on every redraw of the
     /// screens that show them (they redraw far more often than data changes).
     private var byID: [String: EmployeeRequest] = [:]
@@ -242,6 +244,7 @@ final class EmployeeRequestStore: ObservableObject {
         // makes an old copy revalidate at once.
         requests = cached.requests
         approvals = cached.approvals
+        rebuildIndex()
         lastLoadedAt = cached.savedAt
     }
 
@@ -253,6 +256,7 @@ final class EmployeeRequestStore: ObservableObject {
         rerunRequested = false
         requests = []
         approvals = []
+        rebuildIndex()
         message = nil
         cacheEmployeeCode = nil
         lastLoadedAt = nil
@@ -307,6 +311,7 @@ final class EmployeeRequestStore: ObservableObject {
                 guard !Task.isCancelled else { return }
                 self.requests = loadedRequests
                 self.approvals = loadedApprovals
+                self.rebuildIndex()
                 self.lastLoadedAt = Date()
                 self.saveCache()
             } catch is CancellationError {
@@ -354,6 +359,7 @@ final class EmployeeRequestStore: ObservableObject {
             )
             requests.removeAll { $0.id == created.id }
             requests.insert(created, at: 0)
+            rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
@@ -381,6 +387,7 @@ final class EmployeeRequestStore: ObservableObject {
                 requests.insert(cancelled, at: 0)
             }
             approvals.removeAll { $0.id == id }
+            rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
@@ -411,6 +418,7 @@ final class EmployeeRequestStore: ObservableObject {
             } else {
                 approvals.insert(decided, at: 0)
             }
+            rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
@@ -877,7 +885,10 @@ struct RequestComposer: View {
     private static let durationStep = 5
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods and reads the shift times once: the form
+    // must not redraw (while typing) on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var kind = EmployeeRequestKind.leave
     @State private var from = Date()

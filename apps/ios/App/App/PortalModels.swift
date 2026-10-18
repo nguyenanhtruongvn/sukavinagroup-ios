@@ -381,10 +381,6 @@ struct ContentItem: Codable, Identifiable {
         let text = body.safeHTMLText
         preview = text.count > 145 ? String(text.prefix(145)) + "…" : text
     }
-
-    /// The article body as display blocks. Parses the HTML on each call;
-    /// keep the result (ArticleDetailView parses once per article).
-    func parseArticleBlocks() -> [ArticleBlock] { HTMLArticleParser.parse(body) }
 }
 
 struct MenuDay: Codable {
@@ -530,6 +526,88 @@ enum HTMLArticleParser {
         if value.hasPrefix("//") { return URL(string: "https:" + value) }
         if let absolute = URL(string: value), absolute.scheme != nil { return absolute }
         return URL(string: value, relativeTo: URL(string: "https://sukavinagroup.net"))?.absoluteURL
+    }
+}
+
+/// Plain text from article HTML, for the parser's fallback (no block tags).
+extension String {
+    var safeHTMLText: String {
+        let maximumCharacters = 750_000
+        var output = String()
+        output.reserveCapacity(Swift.min(count, maximumCharacters))
+        var tag = String()
+        var isInsideTag = false
+        var written = 0
+
+        for character in self {
+            if written >= maximumCharacters {
+                output.append("\n\n[Nội dung đã được rút gọn để bảo đảm ứng dụng hoạt động ổn định.]")
+                break
+            }
+            if character == "<" {
+                isInsideTag = true
+                tag.removeAll(keepingCapacity: true)
+                continue
+            }
+            if isInsideTag {
+                if character == ">" {
+                    isInsideTag = false
+                    let name = tag.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                    if name.hasPrefix("br") || name.hasPrefix("/p") || name.hasPrefix("/div") ||
+                        name.hasPrefix("/li") || name.hasPrefix("/h") || name.hasPrefix("hr") {
+                        if output.last != "\n" { output.append("\n") }
+                    } else if name.hasPrefix("/td") || name.hasPrefix("/th") {
+                        output.append(" | ")
+                    } else if name.hasPrefix("li") {
+                        if output.last != "\n" { output.append("\n") }
+                        output.append("• ")
+                    }
+                } else if tag.count < 80 {
+                    tag.append(character)
+                }
+                continue
+            }
+            output.append(character)
+            written += 1
+        }
+
+        let decoded = output
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        var lines: [String] = []
+        var previousWasEmpty = false
+        for rawLine in decoded.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty {
+                if !previousWasEmpty && !lines.isEmpty { lines.append("") }
+                previousWasEmpty = true
+            } else {
+                lines.append(line)
+                previousWasEmpty = false
+            }
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var readingChunks: [String] {
+        let maximumChunkLength = 1_800
+        var chunks: [String] = []
+        for paragraph in components(separatedBy: "\n\n") where !paragraph.isEmpty {
+            var remainder = paragraph[...]
+            while remainder.count > maximumChunkLength {
+                let tentativeEnd = remainder.index(remainder.startIndex, offsetBy: maximumChunkLength)
+                let split = remainder[..<tentativeEnd].lastIndex(of: " ") ?? tentativeEnd
+                chunks.append(String(remainder[..<split]))
+                remainder = remainder[split...].drop(while: { $0 == " " })
+            }
+            if !remainder.isEmpty { chunks.append(String(remainder)) }
+        }
+        return chunks.isEmpty ? [self] : chunks
     }
 }
 

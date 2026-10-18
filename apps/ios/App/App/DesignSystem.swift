@@ -84,6 +84,28 @@ enum AppTheme {
     /// background in the current appearance. Pass `chipAlpha` when the text
     /// sits on a pill tinted with the same colour. Mirrors Android `asText()`.
     static func text(_ base: Color, chipAlpha: Double = 0) -> Color {
+        // Views call this in their bodies on every redraw: build each
+        // adaptive colour once (it still resolves per appearance).
+        let key = TextColorKey(base: base, chipAlpha: chipAlpha)
+        textColorLock.lock()
+        defer { textColorLock.unlock() }
+        if let cached = textColors[key] { return cached }
+        let color = makeTextColor(base, chipAlpha: chipAlpha)
+        // The app uses a handful of bases; a colour that only compares equal
+        // to itself must not grow the cache without bound.
+        if textColors.count >= 64 { textColors.removeAll() }
+        textColors[key] = color
+        return color
+    }
+
+    private struct TextColorKey: Hashable {
+        let base: Color
+        let chipAlpha: Double
+    }
+    private static let textColorLock = NSLock()
+    private static var textColors: [TextColorKey: Color] = [:]
+
+    private static func makeTextColor(_ base: Color, chipAlpha: Double) -> Color {
         let baseColor = UIColor(base), cardColor = UIColor(card), inkColor = UIColor(ink)
         return Color(UIColor { traits in
             let hue = SRGB(baseColor.resolvedColor(with: traits))

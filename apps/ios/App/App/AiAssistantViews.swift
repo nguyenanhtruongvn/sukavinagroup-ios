@@ -24,18 +24,24 @@ struct AiAssistantOrbView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     var size: CGFloat = 64
+    /// On screen. On another tab or under a pushed screen the timeline stops
+    /// instead of redrawing 30 times a second.
+    @State private var isVisible = false
 
     var body: some View {
         ZStack {
             sphere
             // Only the moving layers are redrawn each frame. The timeline
-            // stops with Reduce Motion and whenever the app is not active
-            // (scenePhase is fed by ScenePhaseBridge in AppDelegate).
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion || scenePhase != .active)) { timeline in
+            // stops with Reduce Motion, while the orb is off screen and
+            // whenever the app is not active (scenePhase is fed by
+            // ScenePhaseBridge in AppDelegate).
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion || !isVisible || scenePhase != .active)) { timeline in
                 motionLayers(seconds: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate)
             }
         }
         .frame(width: size, height: size)
+        .onAppear { isVisible = true }
+        .onDisappear { isVisible = false }
         .accessibilityHidden(true)
     }
 
@@ -240,7 +246,10 @@ struct AiAssistantInputField: UIViewRepresentable {
 }
 
 struct AiAssistantChatView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes only the assistant setting (below), not every session change:
+    // the conversation redrew on each unrelated update.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @Environment(\.dismiss) private var dismiss
 
     @State private var messages: [AiAssistantMessage] = []
@@ -324,7 +333,8 @@ struct AiAssistantChatView: View {
         }
         .background(AppTheme.ink.ignoresSafeArea())
         .task { await loadHistoryIfNeeded() }
-        .onChange(of: session.aiAssistantMobileEnabled) { _, enabled in
+        // Close when Admin turns the assistant off.
+        .onReceive(session.$aiAssistantMobileEnabled) { enabled in
             if !enabled { dismiss() }
         }
         .interactiveDismissDisabled(isSending)
