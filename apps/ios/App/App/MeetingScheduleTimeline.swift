@@ -109,10 +109,12 @@ struct MeetingTimeline: View {
                 if let nowOffset = MeetingScheduleLayout.currentOffset(
                     day: date, now: Date(), firstHour: firstHour, lastHour: lastHour, hourHeight: hourHeight
                 ) {
+                    // The id on the 2 pt anchor itself, before the padding:
+                    // centring it centres the red line, not the padded span.
                     Color.clear
-                        .frame(width: 1, height: 1)
-                        .padding(.top, nowOffset)
+                        .frame(width: 1, height: 2)
                         .id(Self.nowAnchorID)
+                        .padding(.top, nowOffset)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
                 }

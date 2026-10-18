@@ -652,6 +652,9 @@ struct MeetingRoomScheduleSheet: View {
                 }
             }
             .navigationTitle(room.name)
+            // Inline, as it shows once scrolled: a large title collapses
+            // while the schedule is centred on now and shifts the middle.
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 Button("Đóng") { dismiss() }
             }

@@ -865,7 +865,9 @@ private final class LegacyMeetingScheduleController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         title = room.name
-        navigationItem.largeTitleDisplayMode = .always
+        // Inline, as the sheet shows it once scrolled: a large title collapses
+        // while the schedule is centred on now and shifts the middle.
+        navigationItem.largeTitleDisplayMode = .never
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Đóng", style: .plain, target: self, action: #selector(closeSheet))
 
         // "Ngày" and the day inside the scrolling content, as in
@@ -967,7 +969,7 @@ private final class LegacyMeetingScheduleController: UIViewController {
         // The timeline's frame and the content size must be current.
         scrollView.layoutIfNeeded()
         // In the scroll view's content coordinates.
-        let nowY = timeline.convert(CGPoint(x: 0, y: minute), to: scrollView).y
+        let nowY = timeline.convert(CGPoint(x: 0, y: minute + 1), to: scrollView).y // the 2 pt line's centre
         let inset = scrollView.adjustedContentInset
         let visible = scrollView.bounds.height - inset.top - inset.bottom
         let minOffset = -inset.top
