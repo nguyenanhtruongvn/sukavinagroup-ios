@@ -536,7 +536,7 @@ private final class NativeAppContainerViewController: UIViewController {
         launchTitle.textColor = isDark ? UIColor(white: 0.82, alpha: 1) : .label
     }
 
-    /// "Mất kết nối internet" on dark grey, "Đã kết nối lại internet" on
+    /// "Mất kết nối internet" on dark grey, "Đã kết nối internet" on
     /// green, announced to VoiceOver; nil hides the banner.
     private func renderConnectivityNotice(_ notice: SessionStore.ConnectivityNotice?) {
         guard let notice else {
@@ -549,7 +549,7 @@ private final class NativeAppContainerViewController: UIViewController {
             text = "Mất kết nối internet"
             offlineNotice.backgroundColor = UIColor(white: 0.11, alpha: 0.96)
         case .restored:
-            text = "Đã kết nối lại internet"
+            text = "Đã kết nối internet"
             offlineNotice.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.96)
         }
         offlineNotice.text = "  \(text)  "

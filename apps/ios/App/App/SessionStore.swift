@@ -411,7 +411,7 @@ final class SessionStore: ObservableObject {
         if account.passwordChangeError != passwordChangeError { account.passwordChangeError = passwordChangeError }
     }
     /// The connection banner the app container shows: "Mất kết nối internet"
-    /// when the connection is lost, then "Đã kết nối lại internet" when it
+    /// when the connection is lost, then "Đã kết nối internet" when it
     /// returns. Each hides itself after a few seconds.
     enum ConnectivityNotice { case offline, restored }
     @Published private(set) var connectivityNotice: ConnectivityNotice?
@@ -2028,7 +2028,7 @@ final class SessionStore: ObservableObject {
     private func connectionRestored() {
         guard isInOutage else { return }
         isInOutage = false
-        showConnectivityNotice(.restored, seconds: 3)
+        showConnectivityNotice(.restored, seconds: 5)
     }
 
     private func showConnectivityNotice(_ notice: ConnectivityNotice, seconds: Double) {
