@@ -66,6 +66,9 @@ final class MeetingStore: ObservableObject {
         let live = newValue
             .filter { $0.status != "cancelled" }
             .sorted { $0.startsAt < $1.startsAt }
+        // Every schedule refresh lands here: an unchanged schedule must not
+        // redraw every room card.
+        guard live != bookings else { return }
         bookingsByRoom = Dictionary(grouping: live, by: \.roomId)
         bookings = live
     }
@@ -360,7 +363,8 @@ final class SessionStore: ObservableObject {
     }
     var meetingRooms: [MeetingRoom] {
         get { meetings.rooms }
-        set { meetings.rooms = newValue }
+        // Unchanged rooms (every schedule refresh) must not redraw the list.
+        set { if meetings.rooms != newValue { meetings.rooms = newValue } }
     }
     var meetingBookings: [MeetingBooking] {
         get { meetings.bookings }
@@ -2314,14 +2318,15 @@ final class SessionStore: ObservableObject {
 
             // A slower response for a previously selected date must never replace
             // the date the user is currently looking at.
-            meetings.scheduleLoaded = true
-            meetings.scheduleError = nil
+            if !meetings.scheduleLoaded { meetings.scheduleLoaded = true }
+            if meetings.scheduleError != nil { meetings.scheduleError = nil }
             if displayedMeetingScheduleDay == day {
                 meetingRooms = applyMeetingRoomOrder(value.rooms)
+                // One assignment, the confirmed end time already applied: the
+                // list neither redraws for an unchanged schedule nor shows an
+                // ended meeting's old end for a moment.
+                cachedBookings = normalizedMeetingBookings(endedMeetingResultApplied(to: cachedBookings))
                 meetingBookings = cachedBookings
-                applyEndedMeetingLiveActivityResultIfAvailable()
-                meetingBookings = normalizedMeetingBookings(meetingBookings)
-                cachedBookings = meetingBookings
             }
 
             if let pendingEndedMeeting,
@@ -2336,7 +2341,7 @@ final class SessionStore: ObservableObject {
             guard !Task.isCancelled else { return }
             ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
             // Known rooms stay usable offline; with none the list shows a retry.
-            if meetingRooms.isEmpty {
+            if meetingRooms.isEmpty, meetings.scheduleError != error.localizedDescription {
                 meetings.scheduleError = error.localizedDescription
             }
         }
@@ -2352,11 +2357,11 @@ final class SessionStore: ObservableObject {
         let roomIDs = Set(rooms.map(\.id))
         let bookings = SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
         meetingRooms = applyMeetingRoomOrder(rooms)
-        if !rooms.isEmpty { meetings.scheduleLoaded = true }
+        if !rooms.isEmpty, !meetings.scheduleLoaded { meetings.scheduleLoaded = true }
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
-        meetingBookings = normalizedMeetingBookings(bookings.filter { roomIDs.contains($0.roomId) })
-        applyEndedMeetingLiveActivityResultIfAvailable()
+        let kept = normalizedMeetingBookings(bookings.filter { roomIDs.contains($0.roomId) })
+        meetingBookings = normalizedMeetingBookings(endedMeetingResultApplied(to: kept))
     }
 
     private func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, for day: String) {
@@ -2562,9 +2567,14 @@ final class SessionStore: ObservableObject {
     /// server-confirmed end time into the shared App Group so the existing
     /// schedule can redraw at that exact time as soon as it is active.
     private func applyEndedMeetingLiveActivityResultIfAvailable() {
-        guard let result = pendingEndedMeetingLiveActivityResult() else { return }
-        var updated = meetingBookings
-        var didUpdate = false
+        let updated = endedMeetingResultApplied(to: meetingBookings)
+        if updated != meetingBookings { meetingBookings = normalizedMeetingBookings(updated) }
+    }
+
+    /// `bookings` with the pending server-confirmed end time applied, if any.
+    private func endedMeetingResultApplied(to bookings: [MeetingBooking]) -> [MeetingBooking] {
+        guard let result = pendingEndedMeetingLiveActivityResult() else { return bookings }
+        var updated = bookings
         for index in updated.indices where updated[index].id == result.bookingID {
             let booking = updated[index]
             updated[index] = MeetingBooking(
@@ -2579,9 +2589,8 @@ final class SessionStore: ObservableObject {
                 isOwner: booking.isOwner,
                 organizerName: booking.organizerName
             )
-            didUpdate = true
         }
-        if didUpdate { meetingBookings = normalizedMeetingBookings(updated) }
+        return updated
     }
 
     private func replaceMeetingInCurrentSchedule(_ serverBooking: MeetingBooking) {

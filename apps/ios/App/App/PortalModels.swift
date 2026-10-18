@@ -9,7 +9,7 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-struct MeetingRoom: Codable, Identifiable {
+struct MeetingRoom: Codable, Identifiable, Equatable {
     let id: String
     let name: String
     let location: String
@@ -37,7 +37,7 @@ struct MeetingRoom: Codable, Identifiable {
     }
 }
 
-struct MeetingBooking: Codable, Identifiable {
+struct MeetingBooking: Codable, Identifiable, Equatable {
     let id: String
     let roomId: String
     let startsAt: String

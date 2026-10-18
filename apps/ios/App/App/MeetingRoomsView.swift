@@ -70,7 +70,6 @@ struct MeetingRoomsView: View {
     let isActive: Bool
     @State private var day = Date()
     @State private var presentedDestination: MeetingRoomsDestination?
-    @State private var draggingRoom: MeetingRoom?
 
     private var tomorrow: Date {
         MeetingPresentation.calendar.date(byAdding: .day, value: 1, to: .now) ?? .now
@@ -109,10 +108,13 @@ struct MeetingRoomsView: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 16) {
+                // "Trống" / "Đang họp" change when a meeting starts or ends
+                // (or at midnight): redraw exactly then, not every minute.
+                TimelineView(.explicit(statusChangeTimes)) { clock in
+                    List {
                         // "No rooms configured" only once the schedule is known;
                         // before that show loading, or the failure with a retry.
+                        Group {
                         if meetingStore.rooms.isEmpty {
                             if let scheduleError = meetingStore.scheduleError {
                                 ContentUnavailableView {
@@ -138,10 +140,16 @@ struct MeetingRoomsView: View {
                                 .padding(.top, 40)
                             }
                         }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
 
-                        // "Trống" / "Đang họp" change when a meeting starts or
-                        // ends (or at midnight): redraw exactly then, not every minute.
-                        TimelineView(.explicit(statusChangeTimes)) { clock in
+                        // Apple's list reordering: touch and hold a card, then
+                        // drag it; the others make room, the list scrolls at its
+                        // edges, and the order is saved once, on release. (It
+                        // was drag-and-drop between cards, which saved and
+                        // redrew on every card passed.) The context menu keeps
+                        // "Chuyển lên / xuống" as the non-drag way.
                         ForEach(meetingStore.rooms) { room in
                             MeetingRoomCard(
                                 room: room,
@@ -151,22 +159,27 @@ struct MeetingRoomsView: View {
                                 onBook: { presentedDestination = .booking(room: room, day: day) },
                                 onSchedule: { presentedDestination = .schedule(room: room, day: day) }
                             )
-                            // A smaller row boundary avoids eager expansion of the
-                            // drag/drop generic tree by the iOS 17 SwiftUI runtime.
-                            .modifier(MeetingRoomOrderingModifier(
+                            .modifier(MeetingRoomMoveMenu(
                                 room: room,
                                 rooms: meetingStore.rooms,
-                                draggingRoom: $draggingRoom,
                                 saveOrder: { session.reorderMeetingRooms($0) }
                             ))
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                         }
+                        .onMove { source, destination in
+                            var reordered = meetingStore.rooms
+                            reordered.move(fromOffsets: source, toOffset: destination)
+                            session.reorderMeetingRooms(reordered)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 6)
-                    .padding(.bottom, 24)
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollIndicators(.hidden)
+                    .contentMargins(.top, 6, for: .scrollContent)
+                    .contentMargins(.bottom, 24, for: .scrollContent)
                 }
-                .scrollIndicators(.hidden)
                 // Title and day buttons stay put; only the rooms scroll.
                 .safeAreaInset(edge: .top, spacing: 0) {
                     MeetingRoomsHeader(day: $day, onShowMine: {
@@ -177,7 +190,6 @@ struct MeetingRoomsView: View {
                     DragGesture(minimumDistance: 24)
                         .onEnded { switchMeetingDay(for: $0.translation) }
                 )
-                .modifier(MeetingRoomDragResetModifier(draggingRoom: $draggingRoom))
             }
             // Like every other tab: no navigation bar above the page header.
             .toolbar(.hidden, for: .navigationBar)
@@ -225,59 +237,32 @@ struct MeetingRoomsView: View {
     }
 }
 
-// Keep the iOS 17 room card's SwiftUI type small and its navigation gestures
-// predictable. The context-menu move buttons exist on every version (they are
-// also the accessible, non-drag way to reorder); iOS 18 and later add native
-// drag and drop on top of them.
-struct MeetingRoomOrderingModifier: ViewModifier {
+/// "Chuyển phòng lên trên / xuống dưới" in the card's context menu: the
+/// non-drag, VoiceOver-friendly way to reorder (the list's own drag reorders
+/// too, see MeetingRoomsView).
+struct MeetingRoomMoveMenu: ViewModifier {
     let room: MeetingRoom
     let rooms: [MeetingRoom]
-    @Binding var draggingRoom: MeetingRoom?
     let saveOrder: ([MeetingRoom]) -> Void
 
     private var roomIndex: Int? { rooms.firstIndex(where: { $0.id == room.id }) }
 
-    func body(content: Content) -> AnyView {
-        let reorderable = content.contextMenu { moveMenu }
-        if #available(iOS 18.0, *) {
-            return AnyView(
-                reorderable
-                    .opacity(draggingRoom?.id == room.id ? 0.72 : 1)
-                    .onDrag {
-                        draggingRoom = room
-                        return NSItemProvider(object: room.id as NSString)
-                    }
-                    .onDrop(
-                        of: [UTType.plainText.identifier],
-                        delegate: MeetingRoomOrderDropDelegate(
-                            target: room,
-                            rooms: rooms,
-                            draggingRoom: $draggingRoom,
-                            saveOrder: saveOrder
-                        )
-                    )
-            )
-        }
-        // The iOS 17 runtime sees only AnyView rather than the unavailable
-        // drag/drop view's nested generic metadata.
-        return AnyView(reorderable)
-    }
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            Button {
+                move(by: -1)
+            } label: {
+                Label("Chuyển phòng lên trên", systemImage: "arrow.up")
+            }
+            .disabled((roomIndex ?? 0) <= 0)
 
-    @ViewBuilder
-    private var moveMenu: some View {
-        Button {
-            move(by: -1)
-        } label: {
-            Label("Chuyển phòng lên trên", systemImage: "arrow.up")
+            Button {
+                move(by: 1)
+            } label: {
+                Label("Chuyển phòng xuống dưới", systemImage: "arrow.down")
+            }
+            .disabled((roomIndex ?? (rooms.count - 1)) >= rooms.count - 1)
         }
-        .disabled((roomIndex ?? 0) <= 0)
-
-        Button {
-            move(by: 1)
-        } label: {
-            Label("Chuyển phòng xuống dưới", systemImage: "arrow.down")
-        }
-        .disabled((roomIndex ?? (rooms.count - 1)) >= rooms.count - 1)
     }
 
     private func move(by offset: Int) {
@@ -285,59 +270,6 @@ struct MeetingRoomOrderingModifier: ViewModifier {
         var reordered = rooms
         reordered.swapAt(index, index + offset)
         withAnimation(.snappy) { saveOrder(reordered) }
-    }
-}
-
-/// Card drop targets reset the drag state themselves. A room released between
-/// or outside the cards lands on this list-wide target instead, so the dragged
-/// card never stays faded. Drag and drop exists only on iOS 18+, and the iOS 17
-/// runtime must not see drop-target generics (see MeetingRoomOrderingModifier).
-struct MeetingRoomDragResetModifier: ViewModifier {
-    @Binding var draggingRoom: MeetingRoom?
-
-    func body(content: Content) -> AnyView {
-        if #available(iOS 18.0, *) {
-            return AnyView(
-                content.onDrop(of: [UTType.plainText.identifier], isTargeted: nil) { _ in
-                    draggingRoom = nil
-                    return false
-                }
-            )
-        }
-        return AnyView(content)
-    }
-}
-
-struct MeetingRoomOrderDropDelegate: DropDelegate {
-    let target: MeetingRoom
-    let rooms: [MeetingRoom]
-    @Binding var draggingRoom: MeetingRoom?
-    let saveOrder: ([MeetingRoom]) -> Void
-
-    func dropEntered(info: DropInfo) {
-        guard let draggingRoom,
-              draggingRoom.id != target.id,
-              let fromIndex = rooms.firstIndex(where: { $0.id == draggingRoom.id }),
-              let targetIndex = rooms.firstIndex(where: { $0.id == target.id })
-        else { return }
-
-        var reordered = rooms
-        reordered.move(
-            fromOffsets: IndexSet(integer: fromIndex),
-            toOffset: targetIndex > fromIndex ? targetIndex + 1 : targetIndex
-        )
-        withAnimation(.snappy) {
-            saveOrder(reordered)
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingRoom = nil
-        return true
     }
 }
 
@@ -557,19 +489,55 @@ struct MeetingRoomCard: View {
     }
 }
 
+/// Decoded room photos, shared by the SwiftUI cards (iOS 18+) and the UIKit
+/// cards (iOS 17). AsyncImage kept no decoded copy: every time a card was
+/// rebuilt (opening the tab, scrolling back, a schedule refresh) the photo
+/// was fetched again and the placeholder flashed in between.
+enum MeetingRoomPhotos {
+    private static let cache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 40
+        cache.totalCostLimit = 32 * 1024 * 1024
+        return cache
+    }()
+
+    /// The room's photo URL (site-relative paths on the Sukavina server).
+    static func url(for room: MeetingRoom) -> URL? {
+        let value = room.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: value.hasPrefix("/") ? SukavinaServer.origin + value : value),
+              url.scheme?.hasPrefix("http") == true else { return nil }
+        return url
+    }
+
+    static func cached(_ url: URL) -> UIImage? {
+        cache.object(forKey: url as NSURL)
+    }
+
+    /// The cached photo, or downloads and decodes it (off the main thread)
+    /// and keeps it. Nil when it cannot be loaded.
+    static func load(_ url: URL) async -> UIImage? {
+        if let image = cached(url) { return image }
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let decoded = UIImage(data: data) else { return nil }
+        let image = await decoded.byPreparingForDisplay() ?? decoded
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        cache.setObject(image, forKey: url as NSURL, cost: cost)
+        return image
+    }
+}
+
 struct MeetingRoomImage: View {
     let room: MeetingRoom
+    /// The photo this card loaded, with the URL it belongs to.
+    @State private var loaded: (url: URL, image: UIImage)?
 
     var body: some View {
+        let url = MeetingRoomPhotos.url(for: room)
+        // A photo already decoded shows at once, with no placeholder frame.
+        let image = (loaded?.url == url ? loaded?.image : nil) ?? url.flatMap(MeetingRoomPhotos.cached)
         Group {
-            if let url = imageURL {
-                AsyncImage(url: url) { phase in
-                    if case let .success(image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
-                        placeholder
-                    }
-                }
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
             } else {
                 placeholder
             }
@@ -577,14 +545,10 @@ struct MeetingRoomImage: View {
         .frame(width: 88, height: 108)
         .background(Color.green.opacity(0.10))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-    }
-
-    private var imageURL: URL? {
-        let value = room.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        if value.hasPrefix("/") {
-            return URL(string: SukavinaServer.origin + value)
+        .task(id: url) {
+            guard let url, MeetingRoomPhotos.cached(url) == nil else { return }
+            if let image = await MeetingRoomPhotos.load(url) { loaded = (url, image) }
         }
-        return URL(string: value)
     }
 
     private var placeholder: some View {

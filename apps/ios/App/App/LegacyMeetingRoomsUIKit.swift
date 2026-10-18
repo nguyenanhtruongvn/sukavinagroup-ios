@@ -531,7 +531,7 @@ private final class LegacyMeetingRoomsController: UIViewController, UITableViewD
         return cell
     }
 
-    /// The long-press menu of MeetingRoomOrderingModifier: the accessible,
+    /// The long-press menu of MeetingRoomMoveMenu: the accessible,
     /// non-drag way to reorder.
     func tableView(_ tableView: UITableView, contextMenuConfigurationForRowAt path: IndexPath, point: CGPoint) -> UIContextMenuConfiguration? {
         guard rooms.indices.contains(path.row) else { return nil }
@@ -630,14 +630,6 @@ private final class LegacyPillButton: UIButton {
 /// line and the full-width "Đặt phòng" / "Xem lịch" button (iOS 18+ card).
 private final class LegacyRoomCardCell: UITableViewCell {
     static let reuseID = "LegacyRoomCardCell"
-    /// Decoded room photos; bounded (the HTTP layer keeps the files).
-    private static let imageCache: NSCache<NSURL, UIImage> = {
-        let cache = NSCache<NSURL, UIImage>()
-        cache.countLimit = 40
-        cache.totalCostLimit = 32 * 1024 * 1024
-        return cache
-    }()
-
     private let card = UIView()
     private let photo = UIImageView()
     private let nameLabel = UILabel()
@@ -824,19 +816,15 @@ private final class LegacyRoomCardCell: UITableViewCell {
         let placeholder = UIImage(systemName: "building.2.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 31, weight: .bold))
         photo.contentMode = .center
         photo.image = placeholder
-        let value = room.imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: value.hasPrefix("/") ? SukavinaServer.origin + value : value),
-              url.scheme?.hasPrefix("http") == true else { return }
-        if let cached = Self.imageCache.object(forKey: url as NSURL) {
+        // The photo cache shared with the iOS 18+ cards.
+        guard let url = MeetingRoomPhotos.url(for: room) else { return }
+        if let cached = MeetingRoomPhotos.cached(url) {
             photo.contentMode = .scaleAspectFill
             photo.image = cached
             return
         }
         imageTask = Task { [weak self] in
-            guard let (data, _) = try? await URLSession.shared.data(from: url),
-                  let image = UIImage(data: data), !Task.isCancelled else { return }
-            let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
-            Self.imageCache.setObject(image, forKey: url as NSURL, cost: cost)
+            guard let image = await MeetingRoomPhotos.load(url), !Task.isCancelled else { return }
             self?.photo.contentMode = .scaleAspectFill
             self?.photo.image = image
         }
