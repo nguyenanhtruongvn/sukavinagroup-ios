@@ -595,6 +595,9 @@ struct MeetingRoomScheduleSheet: View {
     let day: Date
     @State private var selectedDay: Date
     @State private var presentedDestination: MeetingScheduleDestination?
+    /// When the sheet opened: the room around the red line is sized for
+    /// that minute, so later redraws (a refresh) do not shift the content.
+    @State private var openedAt = Date()
 
     init(room: MeetingRoom, day: Date) {
         self.room = room
@@ -614,8 +617,18 @@ struct MeetingRoomScheduleSheet: View {
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
+                // Where the red line sits when the sheet opens (today only).
+                let nowLine = isToday ? MeetingTimeline.nowLineCentre(day: selectedDay, now: openedAt) : nil
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
+                        // Near 06:00 the line is too close to the top to be
+                        // centred: room above, only as much as half the
+                        // visible height lacks (the date row adds a little more).
+                        if let nowLine {
+                            Color.clear
+                                .containerRelativeFrame(.vertical) { length, _ in max(0, length / 2 - nowLine) }
+                                .accessibilityHidden(true)
+                        }
                         // Past days cannot be booked; showing them only confused the list.
                         // Laid out as a labelled DatePicker is; see
                         // `DatePopoverField`.
@@ -637,6 +650,14 @@ struct MeetingRoomScheduleSheet: View {
                         AnyView(MeetingTimeline(bookings: bookings, date: selectedDay) {
                             presentedDestination = .detail($0)
                         })
+                        // Likewise near 24:00: room below the last hour.
+                        if let nowLine {
+                            Color.clear
+                                .containerRelativeFrame(.vertical) { length, _ in
+                                    max(0, length / 2 - (MeetingTimeline.timelineHeight - nowLine))
+                                }
+                                .accessibilityHidden(true)
+                        }
                     }
                 }
                     .scrollIndicators(.hidden)
