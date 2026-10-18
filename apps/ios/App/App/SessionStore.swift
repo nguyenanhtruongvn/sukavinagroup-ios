@@ -1182,14 +1182,18 @@ final class SessionStore: ObservableObject {
             }
             applySession(response)
             state = .signedIn
-            startNetworkMonitoring()
-            if response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO" {
-                startSessionRefresh()
-                return true
+            // The same follow-up as a password sign-in: it used to skip
+            // auth/me (email, manager), the news state, notification
+            // permission and the AI assistant setting.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await Task.yield()
+                self.loadKnownArticles()
+                self.startNetworkMonitoring()
+                await self.hydrateSignedInSession(
+                    isCanteen: response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO"
+                )
             }
-            await refreshDashboard()
-            startRealTimeUpdates()
-            startSessionRefresh()
             return true
         } catch NetworkError.unauthorized {
             disableBiometricLogin()
@@ -2015,7 +2019,7 @@ final class SessionStore: ObservableObject {
     func markArticlesRead() {
         guard let items = dashboard?.contentItems else { return }
         knownArticleIDs.formUnion(items.map(\.id))
-        persistKnownArticles()
+        persistKnownArticles(feed: items)
         unreadArticleIDs = []
         persistUnreadArticles()
         unreadCount = 0
@@ -2075,7 +2079,7 @@ final class SessionStore: ObservableObject {
         loadKnownArticles()
         if knownArticleIDs.isEmpty {
             knownArticleIDs = Set(items.map(\.id))
-            persistKnownArticles()
+            persistKnownArticles(feed: items)
             return
         }
         let newItems = items.filter { !knownArticleIDs.contains($0.id) }
@@ -2088,13 +2092,24 @@ final class SessionStore: ObservableObject {
             syncApplicationBadge()
             NotificationManager.shared.notifyNewArticles(newItems, badge: notificationBadgeCount)
             knownArticleIDs.formUnion(newItems.map(\.id))
-            persistKnownArticles()
+            persistKnownArticles(feed: items)
         }
     }
 
-    private func persistKnownArticles() {
+    /// Saves at most 300 seen ids, always including every article still in
+    /// `feed`. Trimming an arbitrary 300 from the set (as before) could drop
+    /// a listed article, which the next refresh announced again as new.
+    private func persistKnownArticles(feed: [ContentItem]) {
         guard let articleOwner else { return }
-        UserDefaults.standard.set(Array(knownArticleIDs.prefix(300)), forKey: knownArticlesKey + "-" + articleOwner)
+        var listed: [String] = []
+        var listedSet = Set<String>()
+        for id in feed.map(\.id) where knownArticleIDs.contains(id) && listedSet.insert(id).inserted {
+            listed.append(id)
+        }
+        let others = knownArticleIDs.subtracting(listedSet).sorted()
+        let kept = listed + others.prefix(max(0, 300 - listed.count))
+        knownArticleIDs = Set(kept)
+        UserDefaults.standard.set(kept, forKey: knownArticlesKey + "-" + articleOwner)
     }
 
     func deleteAccount() async -> Bool {

@@ -266,6 +266,8 @@ private final class NativeAppContainerViewController: UIViewController {
     private var host: UIHostingController<AnyView>?
     /// Full-screen "change the default password" step; see updateForcedPasswordChange.
     private var forcedPasswordController: UIViewController?
+    /// The session error alert while it is on screen.
+    private weak var errorAlert: UIAlertController?
     private var renderedScreenKind: ScreenKind?
     private let launchView = UIView()
     private let launchSpinner = UIActivityIndicatorView(style: .large)
@@ -576,7 +578,31 @@ private final class NativeAppContainerViewController: UIViewController {
     }
 
     private func showErrorIfNeeded(_ message: String?) {
-        guard let message, presentedViewController == nil else { return }
+        guard let message else { return }
+        if let errorAlert, errorAlert.presentingViewController != nil {
+            // Already on screen: show the latest error in it.
+            errorAlert.title = session.errorTitle
+            errorAlert.message = message
+            return
+        }
+        // Present over whatever is on screen (a sheet, the forced password
+        // form). Skipping the alert while anything was presented lost the
+        // error for good.
+        var presenter: UIViewController = self
+        while let next = presenter.presentedViewController {
+            if next.isBeingDismissed, let coordinator = next.transitionCoordinator {
+                // Wait until it is gone, then present from what remains.
+                coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                    guard let self else { return }
+                    self.showErrorIfNeeded(self.session.errorMessage)
+                }
+                return
+            }
+            presenter = next
+        }
+        // Another alert (from a screen) is up; this error is shown with the
+        // next one, as errorMessage stays set until dismissed.
+        if presenter is UIAlertController { return }
         let alert = UIAlertController(title: session.errorTitle, message: message, preferredStyle: .alert)
         if session.errorOffersSettings {
             alert.addAction(UIAlertAction(title: "Mở Cài đặt", style: .default) { _ in
@@ -587,6 +613,7 @@ private final class NativeAppContainerViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "Đã hiểu", style: .cancel) { [weak self] _ in
             self?.session.dismissError()
         })
-        present(alert, animated: true)
+        errorAlert = alert
+        presenter.present(alert, animated: true)
     }
 }
