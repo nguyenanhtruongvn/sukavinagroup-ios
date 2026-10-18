@@ -307,7 +307,8 @@ struct NativeLegalView: View {
                     if page == .privacy {
                         legalSection("Ứng dụng nội bộ", "Sukavina chỉ dành cho nhân viên và người được Công ty ủy quyền. Tài khoản do Công ty tạo, cấp và quản lý; ứng dụng không có đăng ký công khai.")
                         legalSection("Dữ liệu được xử lý", "Hệ thống xử lý hồ sơ công việc, thông tin liên hệ, chấm công, đơn từ, lựa chọn suất ăn, thông báo và dữ liệu bảo mật cần thiết để vận hành.")
-                        legalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi người dùng giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ, camera hoặc micro.")
+                        legalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi người dùng giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ hoặc micro.")
+                        legalSection("Camera", "Camera chỉ được dùng trên tài khoản nhà ăn để quét mã QR suất ăn, và chỉ khi bạn mở màn hình quét. Ứng dụng chỉ đọc nội dung mã QR, không chụp, lưu hay gửi hình ảnh. Tài khoản nhân viên không dùng camera. Bạn có thể tắt quyền này trong Cài đặt > Sukavina.")
                         legalSection("Sinh trắc học", "Face ID và Touch ID được xử lý trên thiết bị. Sukavina chỉ nhận kết quả xác thực, không nhận hoặc lưu khuôn mặt, vân tay hay mẫu sinh trắc học.")
                         legalSection("Lưu trữ và quyền của nhân viên", "Dữ liệu được bảo vệ bằng HTTPS và giới hạn truy cập theo tài khoản. Nhân viên có thể yêu cầu xem, sửa hoặc xóa dữ liệu trong phạm vi cho phép; hồ sơ bắt buộc có thể được lưu theo quy định.")
                     } else if page == .support {

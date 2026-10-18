@@ -468,15 +468,20 @@ final class SessionStore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let response = notification.object as? LoginResponse else { return }
+            // From APIClient (a LoginResponse) or from a Live Activity action
+            // (userInfo; that file is also built into the widget extension).
+            let response = notification.object as? LoginResponse
+            guard let accessToken = response?.accessToken ?? notification.userInfo?["accessToken"] as? String,
+                  !accessToken.isEmpty else { return }
+            let refreshToken = response?.refreshToken ?? notification.userInfo?["refreshToken"] as? String ?? ""
             Task { @MainActor [weak self] in
                 guard let self, self.state == .signedIn else { return }
-                // APIClient renewed an expired token for a request; use it from
-                // now on instead of paying for a 401 + refresh on every call.
-                self.token = response.accessToken
+                // The token was renewed for a request; use it from now on
+                // instead of paying for a 401 + refresh on every call.
+                self.token = accessToken
                 self.lastSessionRefreshAt = Date()
-                if self.biometricsEnabled, !response.refreshToken.isEmpty {
-                    _ = BiometricKeychain.save(refreshToken: response.refreshToken)
+                if self.biometricsEnabled, !refreshToken.isEmpty {
+                    _ = BiometricKeychain.save(refreshToken: refreshToken)
                 }
             }
         }
