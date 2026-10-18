@@ -438,7 +438,9 @@ struct ModernAttendanceHistoryView: View {
 
     private func preloadedLeadingEmptyDays(_ data: AttendanceMonth) -> Int {
         guard let value = data.days.first?.date, let date = Self.dayParser.date(from: value) else { return 0 }
-        return (Calendar(identifier: .gregorian).component(.weekday, from: date) + 5) % 7
+        // The day key is a Vietnam date: read its weekday in Vietnam time, or
+        // a device far from UTC+7 shifted the whole grid by a column.
+        return (VietnamTime.calendar.component(.weekday, from: date) + 5) % 7
     }
 
     private func selectedDay(in data: AttendanceMonth, month: String) -> AttendanceDay? {
@@ -600,7 +602,7 @@ struct ModernAttendanceHistoryView: View {
         // and the immediately previous month. Older released statements are
         // opened explicitly from "Bảng công" or from their notification.
         return (0..<2).compactMap {
-            Calendar.current.date(byAdding: .month, value: -$0, to: Date())
+            VietnamTime.calendar.date(byAdding: .month, value: -$0, to: Date())
         }.map(Self.monthValue).sorted()
     }
     private var monthTitle: String { monthTitle(for: selectedMonth) }

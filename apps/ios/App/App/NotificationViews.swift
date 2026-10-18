@@ -336,22 +336,43 @@ struct NotificationsView: View {
             return
         }
 
-        guard let token = session.token else { return }
-        let _: UpdateCount? = try? await APIClient.shared.request(
-            "me/requests/notifications/\(item.id)/read",
-            method: "PATCH",
-            token: token
-        )
-        await requestStore.load(token, force: true)
-        if let id = item.requestId {
-            if item.type == "request_pending",
-               let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) {
-                reviewing = request
-            } else {
-                viewing = requestStore.request(id: id)
+        // Requests open at once from the cached list, like meetings; the read
+        // mark and a fresh load run behind the sheet. It used to wait for
+        // both round trips first. A request that is not cached yet (or an
+        // approval not yet in the cached approvals) opens once loaded.
+        markReadOptimistically(item)
+        let opened = presentRequest(for: item, allowViewingPending: false)
+        Task {
+            guard let token = session.token else { return }
+            let _: UpdateCount? = try? await APIClient.shared.request(
+                "me/requests/notifications/\(item.id)/read",
+                method: "PATCH",
+                token: token
+            )
+            await requestStore.load(token, force: true)
+            if !opened, viewing == nil, reviewing == nil, meetingNotification == nil {
+                presentRequest(for: item, allowViewingPending: true)
             }
+            await reloadNotifications()
         }
-        await reloadNotifications()
+    }
+
+    /// Opens the review sheet for a pending approval, otherwise the request's
+    /// detail. `allowViewingPending` false keeps an approval notification
+    /// from opening as a plain detail before the approvals are loaded.
+    @discardableResult
+    private func presentRequest(for item: RequestNotification, allowViewingPending: Bool) -> Bool {
+        guard let id = item.requestId else { return false }
+        if item.type == "request_pending" {
+            if let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) {
+                reviewing = request
+                return true
+            }
+            guard allowViewingPending else { return false }
+        }
+        guard let request = requestStore.request(id: id) else { return false }
+        viewing = request
+        return true
     }
 
     private func markReadOptimistically(_ item: RequestNotification) {
