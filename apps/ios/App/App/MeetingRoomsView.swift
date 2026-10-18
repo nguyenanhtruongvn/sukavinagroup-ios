@@ -595,6 +595,8 @@ struct MeetingRoomScheduleSheet: View {
     let day: Date
     @State private var selectedDay: Date
     @State private var presentedDestination: MeetingScheduleDestination?
+    /// The schedule was centred on now once its scroll view had a size.
+    @State private var hasCentredNow = false
 
     init(room: MeetingRoom, day: Date) {
         self.room = room
@@ -645,6 +647,15 @@ struct MeetingRoomScheduleSheet: View {
                 // this need not wait for the network (it centred the hour
                 // after the refresh, then jumped).
                 .onAppear {
+                    if isToday { proxy.scrollTo(MeetingTimeline.nowAnchorID, anchor: .center) }
+                }
+                // A sheet can lay its content out before it has its size;
+                // a scrollTo then has nothing to scroll and the schedule
+                // stays at the top. Centre (once) when the scroll view gets
+                // its height too.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    guard height > 0, !hasCentredNow else { return }
+                    hasCentredNow = true
                     if isToday { proxy.scrollTo(MeetingTimeline.nowAnchorID, anchor: .center) }
                 }
                 .task {
