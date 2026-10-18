@@ -23,6 +23,7 @@ struct ProfileView: View {
     @Environment(\.sessionActions) private var sessionActions
     private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var account: AccountState
+    @State private var biometricsSwitch = false
     @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
     @State private var showDelete = false
     @State private var showPasswordChange = false
@@ -109,14 +110,24 @@ struct ProfileView: View {
                         }
                         Spacer(minLength: 8)
                         // Named for VoiceOver; the visible text sits beside it.
+                        // The switch follows the tap at once and then the
+                        // result: a cancelled or failed change leaves the
+                        // setting as it was, which publishes nothing, so the
+                        // switch must be put back from here.
                         Toggle("Đăng nhập bằng \(session.biometricName)", isOn: Binding(
-                            get: { account.biometricsEnabled },
+                            get: { biometricsSwitch },
                             set: { enabled in
-                                Task { await session.setBiometricLogin(enabled: enabled) }
+                                biometricsSwitch = enabled
+                                Task {
+                                    await session.setBiometricLogin(enabled: enabled)
+                                    biometricsSwitch = account.biometricsEnabled
+                                }
                             }
                         ))
                         .labelsHidden()
                         .tint(AppTheme.red)
+                        .onAppear { biometricsSwitch = account.biometricsEnabled }
+                        .onChange(of: account.biometricsEnabled) { _, enabled in biometricsSwitch = enabled }
                     }
                     .padding(18)
                     .background(AppTheme.card)

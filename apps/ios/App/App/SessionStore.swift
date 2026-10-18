@@ -209,7 +209,21 @@ extension View {
     /// `SessionStore`, so feature views can observe only their store.
     @MainActor
     func sessionEnvironment(_ session: SessionStore) -> some View {
-        environmentObject(session)
+        modifier(SessionEnvironment(session: session))
+    }
+}
+
+/// The injection chain behind `sessionEnvironment(_:)`. As one modifier the
+/// screens' types only nest `ModifiedContent<_, SessionEnvironment>` instead
+/// of ten modifiers (iOS 17 aborted building deep SwiftUI type metadata, see
+/// LegacyMeetingRoomsUIKitView).
+@MainActor
+private struct SessionEnvironment: ViewModifier {
+    let session: SessionStore
+
+    func body(content: Content) -> some View {
+        content
+            .environmentObject(session)
             .environmentObject(session.meetings)
             .environmentObject(session.menu)
             .environmentObject(session.requests)
@@ -237,7 +251,6 @@ final class DataRevisions: ObservableObject {
     @Published fileprivate(set) var inbox = 0
 }
 
-/// The Notifications tab badge. Only the tab bar observes it.
 /// What Home shows from the session. Home observed the whole SessionStore and
 /// redrew on every working flag, error, badge, news or notification change;
 /// this publishes only when the greeting, today's punches or the AI
@@ -273,6 +286,7 @@ final class AccountState: ObservableObject {
     @Published fileprivate(set) var passwordChangeError: String?
 }
 
+/// The Notifications tab badge. Only the tab bar observes it.
 @MainActor
 final class NotificationBadgeState: ObservableObject {
     @Published fileprivate(set) var count = 0
