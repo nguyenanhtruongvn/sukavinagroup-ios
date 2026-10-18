@@ -781,9 +781,9 @@ struct ArticleDetailView: View {
         .task(id: item.id) {
             // Up to 750k characters of HTML through regular expressions: off
             // the main thread, so opening a long article does not stall.
-            let body = item.body
+            let html = item.body
             let parsed = await Task.detached(priority: .userInitiated) {
-                HTMLArticleParser.parse(body)
+                HTMLArticleParser.parse(html)
             }.value
             guard !Task.isCancelled else { return }
             blocks = parsed

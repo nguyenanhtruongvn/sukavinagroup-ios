@@ -295,7 +295,8 @@ final class MealScannerViewController: UIViewController, AVCaptureMetadataOutput
             }
             captureSession.addOutput(output)
             output.setMetadataObjectsDelegate(self, queue: .main)
-            output.metadataObjectTypes = [.qr]
+            // Only types the session offers: asking for another one throws.
+            output.metadataObjectTypes = [.qr].filter { output.availableMetadataObjectTypes.contains($0) }
             captureSession.commitConfiguration()
             captureSession.startRunning()
         }

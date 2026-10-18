@@ -11,6 +11,13 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
+/// The moments still ahead, sorted: what TimelineView(.explicit(_:)) should
+/// wait for here (the room list passes only future times too).
+func upcomingDates(_ dates: [Date?]) -> [Date] {
+    let now = Date()
+    return dates.compactMap { $0 }.filter { $0 > now }.sorted()
+}
+
 struct MeetingBookingDetailSheet: View {
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions
@@ -141,7 +148,7 @@ struct MeetingBookingDetailSheet: View {
                     if isOrganizerOfLiveBooking, let startDate {
                         // "Hủy lịch" gives way to the meeting controls at the
                         // start time, also while this sheet stays open.
-                        TimelineView(.explicit([startDate])) { clock in
+                        TimelineView(.explicit(upcomingDates([startDate]))) { clock in
                             if startDate <= max(clock.date, Date()) {
                                 MeetingControlCard(
                                     bookingID: currentBooking.id,
@@ -262,7 +269,7 @@ struct MeetingControlCard: View {
         // keeps the type shallow: on iOS 17 this card sits in the SwiftUI
         // notification detail, and iOS 17 SwiftUI aborted building deep
         // meeting view types (see LegacyMeetingRoomsUIKitView).
-        TimelineView(.explicit(endDate.map { [$0] } ?? [])) { clock in
+        TimelineView(.explicit(upcomingDates([endDate]))) { clock in
             AnyView(card(ended: endDate.map { $0 <= max(clock.date, Date()) } ?? false))
         }
     }
@@ -418,7 +425,7 @@ struct MyMeetingsSheet: View {
                 ScrollView(showsIndicators: false) {
                     // A meeting moves from "Sắp tới" to "Đã qua" when it
                     // ends: redraw exactly then.
-                    TimelineView(.explicit(myBookings.compactMap(\.endDate))) { clock in
+                    TimelineView(.explicit(upcomingDates(myBookings.map(\.endDate)))) { clock in
                         let shown = meetings(at: max(clock.date, Date()))
                         VStack(alignment: .leading, spacing: 18) {
                             header(count: shown.count)
