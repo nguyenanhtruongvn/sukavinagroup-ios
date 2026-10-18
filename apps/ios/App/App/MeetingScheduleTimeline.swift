@@ -76,13 +76,22 @@ struct MeetingTimeline: View {
         hourHeight * CGFloat(lastHour - firstHour + 1)
     }
 
+    private var hourLine: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.12))
+            .frame(height: 1)
+    }
+
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             VStack(spacing: 0) {
                 ForEach(Array(firstHour...lastHour), id: \.self) { hour in
+                    // The text's middle on the hour's line (the row's top),
+                    // as Calendar shows it, rather than hanging below it.
                     Text(String(format: "%02d:00", hour))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                        .alignmentGuide(.top) { $0[VerticalAlignment.center] }
                         .frame(width: 56, height: hourHeight, alignment: .topTrailing)
                         .padding(.trailing, 8)
                         .id(hour)
@@ -91,14 +100,16 @@ struct MeetingTimeline: View {
 
             ZStack(alignment: .topLeading) {
                 VStack(spacing: 0) {
-                    ForEach(Array(firstHour...lastHour), id: \.self) { _ in
+                    // Each hour's line at the top of its row, where its label
+                    // is centred (06:00 included); the last row also closes
+                    // the day at 24:00.
+                    ForEach(Array(firstHour...lastHour), id: \.self) { hour in
                         Rectangle()
                             .fill(Color.secondary.opacity(0.035))
                             .frame(height: hourHeight)
+                            .overlay(alignment: .top) { hourLine }
                             .overlay(alignment: .bottom) {
-                                Rectangle()
-                                    .fill(Color.secondary.opacity(0.12))
-                                    .frame(height: 1)
+                                if hour == lastHour { hourLine }
                             }
                     }
                 }

@@ -1078,13 +1078,14 @@ private final class LegacyMeetingTimelineView: UIView {
             addSubview(label)
             hourLabels.append(label)
 
+            // Each hour's line at the top of its row, where its label is
+            // centred (06:00 included); the last row also closes the day.
             let row = UIView()
             row.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.035)
-            let line = UIView()
-            line.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.12)
-            line.autoresizingMask = [.flexibleWidth, .flexibleTopMargin]
-            line.frame = CGRect(x: 0, y: Self.hourHeight - 1, width: 0, height: 1)
-            row.addSubview(line)
+            row.addSubview(Self.hourLine(y: 0, autoresizing: [.flexibleWidth, .flexibleBottomMargin]))
+            if hour == Self.lastHour {
+                row.addSubview(Self.hourLine(y: Self.hourHeight - 1, autoresizing: [.flexibleWidth, .flexibleTopMargin]))
+            }
             addSubview(row)
             hourRows.append(row)
         }
@@ -1104,8 +1105,21 @@ private final class LegacyMeetingTimelineView: UIView {
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: LegacyMeetingTimelineView, _: UITraitCollection) in
             view.renderLabels()
         }
+        // A new text size changes the hour labels' height, so their middles
+        // are placed on the lines again.
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: LegacyMeetingTimelineView, _: UITraitCollection) in
+            view.setNeedsLayout()
+        }
     }
     required init?(coder: NSCoder) { nil }
+
+    private static func hourLine(y: CGFloat, autoresizing: UIView.AutoresizingMask) -> UIView {
+        let line = UIView()
+        line.backgroundColor = UIColor.secondaryLabel.withAlphaComponent(0.12)
+        line.autoresizingMask = autoresizing
+        line.frame = CGRect(x: 0, y: y, width: 0, height: 1)
+        return line
+    }
 
     deinit { minuteTimer?.invalidate() }
 
@@ -1131,8 +1145,11 @@ private final class LegacyMeetingTimelineView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let width = bounds.width
+        // Each label's middle on its hour's line; its height follows the
+        // Dynamic Type size.
         for (index, label) in hourLabels.enumerated() {
-            label.frame = CGRect(x: 0, y: CGFloat(index) * Self.hourHeight, width: 56, height: 16)
+            let height = ceil(label.intrinsicContentSize.height)
+            label.frame = CGRect(x: 0, y: CGFloat(index) * Self.hourHeight - height / 2, width: 56, height: height)
         }
         for (index, row) in hourRows.enumerated() {
             row.frame = CGRect(x: Self.gutter, y: CGFloat(index) * Self.hourHeight, width: max(0, width - Self.gutter), height: Self.hourHeight)
