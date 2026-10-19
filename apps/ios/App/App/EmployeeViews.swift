@@ -426,7 +426,7 @@ struct PreloadedAttendanceDayCell: View {
 }
 
 struct DashboardView: View {
-    // Observes HomeState (greeting, punches, AI setting) and the menu only;
+    // Observes HomeState (today's punches, AI setting) and the menu only;
     // observing the whole session redrew Home on every unrelated change.
     @Environment(\.sessionActions) private var sessionActions
     private var session: SessionStore { sessionActions.store }
@@ -445,18 +445,6 @@ struct DashboardView: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     PortalPageTitle("Trang chủ")
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Xin chào,")
-                            .foregroundColor(AppTheme.muted)
-                        Text(home.summary.name)
-                            .font(.title2.bold())
-                        // The job title (chức vụ), where the employee code was.
-                        if !home.summary.jobTitle.isEmpty {
-                            Text(home.summary.jobTitle)
-                                .font(.subheadline)
-                                .foregroundColor(AppTheme.redText)
-                        }
-                    }
 
                     // A "Bảng lương" tile sat here with no destination. Placeholder
                     // features read as broken and App Review 2.1 rejects them, so
