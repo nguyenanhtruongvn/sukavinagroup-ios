@@ -64,8 +64,8 @@ enum VietnamTime {
     static let clock = formatter("HH:mm")
     /// 14/10/2026
     static let shortDate = formatter("dd/MM/yyyy")
-    /// 14/10/2026 08:30
-    static let dateTime = formatter("dd/MM/yyyy HH:mm")
+    /// 08:30 14/10/2026
+    static let dateTime = formatter("HH:mm dd/MM/yyyy")
     /// 08:30 14/10/2026
     static let clockDate = formatter("HH:mm dd/MM/yyyy")
     /// 11/2026
