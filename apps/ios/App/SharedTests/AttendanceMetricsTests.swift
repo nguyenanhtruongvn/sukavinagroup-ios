@@ -79,6 +79,25 @@ final class AttendanceMetricsTests: XCTestCase {
         XCTAssertEqual(AttendanceMetrics.calendarNote(data.days[0]), "NL")
     }
 
+    func testAbsenceDisplayUsesVForAllLegacyKccSources() throws {
+        let data = try month([
+            day("2026-10-05", extra: #""overrideCode":"KCC","workdayCode":"KCC","statuses":["absent"]"#),
+            day("2026-10-06", extra: #""workdayCode":"KCC","statuses":["absent"]"#),
+            day("2026-10-07", extra: #""statuses":["absent"]"#),
+            day("2026-10-08", extra: #""workdayCode":"NP""#),
+            day("2026-10-09", extra: #""overrideCode":"V""#),
+        ])
+        for index in 0..<3 {
+            XCTAssertEqual(AttendanceMetrics.calendarNote(data.days[index]), "V")
+            XCTAssertEqual(AttendanceMetrics.calendarDisplayNote(data.days[index], showWorkMetrics: false), "V")
+        }
+        XCTAssertEqual(AttendanceMetrics.calendarNote(data.days[3]), "NP")
+        XCTAssertEqual(AttendanceMetrics.calendarNote(data.days[4]), "V")
+        // Display conversion must not change the raw payroll/override values.
+        XCTAssertEqual(data.days[0].overrideCode, "KCC")
+        XCTAssertEqual(data.days[1].workdayCode, "KCC")
+    }
+
     func testNumberTexts() {
         XCTAssertEqual(AttendanceMetrics.hourText(1.5), "1.5")
         XCTAssertEqual(AttendanceMetrics.hourText(2), "2")
