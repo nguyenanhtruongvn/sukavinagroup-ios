@@ -148,7 +148,6 @@ struct AttendanceCodeLegend: View {
         ("CĐ", "Ca đêm (công và giờ tăng ca do nhân sự nhập, hiện ở nửa phải ô ngày)"),
         ("NN", "Ngày nghỉ (nghỉ hưởng chế độ, nghỉ bù)"),
         ("NVP", "Nghỉ văn phòng"),
-        ("KCC", "Không chấm công"),
         ("V", "Vắng"),
         ("NL", "Nghỉ lễ")
     ]
