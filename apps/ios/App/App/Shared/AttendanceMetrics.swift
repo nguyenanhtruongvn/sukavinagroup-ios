@@ -132,9 +132,14 @@ enum AttendanceMetrics {
 
     // A calendar note is an attendance/payroll status, not proof of worked
     // hours. Keep notes visible without manufacturing 0/0 hour lines.
+    // Presentation-only alias: preserve KCC in payroll/API records and caches.
+    static func calendarDisplayCode(_ code: String) -> String {
+        code == "KCC" ? "V" : code
+    }
+
     static func calendarNote(_ day: AttendanceDay) -> String? {
         let values = displayStatuses(day)
-        if let manual = day.overrideCode, !manual.isEmpty { return manual }
+        if let manual = day.overrideCode, !manual.isEmpty { return calendarDisplayCode(manual) }
         // CT is confirmed by an approved business-trip request, so it is
         // meaningful before the day starts or ends (unlike an automatic KCC).
         if day.workdayCode == "CT" { return "CT" }
@@ -143,10 +148,10 @@ enum AttendanceMetrics {
         // Do not show a stale KCC for a workday that has not yet ended.
         if values.contains("pending") { return nil }
         // Legacy leave status does not establish available paid-leave balance.
-        if let code = day.workdayCode, !code.isEmpty, code != "1" { return code }
+        if let code = day.workdayCode, !code.isEmpty, code != "1" { return calendarDisplayCode(code) }
         if isUnfinishedToday(day) { return nil }
         if values.contains("absent"), day.checkIn == nil, day.checkOut == nil {
-            return "KCC"
+            return "V"
         }
         return nil
     }
