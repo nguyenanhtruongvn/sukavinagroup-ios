@@ -30,8 +30,6 @@ struct TodayMenuView: View {
                             .foregroundColor(AppTheme.redText)
                         Text("Thực đơn hôm nay")
                             .font(.headline)
-                        Text(menuStore.todayMenu?.day.dayName ?? "Đang cập nhật")
-                            .foregroundColor(AppTheme.muted)
                     }
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 11) {
@@ -90,7 +88,6 @@ struct TodayMenuView: View {
                             }
                         } else {
                             Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                            Text("Bạn muốn dùng món nào?").font(.title3.bold())
                             if menuStore.todayMenu?.orderingOpen == false {
                                 HStack(spacing: 12) {
                                     Image(systemName: "clock.badge.exclamationmark.fill")

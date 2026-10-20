@@ -622,8 +622,7 @@ struct RequestsView: View {
             } else if requests.isEmpty {
                 ContentUnavailableView(
                     "Chưa có đơn",
-                    systemImage: "doc.text",
-                    description: Text("Không có đơn trong trạng thái này.")
+                    systemImage: "doc.text"
                 )
                 .padding(.top, 70)
             } else {

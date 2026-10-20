@@ -155,8 +155,6 @@ struct AuthenticationView: View {
                                 .foregroundColor(.red.opacity(0.9))
                             Text("Chào mừng trở lại")
                                 .font(.system(size: 34, weight: .bold, design: .rounded))
-                            Text("Thông tin công việc của bạn, trong một ứng dụng native gọn gàng.")
-                                .foregroundColor(AppTheme.muted)
                         }
 
                         LoginForm()
