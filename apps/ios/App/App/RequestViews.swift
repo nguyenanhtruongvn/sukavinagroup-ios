@@ -1253,11 +1253,11 @@ struct RequestComposer: View {
 
                         Text(template == nil ? "Tạo đơn mới" : "Tạo lại đơn")
                             .font(.title.bold())
-                        Text(template == nil
-                             ? "Điền thông tin rõ ràng để đơn được xử lý nhanh hơn."
-                             : "Nội dung lấy từ đơn bị từ chối. Sửa lại nếu cần rồi gửi.")
-                            .font(.subheadline)
-                            .foregroundStyle(AppTheme.muted)
+                        if template != nil {
+                            Text("Nội dung lấy từ đơn bị từ chối. Sửa lại nếu cần rồi gửi.")
+                                .font(.subheadline)
+                                .foregroundStyle(AppTheme.muted)
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
