@@ -719,12 +719,8 @@ struct AttendanceStatementShortcut: View {
                 .foregroundStyle(AppTheme.red)
                 .frame(width: 40, height: 40)
                 .background(AppTheme.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Bảng công").font(.headline)
-                Text("Ngày công, tăng ca và phép theo tháng")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.muted)
-            }
+            Text("Bảng công")
+                .font(.headline)
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))
