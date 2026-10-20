@@ -45,8 +45,6 @@ struct ProfileView: View {
 
                     accountSectionTitle("THÔNG TIN TÀI KHOẢN")
                     VStack(spacing: 0) {
-                        ProfileLine(label: "Vai trò", value: account.profile?.role ?? "")
-                        Divider().padding(.leading, 18)
                         ProfileLine(label: "Loại tài khoản", value: accountType)
                         Divider().padding(.leading, 18)
                         ProfileLine(label: "Quản lý trực tiếp", value: displayedManagerName)
@@ -59,9 +57,6 @@ struct ProfileView: View {
                         VStack(alignment: .leading, spacing: 9) {
                             Label("Chế độ hiển thị", systemImage: "circle.lefthalf.filled")
                                 .font(.headline)
-                            Text("Chọn giao diện sáng, tối hoặc theo cài đặt hệ thống.")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.muted)
                             Picker("Chế độ hiển thị", selection: $appearanceMode) {
                                 ForEach(AppAppearanceMode.allCases) { mode in
                                     Text(mode.title).tag(mode.rawValue)
@@ -85,8 +80,10 @@ struct ProfileView: View {
                             Image(systemName: "key.fill").foregroundColor(AppTheme.red).frame(width: 30)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Đổi mật khẩu").font(.headline).foregroundColor(.primary)
-                                Text(passwordChangeDescription)
-                                    .font(.caption).foregroundColor(AppTheme.muted)
+                                if !isAdminAccount {
+                                    Text(passwordChangeDescription)
+                                        .font(.caption).foregroundColor(AppTheme.muted)
+                                }
                             }
                             Spacer()
                             Image(systemName: "chevron.right").foregroundColor(AppTheme.muted)
@@ -104,9 +101,6 @@ struct ProfileView: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Đăng nhập bằng \(session.biometricName)")
                                 .font(.headline)
-                            Text("Dùng sinh trắc học thay cho mật khẩu ở lần đăng nhập sau.")
-                                .font(.caption)
-                                .foregroundColor(AppTheme.muted)
                         }
                         Spacer(minLength: 8)
                         // Named for VoiceOver; the visible text sits beside it.
@@ -258,8 +252,6 @@ struct ProfileView: View {
     private var passwordChangeDescription: String {
         isDemoAccount
             ? "Xác nhận bằng mật khẩu hiện tại, không giới hạn số lần đổi."
-            : isAdminAccount
-            ? "Xác thực OTP qua email, không giới hạn số lần đổi."
             : "Xác thực OTP qua email, tối đa một lần mỗi tháng."
     }
     private func accountSectionTitle(_ title: String) -> some View {
