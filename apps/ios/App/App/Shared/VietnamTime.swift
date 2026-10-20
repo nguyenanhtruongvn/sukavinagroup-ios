@@ -48,12 +48,24 @@ enum VietnamTime {
         return formatter
     }
 
+    /// The system's medium date in Vietnamese ("18 thg 10, 2026"), as Apple's
+    /// date pickers show it.
+    static let mediumDate: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = timeZone
+        formatter.locale = locale
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
+
     /// 08:30
     static let clock = formatter("HH:mm")
     /// 14/10/2026
     static let shortDate = formatter("dd/MM/yyyy")
-    /// 14/10/2026 08:30
-    static let dateTime = formatter("dd/MM/yyyy HH:mm")
+    /// 08:30 14/10/2026
+    static let dateTime = formatter("HH:mm dd/MM/yyyy")
     /// 08:30 14/10/2026
     static let clockDate = formatter("HH:mm dd/MM/yyyy")
     /// 11/2026

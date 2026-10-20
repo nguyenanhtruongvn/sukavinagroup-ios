@@ -23,18 +23,14 @@ struct MeetingBookingSheet: View {
     @State private var title = ""
     @State private var meetingType = "Nội bộ"
     @State private var start = Date()
-    @State private var durationValue = 30
-    @State private var durationUnit = "phút"
+    @State private var durationMinutes = 30
     @State private var query = ""
     @State private var departmentQuery = ""
     @State private var selectedDepartments = Set<String>()
     @State private var selected = Set<String>()
     @State private var inviteesError: String?
-    @State private var showStartPicker = false
-    @State private var showDurationPicker = false
     @State private var isSubmittingBooking = false
     @State private var bookingErrorMessage: String?
-    @State private var bookingErrorRevision = 0
     @State private var confirmingDiscard = false
     @FocusState private var focusedInviteeField: InviteeSearchField?
 
@@ -79,10 +75,6 @@ struct MeetingBookingSheet: View {
 
     private var canInviteEntireDepartment: Bool {
         selected.count + unselectedDepartmentInvitees.count + 1 <= room.capacity
-    }
-
-    private var durationMinutes: Int {
-        durationUnit == "giờ" ? durationValue * 60 : durationValue
     }
 
     /// Why "Xác nhận đặt phòng" is disabled (past start, over capacity).
@@ -174,17 +166,6 @@ struct MeetingBookingSheet: View {
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
                 }
-
-                if let bookingErrorMessage {
-                    VStack {
-                        MeetingBookingErrorNotice(message: bookingErrorMessage)
-                            .padding(.top, 10)
-                        Spacer(minLength: 0)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                    .allowsHitTesting(false)
-                    .zIndex(3)
-                }
             }
             .safeAreaInset(edge: .bottom) {
                 confirmButton
@@ -221,11 +202,19 @@ struct MeetingBookingSheet: View {
             .task {
                 inviteesError = await session.refreshMeetingInvitees()
             }
-            .task(id: bookingErrorRevision) {
-                guard bookingErrorMessage != nil else { return }
-                try? await Task.sleep(for: .seconds(5))
-                guard !Task.isCancelled else { return }
-                bookingErrorMessage = nil
+            // Apple's alert, which stays until it is read and dismissed
+            // (it was a dark notice drawn at the top that hid itself after
+            // five seconds).
+            .alert(
+                "Không thể đặt phòng",
+                isPresented: Binding(
+                    get: { bookingErrorMessage != nil },
+                    set: { if !$0 { bookingErrorMessage = nil } }
+                )
+            ) {
+                Button("Đã hiểu", role: .cancel) { bookingErrorMessage = nil }
+            } message: {
+                Text(bookingErrorMessage ?? "")
             }
         }
     }
@@ -263,10 +252,11 @@ struct MeetingBookingSheet: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Color(uiColor: .label))
 
-            HStack(spacing: 10) {
-                meetingTypeButton("Nội bộ", icon: "person.2.fill")
-                meetingTypeButton("Tiếp khách", icon: "person.badge.plus")
+            Picker("Loại cuộc họp", selection: $meetingType) {
+                Text("Nội bộ").tag("Nội bộ")
+                Text("Tiếp khách").tag("Tiếp khách")
             }
+            .pickerStyle(.segmented)
 
             VStack(alignment: .leading, spacing: 7) {
                 Text("Nội dung cuộc họp")
@@ -280,53 +270,50 @@ struct MeetingBookingSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
+            // The two facts of a booking as tiles: when it starts (hh:mm) and
+            // how long it lasts. Each tile is wholly a button opening Apple's
+            // popover with Apple's time wheels (DatePopoverButton); from one
+            // popover, a tap on the other tile opens that one at once.
             HStack(spacing: 10) {
-                timeAction(
+                bookingTile(
                     title: "Bắt đầu",
                     value: MeetingPresentation.clock.string(from: start),
-                    icon: "clock.fill",
-                    active: showStartPicker
-                ) {
-                    withAnimation(.snappy) { showStartPicker.toggle() }
-                }
+                    icon: "clock.fill"
+                )
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .overlay(DatePopoverButton(
+                    selection: $start,
+                    minuteInterval: MeetingBookingTime.minuteStep,
+                    accessibilityLabel: "Bắt đầu",
+                    accessibilityValue: MeetingPresentation.clock.string(from: start)
+                ))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                timeAction(
+                // Hours and minutes of the wheels are the length: 01:30 is
+                // 1 giờ 30 phút; 5-minute steps, 00:05 to 08:00.
+                bookingTile(
                     title: "Thời lượng",
-                    value: "\(durationValue) \(durationUnit)",
-                    icon: "timer",
-                    active: showDurationPicker
-                ) {
-                    withAnimation(.snappy) { showDurationPicker.toggle() }
-                }
-            }
-
-            if showStartPicker {
-                HStack(spacing: 0) {
-                    pickerColumn("Giờ", selection: startHourBinding, values: Array(0...23))
-                    pickerColumn("Phút", selection: startMinuteBinding, values: Array(stride(from: 0, to: 60, by: MeetingBookingTime.minuteStep)))
-                }
-                .frame(height: 138)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
-            if showDurationPicker {
-                HStack(spacing: 0) {
-                    pickerColumn("Số", selection: $durationValue, values: durationUnit == "giờ" ? Array(1...8) : [5, 10, 15, 20, 30, 45, 60, 90, 120])
-                    Picker("Đơn vị", selection: $durationUnit) {
-                        Text("phút").tag("phút")
-                        Text("giờ").tag("giờ")
-                    }
-                    .pickerStyle(.wheel)
-                    .onChange(of: durationUnit) { _, unit in
-                        durationValue = unit == "giờ" ? 1 : 30
-                    }
-                }
-                .frame(height: 138)
-                .background(Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                    value: DurationClock.title(minutes: durationMinutes),
+                    icon: "timer"
+                )
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .overlay(DatePopoverButton(
+                    selection: durationClock,
+                    minuteInterval: MeetingBookingTime.minuteStep,
+                    minimum: DurationClock.date(
+                        forMinutes: MeetingBookingTime.durationRange.lowerBound,
+                        calendar: VietnamTime.calendar
+                    ),
+                    maximum: DurationClock.date(
+                        forMinutes: MeetingBookingTime.durationRange.upperBound,
+                        calendar: VietnamTime.calendar
+                    ),
+                    accessibilityLabel: "Thời lượng",
+                    accessibilityValue: DurationClock.title(minutes: durationMinutes)
+                ))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
 
             HStack(spacing: 9) {
@@ -350,28 +337,8 @@ struct MeetingBookingSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(AppTheme.cardBorder, lineWidth: 1)
         }
-    }
-
-    private func meetingTypeButton(_ value: String, icon: String) -> some View {
-        let selected = meetingType == value
-        return Button {
-            meetingType = value
-        } label: {
-            Label(value, systemImage: icon)
-                .font(.subheadline.weight(.bold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .foregroundStyle(selected ? .white : Color(uiColor: .label))
-                .background(selected ? Color(red: 0.0, green: 0.42, blue: 0.25) : Color(uiColor: .secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .stroke(selected ? Color.clear : Color(uiColor: .separator), lineWidth: 1)
-                }
-        }
-        .buttonStyle(.plain)
     }
 
     private var inviteesCard: some View {
@@ -483,7 +450,7 @@ struct MeetingBookingSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                .stroke(AppTheme.cardBorder, lineWidth: 1)
         }
     }
 
@@ -670,60 +637,37 @@ struct MeetingBookingSheet: View {
         .shadow(color: .black.opacity(0.10), radius: 8, y: 3)
     }
 
-    private func timeAction(
-        title: String,
-        value: String,
-        icon: String,
-        active: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 7) {
-                HStack {
-                    Image(systemName: icon)
-                        .foregroundStyle(Color.red)
-                    Spacer()
-                    Image(systemName: active ? "chevron.up" : "chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(Color(uiColor: .secondaryLabel))
-                }
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
-                Text(value)
-                    .font(.headline.weight(.bold).monospacedDigit())
-                    .foregroundStyle(Color(uiColor: .label))
-            }
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(active ? Color.red.opacity(0.10) : Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(active ? Color.red.opacity(0.35) : Color.clear, lineWidth: 1)
-            }
-        }
-        .buttonStyle(.plain)
+    /// `durationMinutes` as the time Apple's time picker shows ("01:30").
+    private var durationClock: Binding<Date> {
+        Binding(
+            get: { DurationClock.date(forMinutes: durationMinutes, calendar: VietnamTime.calendar) },
+            set: { durationMinutes = DurationClock.minutes(from: $0, step: MeetingBookingTime.minuteStep, range: MeetingBookingTime.durationRange, calendar: VietnamTime.calendar) }
+        )
     }
 
-    private func pickerColumn(
-        _ title: String,
-        selection: Binding<Int>,
-        values: [Int]
-    ) -> some View {
-        VStack(spacing: 0) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color(uiColor: .secondaryLabel))
-                .padding(.top, 8)
-            Picker(title, selection: selection) {
-                ForEach(values, id: \.self) { value in
-                    Text(String(format: "%02d", value)).tag(value)
-                }
+    /// A start or duration tile: icon and chevron, caption, value. Drawn
+    /// only; the picker under it does the choosing.
+    private func bookingTile(title: String, value: String, icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Image(systemName: icon)
+                    .foregroundStyle(Color.red)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Color(uiColor: .secondaryLabel))
             }
-            .pickerStyle(.wheel)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+            Text(value)
+                .font(.headline.weight(.bold).monospacedDigit())
+                .foregroundStyle(Color(uiColor: .label))
         }
-        .frame(maxWidth: .infinity)
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func searchField(
@@ -790,36 +734,19 @@ struct MeetingBookingSheet: View {
                     .font(.headline.weight(.bold))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .foregroundStyle(.white)
-            .background(canConfirmBooking ? Color.red : Color(uiColor: .systemGray3))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
+        // Apple's prominent button (it was a drawn red rectangle); disabled,
+        // the system greys it.
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.roundedRectangle(radius: 16))
+        .controlSize(.large)
+        .tint(.red)
         .disabled(!canConfirmBooking)
     }
 
     // Booking times are Vietnam times (AGENTS.md), whatever the device time zone.
     private var initialStartTime: Date {
         MeetingBookingTime.defaultStart(on: day, now: Date(), calendar: MeetingPresentation.calendar)
-    }
-
-    private var startHourBinding: Binding<Int> {
-        Binding(
-            get: { MeetingPresentation.calendar.component(.hour, from: start) },
-            set: { hour in
-                start = MeetingPresentation.calendar.date(bySettingHour: hour, minute: MeetingPresentation.calendar.component(.minute, from: start), second: 0, of: start) ?? start
-            }
-        )
-    }
-
-    private var startMinuteBinding: Binding<Int> {
-        Binding(
-            get: { MeetingPresentation.calendar.component(.minute, from: start) },
-            set: { minute in
-                start = MeetingPresentation.calendar.date(bySettingHour: MeetingPresentation.calendar.component(.hour, from: start), minute: minute, second: 0, of: start) ?? start
-            }
-        )
     }
 
     private func createBooking() {
@@ -836,31 +763,9 @@ struct MeetingBookingSheet: View {
             if let failureMessage {
                 isSubmittingBooking = false
                 bookingErrorMessage = failureMessage
-                bookingErrorRevision += 1
             } else {
                 dismiss()
             }
         }
-    }
-}
-
-struct MeetingBookingErrorNotice: View {
-    let message: String
-
-    var body: some View {
-        Label {
-            Text(message)
-                .multilineTextAlignment(.leading)
-        } icon: {
-            Image(systemName: "exclamationmark.triangle.fill")
-        }
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(.white)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .frame(maxWidth: 360, alignment: .leading)
-        .background(Color.black.opacity(0.90), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.24), radius: 10, y: 4)
-        .accessibilityLabel("Không thể đặt phòng: \(message)")
     }
 }

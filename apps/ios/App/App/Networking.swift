@@ -138,10 +138,32 @@ actor SessionRefreshCoordinator {
     }
 }
 
+/// The last body and ETag of an authenticated GET, for `If-None-Match`.
+private struct RevalidationEntry {
+    let etag: String
+    let body: Data
+
+    init(etag: String, body: Data) {
+        self.etag = etag
+        self.body = body
+    }
+
+    init?(stored: Data) {
+        guard let newline = stored.firstIndex(of: 0x0A),
+              let etag = String(data: stored[stored.startIndex..<newline], encoding: .utf8),
+              !etag.isEmpty else { return nil }
+        self.etag = etag
+        body = Data(stored[stored.index(after: newline)...])
+    }
+
+    var stored: Data { Data(etag.utf8) + Data([0x0A]) + body }
+}
+
 final class APIClient {
     static let shared = APIClient()
-    private let baseURL = URL(string: "https://sukavinagroup.net/api/")
-    private let fallbackBaseURL = URL(string: "https://157-10-201-110.nip.io/api/")
+    /// Bodies kept for conditional GETs; one per path, most recent first.
+    private static let revalidationLimit = 64
+    private let baseURL: URL? = SukavinaServer.api
     private let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { value in
@@ -171,8 +193,7 @@ final class APIClient {
         method: String = "GET",
         token: String? = nil,
         body: Body? = nil,
-        allowSessionRefresh: Bool = true,
-        allowTransportFallback: Bool = false
+        allowSessionRefresh: Bool = true
     ) async throws -> Response {
         guard let baseURL, let url = URL(string: path, relativeTo: baseURL) else {
             throw NetworkError.invalidResponse
@@ -191,7 +212,21 @@ final class APIClient {
             urlRequest.timeoutInterval = 20
         }
         urlRequest.setValue("application/json", forHTTPHeaderField: "Accept")
-        urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+        // Authenticated reads are revalidated with the last body's ETag: the
+        // server answers 304 without a body when nothing changed (the usual
+        // case after returning to the app or a realtime event about another
+        // area). The body is kept in the account's protected document store,
+        // never in URLCache. A conditional request must not send no-cache,
+        // which makes the server skip the comparison.
+        let revalidationKey = method.uppercased() == "GET" && token != nil ? "revalidation-" + path : nil
+        let revalidation = revalidationKey
+            .flatMap { AccountDocumentStore.revalidation.data(forKey: $0) }
+            .flatMap(RevalidationEntry.init(stored:))
+        if let revalidation {
+            urlRequest.setValue(revalidation.etag, forHTTPHeaderField: "If-None-Match")
+        } else {
+            urlRequest.setValue("no-cache, no-store", forHTTPHeaderField: "Cache-Control")
+        }
         urlRequest.setValue("ios", forHTTPHeaderField: "X-Sukavina-Client")
         // The caller already owns the current in-memory session token.
         // Reading Keychain synchronously here can block CFNetwork requests on
@@ -208,10 +243,9 @@ final class APIClient {
         var data: Data
         var response: URLResponse
         let retryable = ["GET", "HEAD"].contains(method.uppercased())
-        // Mutating requests are never retried by default. Authentication can
-        // opt in to a single alternate-host attempt only after a transport
-        // failure (DNS/connectivity/timeout), never after an HTTP response.
-        let transportFallbackAllowed = retryable || allowTransportFallback
+        // There is no alternate host any more: the former nip.io fallback
+        // was a hostname whose DNS a third party controls, and sign-in
+        // (password) and token refresh were sent there on network errors.
         let primaryHost = url.host ?? "unknown"
         ConnectionDiagnostics.record("API primary start: \(method) \(primaryHost)/\(path)")
         do {
@@ -228,29 +262,7 @@ final class APIClient {
             let code = (error as? URLError)?.code.rawValue
             let codeText = code.map(String.init) ?? "n/a"
             ConnectionDiagnostics.record("API primary failed: code=\(codeText) \(error.localizedDescription)")
-            guard transportFallbackAllowed,
-                  shouldRetry(error),
-                  let fallbackBaseURL,
-                  let fallbackURL = URL(string: path, relativeTo: fallbackBaseURL) else {
-                throw NetworkError.offline
-            }
-            urlRequest.url = fallbackURL
-            let fallbackHost = fallbackURL.host ?? "unknown"
-            ConnectionDiagnostics.record("API fallback start: \(method) \(fallbackHost)/\(path)")
-            do {
-                (data, response) = try await load(urlRequest, retryable: retryable, path: path, hostRole: "fallback")
-            } catch is CancellationError {
-                ConnectionDiagnostics.record("API fallback cancelled: \(method) \(fallbackHost)/\(path)")
-                throw CancellationError()
-            } catch let fallbackError as URLError where fallbackError.code == .dataNotAllowed || fallbackError.code == .internationalRoamingOff {
-                ConnectionDiagnostics.record("API fallback cellular denied: \(fallbackError.code.rawValue) \(fallbackError.localizedDescription)")
-                throw NetworkError.cellularRestricted
-            } catch let fallbackError {
-                let code = (fallbackError as? URLError)?.code.rawValue
-                let codeText = code.map(String.init) ?? "n/a"
-                ConnectionDiagnostics.record("API fallback failed: code=\(codeText) \(fallbackError.localizedDescription)")
-                throw NetworkError.offline
-            }
+            throw NetworkError.offline
         }
 
         guard let http = response as? HTTPURLResponse else {
@@ -263,7 +275,22 @@ final class APIClient {
         NotificationCenter.default.post(name: .sukavinaTransportReachable, object: nil)
         let responseHost = http.url?.host ?? "unknown"
         ConnectionDiagnostics.record("API response: \(http.statusCode) host=\(responseHost) path=\(path) bytes=\(data.count)")
-        guard (200..<300).contains(http.statusCode) else {
+        var status = http.statusCode
+        if status == 304, let revalidation {
+            // Not modified: the stored body is the current one.
+            data = revalidation.body
+            status = 200
+        } else if (200..<300).contains(status),
+                  let revalidationKey,
+                  let etag = http.value(forHTTPHeaderField: "ETag"), !etag.isEmpty {
+            AccountDocumentStore.revalidation.set(RevalidationEntry(etag: etag, body: data).stored, forKey: revalidationKey)
+            // Only a new URL adds a document; replacing one never needs the
+            // directory listing that trimming does.
+            if revalidation == nil {
+                AccountDocumentStore.revalidation.trim(prefix: "revalidation-", keeping: Self.revalidationLimit)
+            }
+        }
+        guard (200..<300).contains(status) else {
             if token == nil && path == "auth/login" && (http.statusCode == 401 || http.statusCode == 403) {
                 throw NetworkError.invalidCredentials
             }
@@ -302,8 +329,7 @@ final class APIClient {
                     method: method,
                     token: refreshed.accessToken,
                     body: body,
-                    allowSessionRefresh: false,
-                    allowTransportFallback: allowTransportFallback
+                    allowSessionRefresh: false
                 )
             }
             if token != nil && http.statusCode == 401 {
@@ -342,7 +368,7 @@ final class APIClient {
             } catch let error as URLError where error.code == .cancelled {
                 // -999 is also emitted by CFNetwork during some interface
                 // handoffs. Only treat it as task cancellation when Swift
-                // actually cancelled the task; otherwise let fallback recover.
+                // actually cancelled the task; otherwise let the retry below handle it.
                 if Task.isCancelled {
                     ConnectionDiagnostics.record("API \(hostRole) task cancelled: path=\(path)")
                     throw CancellationError()
@@ -524,6 +550,32 @@ enum BiometricKeychain {
             kSecAttrAccount as String: legacyAccount
         ]
         SecItemDelete(legacyQuery as CFDictionary)
+    }
+}
+
+/// Keychain items survive uninstalling the app; UserDefaults do not. The
+/// first launch of a new installation therefore removes the session,
+/// biometric and widget items a previous installation left behind, so the
+/// next person to install the app on this phone is not signed in as the
+/// previous user. An app update keeps its UserDefaults and is unaffected.
+enum InstallationGuard {
+    private static let markerKey = "installation-marker-v1"
+
+    static func forgetPreviousInstallationIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: markerKey) else { return }
+        // Before the first unlock after a reboot neither the Keychain nor
+        // UserDefaults can be read reliably: decide on a later launch.
+        guard UIApplication.shared.isProtectedDataAvailable else { return }
+        // Versions before this marker leave other keys behind: an update of
+        // such a version is an existing installation, not a new one.
+        let existing = defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "") ?? [:]
+        if existing.isEmpty {
+            KeychainStore.clear()
+            BiometricKeychain.clear()
+            WidgetTokenKeychain.delete()
+        }
+        defaults.set(true, forKey: markerKey)
     }
 }
 

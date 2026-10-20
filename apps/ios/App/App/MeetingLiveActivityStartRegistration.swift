@@ -6,7 +6,7 @@ import Foundation
 /// an activity's push token, which can only update or end an existing one.
 @available(iOS 17.2, *)
 enum MeetingLiveActivityStartRegistration {
-    private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static let baseURL = SukavinaServer.api
     private static let cachedTokenKey = "net.sukavinagroup.live-activity-push-to-start-token"
     private static let installationIDKey = "net.sukavinagroup.live-activity-installation-id"
     private static var observationTask: Task<Void, Never>?

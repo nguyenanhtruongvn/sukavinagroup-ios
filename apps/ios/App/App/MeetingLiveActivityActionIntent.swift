@@ -198,7 +198,7 @@ private enum MeetingLiveActivityAction {
         }
     }
 
-    private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static let baseURL = SukavinaServer.api
     private static var appGroup: String {
         let original = "group.net.sukavinagroup.user"
         let groups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
@@ -376,7 +376,10 @@ private enum MeetingLiveActivityAction {
     }
 
     private struct RefreshBody: Encodable { let refreshToken: String }
-    private struct RefreshedSession: Decodable { let accessToken: String }
+    private struct RefreshedSession: Decodable {
+        let accessToken: String
+        let refreshToken: String?
+    }
 
     /// Exchanges the stored refresh token for a new access token and stores
     /// it where the app reads it. Returns nil when signed out or rejected.
@@ -391,15 +394,34 @@ private enum MeetingLiveActivityAction {
         guard let result = try? await URLSession.shared.data(for: request),
               let http = result.1 as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let session = try? JSONDecoder().decode(RefreshedSession.self, from: result.0) else { return nil }
-        // Only update the existing item: if the user signed out meanwhile the
-        // item is gone and must not be recreated.
+        guard updateKeychainValue(session.accessToken, account: "access-token") else { return nil }
+        // The server may rotate the refresh token, as APIClient expects: keep
+        // the new one, or the app's next refresh would use a spent token and
+        // sign the user out.
+        if let rotated = session.refreshToken, !rotated.isEmpty {
+            _ = updateKeychainValue(rotated, account: "refresh-token")
+        }
+        // In the app process SessionStore adopts the new tokens (and keeps
+        // the Face ID copy of the refresh token current), as after an
+        // APIClient refresh. Elsewhere nobody observes it.
+        NotificationCenter.default.post(
+            name: Notification.Name("net.sukavinagroup.session-refreshed"),
+            object: nil,
+            userInfo: ["accessToken": session.accessToken, "refreshToken": session.refreshToken ?? ""]
+        )
+        return session.accessToken
+    }
+
+    /// Replaces an existing item only: if the user signed out meanwhile the
+    /// item is gone and must not be recreated.
+    private static func updateKeychainValue(_ value: String, account: String) -> Bool {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "net.sukavinagroup.user",
-            kSecAttrAccount as String: "access-token",
+            kSecAttrAccount as String: account,
         ]
-        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: Data(session.accessToken.utf8)] as CFDictionary)
-        return status == errSecSuccess ? session.accessToken : nil
+        let status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: Data(value.utf8)] as CFDictionary)
+        return status == errSecSuccess
     }
 
     private static func keychainValue(account: String) -> String? {
@@ -423,14 +445,27 @@ private enum MeetingLiveActivityAction {
 /// alive, then validate the activity's *current* end time before closing so an
 /// earlier timer cannot end a meeting that was subsequently extended.
 enum MeetingLiveActivityExpiry {
+    /// One pending close per booking: every update (extension, refresh)
+    /// used to add another sleeping task for the same activity.
+    private static var pending: [String: Task<Void, Never>] = [:]
+    private static let lock = NSLock()
+
     static func schedule(bookingID: String, endsAt: Date) {
         let delay = max(0, endsAt.timeIntervalSinceNow)
-        Task {
+        let task = Task {
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
+            guard !Task.isCancelled else { return }
             await endIfExpired(bookingID: bookingID)
+            lock.lock()
+            pending[bookingID] = nil
+            lock.unlock()
         }
+        lock.lock()
+        let previous = pending.updateValue(task, forKey: bookingID)
+        lock.unlock()
+        previous?.cancel()
     }
 
     static func removeExpiredActivities() {

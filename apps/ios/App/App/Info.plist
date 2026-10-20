@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>SukavinaKeychainGroup</key>
+	<string>$(AppIdentifierPrefix)net.sukavinagroup.shared</string>
 	<key>ALTAppGroups</key>
 	<array>
 		<string>group.net.sukavinagroup.user</string>
@@ -37,13 +39,6 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
-	</array>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLSchemes</key>
-			<array><string>sukavina</string></array>
-		</dict>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

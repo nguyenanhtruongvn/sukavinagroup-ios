@@ -1,6 +1,5 @@
 import ActivityKit
 import Foundation
-import Security
 
 enum MeetingLiveActivityManager {
     private static var activityUpdatesTask: Task<Void, Never>?
@@ -11,6 +10,18 @@ enum MeetingLiveActivityManager {
               let endsAt = date(userInfo["ends_at"] as? String),
               let startsAt = date(userInfo["starts_at"] as? String),
               endsAt > Date() else { return }
+
+        // iOS 17.2+ receives the same warning through ActivityKit
+        // Push-to-Start. Creating another Activity from the ordinary APNs
+        // reminder races that remote start and produces two lock-screen cards
+        // for the same booking. On these systems the ordinary notification is
+        // data/UI refresh only; ActivityKit owns creation.
+        if #available(iOS 17.2, *) {
+            Task {
+                await removeDuplicateActivities(for: bookingID)
+            }
+            return
+        }
 
         let attributes = MeetingLiveActivityAttributes(
             bookingID: bookingID,
@@ -25,18 +36,6 @@ enum MeetingLiveActivityManager {
             extensionMinutes: 0,
             isChoosingExtension: false
         )
-
-        // iOS 17.2+ receives the same warning through ActivityKit
-        // Push-to-Start. Creating another Activity from the ordinary APNs
-        // reminder races that remote start and produces two lock-screen cards
-        // for the same booking. On these systems the ordinary notification is
-        // data/UI refresh only; ActivityKit owns creation.
-        if #available(iOS 17.2, *) {
-            Task {
-                await removeDuplicateActivities(for: bookingID)
-            }
-            return
-        }
 
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
@@ -195,8 +194,11 @@ enum LiveActivityTokenLedger {
 /// scoped to one Live Activity.  The stream can provide a rotated token, so it
 /// remains observed for the lifetime of each active activity.
 private enum MeetingLiveActivityPushRegistration {
-    private static let baseURL = URL(string: "https://sukavinagroup.net/api/")!
+    private static let baseURL = SukavinaServer.api
     private static var observedActivityIDs = Set<String>()
+    /// observe(_:) runs from the main thread and from ActivityKit's update
+    /// stream; the set is shared.
+    private static let observedLock = NSLock()
 
     static func observe(_ activity: Activity<MeetingLiveActivityAttributes>) {
         // Re-upload the current token whenever lifecycle/session restoration
@@ -209,7 +211,10 @@ private enum MeetingLiveActivityPushRegistration {
         }
 
         // Only the long-lived async stream needs de-duplication.
-        guard observedActivityIDs.insert(activity.id).inserted else { return }
+        observedLock.lock()
+        let isNew = observedActivityIDs.insert(activity.id).inserted
+        observedLock.unlock()
+        guard isNew else { return }
         Task {
             for await token in activity.pushTokenUpdates {
                 await upload(token: token, bookingID: activity.attributes.bookingID)
@@ -218,7 +223,7 @@ private enum MeetingLiveActivityPushRegistration {
     }
 
     private static func upload(token: Data, bookingID: String) async {
-        guard !bookingID.isEmpty, let accessToken = accessToken() else { return }
+        guard !bookingID.isEmpty, let accessToken = KeychainStore.loadToken() else { return }
         let tokenValue = token.map { String(format: "%02x", $0) }.joined()
         guard !tokenValue.isEmpty else { return }
         let registration = LiveActivityTokenLedger.key(token: tokenValue, scope: bookingID)
@@ -242,20 +247,5 @@ private enum MeetingLiveActivityPushRegistration {
         } catch {
             ConnectionDiagnostics.record("Live Activity push token upload failed: \(error.localizedDescription)")
         }
-    }
-
-    private static func accessToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "net.sukavinagroup.user",
-            kSecAttrAccount as String: "access-token",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
     }
 }

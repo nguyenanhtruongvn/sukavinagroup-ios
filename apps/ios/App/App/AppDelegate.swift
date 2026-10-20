@@ -119,6 +119,14 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // Before anything reads the session: Keychain items outlive an
+        // uninstall, so a reinstalled app must not sign the previous user in.
+        InstallationGuard.forgetPreviousInstallationIfNeeded()
+        // Room and news photos (AsyncImage, the iOS 17 room list) load
+        // through URLSession.shared. `/api/media` files are immutable for a
+        // year; give the shared cache room to keep them across launches
+        // instead of the small default, so a photo is downloaded once.
+        URLCache.shared = URLCache(memoryCapacity: 16 * 1024 * 1024, diskCapacity: 96 * 1024 * 1024)
         UIScrollView.appearance().showsVerticalScrollIndicator = false
         UIScrollView.appearance().showsHorizontalScrollIndicator = false
         // SwiftUI may host List in either UIKit class depending on iOS release.
@@ -175,21 +183,13 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     }
 
     func application(
-        _ app: UIApplication,
-        open url: URL,
-        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
-    ) -> Bool {
-        appContainer?.handleLiveActivityURL(url)
-        return true
-    }
-
-    func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         MeetingLiveActivityManager.start(from: userInfo)
         publishMeetingChangeIfNeeded(userInfo)
+        reloadAttendanceWidgetIfNeeded(userInfo)
         completionHandler(.newData)
     }
 
@@ -199,6 +199,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         publishMeetingChangeIfNeeded(notification.request.content.userInfo)
+        reloadAttendanceWidgetIfNeeded(notification.request.content.userInfo)
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -210,6 +211,15 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         notificationRouter.handle(userInfo: response.notification.request.content.userInfo)
         publishMeetingChangeIfNeeded(response.notification.request.content.userInfo)
         completionHandler()
+    }
+
+    /// "Đã chấm công" push (content-available, so it also arrives with the
+    /// app in the background): the widget fetches the new punch right away
+    /// instead of waiting for a periodic refresh.
+    private func reloadAttendanceWidgetIfNeeded(_ userInfo: [AnyHashable: Any]) {
+        guard let type = userInfo["type"] as? String,
+              type == "attendance_check_in" || type == "attendance_check_out" else { return }
+        WidgetCenter.shared.reloadTimelines(ofKind: AttendanceWidgetBridge.kind)
     }
 
     private func publishMeetingChangeIfNeeded(_ userInfo: [AnyHashable: Any]) {
@@ -254,6 +264,10 @@ private final class NativeAppContainerViewController: UIViewController {
     private var appearanceObservation: AnyCancellable?
     private var hasStartedRestore = false
     private var host: UIHostingController<AnyView>?
+    /// Full-screen "change the default password" step; see updateForcedPasswordChange.
+    private var forcedPasswordController: UIViewController?
+    /// The session error alert while it is on screen.
+    private weak var errorAlert: UIAlertController?
     private var renderedScreenKind: ScreenKind?
     private let launchView = UIView()
     private let launchSpinner = UIActivityIndicatorView(style: .large)
@@ -304,19 +318,23 @@ private final class NativeAppContainerViewController: UIViewController {
                 }
 
                 self.installRootView()
+                self.updateForcedPasswordChange()
             }
-        profileObservation = session.$profile.sink { [weak self] _ in
-            guard self?.session.state == .signedIn else { return }
-            self?.installRootView()
-        }
+        profileObservation = session.$profile
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if self.session.state == .signedIn { self.installRootView() }
+                self.updateForcedPasswordChange()
+            }
         errorObservation = session.$errorMessage.sink { [weak self] message in
             self?.showErrorIfNeeded(message)
         }
         configureOfflineNotice()
-        offlineNoticeObservation = session.$isOfflineNoticeVisible.sink { [weak self] isVisible in
+        offlineNoticeObservation = session.$connectivityNotice.sink { [weak self] notice in
             guard let self else { return }
-            self.offlineNotice.isHidden = !isVisible
-            if isVisible {
+            self.renderConnectivityNotice(notice)
+            if notice != nil {
                 // Root SwiftUI hosts are replaced after session transitions.
                 // Keep this UIKit notice above the newly inserted host instead
                 // of letting it become visually hidden behind that host.
@@ -340,15 +358,6 @@ private final class NativeAppContainerViewController: UIViewController {
 
     func appBecameActive() {
         session.appBecameActive()
-    }
-
-    func handleLiveActivityURL(_ url: URL) {
-        guard url.scheme == "sukavina",
-              url.host == "meeting",
-              url.pathComponents.count == 3 else { return }
-        let bookingID = url.pathComponents[1]
-        let action = url.pathComponents[2]
-        Task { await session.handleLiveActivityAction(bookingID: bookingID, action: action) }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -527,6 +536,27 @@ private final class NativeAppContainerViewController: UIViewController {
         launchTitle.textColor = isDark ? UIColor(white: 0.82, alpha: 1) : .label
     }
 
+    /// "Mất kết nối internet" on dark grey, "Đã kết nối internet" on
+    /// green, announced to VoiceOver; nil hides the banner.
+    private func renderConnectivityNotice(_ notice: SessionStore.ConnectivityNotice?) {
+        guard let notice else {
+            offlineNotice.isHidden = true
+            return
+        }
+        let text: String
+        switch notice {
+        case .offline:
+            text = "Mất kết nối internet"
+            offlineNotice.backgroundColor = UIColor(white: 0.11, alpha: 0.96)
+        case .restored:
+            text = "Đã kết nối internet"
+            offlineNotice.backgroundColor = UIColor.systemGreen.withAlphaComponent(0.96)
+        }
+        offlineNotice.text = "  \(text)  "
+        offlineNotice.isHidden = false
+        UIAccessibility.post(notification: .announcement, argument: text)
+    }
+
     private func configureOfflineNotice() {
         offlineNotice.translatesAutoresizingMaskIntoConstraints = false
         offlineNotice.text = "  Mất kết nối internet  "
@@ -544,8 +574,57 @@ private final class NativeAppContainerViewController: UIViewController {
         ])
     }
 
+    /// While the account still uses the company default password the server
+    /// refuses everything except changing it, so the change form covers the
+    /// app (UIKit-presented, outside the large SwiftUI portal bodies) and
+    /// closes itself once the refreshed profile no longer requires it.
+    private func updateForcedPasswordChange() {
+        let required = session.state == .signedIn && session.profile?.mustChangePassword == true
+        if required, forcedPasswordController == nil {
+            let controller = UIHostingController(rootView: AnyView(
+                PasswordChangeView(isForced: true).sessionEnvironment(session)
+            ))
+            controller.modalPresentationStyle = .fullScreen
+            controller.isModalInPresentation = true
+            forcedPasswordController = controller
+            if let presented = presentedViewController {
+                presented.dismiss(animated: false) { [weak self] in self?.present(controller, animated: true) }
+            } else {
+                present(controller, animated: true)
+            }
+        } else if !required, let controller = forcedPasswordController {
+            forcedPasswordController = nil
+            controller.dismiss(animated: true)
+        }
+    }
+
     private func showErrorIfNeeded(_ message: String?) {
-        guard let message, presentedViewController == nil else { return }
+        guard let message else { return }
+        if let errorAlert, errorAlert.presentingViewController != nil {
+            // Already on screen: show the latest error in it.
+            errorAlert.title = session.errorTitle
+            errorAlert.message = message
+            return
+        }
+        // Present over whatever is on screen (a sheet, the forced password
+        // form). Skipping the alert while anything was presented lost the
+        // error for good.
+        var presenter: UIViewController = self
+        while let next = presenter.presentedViewController {
+            if next.isBeingDismissed || next.isBeingPresented, let coordinator = next.transitionCoordinator {
+                // Presenting during a transition fails: wait until the screen
+                // has finished appearing or is gone, then present.
+                coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                    guard let self else { return }
+                    self.showErrorIfNeeded(self.session.errorMessage)
+                }
+                return
+            }
+            presenter = next
+        }
+        // Another alert (from a screen) is up; this error is shown with the
+        // next one, as errorMessage stays set until dismissed.
+        if presenter is UIAlertController { return }
         let alert = UIAlertController(title: session.errorTitle, message: message, preferredStyle: .alert)
         if session.errorOffersSettings {
             alert.addAction(UIAlertAction(title: "Mở Cài đặt", style: .default) { _ in
@@ -556,6 +635,7 @@ private final class NativeAppContainerViewController: UIViewController {
         alert.addAction(UIAlertAction(title: "Đã hiểu", style: .cancel) { [weak self] _ in
             self?.session.dismissError()
         })
-        present(alert, animated: true)
+        errorAlert = alert
+        presenter.present(alert, animated: true)
     }
 }

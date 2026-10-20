@@ -18,7 +18,12 @@ struct ProfileView: View {
         var id: String { rawValue }
     }
 
-    @EnvironmentObject private var session: SessionStore
+    // Observes AccountState (profile, Face ID setting), not the whole
+    // session, which redrew this screen on every unrelated change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var account: AccountState
+    @State private var biometricsSwitch = false
     @AppStorage("sukavina.appearanceMode") private var appearanceMode = AppAppearanceMode.system.rawValue
     @State private var showDelete = false
     @State private var showPasswordChange = false
@@ -27,7 +32,7 @@ struct ProfileView: View {
     @State private var showSignOutConfirmation = false
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 22) {
                     PortalPageTitle("Tài khoản")
@@ -35,12 +40,12 @@ struct ProfileView: View {
                         Circle().fill(AppTheme.red.opacity(0.18)).frame(width: 96, height: 96)
                         Text(initials).font(.title.bold()).foregroundColor(AppTheme.redText)
                     }
-                    Text(session.profile?.name ?? "Nhân viên").font(.title2.bold())
-                    Text(session.profile?.employeeCode ?? "").font(.subheadline.monospaced()).foregroundColor(AppTheme.muted)
+                    Text(account.profile?.name ?? "Nhân viên").font(.title2.bold())
+                    Text(account.profile?.employeeCode ?? "").font(.subheadline.monospacedDigit()).foregroundColor(AppTheme.muted)
 
                     accountSectionTitle("THÔNG TIN TÀI KHOẢN")
                     VStack(spacing: 0) {
-                        ProfileLine(label: "Vai trò", value: session.profile?.role ?? "")
+                        ProfileLine(label: "Vai trò", value: account.profile?.role ?? "")
                         Divider().padding(.leading, 18)
                         ProfileLine(label: "Loại tài khoản", value: accountType)
                         Divider().padding(.leading, 18)
@@ -105,14 +110,24 @@ struct ProfileView: View {
                         }
                         Spacer(minLength: 8)
                         // Named for VoiceOver; the visible text sits beside it.
+                        // The switch follows the tap at once and then the
+                        // result: a cancelled or failed change leaves the
+                        // setting as it was, which publishes nothing, so the
+                        // switch must be put back from here.
                         Toggle("Đăng nhập bằng \(session.biometricName)", isOn: Binding(
-                            get: { session.biometricsEnabled },
+                            get: { biometricsSwitch },
                             set: { enabled in
-                                Task { await session.setBiometricLogin(enabled: enabled) }
+                                biometricsSwitch = enabled
+                                Task {
+                                    await session.setBiometricLogin(enabled: enabled)
+                                    biometricsSwitch = account.biometricsEnabled
+                                }
                             }
                         ))
                         .labelsHidden()
                         .tint(AppTheme.red)
+                        .onAppear { biometricsSwitch = account.biometricsEnabled }
+                        .onChange(of: account.biometricsEnabled) { _, enabled in biometricsSwitch = enabled }
                     }
                     .padding(18)
                     .background(AppTheme.card)
@@ -165,7 +180,7 @@ struct ProfileView: View {
                         .background(AppTheme.card)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
 
-                    if (session.profile?.protected != true || session.profile?.employeeCode == "DEMO") && session.profile?.accountType != "SUPER_ADMIN" {
+                    if (account.profile?.protected != true || account.profile?.employeeCode == "DEMO") && account.profile?.accountType != "SUPER_ADMIN" {
                         accountSectionTitle("VÙNG NGUY HIỂM")
                         Button("Yêu cầu xóa tài khoản", role: .destructive) { showDelete = true }
                             .font(.footnote.weight(.semibold))
@@ -187,7 +202,6 @@ struct ProfileView: View {
                 Text("Thao tác này không thể hoàn tác. Tài khoản, dữ liệu cá nhân, đơn từ, lựa chọn món và dữ liệu ứng dụng liên quan sẽ bị xóa. Hồ sơ chấm công hoặc hồ sơ lao động bắt buộc có thể vẫn được lưu theo chính sách Công ty.")
             }
         }
-        .navigationViewStyle(.stack)
         .sheet(isPresented: $showPasswordChange) {
             PasswordChangeView().sessionEnvironment(session)
         }
@@ -214,11 +228,11 @@ struct ProfileView: View {
     }
 
     private var initials: String {
-        let words = (session.profile?.name ?? "NV").split(separator: " ")
+        let words = (account.profile?.name ?? "NV").split(separator: " ")
         return words.suffix(2).compactMap(\.first).map(String.init).joined().uppercased()
     }
     private var accountType: String {
-        switch session.profile?.accountType {
+        switch account.profile?.accountType {
         case "SUPER_ADMIN": return "Quản trị viên tổng"
         case "ADMIN": return "Quản trị viên"
         default: return "Nhân viên"
@@ -227,21 +241,19 @@ struct ProfileView: View {
     /// The session keeps the full profile (auth/me) for the signed-in account
     /// (a token renewal no longer blanks it), so read it directly.
     private var displayedManagerName: String {
-        let name = session.profile?.managerFullName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = account.profile?.managerFullName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return name.isEmpty ? "Chưa cập nhật" : name
     }
 
     private var passwordChangedThisMonth: Bool {
         if isAdminAccount { return false }
-        guard let changedAt = session.profile?.passwordChangedAt else { return false }
+        guard let changedAt = account.profile?.passwordChangedAt else { return false }
         return VietnamTime.calendar.isDate(changedAt, equalTo: Date(), toGranularity: .month)
     }
     private var isAdminAccount: Bool {
-        session.profile?.accountType == "ADMIN" || session.profile?.accountType == "SUPER_ADMIN"
+        account.profile?.accountType == "ADMIN" || account.profile?.accountType == "SUPER_ADMIN"
     }
-    private var isDemoAccount: Bool {
-        session.profile?.accountType == "DEMO" || session.profile?.employeeCode.uppercased() == "DEMO"
-    }
+    private var isDemoAccount: Bool { account.profile?.isDemoAccount == true }
 
     private var passwordChangeDescription: String {
         isDemoAccount
@@ -307,7 +319,8 @@ struct NativeLegalView: View {
                     if page == .privacy {
                         legalSection("Ứng dụng nội bộ", "Sukavina chỉ dành cho nhân viên và người được Công ty ủy quyền. Tài khoản do Công ty tạo, cấp và quản lý; ứng dụng không có đăng ký công khai.")
                         legalSection("Dữ liệu được xử lý", "Hệ thống xử lý hồ sơ công việc, thông tin liên hệ, chấm công, đơn từ, lựa chọn suất ăn, thông báo và dữ liệu bảo mật cần thiết để vận hành.")
-                        legalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi người dùng giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ, camera hoặc micro.")
+                        legalSection("Không quảng cáo hoặc theo dõi", "Sukavina không hiển thị quảng cáo, không bán dữ liệu và không theo dõi người dùng giữa các ứng dụng hoặc website. Ứng dụng không truy cập vị trí, danh bạ hoặc micro.")
+                        legalSection("Camera", "Camera chỉ được dùng trên tài khoản nhà ăn để quét mã QR suất ăn, và chỉ khi bạn mở màn hình quét. Ứng dụng chỉ đọc nội dung mã QR, không chụp, lưu hay gửi hình ảnh. Tài khoản nhân viên không dùng camera. Bạn có thể tắt quyền này trong Cài đặt > Sukavina.")
                         legalSection("Sinh trắc học", "Face ID và Touch ID được xử lý trên thiết bị. Sukavina chỉ nhận kết quả xác thực, không nhận hoặc lưu khuôn mặt, vân tay hay mẫu sinh trắc học.")
                         legalSection("Lưu trữ và quyền của nhân viên", "Dữ liệu được bảo vệ bằng HTTPS và giới hạn truy cập theo tài khoản. Nhân viên có thể yêu cầu xem, sửa hoặc xóa dữ liệu trong phạm vi cho phép; hồ sơ bắt buộc có thể được lưu theo quy định.")
                     } else if page == .support {
@@ -353,8 +366,16 @@ struct NativeLegalView: View {
 }
 
 struct PasswordChangeView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes AccountState and the working flag (below) only: the form
+    // redrew while typing on every unrelated session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var account: AccountState
+    @State private var isSessionWorking = false
     @Environment(\.dismiss) private var dismiss
+    /// Shown by the app container while the default password is in use: it
+    /// cannot be closed, only completed or left by signing out.
+    var isForced = false
     @State private var email = ""
     @State private var code = ""
     @State private var currentPassword = ""
@@ -364,31 +385,32 @@ struct PasswordChangeView: View {
     @State private var completed = false
     @State private var attemptedSubmit = false
 
-    private var isDemoAccount: Bool {
-        session.profile?.accountType == "DEMO" || session.profile?.employeeCode.uppercased() == "DEMO"
-    }
+    private var isDemoAccount: Bool { account.profile?.isDemoAccount == true }
 
     private var currentPasswordError: String? {
         guard isDemoAccount,
-              let message = session.passwordChangeError,
+              let message = account.passwordChangeError,
               message.localizedCaseInsensitiveContains("Mật khẩu hiện tại") else { return nil }
         return message
     }
 
     private var reusedPasswordError: String? {
         guard isDemoAccount,
-              let message = session.passwordChangeError,
+              let message = account.passwordChangeError,
               message.localizedCaseInsensitiveContains("Mật khẩu mới phải khác") else { return nil }
         return message
     }
 
+    /// The error under the form, unless it is shown under its field (the
+    /// demo account's current/reused password). A demo account's other
+    /// errors (no connection, ...) used to be shown nowhere.
     private var regularAccountError: String? {
-        guard !isDemoAccount else { return nil }
-        return session.passwordChangeError
+        guard currentPasswordError == nil, reusedPasswordError == nil else { return nil }
+        return account.passwordChangeError
     }
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -397,10 +419,12 @@ struct PasswordChangeView: View {
                                 .fill(AppTheme.red.opacity(0.14)).frame(width: 58, height: 58)
                             Image(systemName: "key.fill").font(.title2).foregroundColor(AppTheme.red)
                         }
-                        Text("Bảo vệ tài khoản").font(.title2.bold())
-                        Text(isDemoAccount
-                             ? "Nhập mật khẩu hiện tại trước khi thiết lập mật khẩu mới."
-                             : "Xác minh email trước khi thiết lập mật khẩu mới.")
+                        Text(isForced ? "Đổi mật khẩu mặc định" : "Bảo vệ tài khoản").font(.title2.bold())
+                        Text(isForced
+                             ? "Bạn đang dùng mật khẩu mặc định. Hãy đặt mật khẩu mới để tiếp tục sử dụng ứng dụng."
+                             : (isDemoAccount
+                                ? "Nhập mật khẩu hiện tại trước khi thiết lập mật khẩu mới."
+                                : "Xác minh email trước khi thiết lập mật khẩu mới."))
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
 
@@ -424,11 +448,26 @@ struct PasswordChangeView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 20).stroke(AppTheme.cardBorder)) }
 
+                    // Before the OTP is sent: the Profile entry point checks
+                    // for an email first, the forced screen cannot, so say it
+                    // here (and show a failed "Gửi mã OTP" at all).
+                    if !otpSent && !isDemoAccount {
+                        if isForced && !session.hasLinkedEmail {
+                            Label("Tài khoản chưa có email liên kết nên chưa thể nhận mã OTP. Vui lòng liên hệ Nhân sự để cập nhật email, sau đó mở lại ứng dụng.", systemImage: "exclamationmark.triangle.fill")
+                                .font(.subheadline).foregroundColor(AppTheme.redText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else if let regularAccountError {
+                            Label(regularAccountError, systemImage: "exclamationmark.circle.fill")
+                                .font(.caption).foregroundColor(AppTheme.redText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+
                     if otpSent || isDemoAccount {
                         VStack(spacing: 14) {
                             if isDemoAccount {
                                 NativeSecureField(title: "Mật khẩu hiện tại", text: $currentPassword)
-                                    .onChange(of: currentPassword) { _ in session.clearPasswordChangeError() }
+                                    .onChange(of: currentPassword) { _, _ in session.clearPasswordChangeError() }
                                 if attemptedSubmit && currentPassword.isEmpty {
                                     validationMessage("Vui lòng nhập mật khẩu hiện tại.")
                                 }
@@ -447,7 +486,7 @@ struct PasswordChangeView: View {
                                 }
                             }
                             NativeSecureField(title: "Mật khẩu mới, ít nhất 6 ký tự gồm chữ và số", text: $newPassword)
-                                .onChange(of: newPassword) { _ in session.clearPasswordChangeError() }
+                                .onChange(of: newPassword) { _, _ in session.clearPasswordChangeError() }
                             if let reusedPasswordError {
                                 Label(reusedPasswordError, systemImage: "exclamationmark.circle.fill")
                                     .font(.caption).foregroundColor(AppTheme.redText).frame(maxWidth: .infinity, alignment: .leading)
@@ -490,7 +529,7 @@ struct PasswordChangeView: View {
                         }
                     } label: {
                         HStack {
-                            if session.isWorking { ProgressView().tint(.white) }
+                            if isSessionWorking { ProgressView().tint(.white) }
                             Text(isDemoAccount || otpSent ? "Xác nhận đổi mật khẩu" : "Gửi mã OTP").fontWeight(.bold)
                             Spacer()
                             Image(systemName: isDemoAccount || otpSent ? "checkmark.shield.fill" : "arrow.right")
@@ -498,20 +537,32 @@ struct PasswordChangeView: View {
                     }
                     .buttonStyle(.plain).foregroundColor(.white).background(AppTheme.red)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .disabled(session.isWorking)
-                    .opacity(session.isWorking ? 0.55 : 1)
+                    .disabled(isSessionWorking)
+                    .opacity(isSessionWorking ? 0.55 : 1)
                 }
                 .padding(22)
             }
             .background(AppTheme.ink.ignoresSafeArea())
             .navigationTitle("Đổi mật khẩu")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if isForced {
+                        Button("Đăng xuất") { session.signOut() }
+                    } else {
+                        Button("Đóng") { dismiss() }
+                    }
+                }
+            }
+            .interactiveDismissDisabled(isForced)
+            .onReceive(session.$isWorking) { isSessionWorking = $0 }
             .alert("Đổi mật khẩu thành công", isPresented: $completed) {
-                Button("Hoàn tất") { dismiss() }
+                // Forced: the refreshed profile clears the flag and the app
+                // container closes this screen itself.
+                Button("Hoàn tất") { if !isForced { dismiss() } }
             } message: {
                 Text("Các thiết bị khác đang đăng nhập tài khoản này đã được đăng xuất; thiết bị này vẫn tiếp tục sử dụng bình thường.")
             }
-        }.navigationViewStyle(.stack)
+        }
     }
 
     private var canConfirm: Bool {
@@ -519,18 +570,9 @@ struct PasswordChangeView: View {
             isPasswordValid && newPassword == confirmPassword
     }
 
-    private var isPasswordValid: Bool {
-        newPassword.count >= 6 &&
-            newPassword.rangeOfCharacter(from: .letters) != nil &&
-            newPassword.rangeOfCharacter(from: .decimalDigits) != nil
-    }
+    private var isPasswordValid: Bool { passwordRuleError == nil }
 
-    private var passwordRuleError: String? {
-        if newPassword.count < 6 { return "Mật khẩu phải có ít nhất 6 ký tự." }
-        if newPassword.rangeOfCharacter(from: .letters) == nil { return "Mật khẩu phải có ít nhất một chữ cái." }
-        if newPassword.rangeOfCharacter(from: .decimalDigits) == nil { return "Mật khẩu phải có ít nhất một chữ số." }
-        return nil
-    }
+    private var passwordRuleError: String? { PasswordPolicy.problem(newPassword) }
 
     private func validationMessage(_ message: String) -> some View {
         Label(message, systemImage: "exclamationmark.circle.fill")
@@ -611,86 +653,5 @@ struct NativeSecureField: View {
         .background(AppTheme.field)
         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(AppTheme.fieldBorder, lineWidth: 1))
-    }
-}
-
-extension String {
-    var safeHTMLText: String {
-        let maximumCharacters = 750_000
-        var output = String()
-        output.reserveCapacity(Swift.min(count, maximumCharacters))
-        var tag = String()
-        var isInsideTag = false
-        var written = 0
-
-        for character in self {
-            if written >= maximumCharacters {
-                output.append("\n\n[Nội dung đã được rút gọn để bảo đảm ứng dụng hoạt động ổn định.]")
-                break
-            }
-            if character == "<" {
-                isInsideTag = true
-                tag.removeAll(keepingCapacity: true)
-                continue
-            }
-            if isInsideTag {
-                if character == ">" {
-                    isInsideTag = false
-                    let name = tag.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-                    if name.hasPrefix("br") || name.hasPrefix("/p") || name.hasPrefix("/div") ||
-                        name.hasPrefix("/li") || name.hasPrefix("/h") || name.hasPrefix("hr") {
-                        if output.last != "\n" { output.append("\n") }
-                    } else if name.hasPrefix("/td") || name.hasPrefix("/th") {
-                        output.append(" | ")
-                    } else if name.hasPrefix("li") {
-                        if output.last != "\n" { output.append("\n") }
-                        output.append("• ")
-                    }
-                } else if tag.count < 80 {
-                    tag.append(character)
-                }
-                continue
-            }
-            output.append(character)
-            written += 1
-        }
-
-        let decoded = output
-            .replacingOccurrences(of: "&nbsp;", with: " ")
-            .replacingOccurrences(of: "&amp;", with: "&")
-            .replacingOccurrences(of: "&lt;", with: "<")
-            .replacingOccurrences(of: "&gt;", with: ">")
-            .replacingOccurrences(of: "&quot;", with: "\"")
-            .replacingOccurrences(of: "&#39;", with: "'")
-
-        var lines: [String] = []
-        var previousWasEmpty = false
-        for rawLine in decoded.components(separatedBy: .newlines) {
-            let line = rawLine.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty {
-                if !previousWasEmpty && !lines.isEmpty { lines.append("") }
-                previousWasEmpty = true
-            } else {
-                lines.append(line)
-                previousWasEmpty = false
-            }
-        }
-        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var readingChunks: [String] {
-        let maximumChunkLength = 1_800
-        var chunks: [String] = []
-        for paragraph in components(separatedBy: "\n\n") where !paragraph.isEmpty {
-            var remainder = paragraph[...]
-            while remainder.count > maximumChunkLength {
-                let tentativeEnd = remainder.index(remainder.startIndex, offsetBy: maximumChunkLength)
-                let split = remainder[..<tentativeEnd].lastIndex(of: " ") ?? tentativeEnd
-                chunks.append(String(remainder[..<split]))
-                remainder = remainder[split...].drop(while: { $0 == " " })
-            }
-            if !remainder.isEmpty { chunks.append(String(remainder)) }
-        }
-        return chunks.isEmpty ? [self] : chunks
     }
 }

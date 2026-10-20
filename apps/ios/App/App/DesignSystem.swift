@@ -84,6 +84,28 @@ enum AppTheme {
     /// background in the current appearance. Pass `chipAlpha` when the text
     /// sits on a pill tinted with the same colour. Mirrors Android `asText()`.
     static func text(_ base: Color, chipAlpha: Double = 0) -> Color {
+        // Views call this in their bodies on every redraw: build each
+        // adaptive colour once (it still resolves per appearance).
+        let key = TextColorKey(base: base, chipAlpha: chipAlpha)
+        textColorLock.lock()
+        defer { textColorLock.unlock() }
+        if let cached = textColors[key] { return cached }
+        let color = makeTextColor(base, chipAlpha: chipAlpha)
+        // The app uses a handful of bases; a colour that only compares equal
+        // to itself must not grow the cache without bound.
+        if textColors.count >= 64 { textColors.removeAll() }
+        textColors[key] = color
+        return color
+    }
+
+    private struct TextColorKey: Hashable {
+        let base: Color
+        let chipAlpha: Double
+    }
+    private static let textColorLock = NSLock()
+    private static var textColors: [TextColorKey: Color] = [:]
+
+    private static func makeTextColor(_ base: Color, chipAlpha: Double) -> Color {
         let baseColor = UIColor(base), cardColor = UIColor(card), inkColor = UIColor(ink)
         return Color(UIColor { traits in
             let hue = SRGB(baseColor.resolvedColor(with: traits))
@@ -167,7 +189,7 @@ struct PortalPageTitle: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 30, weight: .bold, design: .rounded))
+            .font(.largeTitle.bold())
             .frame(maxWidth: .infinity, alignment: .leading)
             .accessibilityAddTraits(.isHeader)
     }
@@ -204,49 +226,7 @@ struct PortalPinnedHeader<Accessory: View>: View {
     }
 }
 
-struct AdaptiveGlassSurface: ViewModifier {
-    let cornerRadius: CGFloat
-    var tint: Color? = nil
-    var interactive = false
-    var legacyFill = AppTheme.card
-    var legacyOpacity = 1.0
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        // Do not reference the iOS 26 Liquid Glass APIs from the app binary.
-        // Xcode 26 can turn that reference into a required SwiftUICore.framework
-        // dependency even inside an availability check, which prevents the app
-        // from launching on iOS 15–17.  This adaptive surface intentionally uses
-        // the same supported material treatment on every OS version instead.
-        content
-            .background(legacyFill.opacity(legacyOpacity))
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-    }
-}
-
 extension View {
-    func adaptiveGlassSurface(
-        cornerRadius: CGFloat,
-        tint: Color? = nil,
-        interactive: Bool = false,
-        legacyFill: Color = AppTheme.card,
-        legacyOpacity: Double = 1
-    ) -> some View {
-        modifier(
-            AdaptiveGlassSurface(
-                cornerRadius: cornerRadius,
-                tint: tint,
-                interactive: interactive,
-                legacyFill: legacyFill,
-                legacyOpacity: legacyOpacity
-            )
-        )
-    }
-
     @ViewBuilder
     func hidesPortalBottomScrollEdgeEffect() -> some View {
         // scrollEdgeEffectHidden is also an iOS 26-only SwiftUI API. Keep the
@@ -269,3 +249,321 @@ extension View {
 
 }
 
+/// A label and a date or time field on one row, as a labelled DatePicker
+/// lays out. The field keeps its full width; a long label wraps instead.
+struct CompactDateRow<Picker: View>: View {
+    let label: String
+    @ViewBuilder let picker: () -> Picker
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .lineLimit(2)
+                // VoiceOver reads the field's own label instead.
+                .accessibilityHidden(true)
+            Spacer(minLength: 8)
+            picker()
+                .fixedSize()
+        }
+    }
+}
+
+/// A date, time, or date and time field: each value in the system's
+/// tertiary fill, as the compact picker shows it ("18 thg 10, 2026",
+/// "08:30"), and each its own button (`DatePopoverButton`): the date opens
+/// Apple's calendar in a popover, the time Apple's time wheels.
+///
+/// It was Apple's compact picker. Its bubble takes the input focus when
+/// it opens, so a keyboard left open by a text field closed; the system
+/// popover, as Thời lượng opens, leaves the keyboard open (1.0.89). The
+/// values are set as text, so a date is never cut to its short form
+/// ("18/10/26"), which the compact picker fell back to whenever its frame
+/// was narrower than its long form.
+struct DatePopoverField: View {
+    @Binding var selection: Date
+    let mode: UIDatePicker.Mode
+    var minimum: Date? = nil
+    let accessibilityLabel: String
+
+    var body: some View {
+        // The time before the date, as Vietnamese writes it ("08:30 ngày
+        // 18/10/2026") and as Apple's compact picker showed them in vi_VN.
+        HStack(spacing: 6) {
+            if mode != .date {
+                valueBox(
+                    VietnamTime.clock.string(from: selection),
+                    mode: .time,
+                    label: mode == .time ? accessibilityLabel : "\(accessibilityLabel), giờ"
+                )
+            }
+            if mode != .time {
+                valueBox(VietnamTime.mediumDate.string(from: selection), mode: .date, label: accessibilityLabel)
+            }
+        }
+        .fixedSize()
+    }
+
+    /// One value and the button over it that opens its own popover: `.date`
+    /// keeps the time of `selection`, `.time` keeps its day.
+    private func valueBox(_ text: String, mode: UIDatePicker.Mode, label: String) -> some View {
+        Text(text)
+            .font(.body)
+            .monospacedDigit()
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 6)
+            .background(Color(uiColor: .tertiarySystemFill), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .accessibilityHidden(true)
+            .overlay(DatePopoverButton(
+                selection: $selection,
+                mode: mode,
+                minimum: minimum,
+                accessibilityLabel: label,
+                accessibilityValue: text
+            ))
+    }
+}
+
+/// A drawn field or tile's whole area as a button that opens Apple's
+/// popover with Apple's calendar (a date) or wheels (a time)
+/// (`DatePopoverControl`). Put it in the face's `.overlay`; it is
+/// transparent.
+struct DatePopoverButton: UIViewRepresentable {
+    @Binding var selection: Date
+    /// `.time` keeps the day of `selection`; `.date` keeps its time.
+    var mode: UIDatePicker.Mode = .time
+    var minuteInterval = 1
+    /// Earliest and latest value offered.
+    var minimum: Date? = nil
+    var maximum: Date? = nil
+    let accessibilityLabel: String
+    /// What the face shows ("06:30", "1 giờ 30 phút"), for VoiceOver.
+    let accessibilityValue: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(selection: $selection) }
+
+    func makeUIView(context: Context) -> DatePopoverControl {
+        let control = DatePopoverControl()
+        control.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .valueChanged)
+        apply(to: control)
+        return control
+    }
+
+    func updateUIView(_ control: DatePopoverControl, context: Context) {
+        context.coordinator.selection = $selection
+        apply(to: control)
+    }
+
+    private func apply(to control: DatePopoverControl) {
+        control.mode = mode
+        control.minuteInterval = minuteInterval
+        control.minimumDate = minimum
+        control.maximumDate = maximum
+        if control.date != selection { control.date = selection }
+        control.accessibilityLabel = accessibilityLabel
+        control.accessibilityValue = accessibilityValue
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var selection: Binding<Date>
+
+        init(selection: Binding<Date>) {
+            self.selection = selection
+        }
+
+        @objc func changed(_ control: DatePopoverControl) {
+            if selection.wrappedValue != control.date { selection.wrappedValue = control.date }
+        }
+    }
+}
+
+/// A transparent button over a whole drawn field or tile (Bắt đầu, Thời
+/// lượng, Giờ vào / Giờ ra, every date). A tap anywhere on it opens Apple's
+/// popover from it, holding Apple's calendar for a date or its wheels for
+/// a time (UIDatePicker); every change is sent as `.valueChanged`. In
+/// `.time` mode the hour and minute are set on the day of `date`; in
+/// `.date` mode the day is set at the time of `date`. Used by SwiftUI (`DatePopoverButton`, iOS 18) and
+/// UIKit (LegacyMeetingRoomsUIKit, iOS 17) alike.
+///
+/// Apple offers no way to open the compact picker's own bubble from code:
+/// it opens only for a touch inside its small capsule. Every way of
+/// stretching that capsule over a tile (stretched, scaled, touches handed
+/// over, moved under the finger, laid invisibly in front) depended on how
+/// iOS routes touches inside Apple's control, and failed in turn
+/// (02708ca … 1.0.88). A button that is the tile, opening the system
+/// popover, depends on nothing of the kind.
+///
+/// - The popover is the system's (`UIPopoverPresentationController`, kept
+///   a popover on iPhone), anchored to the field.
+/// - From an open popover, a tap on another field closes it at once and
+///   opens that field's: the other fields pass touches through the
+///   popover. A tap on its own field or anywhere else only closes it, as
+///   any popover.
+/// - A tap on a field while a popover is still closing opens the field's
+///   popover once the closing transition ends (its own completion, no
+///   timer).
+/// - A keyboard left open by a text field stays open.
+final class DatePopoverControl: UIControl {
+    var mode: UIDatePicker.Mode = .time
+    var minuteInterval = 1
+    var minimumDate: Date?
+    var maximumDate: Date?
+    /// The value shown; in `.time` mode also the day the chosen hour and
+    /// minute are set on, in `.date` mode the time the chosen day keeps.
+    var date = Date() {
+        didSet {
+            if let picker = popover?.picker, picker.date != date { picker.date = date }
+        }
+    }
+
+    private weak var popover: DatePopoverController?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        addTarget(self, action: #selector(tapped), for: .touchUpInside)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    @objc private func tapped() {
+        guard let presenter = nearestViewController() else { return }
+        guard let presented = presenter.presentedViewController else {
+            present(from: presenter)
+            return
+        }
+        guard let other = presented as? DatePopoverController else {
+            // Something else is on screen (a confirmation): leave it be.
+            return
+        }
+        if other.isBeingDismissed {
+            // Closing already, from a tap outside it a moment ago: open this
+            // one the moment it is gone, so that tap is not lost.
+            other.transitionCoordinator?.animate(alongsideTransition: nil) { [weak self, weak presenter] _ in
+                guard let self, let presenter, presenter.presentedViewController == nil else { return }
+                self.present(from: presenter)
+            }
+            return
+        }
+        // Another field's popover, let through to here: close it now, then
+        // open this one, so one tap moves from field to field.
+        other.dismiss(animated: false) { [weak self, weak presenter] in
+            guard let self, let presenter else { return }
+            self.present(from: presenter)
+        }
+    }
+
+    private func present(from presenter: UIViewController) {
+        let controller = DatePopoverController()
+        let picker = controller.picker
+        picker.datePickerMode = mode
+        // A day on Apple's calendar; a time, or a date and time, on its wheels.
+        picker.preferredDatePickerStyle = mode == .date ? .inline : .wheels
+        picker.minuteInterval = minuteInterval
+        picker.timeZone = VietnamTime.timeZone
+        picker.calendar = VietnamTime.calendar
+        picker.locale = VietnamTime.locale
+        picker.minimumDate = minimumDate
+        picker.maximumDate = maximumDate
+        picker.date = date
+        picker.accessibilityLabel = accessibilityLabel
+        picker.addTarget(self, action: #selector(pickerChanged(_:)), for: .valueChanged)
+
+        controller.modalPresentationStyle = .popover
+        if let popover = controller.popoverPresentationController {
+            popover.sourceView = self
+            popover.sourceRect = bounds
+            popover.permittedArrowDirections = [.up, .down]
+            popover.delegate = controller
+            popover.passthroughViews = otherFields()
+        }
+        self.popover = controller
+        presenter.present(controller, animated: true)
+    }
+
+    @objc private func pickerChanged(_ picker: UIDatePicker) {
+        let calendar = VietnamTime.calendar
+        let chosen: Date
+        switch mode {
+        case .time:
+            let time = calendar.dateComponents([.hour, .minute], from: picker.date)
+            chosen = calendar.date(bySettingHour: time.hour ?? 0, minute: time.minute ?? 0, second: 0, of: date) ?? date
+        case .date:
+            let time = calendar.dateComponents([.hour, .minute, .second], from: date)
+            chosen = calendar.date(
+                bySettingHour: time.hour ?? 0,
+                minute: time.minute ?? 0,
+                second: time.second ?? 0,
+                of: picker.date
+            ) ?? picker.date
+        default:
+            chosen = picker.date
+        }
+        guard chosen != date else { return }
+        date = chosen
+        sendActions(for: .valueChanged)
+    }
+
+    /// The other date and time fields on screen, which a tap may reach
+    /// through this field's popover.
+    private func otherFields() -> [UIView] {
+        guard let window else { return [] }
+        var fields: [UIView] = []
+        func collect(_ view: UIView) {
+            if let field = view as? DatePopoverControl, field !== self { fields.append(field) }
+            view.subviews.forEach(collect)
+        }
+        collect(window)
+        return fields
+    }
+
+    private func nearestViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let controller = current as? UIViewController { return controller }
+            responder = current.next
+        }
+        return nil
+    }
+}
+
+/// The popover's content: Apple's calendar or wheels at their own size.
+final class DatePopoverController: UIViewController, UIPopoverPresentationControllerDelegate {
+    let picker = UIDatePicker()
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        picker.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(picker)
+        NSLayoutConstraint.activate([
+            picker.topAnchor.constraint(equalTo: view.topAnchor),
+            picker.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            picker.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            picker.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        if picker.preferredDatePickerStyle == .inline {
+            // Apple's calendar, at the width it is laid out for on iPhone.
+            let fitted = picker.systemLayoutSizeFitting(
+                CGSize(width: 320, height: 0),
+                withHorizontalFittingPriority: .required,
+                verticalFittingPriority: .fittingSizeLevel
+            )
+            preferredContentSize = CGSize(width: 320, height: fitted.height > 200 ? fitted.height : 360)
+        } else {
+            let fitted = picker.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
+            preferredContentSize = CGSize(
+                width: max(fitted.width, 240),
+                height: fitted.height > 100 ? fitted.height : 216
+            )
+        }
+    }
+
+    /// A popover on iPhone too, not a sheet.
+    func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle {
+        .none
+    }
+}

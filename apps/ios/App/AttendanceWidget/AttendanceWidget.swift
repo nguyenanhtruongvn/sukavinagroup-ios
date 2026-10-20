@@ -12,7 +12,7 @@ private enum WidgetStorage {
     /// window the timeline uses that state instead of fetching it again.
     private static let freshness: TimeInterval = 120
     private static let tokenKey = "attendance-widget-token"
-    private static let endpoint = "https://sukavinagroup.net/api/public/widget/attendance"
+    private static let endpoint = SukavinaServer.api.absoluteString + "public/widget/attendance"
 
     private static var appGroup: String {
         let resignedGroups = Bundle.main.object(forInfoDictionaryKey: "ALTAppGroups") as? [String]
@@ -22,6 +22,16 @@ private enum WidgetStorage {
     struct State: Codable {
         let checkIn: String?
         let checkOut: String?
+
+        /// Only the punches made on `day` (Vietnam time).
+        func punches(on day: Date, calendar: Calendar) -> State {
+            let sameDay = { (value: String?) -> String? in
+                guard let value, let date = VietnamTime.date(fromISO8601: value),
+                      calendar.isDate(date, inSameDayAs: day) else { return nil }
+                return value
+            }
+            return State(checkIn: sameDay(checkIn), checkOut: sameDay(checkOut))
+        }
     }
 
     static func load() -> State? {
@@ -41,9 +51,15 @@ private enum WidgetStorage {
         return URLSession(configuration: configuration)
     }()
 
+    /// The shared Keychain group first; the App Group copy only for a build
+    /// signed without that group, or until the app has moved it there.
+    private static func currentToken(_ defaults: UserDefaults?) -> String? {
+        WidgetTokenKeychain.load() ?? defaults?.string(forKey: tokenKey)?.nilIfEmptyToken
+    }
+
     static func fetchLatest() async -> State? {
         let defaults = UserDefaults(suiteName: appGroup)
-        guard let token = defaults?.string(forKey: tokenKey), !token.isEmpty else {
+        guard let token = currentToken(defaults) else {
             // Signed out: never keep showing the previous account's punches.
             defaults?.removeObject(forKey: stateKey)
             return nil
@@ -69,7 +85,7 @@ private enum WidgetStorage {
             if let http = response as? HTTPURLResponse, http.statusCode == 401 || http.statusCode == 403 {
                 // The session behind this widget token was signed out or
                 // revoked. Stop showing its data.
-                if defaults?.string(forKey: tokenKey) == token {
+                if currentToken(defaults) == token {
                     defaults?.removeObject(forKey: stateKey)
                 }
                 return nil
@@ -79,7 +95,7 @@ private enum WidgetStorage {
                 return load()
             }
             // The user may have signed out while the request was in flight.
-            guard defaults?.string(forKey: tokenKey) == token else { return nil }
+            guard currentToken(defaults) == token else { return nil }
             let records = payload.attendanceRecords.sorted { $0.punchedAt < $1.punchedAt }
             let state: State
             if payload.attendanceClassification != nil {
@@ -144,13 +160,26 @@ private struct AttendanceProvider: TimelineProvider {
         completion(context.isPreview ? placeholder(in: context) : AttendanceEntry(date: Date(), state: WidgetStorage.load()))
     }
 
+    /// Punches change only when the employee clocks in or out. The server's
+    /// punch push wakes the app, which reloads this widget at once (as do
+    /// the app's own attendance updates); the day change is a ready-made
+    /// midnight entry needing no network. The hourly reload is only a safety
+    /// net for pushes iOS does not deliver (e.g. after the app was force-quit).
+    /// Previously the widget fetched from the network every 15 minutes.
     func getTimeline(in context: Context, completion: @escaping (Timeline<AttendanceEntry>) -> Void) {
         Task {
-            let entry = AttendanceEntry(date: Date(), state: await WidgetStorage.fetchLatest())
-            // WidgetKit throttles frequent timeline reloads anyway; the app
-            // reloads this widget itself whenever attendance changes.
-            let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date().addingTimeInterval(15 * 60)
-            completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
+            let now = Date()
+            let calendar = VietnamTime.calendar
+            let state = await WidgetStorage.fetchLatest()
+            let midnight = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))
+                ?? now.addingTimeInterval(86_400)
+            let entries = [
+                AttendanceEntry(date: now, state: state),
+                // New day: the calendar moves on and yesterday's times clear.
+                AttendanceEntry(date: midnight, state: state?.punches(on: midnight, calendar: calendar)),
+            ]
+            let safetyNet = now.addingTimeInterval(60 * 60)
+            completion(Timeline(entries: entries, policy: .after(min(safetyNet, midnight))))
         }
     }
 }
@@ -276,7 +305,7 @@ private struct AttendanceWidgetView: View {
                         .minimumScaleFactor(0.6)
                         .frame(maxWidth: .infinity)
                     Text(day.number)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 16, weight: .semibold).monospacedDigit())
                         .foregroundStyle(day.isToday && renderingMode == .fullColor ? Color.white : Color(red: 0.12, green: 0.16, blue: 0.20))
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
@@ -328,7 +357,7 @@ private struct AttendanceWidgetView: View {
     private var monthCalendar: some View {
         VStack(spacing: 6) {
             Text(monthTitle)
-                .font(.system(size: 17, weight: .bold, design: .rounded))
+                .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -344,7 +373,7 @@ private struct AttendanceWidgetView: View {
                 }
                 ForEach(monthDays) { day in
                     Text(day.number)
-                        .font(.system(size: 13, weight: day.isToday ? .bold : .medium, design: .rounded).monospacedDigit())
+                        .font(.system(size: 13, weight: day.isToday ? .bold : .medium).monospacedDigit())
                         .foregroundStyle(
                             day.isToday && renderingMode == .fullColor
                                 ? Color.white
@@ -450,7 +479,7 @@ private struct AttendanceWidgetView: View {
                     .minimumScaleFactor(0.7)
             }
             Text(value)
-                .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(size: 20, weight: .semibold).monospacedDigit())
                 .foregroundStyle(Color(red: 0.12, green: 0.16, blue: 0.20))
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
@@ -520,7 +549,7 @@ private struct MeetingLiveActivityWidget: Widget {
                             .fixedSize()
 
                             Text("\(context.attributes.title) · \(context.attributes.roomName)")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.92))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.65)
@@ -528,7 +557,7 @@ private struct MeetingLiveActivityWidget: Widget {
                                 .layoutPriority(1)
 
                             Text(timerInterval: meetingCountdown(context), countsDown: true)
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .font(.system(size: 13, weight: .bold))
                                 .monospacedDigit()
                                 .foregroundStyle(accent)
                                 .lineLimit(1)
@@ -539,7 +568,7 @@ private struct MeetingLiveActivityWidget: Widget {
 
                         HStack(spacing: 8) {
                             Text(VietnamTime.clock.string(from: context.attributes.startsAt))
-                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .font(.system(size: 10, weight: .semibold))
                                 .monospacedDigit()
                                 .foregroundStyle(accent)
                                 .lineLimit(1)
@@ -570,7 +599,7 @@ private struct MeetingLiveActivityWidget: Widget {
             } compactTrailing: {
                 // Keep the countdown complete while avoiding unnecessary width.
                 Text(timerInterval: meetingCountdown(context), countsDown: true)
-                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                    .font(.system(size: 9, weight: .semibold).monospacedDigit())
                     .monospacedDigit()
                     .foregroundStyle(accent)
                     .lineLimit(1)
@@ -782,4 +811,8 @@ struct SukavinaAttendanceWidgetBundle: WidgetBundle {
         SukavinaAttendanceWidget()
         MeetingLiveActivityWidget()
     }
+}
+
+private extension String {
+    var nilIfEmptyToken: String? { isEmpty ? nil : self }
 }

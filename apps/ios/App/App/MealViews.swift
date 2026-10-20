@@ -60,20 +60,24 @@ struct MealQRCodeAccessCard: View {
     @Environment(\.sessionActions) private var sessionActions
     private var session: SessionStore { sessionActions.store }
     @State private var issued: MealQrIssueResponse?
-    @State private var secondsRemaining = 0
-    // Expiry on the continuous clock. Decrementing a counter after each
-    // one-second sleep drifted and stopped in the background, so the code
-    // could stay on screen after the server had already expired it.
+    /// Wall-clock expiry for the countdown text, drawn by the system.
+    @State private var expiresAt: Date?
+    // Expiry on the continuous clock, used to hide the code. Decrementing a
+    // counter after each one-second sleep drifted and stopped in the
+    // background, so the code could stay on screen after it had expired.
     @State private var deadline: ContinuousClock.Instant?
+    @State private var isExpiringSoon = false
     @State private var isLoading = false
 
     var body: some View {
         VStack(spacing: 12) {
-            if let issued, secondsRemaining > 0 {
+            if let issued, let expiresAt {
                 MealQRCodeCard(token: issued.token)
-                Text("Mã tự ẩn sau \(secondsRemaining) giây")
+                // Text(timerInterval:) counts down on its own, like the Live
+                // Activity: no per-second state update or app wake-up.
+                (Text("Mã tự ẩn sau ") + Text(timerInterval: min(Date(), expiresAt)...expiresAt, countsDown: true))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundColor(secondsRemaining <= 5 ? .red : AppTheme.muted)
+                    .foregroundColor(isExpiringSoon ? .red : AppTheme.muted)
                     .monospacedDigit()
             } else {
                 Button {
@@ -102,17 +106,16 @@ struct MealQRCodeAccessCard: View {
         .task(id: issued?.token) {
             guard issued != nil, let deadline else { return }
             let clock = ContinuousClock()
-            while !Task.isCancelled {
-                let remaining = clock.now.duration(to: deadline)
-                guard remaining > .zero else { break }
-                let (wholeSeconds, attoseconds) = remaining.components
-                secondsRemaining = Int(wholeSeconds) + (attoseconds > 0 ? 1 : 0)
-                // Wake when the displayed whole second changes.
-                try? await Task.sleep(until: deadline - .seconds(secondsRemaining - 1), clock: clock)
-            }
+            // Two wake-ups per code: turn the countdown red 5 s before expiry,
+            // then hide the code.
+            try? await Task.sleep(until: deadline - .seconds(5), clock: clock)
             guard !Task.isCancelled else { return }
-            secondsRemaining = 0
+            isExpiringSoon = true
+            try? await Task.sleep(until: deadline, clock: clock)
+            guard !Task.isCancelled else { return }
             issued = nil
+            expiresAt = nil
+            isExpiringSoon = false
         }
     }
 
@@ -123,13 +126,17 @@ struct MealQRCodeAccessCard: View {
         guard let response = await session.issueMealQRCode() else { return }
         let lifetime = max(1, response.expiresInSeconds)
         deadline = ContinuousClock.now + .seconds(lifetime)
-        secondsRemaining = lifetime
+        expiresAt = Date().addingTimeInterval(TimeInterval(lifetime))
+        isExpiringSoon = lifetime <= 5
         issued = response
     }
 }
 
 struct CanteenScannerView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods; the root is rebuilt when the profile
+    // changes, so this view need not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @State private var scanning = true
     @State private var result: MealScanResponse?
 
@@ -263,22 +270,36 @@ final class MealScannerViewController: UIViewController, AVCaptureMetadataOutput
     }
 
     private func configureCamera() {
-        guard !configured,
-              let camera = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: camera),
-              captureSession.canAddInput(input) else { showCameraUnavailable(); return }
-        captureSession.addInput(input)
-        let output = AVCaptureMetadataOutput()
-        guard captureSession.canAddOutput(output) else { showCameraUnavailable(); return }
-        captureSession.addOutput(output)
-        output.setMetadataObjectsDelegate(self, queue: .main)
-        output.metadataObjectTypes = [.qr]
+        guard !configured else { return }
+        configured = true
         let preview = AVCaptureVideoPreviewLayer(session: captureSession)
         preview.videoGravity = .resizeAspectFill
         view.layer.insertSublayer(preview, at: 0)
         previewLayer = preview
-        configured = true
-        sessionQueue.async { [captureSession] in captureSession.startRunning() }
+        // Opening the camera and configuring the session block too: on the
+        // session queue with start/stop, as Apple asks, not on the main thread.
+        sessionQueue.async { [weak self, captureSession] in
+            guard let camera = AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: camera),
+                  captureSession.canAddInput(input) else {
+                DispatchQueue.main.async { self?.showCameraUnavailable() }
+                return
+            }
+            let output = AVCaptureMetadataOutput()
+            captureSession.beginConfiguration()
+            captureSession.addInput(input)
+            guard captureSession.canAddOutput(output) else {
+                captureSession.commitConfiguration()
+                DispatchQueue.main.async { self?.showCameraUnavailable() }
+                return
+            }
+            captureSession.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            // Only types the session offers: asking for another one throws.
+            output.metadataObjectTypes = [.qr].filter { output.availableMetadataObjectTypes.contains($0) }
+            captureSession.commitConfiguration()
+            captureSession.startRunning()
+        }
     }
 
     func setScanning(_ active: Bool) {

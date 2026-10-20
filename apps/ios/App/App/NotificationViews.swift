@@ -20,10 +20,26 @@ struct RequestNotification: Codable, Identifiable, Equatable {
     let startsAt: Date? = nil
     let endsAt: Date? = nil
 }
+
+extension RequestNotification {
+    /// The organiser's "ending in 10 minutes" reminder. One rule for the list
+    /// and the detail (each had its own copy); the title check is kept for
+    /// reminders that do not carry the meeting_ending_soon type.
+    var isMeetingEndingSoon: Bool {
+        type == "meeting_ending_soon" || title.hasPrefix("Còn 10 phút")
+    }
+
+    /// Opens the meeting detail rather than a request.
+    var isMeeting: Bool { type.hasPrefix("meeting_") || isMeetingEndingSoon }
+}
 struct UpdateCount: Decodable { let count: Int }
 
 struct NotificationsView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes InboxState (news, unread state, request notifications), not
+    // the whole session, which redrew this list on every unrelated change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var inbox: InboxState
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     // Shared with the Requests tab: one cache decode and one request per refresh.
     @EnvironmentObject private var requestStore: EmployeeRequestStore
@@ -38,12 +54,14 @@ struct NotificationsView: View {
     @State private var attendanceReportMonth: String?
     @State private var confirmClear = false
     @State private var hiddenArticleIDs = Set<String>()
+    @State private var reloadAgain = false
+    @State private var reloadAgainWithDashboard = false
     @State private var isReloadingNotifications = false
-    private var items: [ContentItem] { (session.dashboard?.contentItems ?? []).filter { !hiddenArticleIDs.contains($0.id) } }
+    private var items: [ContentItem] { inbox.articles.filter { !hiddenArticleIDs.contains($0.id) } }
     private var inboxRequestNotifications: [RequestNotification] {
         requestNotifications.filter { !session.isAttendanceNotificationType($0.type) }
     }
-    private var totalUnread: Int { session.unreadCount + inboxRequestNotifications.filter { !$0.read }.count }
+    private var totalUnread: Int { inbox.unreadCount + inboxRequestNotifications.filter { !$0.read }.count }
     private var notificationCornerRadius: CGFloat {
         if #available(iOS 26.0, *) { return 20 }
         return 0
@@ -109,7 +127,7 @@ struct NotificationsView: View {
                         .listRowInsets(notificationRowInsets)
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let isUnread = session.unreadArticleIDs.contains(item.id)
+                        let isUnread = inbox.unreadArticleIDs.contains(item.id)
                         NavigationLink(destination: ArticleDetailView(item: item)) {
                             HStack(alignment: .top, spacing: 14) {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -178,7 +196,7 @@ struct NotificationsView: View {
             .toolbar(.hidden, for: .navigationBar)
                 .refreshable { await reloadNotifications(refreshDashboard: true) }
                 .task {
-                    hiddenArticleIDs = Set(UserDefaults.standard.stringArray(forKey: "hidden-notification-articles") ?? [])
+                    hiddenArticleIDs = session.hiddenArticleIDs()
                     requestNotifications = session.cachedRequestNotifications()
                     requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
                     await reloadNotifications()
@@ -186,11 +204,13 @@ struct NotificationsView: View {
                 }
                 .onAppear { Task { await openPendingAPNsRouteIfNeeded() } }
                 .onChange(of: revisions.attendance) { _, _ in Task { await reloadNotifications() } }
-                .onChange(of: revisions.request) { _, _ in Task { await reloadNotifications() } }
-                // Meeting invitations are notifications too.
-                .onChange(of: revisions.meeting) { _, _ in Task { await reloadNotifications() } }
-                // Read or deleted on another of this user's devices.
-                .onChange(of: revisions.inbox) { _, _ in Task { await reloadNotifications() } }
+                // Request, meeting and inbox events (a decision, an invitation,
+                // a read on another device) are fetched once by SessionStore,
+                // for the badge; this list mirrors that result instead of
+                // requesting the same notifications a second time.
+                .onChange(of: inbox.requestNotifications) { _, values in
+                    if requestNotifications != values { requestNotifications = values }
+                }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
@@ -261,27 +281,36 @@ struct NotificationsView: View {
 
     private func loadRequestNotifications() async {
         guard let token = session.token else { return }
-        if let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) {
-            let merged = session.mergedRequestNotifications(values)
+        if let merged = await session.loadRequestNotifications(force: true) {
             if requestNotifications != merged {
                 requestNotifications = merged
             }
-            session.updateRequestUnreadCount(merged)
             await requestStore.load(token)
         }
     }
 
     /// A List refresh keeps its scroll position stable only while its backing
-    /// data is replaced once. Dashboard updates used to trigger this method
-    /// again through two independent observers during the same pull gesture.
+    /// data is replaced once, so overlapping reloads are not run in parallel.
+    /// They are not dropped either (a change announced meanwhile would be
+    /// lost): one more pass runs when the current one ends.
     private func reloadNotifications(refreshDashboard: Bool = false) async {
-        guard !isReloadingNotifications else { return }
+        if isReloadingNotifications {
+            reloadAgain = true
+            reloadAgainWithDashboard = reloadAgainWithDashboard || refreshDashboard
+            return
+        }
         isReloadingNotifications = true
         defer { isReloadingNotifications = false }
-        if refreshDashboard {
-            await session.refreshDashboard(shouldRefreshRequestNotificationCount: false)
-        }
-        await loadRequestNotifications()
+        var withDashboard = refreshDashboard
+        repeat {
+            reloadAgain = false
+            if withDashboard {
+                await session.refreshDashboard(shouldRefreshRequestNotificationCount: false)
+            }
+            await loadRequestNotifications()
+            withDashboard = reloadAgainWithDashboard
+            reloadAgainWithDashboard = false
+        } while reloadAgain
     }
 
     private func open(_ item: RequestNotification) async {
@@ -302,7 +331,7 @@ struct NotificationsView: View {
             return
         }
 
-        let isMeetingNotification = item.type.hasPrefix("meeting_") || item.title.hasPrefix("Còn 10 phút")
+        let isMeetingNotification = item.isMeeting
 
         // Meeting notifications should open immediately. Previously the sheet
         // waited for the read PATCH round-trip before appearing, which made a
@@ -323,22 +352,43 @@ struct NotificationsView: View {
             return
         }
 
-        guard let token = session.token else { return }
-        let _: UpdateCount? = try? await APIClient.shared.request(
-            "me/requests/notifications/\(item.id)/read",
-            method: "PATCH",
-            token: token
-        )
-        await requestStore.load(token, force: true)
-        if let id = item.requestId {
-            if item.type == "request_pending",
-               let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) {
-                reviewing = request
-            } else {
-                viewing = requestStore.request(id: id)
+        // Requests open at once from the cached list, like meetings; the read
+        // mark and a fresh load run behind the sheet. It used to wait for
+        // both round trips first. A request that is not cached yet (or an
+        // approval not yet in the cached approvals) opens once loaded.
+        markReadOptimistically(item)
+        let opened = presentRequest(for: item, allowViewingPending: false)
+        Task {
+            guard let token = session.token else { return }
+            let _: UpdateCount? = try? await APIClient.shared.request(
+                "me/requests/notifications/\(item.id)/read",
+                method: "PATCH",
+                token: token
+            )
+            await requestStore.load(token, force: true)
+            if !opened, viewing == nil, reviewing == nil, meetingNotification == nil {
+                presentRequest(for: item, allowViewingPending: true)
             }
+            await reloadNotifications()
         }
-        await reloadNotifications()
+    }
+
+    /// Opens the review sheet for a pending approval, otherwise the request's
+    /// detail. `allowViewingPending` false keeps an approval notification
+    /// from opening as a plain detail before the approvals are loaded.
+    @discardableResult
+    private func presentRequest(for item: RequestNotification, allowViewingPending: Bool) -> Bool {
+        guard let id = item.requestId else { return false }
+        if item.type == "request_pending" {
+            if let request = requestStore.approvals.first(where: { $0.id == id && $0.status == .pending }) {
+                reviewing = request
+                return true
+            }
+            guard allowViewingPending else { return false }
+        }
+        guard let request = requestStore.request(id: id) else { return false }
+        viewing = request
+        return true
     }
 
     private func markReadOptimistically(_ item: RequestNotification) {
@@ -388,7 +438,7 @@ struct NotificationsView: View {
     private func clearAll() async {
         guard let token = session.token else { return }
         let _: UpdateCount? = try? await APIClient.shared.request("me/requests/notifications", method: "DELETE", token: token)
-        hiddenArticleIDs.formUnion(items.map(\.id)); UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+        hiddenArticleIDs.formUnion(items.map(\.id)); session.saveHiddenArticleIDs(hiddenArticleIDs)
         session.markArticlesRead(); await reloadNotifications()
     }
 
@@ -408,7 +458,7 @@ struct NotificationsView: View {
         withAnimation(.easeInOut(duration: 0.28)) {
             _ = hiddenArticleIDs.insert(item.id)
         }
-        UserDefaults.standard.set(Array(hiddenArticleIDs), forKey: "hidden-notification-articles")
+        session.saveHiddenArticleIDs(hiddenArticleIDs)
     }
 
     private func linkedRequest(_ item: RequestNotification) -> EmployeeRequest? {
@@ -425,8 +475,6 @@ struct NotificationsView: View {
         if type == "attendance_monthly_report" { return "calendar.badge.checkmark" }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
         if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
-        if type == "meeting_invite" { return "person.2.fill" }
-        if type == "meeting_reminder" { return "clock.badge.fill" }
         if type.contains("rejected") { return "xmark.circle.fill" }
         if type.contains("cancelled") { return "minus.circle.fill" }
         if type.contains("auto_approved") { return "timer.circle.fill" }
@@ -442,8 +490,6 @@ struct NotificationsView: View {
         if type == "attendance_monthly_report" { return .green }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
         if type == "request_pending" { return .orange }
-        if type == "meeting_invite" { return .blue }
-        if type == "meeting_reminder" { return .orange }
         if type.contains("rejected") { return AppTheme.red }
         if type.contains("cancelled") { return .gray }
         return .green
@@ -486,17 +532,14 @@ struct NotificationsView: View {
 }
 
 private struct MeetingNotificationDetail: View {
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods: must not redraw on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @EnvironmentObject private var meetingStore: MeetingStore
     @Environment(\.dismiss) private var dismiss
     let notification: RequestNotification
     @State private var details: MeetingBookingDetails?
     @State private var isLoading = false
-    @State private var extensionMinutes = 5
-    @State private var isSubmitting = false
-    @State private var confirmingEnd = false
-    @State private var submittingAction: String?
-    @State private var actionError: String?
 
     private var accent: Color {
         // The ten-minute warning is sent to the meeting organiser. Use green
@@ -518,10 +561,16 @@ private struct MeetingNotificationDetail: View {
         notification.message.split(separator: "·", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
     private var deliveryDate: String {
-        notification.createdAt.formatted(.dateTime.locale(Locale(identifier: "vi_VN")).weekday(.wide).day().month(.wide).year().hour().minute())
+        // In Vietnam time (AGENTS.md), as every other date: the style used the
+        // device's time zone.
+        var style = Date.FormatStyle.dateTime.weekday(.wide).day().month(.wide).year().hour().minute()
+        style.locale = VietnamTime.locale
+        style.calendar = VietnamTime.calendar
+        style.timeZone = VietnamTime.timeZone
+        return notification.createdAt.formatted(style)
     }
     private var isEndingSoonReminder: Bool {
-        notification.type == "meeting_ending_soon" || notification.title.hasPrefix("Còn 10 phút")
+        notification.isMeetingEndingSoon
     }
     private var currentScheduleBooking: MeetingBooking? {
         guard let id = details?.id else { return nil }
@@ -533,36 +582,9 @@ private struct MeetingNotificationDetail: View {
     private var endDate: Date? {
         effectiveEndsAt.flatMap { MeetingPresentation.date(from: $0) }
     }
-    private var meetingEnded: Bool { endDate.map { $0 <= Date() } ?? false }
     private var isOrganizer: Bool {
         guard let details, let employeeCode = session.profile?.employeeCode else { return false }
         return details.employee.employeeCode.caseInsensitiveCompare(employeeCode) == .orderedSame
-    }
-    private var nextBooking: MeetingBooking? {
-        guard let details, let endDate else { return nil }
-        return meetingStore.bookings
-            .filter { $0.roomId == details.roomId && $0.id != details.id }
-            .filter { booking in
-                guard let start = booking.startDate else { return false }
-                return start > endDate
-            }
-            .sorted { left, right in
-                (left.startDate ?? .distantFuture)
-                    < (right.startDate ?? .distantFuture)
-            }
-            .first
-    }
-    private var maximumExtensionMinutes: Int {
-        guard let endDate else { return 0 }
-        guard let nextStart = nextBooking.flatMap({ $0.startDate }) else { return 120 }
-        return min(120, max(0, Int(nextStart.timeIntervalSince(endDate) / 60) - 5))
-    }
-    private var extensionBlockMessage: String {
-        guard let nextBooking else {
-            return "Không thể gia hạn vì lịch phòng đang được cập nhật."
-        }
-        let title = nextBooking.title.isEmpty ? "cuộc họp tiếp theo" : "“\(nextBooking.title)”"
-        return "Không thể gia hạn vì \(details?.room.name ?? "phòng họp") có \(title) lúc \(MeetingPresentation.time(nextBooking.startsAt))."
     }
 
     var body: some View {
@@ -592,7 +614,7 @@ private struct MeetingNotificationDetail: View {
                                 .background(accent.opacity(0.12)).clipShape(Capsule())
                         }
                         Text(title.isEmpty ? "Cuộc họp" : title)
-                            .font(.system(size: 27, weight: .bold, design: .rounded))
+                            .font(.title.bold())
                         Label(
                             notification.type == "meeting_reminder"
                                 ? "Hãy chuẩn bị tham gia đúng giờ"
@@ -667,7 +689,12 @@ private struct MeetingNotificationDetail: View {
                     }
 
                     if isEndingSoonReminder, let details, isOrganizer {
-                        meetingControlCard(details)
+                        MeetingControlCard(
+                            bookingID: details.id,
+                            roomId: details.roomId,
+                            roomName: details.room.name,
+                            endDate: endDate
+                        )
                     }
 
                     Text("Mở Lịch của tôi để xem thời gian và thông tin phòng họp mới nhất.")
@@ -711,106 +738,6 @@ private struct MeetingNotificationDetail: View {
         .background(Color(uiColor: .secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
-
-    @ViewBuilder
-    private func meetingControlCard(_ details: MeetingBookingDetails) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Label(meetingEnded ? "Cuộc họp đã kết thúc" : "Điều khiển cuộc họp", systemImage: meetingEnded ? "checkmark.circle.fill" : "slider.horizontal.3")
-                .font(.headline.weight(.bold))
-                .foregroundStyle(meetingEnded ? .green : accent)
-            if meetingEnded {
-                Text("Cuộc họp đã kết thúc. Bạn không thể gia hạn hoặc kết thúc lại.")
-                    .font(.subheadline).foregroundStyle(.secondary)
-            } else {
-                if let actionError {
-                    Text(actionError).font(.caption.weight(.semibold)).foregroundStyle(.red)
-                        .padding(10).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.red.opacity(0.1)).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-                if maximumExtensionMinutes >= 5 {
-                    Text("Gia hạn thêm \(extensionMinutes) phút")
-                        .font(.subheadline.weight(.bold)).foregroundStyle(AppTheme.text(.green))
-                    HStack(spacing: 10) {
-                        Button("− 5 phút") { extensionMinutes = max(5, extensionMinutes - 5); actionError = nil }
-                            .buttonStyle(.bordered).disabled(isSubmitting)
-                        Button("+ 5 phút") { extensionMinutes = min(maximumExtensionMinutes, extensionMinutes + 5); actionError = nil }
-                            .buttonStyle(.bordered).disabled(isSubmitting || extensionMinutes >= maximumExtensionMinutes)
-                    }
-                    Button {
-                        Task { await submit(details, action: "extend") }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isSubmitting && submittingAction == "extend" {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Image(systemName: "checkmark")
-                            }
-                            Text(isSubmitting && submittingAction == "extend" ? "Đang gia hạn…" : "Xác nhận gia hạn")
-                        }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent).tint(.green).disabled(isSubmitting)
-                } else {
-                    Button {
-                        // Keep the unavailable action visible so the organiser
-                        // understands why it cannot be used for this meeting.
-                    } label: {
-                        Label("Gia hạn không khả dụng", systemImage: "clock.badge.exclamationmark")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.secondary)
-                    .disabled(true)
-                    Text(extensionBlockMessage)
-                        .font(.caption.weight(.semibold)).foregroundStyle(.red)
-                }
-                Button(role: .destructive) {
-                    // Irreversible: ask first.
-                    confirmingEnd = true
-                } label: {
-                    HStack(spacing: 8) {
-                        if isSubmitting && submittingAction == "end" {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "stop.fill")
-                        }
-                        Text(isSubmitting && submittingAction == "end" ? "Đang kết thúc…" : "Kết thúc cuộc họp")
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent).disabled(isSubmitting)
-                .confirmationDialog("Kết thúc cuộc họp?", isPresented: $confirmingEnd, titleVisibility: .visible) {
-                    Button("Kết thúc", role: .destructive) { Task { await submit(details, action: "end") } }
-                    Button("Tiếp tục họp", role: .cancel) {}
-                } message: {
-                    Text("Phòng sẽ được giải phóng ngay để người khác có thể đặt. Không thể hoàn tác.")
-                }
-            }
-        }
-        .padding(18)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-    }
-
-    @MainActor
-    private func submit(_ details: MeetingBookingDetails, action: String) async {
-        guard !isSubmitting else { return }
-        isSubmitting = true
-        submittingAction = action
-        actionError = nil
-
-        actionError = await session.performMeetingControl(
-            bookingID: details.id,
-            action: action,
-            extensionMinutes: extensionMinutes
-        )
-
-        if actionError == nil {
-            extensionMinutes = 5
-        }
-        submittingAction = nil
-        isSubmitting = false
-    }
 }
 
 struct RequestNotificationDetail: View {
@@ -846,7 +773,7 @@ struct ArticleDetailView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundColor(AppTheme.redText)
                 Text(item.title)
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .font(.largeTitle.bold())
                 Divider().overlay(Color.white.opacity(0.12))
                 ForEach(blocks) { block in
                     ArticleBlockView(block: block)
@@ -855,7 +782,16 @@ struct ArticleDetailView: View {
             .padding(22)
             .padding(.bottom, 90)
         }
-        .task(id: item.id) { blocks = item.parseArticleBlocks() }
+        .task(id: item.id) {
+            // Up to 750k characters of HTML through regular expressions: off
+            // the main thread, so opening a long article does not stall.
+            let html = item.body
+            let parsed = await Task.detached(priority: .userInitiated) {
+                HTMLArticleParser.parse(html)
+            }.value
+            guard !Task.isCancelled else { return }
+            blocks = parsed
+        }
         .hidesPortalBottomScrollEdgeEffect()
         .background(AppTheme.ink.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)
@@ -939,7 +875,7 @@ struct ArticleBlockView: View {
         case .tableRow:
             ScrollView(.horizontal, showsIndicators: false) {
                 Text(block.text.replacingOccurrences(of: "\n", with: "  |  "))
-                    .font(.system(.subheadline, design: .rounded))
+                    .font(.subheadline)
                     .textSelection(.enabled)
                     .padding(14)
             }
@@ -965,9 +901,9 @@ struct ArticleBlockView: View {
 
     private func headingFont(_ level: Int) -> Font {
         switch level {
-        case 1: return .system(size: 27, weight: .bold, design: .rounded)
-        case 2: return .system(size: 23, weight: .bold, design: .rounded)
-        default: return .system(size: 19, weight: .bold, design: .rounded)
+        case 1: return .title.bold()
+        case 2: return .title2.bold()
+        default: return .title3.bold()
         }
     }
 }

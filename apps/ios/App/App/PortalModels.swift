@@ -9,7 +9,7 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-struct MeetingRoom: Codable, Identifiable {
+struct MeetingRoom: Codable, Identifiable, Equatable {
     let id: String
     let name: String
     let location: String
@@ -37,7 +37,7 @@ struct MeetingRoom: Codable, Identifiable {
     }
 }
 
-struct MeetingBooking: Codable, Identifiable {
+struct MeetingBooking: Codable, Identifiable, Equatable {
     let id: String
     let roomId: String
     let startsAt: String
@@ -185,9 +185,11 @@ struct UserSummary: Codable {
     let accountType: String
     let permissions: [String]
     let protected: Bool
+    /// The default password is in use (absent in older server responses).
+    let mustChangePassword: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case employeeCode, name, role, accountType, permissions, protected
+        case employeeCode, name, role, accountType, permissions, protected, mustChangePassword
     }
 
     init(from decoder: Decoder) throws {
@@ -198,6 +200,7 @@ struct UserSummary: Codable {
         accountType = try values.decodeIfPresent(String.self, forKey: .accountType) ?? "EMPLOYEE"
         permissions = try values.decodeIfPresent([String].self, forKey: .permissions) ?? []
         protected = try values.decodeIfPresent(Bool.self, forKey: .protected) ?? false
+        mustChangePassword = try values.decodeIfPresent(Bool.self, forKey: .mustChangePassword) ?? false
     }
 }
 
@@ -235,6 +238,16 @@ struct Profile: Codable, Equatable {
     let email: String?
     let managerFullName: String?
     let passwordChangedAt: Date?
+    /// The company default password is in use: the server accepts nothing
+    /// but changing it (or signing out) until it is changed.
+    let mustChangePassword: Bool?
+}
+
+extension Profile {
+    /// The demo account: it has no email, so its codes arrive in Notifications.
+    var isDemoAccount: Bool {
+        accountType == "DEMO" || employeeCode.uppercased() == "DEMO"
+    }
 }
 
 enum SessionCache {
@@ -246,21 +259,21 @@ enum SessionCache {
 
     static func save(profile: Profile) {
         guard let data = try? JSONEncoder().encode(profile) else { return }
-        UserDefaults.standard.set(data, forKey: profileKey)
+        AccountDocumentStore.shared.set(data, forKey: profileKey)
     }
 
     static func loadProfile() -> Profile? {
-        guard let data = UserDefaults.standard.data(forKey: profileKey) else { return nil }
+        guard let data = AccountDocumentStore.shared.data(forKey: profileKey) else { return nil }
         return try? JSONDecoder().decode(Profile.self, from: data)
     }
 
     static func saveMeetingRooms(_ rooms: [MeetingRoom], employeeCode: String) {
         guard let data = try? JSONEncoder().encode(rooms) else { return }
-        UserDefaults.standard.set(data, forKey: meetingRoomsPrefix + employeeCode)
+        AccountDocumentStore.shared.set(data, forKey: meetingRoomsPrefix + employeeCode)
     }
 
     static func loadMeetingRooms(employeeCode: String) -> [MeetingRoom] {
-        guard let data = UserDefaults.standard.data(forKey: meetingRoomsPrefix + employeeCode) else { return [] }
+        guard let data = AccountDocumentStore.shared.data(forKey: meetingRoomsPrefix + employeeCode) else { return [] }
         return (try? JSONDecoder().decode([MeetingRoom].self, from: data)) ?? []
     }
 
@@ -279,7 +292,7 @@ enum SessionCache {
     static func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, day: String, employeeCode: String) {
         guard let data = try? JSONEncoder().encode(schedule) else { return }
         let suffix = employeeCode + "-" + day
-        UserDefaults.standard.set(data, forKey: meetingSchedulePrefix + suffix)
+        AccountDocumentStore.shared.set(data, forKey: meetingSchedulePrefix + suffix)
         UserDefaults.standard.set(Date(), forKey: meetingScheduleSavedAtPrefix + suffix)
         pruneMeetingSchedulesOnce()
     }
@@ -296,20 +309,25 @@ enum SessionCache {
         let now = Date()
         let oldest = now.addingTimeInterval(-7 * 24 * 60 * 60)
         let newest = now.addingTimeInterval(60 * 24 * 60 * 60)
+        func outOfRange(_ key: String) -> Bool {
+            // Keys end with "-yyyy-MM-dd".
+            guard key.count > 10, let day = formatter.date(from: String(key.suffix(10))) else { return false }
+            return day < oldest || day > newest
+        }
+        AccountDocumentStore.shared.removeAll { $0.hasPrefix(meetingSchedulePrefix) && outOfRange($0) }
         let defaults = UserDefaults.standard
         for key in defaults.dictionaryRepresentation().keys
-            where key.hasPrefix(meetingSchedulePrefix) || key.hasPrefix(meetingScheduleSavedAtPrefix) {
-            // Keys end with "-yyyy-MM-dd".
-            guard key.count > 10, let day = formatter.date(from: String(key.suffix(10))) else { continue }
-            if day < oldest || day > newest {
-                defaults.removeObject(forKey: key)
-            }
+            where (key.hasPrefix(meetingSchedulePrefix) || key.hasPrefix(meetingScheduleSavedAtPrefix)) && outOfRange(key) {
+            defaults.removeObject(forKey: key)
         }
     }
 
     /// Removes the account's cached room catalogue and day schedules. The
     /// personal room order is a device preference and is kept.
     static func clearAccount(employeeCode: String) {
+        AccountDocumentStore.shared.removeAll { key in
+            key == meetingRoomsPrefix + employeeCode || key.hasPrefix(meetingSchedulePrefix + employeeCode + "-")
+        }
         let defaults = UserDefaults.standard
         let dayPrefixes = [
             meetingSchedulePrefix + employeeCode + "-",
@@ -322,7 +340,7 @@ enum SessionCache {
     }
 
     static func loadMeetingSchedule(day: String, employeeCode: String) -> MeetingScheduleResponse? {
-        guard let data = UserDefaults.standard.data(forKey: meetingSchedulePrefix + employeeCode + "-" + day) else { return nil }
+        guard let data = AccountDocumentStore.shared.data(forKey: meetingSchedulePrefix + employeeCode + "-" + day) else { return nil }
         return try? JSONDecoder().decode(MeetingScheduleResponse.self, from: data)
     }
 
@@ -333,11 +351,11 @@ enum SessionCache {
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: profileKey)
+        AccountDocumentStore.shared.removeObject(forKey: profileKey)
     }
 }
 
-struct ContentItem: Codable, Identifiable {
+struct ContentItem: Codable, Identifiable, Equatable {
     let id: String
     let page: String
     let key: String
@@ -370,10 +388,6 @@ struct ContentItem: Codable, Identifiable {
         let text = body.safeHTMLText
         preview = text.count > 145 ? String(text.prefix(145)) + "…" : text
     }
-
-    /// The article body as display blocks. Parses the HTML on each call;
-    /// keep the result (ArticleDetailView parses once per article).
-    func parseArticleBlocks() -> [ArticleBlock] { HTMLArticleParser.parse(body) }
 }
 
 struct MenuDay: Codable {
@@ -518,7 +532,89 @@ enum HTMLArticleParser {
         guard let value, !value.isEmpty else { return nil }
         if value.hasPrefix("//") { return URL(string: "https:" + value) }
         if let absolute = URL(string: value), absolute.scheme != nil { return absolute }
-        return URL(string: value, relativeTo: URL(string: "https://sukavinagroup.net"))?.absoluteURL
+        return URL(string: value, relativeTo: URL(string: SukavinaServer.origin))?.absoluteURL
+    }
+}
+
+/// Plain text from article HTML, for the parser's fallback (no block tags).
+extension String {
+    var safeHTMLText: String {
+        let maximumCharacters = 750_000
+        var output = String()
+        output.reserveCapacity(Swift.min(count, maximumCharacters))
+        var tag = String()
+        var isInsideTag = false
+        var written = 0
+
+        for character in self {
+            if written >= maximumCharacters {
+                output.append("\n\n[Nội dung đã được rút gọn để bảo đảm ứng dụng hoạt động ổn định.]")
+                break
+            }
+            if character == "<" {
+                isInsideTag = true
+                tag.removeAll(keepingCapacity: true)
+                continue
+            }
+            if isInsideTag {
+                if character == ">" {
+                    isInsideTag = false
+                    let name = tag.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                    if name.hasPrefix("br") || name.hasPrefix("/p") || name.hasPrefix("/div") ||
+                        name.hasPrefix("/li") || name.hasPrefix("/h") || name.hasPrefix("hr") {
+                        if output.last != "\n" { output.append("\n") }
+                    } else if name.hasPrefix("/td") || name.hasPrefix("/th") {
+                        output.append(" | ")
+                    } else if name.hasPrefix("li") {
+                        if output.last != "\n" { output.append("\n") }
+                        output.append("• ")
+                    }
+                } else if tag.count < 80 {
+                    tag.append(character)
+                }
+                continue
+            }
+            output.append(character)
+            written += 1
+        }
+
+        let decoded = output
+            .replacingOccurrences(of: "&nbsp;", with: " ")
+            .replacingOccurrences(of: "&amp;", with: "&")
+            .replacingOccurrences(of: "&lt;", with: "<")
+            .replacingOccurrences(of: "&gt;", with: ">")
+            .replacingOccurrences(of: "&quot;", with: "\"")
+            .replacingOccurrences(of: "&#39;", with: "'")
+
+        var lines: [String] = []
+        var previousWasEmpty = false
+        for rawLine in decoded.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.isEmpty {
+                if !previousWasEmpty && !lines.isEmpty { lines.append("") }
+                previousWasEmpty = true
+            } else {
+                lines.append(line)
+                previousWasEmpty = false
+            }
+        }
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var readingChunks: [String] {
+        let maximumChunkLength = 1_800
+        var chunks: [String] = []
+        for paragraph in components(separatedBy: "\n\n") where !paragraph.isEmpty {
+            var remainder = paragraph[...]
+            while remainder.count > maximumChunkLength {
+                let tentativeEnd = remainder.index(remainder.startIndex, offsetBy: maximumChunkLength)
+                let split = remainder[..<tentativeEnd].lastIndex(of: " ") ?? tentativeEnd
+                chunks.append(String(remainder[..<split]))
+                remainder = remainder[split...].drop(while: { $0 == " " })
+            }
+            if !remainder.isEmpty { chunks.append(String(remainder)) }
+        }
+        return chunks.isEmpty ? [self] : chunks
     }
 }
 
@@ -548,24 +644,8 @@ final class NotificationManager {
         }
     }
 
-    func notifyAttendance(isCheckIn: Bool, time: String) {
-        let action = isCheckIn ? "vào" : "ra"
-        let content = UNMutableNotificationContent()
-        content.title = "Chấm công \(action) thành công"
-        content.body = "Giờ \(action) đã được ghi nhận lúc \(time)."
-        content.sound = .default
-        let request = UNNotificationRequest(
-            identifier: "attendance-\(UUID().uuidString)",
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
-    }
-
     func clearBadge() {
-        DispatchQueue.main.async {
-            UIApplication.shared.applicationIconBadgeNumber = 0
-        }
+        UNUserNotificationCenter.current().setBadgeCount(0) { _ in }
     }
 }
 
@@ -573,6 +653,9 @@ struct Dashboard: Codable {
     let employeeCode: String
     let fullName: String
     let role: String
+    /// The employee's job title (chức vụ). Optional: `role` carries the same
+    /// title for employees but "Quản trị viên" for administrators.
+    var jobTitle: String? = nil
     let remainingLeaveDays: Double
     let remainingLeaveDaysExact: Double?
     let attendanceStatus: String
@@ -619,6 +702,7 @@ enum AttendanceWidgetBridge {
     }
 
     static func update(from dashboard: Dashboard) {
+        moveTokenToKeychainIfNeeded()
         let state = State(
             checkIn: dashboard.attendanceCheckIn,
             checkOut: dashboard.attendanceCheckOut
@@ -635,19 +719,35 @@ enum AttendanceWidgetBridge {
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
     }
 
+    /// The widget token lives in the shared Keychain group; the App Group
+    /// copy is only a fallback for a build signed without that group.
     static func configure(token: String) {
         let defaults = UserDefaults(suiteName: appGroup)
-        guard defaults?.string(forKey: tokenKey) != token else { return }
-        defaults?.set(token, forKey: tokenKey)
-        defaults?.synchronize()
+        let current = WidgetTokenKeychain.load() ?? defaults?.string(forKey: tokenKey)
+        if WidgetTokenKeychain.save(token) {
+            defaults?.removeObject(forKey: tokenKey)
+        } else {
+            defaults?.set(token, forKey: tokenKey)
+        }
+        guard current != token else { return }
         WidgetCenter.shared.reloadTimelines(ofKind: kind)
+    }
+
+    /// Versions before the Keychain group kept the token in the App Group plist.
+    private static func moveTokenToKeychainIfNeeded() {
+        guard WidgetTokenKeychain.isAvailable,
+              let defaults = UserDefaults(suiteName: appGroup),
+              let token = defaults.string(forKey: tokenKey), !token.isEmpty,
+              WidgetTokenKeychain.save(token) else { return }
+        defaults.removeObject(forKey: tokenKey)
     }
 
     static func clear() {
         let defaults = UserDefaults(suiteName: appGroup)
         let hasState = defaults?.object(forKey: stateKey) != nil
-        let hasToken = defaults?.object(forKey: tokenKey) != nil
+        let hasToken = defaults?.object(forKey: tokenKey) != nil || WidgetTokenKeychain.load() != nil
         guard hasState || hasToken else { return }
+        WidgetTokenKeychain.delete()
         defaults?.removeObject(forKey: stateKey)
         defaults?.removeObject(forKey: savedAtKey)
         defaults?.removeObject(forKey: tokenKey)
@@ -655,55 +755,10 @@ enum AttendanceWidgetBridge {
     }
 }
 
-struct AttendanceMonth: Codable {
-    let month: String
-    let startTime: String?
-    let endTime: String?
-    let department: String?
-    let days: [AttendanceDay]
-    let leaveSummary: AttendanceLeaveSummary?
-    let leaveSummaryExact: AttendanceLeaveSummary?
-}
-
-struct AttendanceLeaveSummary: Codable {
-    let openingBalance: Double
-    let accruedDays: Double
-    let usedDays: Double
-    let unpaidDays: Double
-    let sickDays: Double
-    let closingBalance: Double
-}
-
 struct AttendanceReport: Codable, Identifiable {
     let month: String
     let releasedAt: String?
     var id: String { month }
-}
-
-struct AttendanceDay: Codable, Identifiable {
-    let date: String
-    let checkIn: String?
-    let checkOut: String?
-    let classification: String?
-    let punchCount: Int
-    let status: String?
-    let statuses: [String]?
-    let startTime: String?
-    let endTime: String?
-    let sources: [String]?
-    let punches: [AttendancePunch]?
-    // Additive API fields: old cached responses without them remain decodable.
-    let workdayCode: String?
-    let workdayFactor: Double?
-    let overrideCode: String?
-    var id: String { date }
-}
-
-struct AttendancePunch: Codable, Identifiable {
-    let id: String
-    let punchedAt: String
-    let source: String
-    let machineNo: Int
 }
 
 struct AiAssistantSettings: Codable {
@@ -749,15 +804,6 @@ struct ForgotPasswordRequestResponse: Decodable {
     let maskedEmail: String?
     let expiresInMinutes: Int
 }
-struct RegisterBody: Encodable {
-    let employeeCode: String
-    let fullName: String
-    let phoneNumber: String?
-    let gmailEmail: String
-    let password: String
-}
-struct VerifyBody: Encodable { let employeeCode: String; let gmailEmail: String; let code: String }
-struct ResendBody: Encodable { let employeeCode: String; let gmailEmail: String }
 struct DeleteAccountBody: Encodable { let confirmation: String }
 struct PasswordChangeConfirmBody: Encodable { let code: String; let currentPassword: String?; let newPassword: String }
 struct MessageResponse: Decodable { let message: String }
@@ -765,10 +811,4 @@ struct PasswordChangeRequestResponse: Decodable {
     let message: String
     let email: String
     let expiresInMinutes: Int
-}
-struct RegistrationResponse: Decodable {
-    let id: String
-    let employeeCode: String
-    let message: String
-    let requiresVerification: Bool
 }

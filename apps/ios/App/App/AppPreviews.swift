@@ -22,11 +22,12 @@ struct SukavinaPreviewContainer: View {
             previewSession.profile = Profile(
                 id: "preview", employeeCode: "SKV-001", name: "Nguyễn Văn A",
                 role: "Nhân viên", accountType: "EMPLOYEE", permissions: [], protected: false,
-                email: "preview@sukavinagroup.net", managerFullName: "Trần Quản lý", passwordChangedAt: nil
+                email: "preview@sukavinagroup.net", managerFullName: "Trần Quản lý", passwordChangedAt: nil,
+                mustChangePassword: false
             )
             previewSession.dashboard = Dashboard(
                 employeeCode: "SKV-001", fullName: "Nguyễn Văn A", role: "Nhân sự vận hành",
-                remainingLeaveDays: 8, attendanceStatus: "Đã ghi nhận", payrollStatus: "Đã cập nhật",
+                remainingLeaveDays: 8, remainingLeaveDaysExact: 8, attendanceStatus: "Đã ghi nhận", payrollStatus: "Đã cập nhật",
                 name: "Nguyễn Văn A", workStartTime: "07:30", workEndTime: "16:30",
                 attendanceCheckIn: nil, attendanceCheckOut: nil, attendanceClassification: "missing",
                 attendanceRecords: [], contentItems: []
@@ -40,7 +41,13 @@ struct SukavinaPreviewContainer: View {
             switch mode {
             case .restoring: NativeLaunchView()
             case .signedOut: AuthenticationView().sessionEnvironment(session)
-            case .signedIn: EmployeePortalView().sessionEnvironment(session)
+            case .signedIn:
+                if #available(iOS 18.0, *) {
+                    EmployeePortalView().sessionEnvironment(session)
+                } else {
+                    // iOS 17 uses the UIKit portal (LegacyEmployeePortalController).
+                    Text("Cổng nhân viên iOS 17 dùng UIKit")
+                }
             }
         }
     }

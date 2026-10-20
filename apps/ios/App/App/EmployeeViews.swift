@@ -11,6 +11,12 @@ import CoreImage.CIFilterBuiltins
 import WebKit
 import UniformTypeIdentifiers
 
+/// The signed-in portal on iOS 18+. iOS 17 never builds this view: just
+/// instantiating it aborted in SwiftUI type-metadata construction there, so
+/// AppDelegate hosts `LegacyEmployeePortalController` (UIKit tabs) instead.
+/// Keep iOS 17 work out of this type; the availability makes the compiler
+/// enforce that.
+@available(iOS 18.0, *)
 struct EmployeePortalView: View {
     @Environment(\.sessionActions) private var actions
     /// Methods and non-published values only; observing the whole session
@@ -19,34 +25,21 @@ struct EmployeePortalView: View {
     @EnvironmentObject private var badge: NotificationBadgeState
     @EnvironmentObject private var notificationRouter: APNsNotificationRouter
     @State private var selectedTab = 0
-    /// iOS 17 tab bar: pages opened so far. They stay alive (hidden) so a
-    /// tab switch keeps scroll position, filters and pushed screens, as the
-    /// system TabView does on iOS 18+.
-    @State private var visitedTabs: Set<Int> = [0]
     @State private var requestInitialFilter: EmployeeRequestStatus?
 
-    var body: AnyView {
-        let content: AnyView
-        if #available(iOS 18.0, *) {
-            content = AnyView(systemPortalTabs)
-        } else {
-            content = AnyView(ios17PortalTabs)
-        }
-        return AnyView(
-            content
-                .accentColor(AppTheme.red)
-                .onChange(of: selectedTab) { _, tab in
-                    if tab == 3 { session.clearNotificationBadge() }
-                }
-                .onChange(of: notificationRouter.pendingRoute) { _, route in
-                    if route != nil { selectedTab = 3 }
-                }
-        )
+    var body: some View {
+        systemPortalTabs
+            .accentColor(AppTheme.red)
+            .onChange(of: selectedTab) { _, tab in
+                if tab == 3 { session.clearNotificationBadge() }
+            }
+            .onChange(of: notificationRouter.pendingRoute) { _, route in
+                if route != nil { selectedTab = 3 }
+            }
     }
 
     private var systemPortalTabs: some View {
-        // Keep every tab item structurally stable. iOS 18+ does not use the
-        // iOS 17 fallback, but still must not swap tab-label view types.
+        // Keep every tab item structurally stable: never swap tab-label view types.
         TabView(selection: $selectedTab) {
             DashboardView(isActive: selectedTab == 0)
                 .tabItem { Label("Trang chủ", systemImage: "house.fill") }
@@ -66,97 +59,6 @@ struct EmployeePortalView: View {
             .tag(4)
         }
         .adaptivePortalTabBarBackground()
-    }
-
-    private var ios17PortalTabs: some View {
-        // iOS 17.6 can overflow its SwiftUI/AttributeGraph stack while
-        // constructing the main TabView at launch. Keep the same five pages
-        // but use a small, stable app-owned tab bar on iOS 17 only.
-        //
-        // Reserve real bottom safe-area space rather than overlaying the tab
-        // bar on the page. An overlay obscures bottom-trailing controls such
-        // as the Requests screen's "Tạo đơn mới" button on iOS 17.
-        ZStack {
-            ForEach(visitedTabs.union([selectedTab]).sorted(), id: \.self) { tab in
-                portalPage(tab)
-                    .opacity(selectedTab == tab ? 1 : 0)
-                    .allowsHitTesting(selectedTab == tab)
-                    .accessibilityHidden(selectedTab != tab)
-                    .zIndex(selectedTab == tab ? 1 : 0)
-            }
-        }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .onChange(of: selectedTab) { _, tab in visitedTabs.insert(tab) }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                HStack(spacing: 0) {
-                    portalTabButton(title: "Trang chủ", image: "house.fill", tab: 0)
-                    portalTabButton(title: "Đơn từ", image: "doc.text.fill", tab: 1)
-                    portalTabButton(title: "Phòng họp", image: "building.2.fill", tab: 2)
-                    portalTabButton(title: "Thông báo", image: "bell.fill", tab: 3, badge: badge.count)
-                    portalTabButton(title: "Tài khoản", image: "person.crop.circle.fill", tab: 4)
-                }
-                .padding(.top, 8)
-                .padding(.bottom, 6)
-                .frame(maxWidth: .infinity)
-                .background(.ultraThinMaterial)
-                .overlay(alignment: .top) {
-                    Divider()
-                }
-            }
-    }
-
-    /// Type-erased so the iOS 17 page container stays a shallow generic tree.
-    private func portalPage(_ tab: Int) -> AnyView {
-        switch tab {
-        case 1:
-            return AnyView(RequestsView(initialFilter: requestInitialFilter))
-        case 2:
-            // TestFlight 109 and 110 abort in SwiftUI's iOS 17 type metadata
-            // construction. The iOS 17 route must not instantiate any of
-            // MeetingRoomsView's complex SwiftUI generic view tree.
-            return AnyView(LegacyMeetingRoomsUIKitView(session: session))
-        case 3:
-            return AnyView(NotificationsView())
-        case 4:
-            return AnyView(ProfileView())
-        default:
-            // Hidden pages stay alive; only the visible dashboard runs its
-            // clock and refresh loop.
-            return AnyView(DashboardView(isActive: selectedTab == 0))
-        }
-    }
-
-    private func portalTabButton(title: String, image: String, tab: Int, badge: Int = 0) -> some View {
-        Button {
-            selectedTab = tab
-        } label: {
-            VStack(spacing: 3) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: image)
-                        .font(.system(size: 18, weight: .semibold))
-                    if badge > 0 {
-                        Text(badge > 99 ? "99+" : "\(badge)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .background(AppTheme.red, in: Capsule())
-                            .offset(x: 9, y: -6)
-                    }
-                }
-                Text(title)
-                    .font(.system(size: 10, weight: selectedTab == tab ? .semibold : .regular))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(selectedTab == tab ? AppTheme.red : Color.secondary)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        // The badge is drawn as a separate number; read it with the tab.
-        .accessibilityValue(badge > 0 ? "\(badge) mục mới" : "")
-        .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
     }
 }
 
@@ -189,6 +91,8 @@ struct PreloadedAttendanceDayCell: View {
         let hasCompletePunchPair = AttendanceMetrics.hasCompletePunchPair(day)
         let hasForgottenPunch = statuses.contains { ["missing_checkin", "missing_checkout", "incomplete"].contains($0) }
         let dayNumber = Int(day.date.suffix(2)) ?? 0
+        // Once per cell: detail, split shifts and the label all need it.
+        let metrics = AttendanceMetrics.workMetrics(day, month: month)
 
         return VStack(spacing: 2) {
             // Keep the date/detail blocks stable while distributing the spare
@@ -197,13 +101,13 @@ struct PreloadedAttendanceDayCell: View {
             Text(String(dayNumber))
                 .font(.subheadline.weight(.medium))
                 .frame(height: 20)
-            detail(
+            shifts(
                 note: note,
                 isHoliday: isHoliday,
                 hasCompletePunchPair: hasCompletePunchPair,
-                hasForgottenPunch: hasForgottenPunch
+                hasForgottenPunch: hasForgottenPunch,
+                metrics: metrics
             )
-            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
             Spacer(minLength: 0)
         }
         .foregroundStyle(note == nil && statuses.contains("absent") ? Self.absentColor : Color.primary)
@@ -211,25 +115,27 @@ struct PreloadedAttendanceDayCell: View {
         .background(background(for: statuses, note: note))
         .clipShape(RoundedRectangle(cornerRadius: 11))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch))
+        .accessibilityLabel(accessibilityLabel(for: dayNumber, note: note, statuses: statuses, hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch, metrics: metrics))
     }
 
     private func detail(
         note: String?,
         isHoliday: Bool,
         hasCompletePunchPair: Bool,
-        hasForgottenPunch: Bool
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
     ) -> AnyView {
-        let metrics = AttendanceMetrics.workMetrics(day, month: month)
         if let note {
             return AnyView(VStack(spacing: 0) {
                 Text(note)
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(noteColor(note))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(AppTheme.text(holidayColor))
                         .frame(height: 18, alignment: .top)
                 } else {
@@ -245,7 +151,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
@@ -258,7 +164,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text("0")
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72)))
         }
@@ -269,13 +175,152 @@ struct PreloadedAttendanceDayCell: View {
                 Text(time(day.checkOut))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+            .font(.system(size: 10.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
             .minimumScaleFactor(0.7))
         }
         return AnyView(Color.clear)
+    }
+
+    /// The day shift, split vertically with ca đêm (right half) when the date has one.
+    private func shifts(
+        note: String?,
+        isHoliday: Bool,
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
+    ) -> AnyView {
+        let dayShift = detail(
+            note: note,
+            isHoliday: isHoliday,
+            hasCompletePunchPair: hasCompletePunchPair,
+            hasForgottenPunch: hasForgottenPunch,
+            metrics: metrics
+        )
+        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
+        guard let night = day.nightShift else { return AnyView(dayShift) }
+        // Nothing to show for the day shift: the night shift alone is centred in
+        // the cell like any other code, not squeezed into a half.
+        if note == nil, day.checkIn == nil, day.checkOut == nil {
+            return AnyView(nightShiftColumn(night, whole: true))
+        }
+        return splitShifts(
+            night: night,
+            note: note,
+            isHoliday: isHoliday,
+            hasCompletePunchPair: hasCompletePunchPair,
+            hasForgottenPunch: hasForgottenPunch,
+            metrics: metrics
+        )
+    }
+
+    private struct SplitLine {
+        let text: String
+        let color: Color
+        var size: CGFloat = 10.5
+        var bold = false
+    }
+
+    /// A day with both shifts: two columns on the same 18 pt rows as every other
+    /// cell, centred together with an even gap. In the metrics calendar ca đêm
+    /// shows its workdays and overtime level with the day shift's; in the normal
+    /// calendar "CĐ" sits on the first row, level with the check-in beside it.
+    private func splitShifts(
+        night: AttendanceNightShift,
+        note: String?,
+        isHoliday: Bool,
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
+    ) -> AnyView {
+        let muted = Color.primary.opacity(0.72)
+        let compact = !showWorkMetrics && note == nil
+        var dayLines: [SplitLine] = []
+        if let note {
+            dayLines.append(SplitLine(text: note, color: noteColor(note), size: 11, bold: true))
+            if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
+                dayLines.append(SplitLine(text: AttendanceMetrics.hourText(metrics.overtimeHours), color: AppTheme.text(holidayColor)))
+            }
+        } else if showWorkMetrics && hasCompletePunchPair {
+            dayLines = [
+                SplitLine(text: AttendanceMetrics.workFactorText(metrics.coefficient), color: muted),
+                SplitLine(text: AttendanceMetrics.hourText(metrics.overtimeHours), color: muted),
+            ]
+        } else if showWorkMetrics && hasForgottenPunch {
+            dayLines = [
+                SplitLine(text: AttendanceMetrics.workFactorText(0), color: muted),
+                SplitLine(text: "0", color: muted),
+            ]
+        } else if !showWorkMetrics {
+            // Times need the room: a slightly smaller size keeps "07:05 CĐ" inside the cell.
+            dayLines = [
+                SplitLine(text: time(day.checkIn), color: muted, size: 9.5),
+                SplitLine(text: time(day.checkOut), color: muted, size: 9.5),
+            ]
+        }
+        let nightColor = nightShiftColor()
+        let nightLines: [SplitLine] = showWorkMetrics
+            ? [
+                SplitLine(text: AttendanceMetrics.workFactorText(night.workdays), color: nightColor),
+                SplitLine(text: AttendanceMetrics.hourText(night.overtimeHours), color: nightColor),
+            ]
+            : [SplitLine(text: "CĐ", color: nightColor, size: compact ? 9.5 : 10.5, bold: true)]
+        return AnyView(HStack(alignment: .top, spacing: compact ? 3 : 6) {
+            splitColumn(dayLines, offset: 0)
+            // "CĐ" on the first row, level with the check-in beside it.
+            splitColumn(nightLines, offset: 0)
+        }
+        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
+    }
+
+    private func splitColumn(_ lines: [SplitLine], offset: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                Text(line.text)
+                    .font(.system(size: line.size, weight: line.bold ? .heavy : .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(line.color)
+                    .lineLimit(1)
+                    .fixedSize()
+                    .frame(height: 18, alignment: .top)
+            }
+        }
+        .padding(.top, offset)
+    }
+
+    private func nightShiftColor() -> Color {
+        colorScheme == .dark
+            ? Color(red: 165.0 / 255.0, green: 180.0 / 255.0, blue: 252.0 / 255.0)
+            : Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
+    }
+
+    /// Ca đêm as the whole day, centred like any other code: "CĐ" on the first row
+    /// in the normal calendar, its workdays and overtime in the metrics one.
+    private func nightShiftColumn(_ night: AttendanceNightShift, whole: Bool) -> AnyView {
+        let color = nightShiftColor()
+        if showWorkMetrics {
+            return AnyView(VStack(spacing: 0) {
+                Text(AttendanceMetrics.workFactorText(night.workdays))
+                    .frame(height: 18, alignment: .top)
+                Text(AttendanceMetrics.hourText(night.overtimeHours))
+                    .frame(height: 18, alignment: .top)
+            }
+            .font(.system(size: 10.5, weight: .semibold))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
+        }
+        return AnyView(Text("CĐ")
+            .font(.system(size: whole ? 11 : 10.5, weight: .heavy))
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .foregroundStyle(color)
+            .frame(height: whole ? 18 : nil, alignment: .top)
+            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: whole ? .top : .center))
     }
 
     private func background(for statuses: [String], note: String?) -> AnyView {
@@ -314,10 +359,13 @@ struct PreloadedAttendanceDayCell: View {
         switch note {
         case "NL": return holidayColor
         case "NVP": return Color(red: 15.0 / 255.0, green: 118.0 / 255.0, blue: 110.0 / 255.0)
-        case "KCC": return Self.absentColor
+        // V is the HR-confirmed form of an unexcused absence (KCC).
+        case "KCC", "V": return Self.absentColor
         case "NTL": return Color(red: 194.0 / 255.0, green: 65.0 / 255.0, blue: 12.0 / 255.0)
         case "RO", "RO/2", "NP", "NP/2", "P/2": return Self.leaveColor
         case "CT": return Color(red: 3.0 / 255.0, green: 105.0 / 255.0, blue: 161.0 / 255.0)
+        // CĐ (ca đêm): indigo, distinct from the sky-blue business trip CT.
+        case "CĐ": return Color(red: 67.0 / 255.0, green: 56.0 / 255.0, blue: 202.0 / 255.0)
         // NN is vivid raspberry pink, distinct from purple overtime and green holiday.
         case "NN": return colorScheme == .dark
             ? Color(red: 244.0 / 255.0, green: 114.0 / 255.0, blue: 182.0 / 255.0)
@@ -332,11 +380,30 @@ struct PreloadedAttendanceDayCell: View {
         note: String?,
         statuses: [String],
         hasCompletePunchPair: Bool,
-        hasForgottenPunch: Bool
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
+    ) -> String {
+        let dayLabel = dayAccessibilityLabel(
+            for: dayNumber, note: note, statuses: statuses,
+            hasCompletePunchPair: hasCompletePunchPair, hasForgottenPunch: hasForgottenPunch,
+            metrics: metrics
+        )
+        guard let night = day.nightShift else { return dayLabel }
+        return dayLabel + ". Ca đêm \(AttendanceMetrics.workFactorText(night.workdays)) công, "
+            + "\(AttendanceMetrics.hourText(night.overtimeHours)) giờ tăng ca"
+    }
+
+    private func dayAccessibilityLabel(
+        for dayNumber: Int,
+        note: String?,
+        statuses: [String],
+        hasCompletePunchPair: Bool,
+        hasForgottenPunch: Bool,
+        metrics: AttendanceWorkMetrics
     ) -> String {
         if let note {
             let overtime = hasCompletePunchPair && statuses.contains("holiday") && showWorkMetrics
-                ? AttendanceMetrics.workMetrics(day, month: month).overtimeHours : 0
+                ? metrics.overtimeHours : 0
             return "Ngày \(dayNumber). Mã công \(note)" + (overtime > 0
                 ? ". Tăng ca \(AttendanceMetrics.hourText(overtime)) giờ" : "")
         }
@@ -344,7 +411,6 @@ struct PreloadedAttendanceDayCell: View {
             return "Ngày \(dayNumber). Giờ vào \(time(day.checkIn)), giờ ra \(time(day.checkOut))"
         }
         if hasCompletePunchPair {
-            let metrics = AttendanceMetrics.workMetrics(day, month: month)
             return "Ngày \(dayNumber). Hệ số công \(AttendanceMetrics.workFactorText(metrics.coefficient)), tăng ca \(AttendanceMetrics.hourText(metrics.overtimeHours)) giờ"
         }
         if hasForgottenPunch {
@@ -360,7 +426,11 @@ struct PreloadedAttendanceDayCell: View {
 }
 
 struct DashboardView: View {
-    @EnvironmentObject private var session: SessionStore
+    // Observes HomeState (today's punches, AI setting) and the menu only;
+    // observing the whole session redrew Home on every unrelated change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @EnvironmentObject private var home: HomeState
     @EnvironmentObject private var menuStore: MenuStore
     @State private var showTodayMenu = false
     @State private var showAttendanceHistory = false
@@ -371,27 +441,17 @@ struct DashboardView: View {
     let isActive: Bool
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     PortalPageTitle("Trang chủ")
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Xin chào,")
-                            .foregroundColor(AppTheme.muted)
-                        Text(session.dashboard?.name ?? session.profile?.name ?? "Nhân viên")
-                            .font(.title2.bold())
-                        Text(session.dashboard?.employeeCode ?? session.profile?.employeeCode ?? "")
-                            .font(.subheadline.monospaced())
-                            .foregroundColor(AppTheme.redText)
-                    }
 
                     // A "Bảng lương" tile sat here with no destination. Placeholder
                     // features read as broken and App Review 2.1 rejects them, so
                     // it returns with the payslip feature itself.
-                    NavigationLink(
-                        destination: AttendanceStatementListView(),
-                        isActive: $showAttendanceStatement
-                    ) {
+                    Button {
+                        showAttendanceStatement = true
+                    } label: {
                         AttendanceStatementShortcut()
                     }
                     .buttonStyle(.plain)
@@ -463,7 +523,7 @@ struct DashboardView: View {
                     !showAttendanceHistory &&
                     !showAttendanceStatement &&
                     !showTodayMenu &&
-                    session.aiAssistantMobileEnabled {
+                    home.aiAssistantEnabled {
                     Button {
                         showAiAssistant = true
                     } label: {
@@ -502,15 +562,17 @@ struct DashboardView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.24), value: showAiAssistantLaunchLabel)
-            .animation(.easeInOut(duration: 0.20), value: session.aiAssistantMobileEnabled)
+            .animation(.easeInOut(duration: 0.20), value: home.aiAssistantEnabled)
             .sheet(isPresented: $showTodayMenu) {
                 TodayMenuView()
                     .sessionEnvironment(session)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
+            .navigationDestination(isPresented: $showAttendanceStatement) {
+                AttendanceStatementListView()
+            }
         }
-        .navigationViewStyle(.stack)
         .sheet(isPresented: $showAiAssistant) {
             AiAssistantChatView()
                 .sessionEnvironment(session)
@@ -525,7 +587,7 @@ struct DashboardView: View {
                 showAiAssistantLaunchLabel = false
             }
         }
-        .onChange(of: session.aiAssistantMobileEnabled) { _, enabled in
+        .onChange(of: home.aiAssistantEnabled) { _, enabled in
             if !enabled { showAiAssistant = false }
         }
     }
@@ -638,12 +700,12 @@ struct DashboardView: View {
     }
 
     private var checkInTime: String {
-        guard let value = session.dashboard?.attendanceCheckIn else { return "--:--" }
+        guard let value = home.summary.checkIn else { return "--:--" }
         return attendanceTime(value)
     }
 
     private var checkOutTime: String {
-        guard let value = session.dashboard?.attendanceCheckOut else { return "--:--" }
+        guard let value = home.summary.checkOut else { return "--:--" }
         return attendanceTime(value)
     }
 }
@@ -652,12 +714,8 @@ struct DashboardView: View {
 struct AttendanceStatementShortcut: View {
     var body: some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Bảng công").font(.headline)
-                Text("Ngày công, tăng ca và phép theo tháng")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.muted)
-            }
+            Text("Bảng công")
+                .font(.headline)
             Spacer(minLength: 8)
             Image(systemName: "chevron.right")
                 .font(.footnote.weight(.semibold))

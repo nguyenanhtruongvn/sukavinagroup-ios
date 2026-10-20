@@ -66,8 +66,21 @@ final class MeetingStore: ObservableObject {
         let live = newValue
             .filter { $0.status != "cancelled" }
             .sorted { $0.startsAt < $1.startsAt }
+        // Every schedule refresh lands here: an unchanged schedule must not
+        // redraw every room card.
+        guard live != bookings else { return }
         bookingsByRoom = Dictionary(grouping: live, by: \.roomId)
         bookings = live
+    }
+
+    /// The room's next booking once a meeting ending at `end` is over: what
+    /// limits extending it (`MeetingExtension`).
+    func nextBooking(after end: Date, inRoom roomId: String, excluding bookingID: String) -> MeetingBooking? {
+        let others = (bookingsByRoom[roomId] ?? []).filter { $0.id != bookingID }
+        guard let start = MeetingExtension.nextStart(after: end, among: others.compactMap(\.startDate)) else {
+            return nil
+        }
+        return others.first { $0.startDate == start }
     }
 }
 
@@ -199,12 +212,29 @@ extension View {
     /// `SessionStore`, so feature views can observe only their store.
     @MainActor
     func sessionEnvironment(_ session: SessionStore) -> some View {
-        environmentObject(session)
+        modifier(SessionEnvironment(session: session))
+    }
+}
+
+/// The injection chain behind `sessionEnvironment(_:)`. As one modifier the
+/// screens' types only nest `ModifiedContent<_, SessionEnvironment>` instead
+/// of ten modifiers (iOS 17 aborted building deep SwiftUI type metadata, see
+/// LegacyMeetingRoomsUIKitView).
+@MainActor
+private struct SessionEnvironment: ViewModifier {
+    let session: SessionStore
+
+    func body(content: Content) -> some View {
+        content
+            .environmentObject(session)
             .environmentObject(session.meetings)
             .environmentObject(session.menu)
             .environmentObject(session.requests)
             .environmentObject(session.badge)
             .environmentObject(session.revisions)
+            .environmentObject(session.home)
+            .environmentObject(session.inbox)
+            .environmentObject(session.account)
             .environment(\.sessionActions, SessionActions(weakStore: session))
     }
 }
@@ -222,6 +252,42 @@ final class DataRevisions: ObservableObject {
     @Published fileprivate(set) var meeting = 0
     /// Notifications were read or deleted on another of this user's devices.
     @Published fileprivate(set) var inbox = 0
+}
+
+/// What Home shows from the session. Home observed the whole SessionStore and
+/// redrew on every working flag, error, badge, news or notification change;
+/// this publishes only when the greeting, today's punches or the AI
+/// assistant setting change. Kept by SessionStore (`syncHome`).
+@MainActor
+final class HomeState: ObservableObject {
+    struct Summary: Equatable {
+        var name = "Nhân viên"
+        /// The job title (chức vụ) under the name.
+        var jobTitle = ""
+        var checkIn: String?
+        var checkOut: String?
+    }
+    @Published fileprivate(set) var summary = Summary()
+    @Published fileprivate(set) var aiAssistantEnabled = true
+}
+
+/// The news and request notifications the Notifications screen lists, with
+/// the news unread state. Published only when they change (see HomeState).
+@MainActor
+final class InboxState: ObservableObject {
+    @Published fileprivate(set) var articles: [ContentItem] = []
+    @Published fileprivate(set) var unreadCount = 0
+    @Published fileprivate(set) var unreadArticleIDs: Set<String> = []
+    @Published fileprivate(set) var requestNotifications: [RequestNotification] = []
+}
+
+/// The signed-in account for Profile and the password change, published
+/// only when it changes (see HomeState).
+@MainActor
+final class AccountState: ObservableObject {
+    @Published fileprivate(set) var profile: Profile?
+    @Published fileprivate(set) var biometricsEnabled = false
+    @Published fileprivate(set) var passwordChangeError: String?
 }
 
 /// The Notifications tab badge. Only the tab bar observes it.
@@ -264,15 +330,15 @@ final class SessionStore: ObservableObject {
     // UIKit presents this stable launch screen while credentials are resolved.
     // The result, rather than a timer, decides which screen is shown next.
     @Published var state: State = .restoring
-    @Published var profile: Profile?
-    @Published var dashboard: Dashboard?
+    @Published var profile: Profile? { didSet { syncHome(); syncAccount() } }
+    @Published var dashboard: Dashboard? { didSet { syncHome(); syncInboxArticles() } }
     @Published var errorMessage: String?
     @Published var errorTitle = "Chưa thể thực hiện"
     @Published var errorOffersSettings = false
     @Published var isWorking = false
-    @Published var unreadCount = 0
+    @Published var unreadCount = 0 { didSet { syncInboxUnread() } }
     /// News articles not opened yet, by id (the "Mới" badge). Mirrors Android.
-    @Published private(set) var unreadArticleIDs: Set<String> = []
+    @Published private(set) var unreadArticleIDs: Set<String> = [] { didSet { syncInboxUnread() } }
     @Published var requestUnreadCount = 0
     let badge = NotificationBadgeState()
     /// Stored in `badge`, so only the tab bar redraws when it changes.
@@ -280,9 +346,9 @@ final class SessionStore: ObservableObject {
         get { badge.count }
         set { if badge.count != newValue { badge.count = newValue } }
     }
-    @Published var biometricsEnabled = BiometricPreferences.enabled
+    @Published var biometricsEnabled = BiometricPreferences.enabled { didSet { syncAccount() } }
     @Published var passwordChangeRequiresEmail = false
-    @Published var passwordChangeError: String?
+    @Published var passwordChangeError: String? { didSet { syncAccount() } }
     @Published var forgotPasswordError: String?
     /// Feature stores. Views that render this data observe the store itself;
     /// the forwarding properties below keep the session's networking code
@@ -297,7 +363,8 @@ final class SessionStore: ObservableObject {
     }
     var meetingRooms: [MeetingRoom] {
         get { meetings.rooms }
-        set { meetings.rooms = newValue }
+        // Unchanged rooms (every schedule refresh) must not redraw the list.
+        set { if meetings.rooms != newValue { meetings.rooms = newValue } }
     }
     var meetingBookings: [MeetingBooking] {
         get { meetings.bookings }
@@ -307,21 +374,60 @@ final class SessionStore: ObservableObject {
         get { meetings.invitees }
         set { meetings.invitees = newValue }
     }
-    @Published private(set) var aiAssistantMobileEnabled = true
+    @Published private(set) var aiAssistantMobileEnabled = true { didSet { syncHome() } }
     let revisions = DataRevisions()
-    @Published private(set) var isOfflineNoticeVisible = false
-    @Published private(set) var isNetworkAvailable = false
+    /// Read-only copies for Home, Notifications and Profile, kept by the
+    /// didSets above and published only when the value they show changes.
+    let home = HomeState()
+    let inbox = InboxState()
+    let account = AccountState()
 
-    /// `false` only after NWPathMonitor has confirmed an offline path. Before
-    /// its first callback callers may still make their normal initial request.
-    var hasConfirmedOfflineConnection: Bool {
-        lastPathStatus != nil && !isNetworkAvailable
+    private func syncHome() {
+        let summary = HomeState.Summary(
+            name: dashboard?.name ?? profile?.name ?? "Nhân viên",
+            jobTitle: dashboard?.jobTitle?.nilIfEmpty ?? dashboard?.role.nilIfEmpty ?? profile?.role ?? "",
+            checkIn: dashboard?.attendanceCheckIn,
+            checkOut: dashboard?.attendanceCheckOut
+        )
+        if home.summary != summary { home.summary = summary }
+        if home.aiAssistantEnabled != aiAssistantMobileEnabled { home.aiAssistantEnabled = aiAssistantMobileEnabled }
     }
+
+    private func syncInboxArticles() {
+        let articles = dashboard?.contentItems ?? []
+        if inbox.articles != articles { inbox.articles = articles }
+    }
+
+    private func syncInboxUnread() {
+        if inbox.unreadCount != unreadCount { inbox.unreadCount = unreadCount }
+        if inbox.unreadArticleIDs != unreadArticleIDs { inbox.unreadArticleIDs = unreadArticleIDs }
+    }
+
+    private func syncInboxRequests() {
+        if inbox.requestNotifications != latestRequestNotifications {
+            inbox.requestNotifications = latestRequestNotifications
+        }
+    }
+
+    private func syncAccount() {
+        if account.profile != profile { account.profile = profile }
+        if account.biometricsEnabled != biometricsEnabled { account.biometricsEnabled = biometricsEnabled }
+        if account.passwordChangeError != passwordChangeError { account.passwordChangeError = passwordChangeError }
+    }
+    /// The connection banner the app container shows: "Mất kết nối internet"
+    /// when the connection is lost, then "Đã kết nối internet" when it
+    /// returns. Each hides itself after a few seconds.
+    enum ConnectivityNotice { case offline, restored }
+    @Published private(set) var connectivityNotice: ConnectivityNotice?
+    /// The connection was lost and has not come back yet.
+    private var isInOutage = false
+    @Published private(set) var isNetworkAvailable = false
 
     private(set) var token: String?
     private var knownArticleIDs: Set<String> = []
     private let knownArticlesKey = "known-native-article-ids"
     private let unreadArticlesKey = "unread-native-article-ids"
+    private let hiddenArticlesKey = "hidden-notification-articles"
     /// Written by older versions (local attendance inbox); only ever removed now.
     private let legacyAttendanceKeyPrefixes = [
         "known-native-attendance-ids-",
@@ -329,7 +435,20 @@ final class SessionStore: ObservableObject {
     ]
     private let acknowledgedNotificationBadgePrefix = "acknowledged-native-notification-badge-"
     private let acknowledgedNotificationBadgeDatePrefix = "acknowledged-native-notification-badge-date-"
-    private var latestRequestNotifications: [RequestNotification] = []
+    /// The inbox's server notifications; the Notifications screen mirrors it.
+    @Published private(set) var latestRequestNotifications: [RequestNotification] = [] { didSet { syncInboxRequests() } }
+    /// One shared `me/requests/notifications` request (count badge and screen).
+    private var requestNotificationsTask: Task<[RequestNotification]?, Never>?
+    private var requestNotificationsRerun = false
+    /// Shared attendance month requests; a forced call re-runs a running one.
+    private var attendanceMonthTasks: [String: Task<AttendanceMonth, Error>] = [:]
+    private var attendanceMonthReruns: Set<String> = []
+    private var attendanceReportsTask: Task<[AttendanceReport]?, Never>?
+    private var attendanceReportsLoadedAt: Date?
+    private var todayMenuRerun = false
+    private var meetingDetailsReruns: Set<String> = []
+    /// Read/unread news are kept per account (`<key>-<employee code>`).
+    private var articleOwner: String?
     private var articleBadgeCount = 0
     private let attendanceMonthCachePrefix = "native-attendance-month-"
     private let attendanceMonthCacheOwnerKey = "native-attendance-month-cache-owner"
@@ -396,7 +515,7 @@ final class SessionStore: ObservableObject {
     private var isMonitoringNetwork = false
     private var lastPathStatus: NWPath.Status?
     private var lastPathWasCellular: Bool?
-    private var offlineNoticeTask: Task<Void, Never>?
+    private var connectivityNoticeTask: Task<Void, Never>?
     private var foregroundRefreshTask: Task<Void, Never>?
     private var apnsTokenObserver: NSObjectProtocol?
     private var meetingPushObserver: NSObjectProtocol?
@@ -432,11 +551,8 @@ final class SessionStore: ObservableObject {
                 // @Published value still redraws every observing view.
                 if !self.isNetworkAvailable { self.isNetworkAvailable = true }
                 self.hasPresentedOfflineAlertForCurrentOutage = false
-                if self.offlineNoticeTask != nil {
-                    self.offlineNoticeTask?.cancel()
-                    self.offlineNoticeTask = nil
-                }
-                if self.isOfflineNoticeVisible { self.isOfflineNoticeVisible = false }
+                // A response from the server proves the connection is back.
+                self.connectionRestored()
             }
         }
         sessionRefreshedObserver = NotificationCenter.default.addObserver(
@@ -444,15 +560,20 @@ final class SessionStore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let response = notification.object as? LoginResponse else { return }
+            // From APIClient (a LoginResponse) or from a Live Activity action
+            // (userInfo; that file is also built into the widget extension).
+            let response = notification.object as? LoginResponse
+            guard let accessToken = response?.accessToken ?? notification.userInfo?["accessToken"] as? String,
+                  !accessToken.isEmpty else { return }
+            let refreshToken = response?.refreshToken ?? notification.userInfo?["refreshToken"] as? String ?? ""
             Task { @MainActor [weak self] in
                 guard let self, self.state == .signedIn else { return }
-                // APIClient renewed an expired token for a request; use it from
-                // now on instead of paying for a 401 + refresh on every call.
-                self.token = response.accessToken
+                // The token was renewed for a request; use it from now on
+                // instead of paying for a 401 + refresh on every call.
+                self.token = accessToken
                 self.lastSessionRefreshAt = Date()
-                if self.biometricsEnabled, !response.refreshToken.isEmpty {
-                    _ = BiometricKeychain.save(refreshToken: response.refreshToken)
+                if self.biometricsEnabled, !refreshToken.isEmpty {
+                    _ = BiometricKeychain.save(refreshToken: refreshToken)
                 }
             }
         }
@@ -498,10 +619,16 @@ final class SessionStore: ObservableObject {
             nil,
             .deliverImmediately
         )
+        // Property observers do not run for values set in this initializer.
+        syncHome()
+        syncInboxArticles()
+        syncInboxUnread()
+        syncInboxRequests()
+        syncAccount()
     }
 
     deinit {
-        offlineNoticeTask?.cancel()
+        connectivityNoticeTask?.cancel()
         if let transportReachabilityObserver {
             NotificationCenter.default.removeObserver(transportReachabilityObserver)
         }
@@ -530,7 +657,7 @@ final class SessionStore: ObservableObject {
         if let cached = attendanceMemoryCache[cacheKey] {
             return cached.value
         }
-        guard let data = UserDefaults.standard.data(forKey: cacheKey) else { return nil }
+        guard let data = AccountDocumentStore.shared.data(forKey: cacheKey) else { return nil }
         if let cached = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) {
             attendanceMemoryCache[cacheKey] = cached
             return cached.value
@@ -550,7 +677,7 @@ final class SessionStore: ObservableObject {
         if let memory = attendanceMemoryCache[cacheKey] {
             cached = memory
         } else {
-            guard let data = UserDefaults.standard.data(forKey: cacheKey),
+            guard let data = AccountDocumentStore.shared.data(forKey: cacheKey),
                   let disk = try? JSONDecoder().decode(CachedAttendanceMonth.self, from: data) else { return true }
             attendanceMemoryCache[cacheKey] = disk
             cached = disk
@@ -565,30 +692,63 @@ final class SessionStore: ObservableObject {
         return Date().timeIntervalSince(cached.savedAt) >= ttl
     }
 
-    func loadAttendanceMonth(_ month: String, token: String) async throws -> AttendanceMonth {
-        do {
-            let loaded: AttendanceMonth = try await APIClient.shared.request(
-                "me/attendance?month=\(month)", token: token
-            )
-            saveAttendanceMonth(loaded, for: month)
-            return loaded
-        } catch {
-            if let cached = cachedAttendanceMonth(month) { return cached }
-            throw error
+    /// Concurrent callers for one month share a request. `force` (a change
+    /// was just announced) never settles for a request that started before
+    /// it: the running one is followed by one more. A cached month is
+    /// returned when the network fails.
+    func loadAttendanceMonth(_ month: String, token: String, force: Bool = false) async throws -> AttendanceMonth {
+        if let running = attendanceMonthTasks[month] {
+            if force { attendanceMonthReruns.insert(month) }
+            return try await running.value
         }
+        let task = Task { @MainActor [weak self] () throws -> AttendanceMonth in
+            guard let self else { throw CancellationError() }
+            var loaded: AttendanceMonth
+            repeat {
+                self.attendanceMonthReruns.remove(month)
+                do {
+                    loaded = try await APIClient.shared.request(
+                        "me/attendance?month=\(month)", token: self.token ?? token
+                    )
+                    self.saveAttendanceMonth(loaded, for: month)
+                } catch {
+                    if let cached = self.cachedAttendanceMonth(month) { return cached }
+                    throw error
+                }
+            } while self.attendanceMonthReruns.contains(month) && !Task.isCancelled
+            return loaded
+        }
+        attendanceMonthTasks[month] = task
+        defer { if attendanceMonthTasks[month] == task { attendanceMonthTasks[month] = nil } }
+        return try await task.value
     }
 
+    /// Released statements never change and a new one is announced by a
+    /// realtime attendance event (which clears `attendanceReportsLoadedAt`),
+    /// so a list loaded within the TTL is returned without a request, and the
+    /// list and detail screens share one request. Mirrors Android.
     func loadAttendanceReports() async -> [AttendanceReport] {
-        guard let token else { return [] }
-        do {
-            let reports: [AttendanceReport] = try await APIClient.shared.request(
-                "me/attendance/reports", token: token
-            )
-            saveAttendanceReports(reports)
-            return reports
-        } catch {
+        guard token != nil else { return [] }
+        if let attendanceReportsLoadedAt,
+           Date().timeIntervalSince(attendanceReportsLoadedAt) < 30 * 60 {
             return cachedAttendanceReports()
         }
+        if let running = attendanceReportsTask {
+            return await running.value ?? cachedAttendanceReports()
+        }
+        let task = Task { @MainActor [weak self] () -> [AttendanceReport]? in
+            guard let self, let token = self.token else { return nil }
+            guard let reports: [AttendanceReport] = try? await APIClient.shared.request(
+                "me/attendance/reports", token: token
+            ) else { return nil }
+            self.saveAttendanceReports(reports)
+            self.attendanceReportsLoadedAt = Date()
+            return reports
+        }
+        attendanceReportsTask = task
+        let reports = await task.value
+        if attendanceReportsTask == task { attendanceReportsTask = nil }
+        return reports ?? cachedAttendanceReports()
     }
 
     /// Released attendance statements are immutable, so show this disk-backed
@@ -596,7 +756,7 @@ final class SessionStore: ObservableObject {
     func cachedAttendanceReports() -> [AttendanceReport] {
         guard let cacheKey = attendanceReportsCacheKey() else { return [] }
         if let memory = attendanceReportsMemory, memory.key == cacheKey { return memory.value }
-        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+        guard let data = AccountDocumentStore.shared.data(forKey: cacheKey),
               let cached = try? JSONDecoder().decode(CachedValue<[AttendanceReport]>.self, from: data) else {
             return []
         }
@@ -626,7 +786,7 @@ final class SessionStore: ObservableObject {
               let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: reports)) else { return }
         attendanceReportsMemory = (cacheKey, reports)
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
-        UserDefaults.standard.set(data, forKey: cacheKey)
+        AccountDocumentStore.shared.set(data, forKey: cacheKey)
     }
 
     private func saveAttendanceMonth(_ month: AttendanceMonth, for keyMonth: String) {
@@ -636,7 +796,7 @@ final class SessionStore: ObservableObject {
         attendanceMemoryCache[cacheKey] = cached
         guard let data = try? JSONEncoder().encode(cached) else { return }
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
-        UserDefaults.standard.set(data, forKey: cacheKey)
+        AccountDocumentStore.shared.set(data, forKey: cacheKey)
     }
 
     private func invalidateAttendanceCacheForRealtimeUpdate() {
@@ -645,6 +805,9 @@ final class SessionStore: ObservableObject {
         // an admin/attendance realtime event, matching Android's cache semantics.
         // A single timestamp replaces decoding and re-encoding every cached
         // month on the main thread for each company-wide event.
+        attendanceReportsLoadedAt = nil
+        attendanceReportsTask?.cancel()
+        attendanceReportsTask = nil
         guard let employeeCode = attendanceCacheEmployeeCode() else { return }
         UserDefaults.standard.set(Date(), forKey: attendanceStaleBeforePrefix + employeeCode)
         let prefix = attendanceMonthCachePrefix + employeeCode + "-"
@@ -661,9 +824,9 @@ final class SessionStore: ObservableObject {
 
     private func restoreCachedDashboard() {
         guard let employeeCode = profile?.employeeCode.nilIfEmpty,
-              let data = UserDefaults.standard.data(forKey: dashboardCachePrefix + employeeCode),
-              let cached = try? JSONDecoder().decode(CachedDashboard.self, from: data),
-              Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
+              let data = AccountDocumentStore.shared.data(forKey: dashboardCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedDashboard.self, from: data) else { return }
+        // Shown until replaced, offline included; restore always revalidates.
         dashboard = cached.value
     }
 
@@ -679,7 +842,7 @@ final class SessionStore: ObservableObject {
             await previous?.value
             // Cancelled at sign-out: never write the previous account back.
             guard !Task.isCancelled, let data = try? JSONEncoder().encode(cached) else { return }
-            UserDefaults.standard.set(data, forKey: key)
+            AccountDocumentStore.shared.set(data, forKey: key)
         }
     }
 
@@ -689,7 +852,7 @@ final class SessionStore: ObservableObject {
 
     private func restoreCachedTodayMenu() {
         guard let employeeCode = cacheEmployeeCode,
-              let data = UserDefaults.standard.data(forKey: todayMenuCachePrefix + employeeCode),
+              let data = AccountDocumentStore.shared.data(forKey: todayMenuCachePrefix + employeeCode),
               let cached = try? JSONDecoder().decode(CachedValue<TodayMenu>.self, from: data),
               cached.value.date == VietnamTime.dayKey.string(from: Date()),
               Date().timeIntervalSince(cached.savedAt) < 24 * 60 * 60 else { return }
@@ -700,25 +863,28 @@ final class SessionStore: ObservableObject {
     private func saveTodayMenuCache(_ value: TodayMenu) {
         guard let employeeCode = cacheEmployeeCode,
               let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: value)) else { return }
-        UserDefaults.standard.set(data, forKey: todayMenuCachePrefix + employeeCode)
+        AccountDocumentStore.shared.set(data, forKey: todayMenuCachePrefix + employeeCode)
     }
 
     func cachedRequestNotifications() -> [RequestNotification] {
         guard let employeeCode = cacheEmployeeCode,
-              let data = UserDefaults.standard.data(forKey: requestNotificationsCachePrefix + employeeCode),
-              let cached = try? JSONDecoder().decode(CachedValue<[RequestNotification]>.self, from: data),
-              Date().timeIntervalSince(cached.savedAt) < 7 * 24 * 60 * 60 else {
+              let data = AccountDocumentStore.shared.data(forKey: requestNotificationsCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedValue<[RequestNotification]>.self, from: data) else {
             return mergedRequestNotifications([])
         }
         return mergedRequestNotifications(cached.value)
     }
 
-    private func saveRequestNotificationsCache(_ values: [RequestNotification]) {
+    /// Returns false when there is no account to save for yet.
+    private func saveRequestNotificationsCache(_ values: [RequestNotification]) -> Bool {
         let inboxValues = values.filter { !isAttendanceNotificationType($0.type) }
         guard let employeeCode = cacheEmployeeCode,
-              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: inboxValues)) else { return }
-        UserDefaults.standard.set(data, forKey: requestNotificationsCachePrefix + employeeCode)
+              let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: inboxValues)) else { return false }
+        AccountDocumentStore.shared.set(data, forKey: requestNotificationsCachePrefix + employeeCode)
+        return true
     }
+    /// The list last written to the cache (nil: unknown, write the next one).
+    private var savedRequestNotifications: [RequestNotification]?
 
     /// Starts restoration directly from the UIKit lifecycle. This deliberately
     /// avoids a first Swift Concurrency task at launch on iOS 17, where that
@@ -755,15 +921,15 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func restore() async {
-        beginRestore()
-    }
-
     private func completeRestore(accessToken savedToken: String?, refreshToken savedRefreshToken: String?, attemptID: UUID) {
         guard activeRestoreAttempt == attemptID else { return }
         activeRestoreAttempt = nil
         guard savedToken != nil || savedRefreshToken != nil else {
             sessionRestoreLogger.notice("Restore completed: no saved session")
+            // The session ended while the app was not running (or sign-out
+            // was interrupted): no account data may outlive it.
+            AccountDocumentStore.shared.removeAll()
+            AccountDocumentStore.revalidation.removeAll()
             state = .signedOut
             return
         }
@@ -832,15 +998,6 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// Lets the native UIKit host recover from a restore task that never
-    /// resumes on an older OS. Credentials stay in Keychain so a subsequent
-    /// normal restore or sign-in can still use them.
-    func abandonRestore() {
-        guard state == .restoring else { return }
-        activeRestoreAttempt = nil
-        state = .signedOut
-    }
-
     func appBecameActive() {
         guard state == .signedIn else { return }
         // Reopen the realtime stream closed when the app went to background.
@@ -900,8 +1057,7 @@ final class SessionStore: ObservableObject {
             let response: LoginResponse = try await APIClient.shared.request(
                 "auth/login",
                 method: "POST",
-                body: LoginBody(loginId: normalizedLoginId, password: password),
-                allowTransportFallback: true
+                body: LoginBody(loginId: normalizedLoginId, password: password)
             )
             applySession(response)
 
@@ -939,6 +1095,9 @@ final class SessionStore: ObservableObject {
         }
 
         if let existing = todayMenuRefreshTask {
+            // A forced refresh reacts to a change made after the running
+            // request may have started: run once more when it finishes.
+            if force { todayMenuRerun = true }
             await existing.value
             return
         }
@@ -947,7 +1106,11 @@ final class SessionStore: ObservableObject {
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let value: TodayMenu = try await APIClient.shared.request("me/menu", token: token)
+                var value: TodayMenu
+                repeat {
+                    self.todayMenuRerun = false
+                    value = try await APIClient.shared.request("me/menu", token: self.token ?? token)
+                } while self.todayMenuRerun && !Task.isCancelled
                 guard !Task.isCancelled else { return }
                 self.todayMenu = value
                 self.menu.loadError = nil
@@ -1048,26 +1211,6 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func receiveMealSelection() async {
-        guard let token else { return }
-        todayMenuRefreshTask?.cancel()
-        todayMenuRefreshTask = nil
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            let value: TodayMenu = try await APIClient.shared.request(
-                "me/menu/selection/received",
-                method: "PATCH",
-                token: token
-            )
-            todayMenu = value
-            todayMenuLoadedAt = Date()
-            saveTodayMenuCache(value)
-        } catch {
-            present(error)
-        }
-    }
-
     // The sensor type never changes while the app runs; views read this on
     // every redraw, so query LocalAuthentication once.
     private lazy var biometryType: LABiometryType = {
@@ -1107,14 +1250,18 @@ final class SessionStore: ObservableObject {
             }
             applySession(response)
             state = .signedIn
-            startNetworkMonitoring()
-            if response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO" {
-                startSessionRefresh()
-                return true
+            // The same follow-up as a password sign-in: it used to skip
+            // auth/me (email, manager), the news state, notification
+            // permission and the AI assistant setting.
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await Task.yield()
+                self.loadKnownArticles()
+                self.startNetworkMonitoring()
+                await self.hydrateSignedInSession(
+                    isCanteen: response.user.accountType == "CANTEEN" && response.user.employeeCode != "DEMO"
+                )
             }
-            await refreshDashboard()
-            startRealTimeUpdates()
-            startSessionRefresh()
             return true
         } catch NetworkError.unauthorized {
             disableBiometricLogin()
@@ -1310,9 +1457,10 @@ final class SessionStore: ObservableObject {
         sessionRefreshTask = nil
         foregroundRefreshTask?.cancel()
         foregroundRefreshTask = nil
-        offlineNoticeTask?.cancel()
-        offlineNoticeTask = nil
-        isOfflineNoticeVisible = false
+        connectivityNoticeTask?.cancel()
+        connectivityNoticeTask = nil
+        connectivityNotice = nil
+        isInOutage = false
         registeredAPNsIdentity = nil
 
         // Remove account-scoped notification data from disk on sign-out.
@@ -1336,6 +1484,17 @@ final class SessionStore: ObservableObject {
         todayMenuRefreshTask = nil
         todayMenuLoadedAt = nil
         latestRequestNotifications = []
+        savedRequestNotifications = nil
+        requestNotificationsTask?.cancel()
+        requestNotificationsTask = nil
+        attendanceMonthTasks.values.forEach { $0.cancel() }
+        attendanceMonthTasks.removeAll()
+        attendanceMonthReruns.removeAll()
+        attendanceReportsTask?.cancel()
+        attendanceReportsTask = nil
+        attendanceReportsLoadedAt = nil
+        meetingDetailsReruns.removeAll()
+        todayMenuRerun = false
         requests.reset()
         if let employeeCode = cacheEmployeeCode {
             UserDefaults.standard.removeObject(
@@ -1349,6 +1508,12 @@ final class SessionStore: ObservableObject {
         dashboardCacheWrite = nil
 
         SessionCache.clear()
+        // Every cached document and revalidation body belongs to this account,
+        // also those a sign-out without a known employee code used to miss.
+        AccountDocumentStore.shared.removeAll()
+        AccountDocumentStore.revalidation.removeAll()
+        articleOwner = nil
+        knownArticleIDs = []
         token = nil
         profile = nil
         dashboard = nil
@@ -1362,7 +1527,6 @@ final class SessionStore: ObservableObject {
         AttendanceWidgetBridge.clear()
         unreadCount = 0
         unreadArticleIDs = []
-        UserDefaults.standard.removeObject(forKey: unreadArticlesKey)
         requestUnreadCount = 0
         notificationBadgeCount = 0
         articleBadgeCount = 0
@@ -1450,7 +1614,8 @@ final class SessionStore: ObservableObject {
             protected: user.protected,
             email: current?.email,
             managerFullName: current?.managerFullName,
-            passwordChangedAt: current?.passwordChangedAt
+            passwordChangedAt: current?.passwordChangedAt,
+            mustChangePassword: user.mustChangePassword
         )
         if profile != updated { profile = updated }
         let cachedProfile = profile
@@ -1534,15 +1699,26 @@ final class SessionStore: ObservableObject {
     private func startSessionRefresh() {
         sessionRefreshTask?.cancel()
         sessionRefreshTask = Task { [weak self] in
+            var failures = 0
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 12 * 60 * 60 * 1_000_000_000)
+                // Wake 10 minutes before the current access token expires
+                // (its JWT exp), not on a fixed 12-hour cycle that ignored
+                // the token's age. After a failed attempt, back off (1 min
+                // doubling to 15 min) instead of retrying in a tight loop.
+                guard let token = self?.token else { return }
+                let renewal = AccessTokenTiming.renewalDate(for: token, now: Date())
+                let backoff = failures == 0 ? 0 : min(15 * 60, 60 * pow(2, Double(failures - 1)))
+                let wait = max(renewal.timeIntervalSinceNow, backoff, 0)
+                try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                 guard !Task.isCancelled, let self else { return }
                 do {
                     try await self.refreshSession()
+                    failures = 0
                 } catch NetworkError.unauthorized {
                     self.signOut()
                     return
                 } catch {
+                    failures += 1
                     ConnectionDiagnostics.record("Session refresh deferred: \(error.localizedDescription)")
                 }
             }
@@ -1550,15 +1726,45 @@ final class SessionStore: ObservableObject {
     }
 
     func refreshRequestNotificationCount() async {
-        guard let token,
-              let values: [RequestNotification] = try? await APIClient.shared.request("me/requests/notifications", token: token) else { return }
-        updateRequestUnreadCount(values)
+        _ = await loadRequestNotifications(force: true)
+    }
+
+    /// The inbox's server notifications. The badge (realtime events) and the
+    /// Notifications screen used to fetch them separately for the same
+    /// change; now they share one request, and a forced call made while one
+    /// runs is followed by one more instead of reusing an older response.
+    @discardableResult
+    func loadRequestNotifications(force: Bool = false) async -> [RequestNotification]? {
+        if let running = requestNotificationsTask {
+            if force { requestNotificationsRerun = true }
+            return await running.value
+        }
+        let task = Task { @MainActor [weak self] () -> [RequestNotification]? in
+            guard let self else { return nil }
+            var values: [RequestNotification]?
+            repeat {
+                self.requestNotificationsRerun = false
+                guard let token = self.token else { return nil }
+                values = try? await APIClient.shared.request("me/requests/notifications", token: token)
+            } while self.requestNotificationsRerun && !Task.isCancelled
+            guard !Task.isCancelled, let values else { return nil }
+            self.updateRequestUnreadCount(values)
+            return self.latestRequestNotifications
+        }
+        requestNotificationsTask = task
+        let result = await task.value
+        if requestNotificationsTask == task { requestNotificationsTask = nil }
+        return result
     }
 
     func updateRequestUnreadCount(_ values: [RequestNotification]) {
         let inboxValues = mergedRequestNotifications(values)
-        latestRequestNotifications = inboxValues
-        saveRequestNotificationsCache(inboxValues)
+        // Every load and read mark lands here: publish and rewrite the cache
+        // only when the list changed.
+        if latestRequestNotifications != inboxValues { latestRequestNotifications = inboxValues }
+        if savedRequestNotifications != inboxValues, saveRequestNotificationsCache(inboxValues) {
+            savedRequestNotifications = inboxValues
+        }
         requestUnreadCount = inboxValues.filter { !$0.read }.count
         let employeeCode = profile?.employeeCode ?? dashboard?.employeeCode ?? ""
         let acknowledged = UserDefaults.standard.stringArray(forKey: acknowledgedNotificationBadgePrefix + employeeCode)
@@ -1617,7 +1823,8 @@ final class SessionStore: ObservableObject {
     }
 
     private func syncApplicationBadge() {
-        UIApplication.shared.applicationIconBadgeNumber = max(0, notificationBadgeCount)
+        // setBadgeCount replaces applicationIconBadgeNumber (deprecated in iOS 17).
+        UNUserNotificationCenter.current().setBadgeCount(max(0, notificationBadgeCount)) { _ in }
     }
 
     func dismissError() {
@@ -1686,7 +1893,7 @@ final class SessionStore: ObservableObject {
             guard let self else { return }
             // The signed-in stream: company-wide changes plus this employee's
             // own. The anonymous public stream no longer says whose data changed.
-            guard let eventsURL = URL(string: "https://sukavinagroup.net/api/me/events") else { return }
+            guard let eventsURL = URL(string: "me/events", relativeTo: SukavinaServer.api)?.absoluteURL else { return }
             // Consecutive failures without receiving data; drives the backoff.
             var failures = 0
             // One immediate token renewal per failure streak, so a revoked
@@ -1783,7 +1990,11 @@ final class SessionStore: ObservableObject {
                 self.lastPathStatus = path.status
                 self.lastPathWasCellular = isCellular
                 self.isNetworkAvailable = path.status == .satisfied
-                self.showOfflineNoticeIfNeeded(previousStatus: wasStatus, currentStatus: path.status)
+                if path.status == .satisfied {
+                    self.connectionRestored()
+                } else {
+                    self.showOfflineNoticeIfNeeded(previousStatus: wasStatus, currentStatus: path.status)
+                }
 
                 // The first callback only records the current path. Refresh after a real reconnect or handoff.
                 // In the background the stream is closed on purpose and
@@ -1812,13 +2023,25 @@ final class SessionStore: ObservableObject {
         // for intermediate unsatisfied/requires-connection transitions.
         guard currentStatus != .satisfied,
               previousStatus == nil || previousStatus == .satisfied else { return }
+        isInOutage = true
+        showConnectivityNotice(.offline, seconds: 5)
+    }
 
-        offlineNoticeTask?.cancel()
-        isOfflineNoticeVisible = true
-        offlineNoticeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
+    /// The path is satisfied again, or a server response arrived: after an
+    /// outage, say the connection is back (once per outage).
+    private func connectionRestored() {
+        guard isInOutage else { return }
+        isInOutage = false
+        showConnectivityNotice(.restored, seconds: 5)
+    }
+
+    private func showConnectivityNotice(_ notice: ConnectivityNotice, seconds: Double) {
+        connectivityNoticeTask?.cancel()
+        connectivityNotice = notice
+        connectivityNoticeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
             guard !Task.isCancelled else { return }
-            self?.isOfflineNoticeVisible = false
+            self?.connectivityNotice = nil
         }
     }
 
@@ -1887,7 +2110,7 @@ final class SessionStore: ObservableObject {
     func markArticlesRead() {
         guard let items = dashboard?.contentItems else { return }
         knownArticleIDs.formUnion(items.map(\.id))
-        persistKnownArticles()
+        persistKnownArticles(feed: items)
         unreadArticleIDs = []
         persistUnreadArticles()
         unreadCount = 0
@@ -1896,11 +2119,34 @@ final class SessionStore: ObservableObject {
         syncApplicationBadge()
     }
 
+    /// Loads this account's read/unread news. The first account opened after
+    /// the update adopts the former device-wide lists (almost always the
+    /// device's owner); any other account on a shared device starts fresh.
     private func loadKnownArticles() {
-        let stored = UserDefaults.standard.stringArray(forKey: knownArticlesKey) ?? []
-        knownArticleIDs = Set(stored)
-        unreadArticleIDs = Set(UserDefaults.standard.stringArray(forKey: unreadArticlesKey) ?? [])
+        guard let owner = cacheEmployeeCode, owner != articleOwner else { return }
+        articleOwner = owner
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: knownArticlesKey + "-" + owner) == nil,
+           defaults.object(forKey: knownArticlesKey) != nil {
+            for key in [knownArticlesKey, unreadArticlesKey, hiddenArticlesKey] {
+                if let value = defaults.stringArray(forKey: key) { defaults.set(value, forKey: key + "-" + owner) }
+                defaults.removeObject(forKey: key)
+            }
+        }
+        knownArticleIDs = Set(defaults.stringArray(forKey: knownArticlesKey + "-" + owner) ?? [])
+        unreadArticleIDs = Set(defaults.stringArray(forKey: unreadArticlesKey + "-" + owner) ?? [])
         unreadCount = unreadArticleIDs.count
+    }
+
+    /// News hidden from this account's Notifications list.
+    func hiddenArticleIDs() -> Set<String> {
+        guard let owner = articleOwner ?? cacheEmployeeCode else { return [] }
+        return Set(UserDefaults.standard.stringArray(forKey: hiddenArticlesKey + "-" + owner) ?? [])
+    }
+
+    func saveHiddenArticleIDs(_ ids: Set<String>) {
+        guard let owner = articleOwner ?? cacheEmployeeCode else { return }
+        UserDefaults.standard.set(Array(ids), forKey: hiddenArticlesKey + "-" + owner)
     }
 
     /// Opening one article marks only that article as read.
@@ -1916,13 +2162,15 @@ final class SessionStore: ObservableObject {
     }
 
     private func persistUnreadArticles() {
-        UserDefaults.standard.set(Array(unreadArticleIDs), forKey: unreadArticlesKey)
+        guard let articleOwner else { return }
+        UserDefaults.standard.set(Array(unreadArticleIDs), forKey: unreadArticlesKey + "-" + articleOwner)
     }
 
     private func processNewArticles(_ items: [ContentItem]) {
+        loadKnownArticles()
         if knownArticleIDs.isEmpty {
             knownArticleIDs = Set(items.map(\.id))
-            persistKnownArticles()
+            persistKnownArticles(feed: items)
             return
         }
         let newItems = items.filter { !knownArticleIDs.contains($0.id) }
@@ -1935,12 +2183,24 @@ final class SessionStore: ObservableObject {
             syncApplicationBadge()
             NotificationManager.shared.notifyNewArticles(newItems, badge: notificationBadgeCount)
             knownArticleIDs.formUnion(newItems.map(\.id))
-            persistKnownArticles()
+            persistKnownArticles(feed: items)
         }
     }
 
-    private func persistKnownArticles() {
-        UserDefaults.standard.set(Array(knownArticleIDs.prefix(300)), forKey: knownArticlesKey)
+    /// Saves at most 300 seen ids, always including every article still in
+    /// `feed`. Trimming an arbitrary 300 from the set (as before) could drop
+    /// a listed article, which the next refresh announced again as new.
+    private func persistKnownArticles(feed: [ContentItem]) {
+        guard let articleOwner else { return }
+        var listed: [String] = []
+        var listedSet = Set<String>()
+        for id in feed.map(\.id) where knownArticleIDs.contains(id) && listedSet.insert(id).inserted {
+            listed.append(id)
+        }
+        let others = knownArticleIDs.subtracting(listedSet).sorted()
+        let kept = listed + others.prefix(max(0, 300 - listed.count))
+        knownArticleIDs = Set(kept)
+        UserDefaults.standard.set(kept, forKey: knownArticlesKey + "-" + articleOwner)
     }
 
     func deleteAccount() async -> Bool {
@@ -1974,7 +2234,16 @@ final class SessionStore: ObservableObject {
                 "auth/password-change/request", method: "POST", token: token
             )
         } catch {
-            if error.localizedDescription.localizedCaseInsensitiveContains("email") {
+            // Whether the account lacks an email is a fact of its profile, not
+            // of the error's wording (any message mentioning "email" used to
+            // count). Re-read the profile: the copy on the device may predate
+            // the change. A failed read keeps it and shows the server's text.
+            if let token = self.token,
+               let current: Profile = try? await APIClient.shared.request("auth/me", token: token) {
+                profile = current
+                SessionCache.save(profile: current)
+            }
+            if !hasLinkedEmail {
                 passwordChangeRequiresEmail = true
                 passwordChangeError = "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email."
             } else {
@@ -2049,14 +2318,15 @@ final class SessionStore: ObservableObject {
 
             // A slower response for a previously selected date must never replace
             // the date the user is currently looking at.
-            meetings.scheduleLoaded = true
-            meetings.scheduleError = nil
+            if !meetings.scheduleLoaded { meetings.scheduleLoaded = true }
+            if meetings.scheduleError != nil { meetings.scheduleError = nil }
             if displayedMeetingScheduleDay == day {
                 meetingRooms = applyMeetingRoomOrder(value.rooms)
+                // One assignment, the confirmed end time already applied: the
+                // list neither redraws for an unchanged schedule nor shows an
+                // ended meeting's old end for a moment.
+                cachedBookings = normalizedMeetingBookings(endedMeetingResultApplied(to: cachedBookings))
                 meetingBookings = cachedBookings
-                applyEndedMeetingLiveActivityResultIfAvailable()
-                meetingBookings = normalizedMeetingBookings(meetingBookings)
-                cachedBookings = meetingBookings
             }
 
             if let pendingEndedMeeting,
@@ -2071,7 +2341,7 @@ final class SessionStore: ObservableObject {
             guard !Task.isCancelled else { return }
             ConnectionDiagnostics.record("Meeting schedule refresh deferred: \(error.localizedDescription)")
             // Known rooms stay usable offline; with none the list shows a retry.
-            if meetingRooms.isEmpty {
+            if meetingRooms.isEmpty, meetings.scheduleError != error.localizedDescription {
                 meetings.scheduleError = error.localizedDescription
             }
         }
@@ -2087,11 +2357,11 @@ final class SessionStore: ObservableObject {
         let roomIDs = Set(rooms.map(\.id))
         let bookings = SessionCache.loadMeetingSchedule(day: day, employeeCode: employeeCode)?.bookings ?? []
         meetingRooms = applyMeetingRoomOrder(rooms)
-        if !rooms.isEmpty { meetings.scheduleLoaded = true }
+        if !rooms.isEmpty, !meetings.scheduleLoaded { meetings.scheduleLoaded = true }
         // A room removed by admin disappears as soon as the next online catalog
         // refresh is cached, even if an older day's booking cache still exists.
-        meetingBookings = normalizedMeetingBookings(bookings.filter { roomIDs.contains($0.roomId) })
-        applyEndedMeetingLiveActivityResultIfAvailable()
+        let kept = normalizedMeetingBookings(bookings.filter { roomIDs.contains($0.roomId) })
+        meetingBookings = normalizedMeetingBookings(endedMeetingResultApplied(to: kept))
     }
 
     private func saveMeetingSchedule(_ schedule: MeetingScheduleResponse, for day: String) {
@@ -2165,6 +2435,7 @@ final class SessionStore: ObservableObject {
         }
 
         if let existing = meetingDetailsRefreshTasks[id] {
+            if forceRefresh { meetingDetailsReruns.insert(id) }
             return await existing.value
         }
 
@@ -2174,10 +2445,14 @@ final class SessionStore: ObservableObject {
         let task = Task { @MainActor [weak self] () -> MeetingBookingDetails? in
             guard let self else { return staleValue }
             do {
-                let fresh: MeetingBookingDetails = try await APIClient.shared.request(
-                    "me/meeting-bookings/\(id)",
-                    token: token
-                )
+                var fresh: MeetingBookingDetails
+                repeat {
+                    self.meetingDetailsReruns.remove(id)
+                    fresh = try await APIClient.shared.request(
+                        "me/meeting-bookings/\(id)",
+                        token: self.token ?? token
+                    )
+                } while self.meetingDetailsReruns.contains(id) && !Task.isCancelled
                 self.meetingDetailsCache[id] = MeetingDetailsMemoryEntry(
                     savedAt: Date(),
                     value: fresh
@@ -2292,9 +2567,14 @@ final class SessionStore: ObservableObject {
     /// server-confirmed end time into the shared App Group so the existing
     /// schedule can redraw at that exact time as soon as it is active.
     private func applyEndedMeetingLiveActivityResultIfAvailable() {
-        guard let result = pendingEndedMeetingLiveActivityResult() else { return }
-        var updated = meetingBookings
-        var didUpdate = false
+        let updated = endedMeetingResultApplied(to: meetingBookings)
+        if updated != meetingBookings { meetingBookings = normalizedMeetingBookings(updated) }
+    }
+
+    /// `bookings` with the pending server-confirmed end time applied, if any.
+    private func endedMeetingResultApplied(to bookings: [MeetingBooking]) -> [MeetingBooking] {
+        guard let result = pendingEndedMeetingLiveActivityResult() else { return bookings }
+        var updated = bookings
         for index in updated.indices where updated[index].id == result.bookingID {
             let booking = updated[index]
             updated[index] = MeetingBooking(
@@ -2309,9 +2589,8 @@ final class SessionStore: ObservableObject {
                 isOwner: booking.isOwner,
                 organizerName: booking.organizerName
             )
-            didUpdate = true
         }
-        if didUpdate { meetingBookings = normalizedMeetingBookings(updated) }
+        return updated
     }
 
     private func replaceMeetingInCurrentSchedule(_ serverBooking: MeetingBooking) {
@@ -2375,22 +2654,13 @@ final class SessionStore: ObservableObject {
 
     /// Live Activity controls always revalidate with the server; only the
     /// organiser may end or extend an active booking.
-    func handleLiveActivityAction(bookingID: String, action: String) async {
-        // No screen of its own shows the result here, so use the app alert.
-        if let message = await performMeetingControl(bookingID: bookingID, action: action, extensionMinutes: 5) {
-            errorTitle = "Chưa thể thực hiện"
-            errorMessage = message
-        }
-    }
-
     /// Shared by the Live Activity and the in-app ten-minute reminder.  The
     /// endpoint remains unchanged for older clients; only the optional minute
     /// choice is new UI state sent to the existing extend API.
     func performMeetingControl(bookingID: String, action: String, extensionMinutes: Int = 5) async -> String? {
+        // Callers show the message next to the control (not globally too).
         guard let token else {
-            let message = "Phiên đăng nhập đã hết hạn. Vui lòng mở ứng dụng và đăng nhập lại."
-            errorMessage = message
-            return message
+            return "Phiên đăng nhập đã hết hạn. Vui lòng mở ứng dụng và đăng nhập lại."
         }
         do {
             switch action {
@@ -2524,6 +2794,9 @@ final class SessionStore: ObservableObject {
             self.realtimeRefreshTask = nil
             if events.contains("request_changed") {
                 self.revisions.request &+= 1
+                // One forced reload for every screen showing requests
+                // (Requests and Notifications share this store). Mirrors Android.
+                Task { await self.requests.load(self.token, force: true) }
             }
             if events.contains("attendance_changed") || events.contains("employee_changed") {
                 // Employee/shift edits can change the calculated attendance

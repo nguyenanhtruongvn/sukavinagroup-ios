@@ -9,103 +9,6 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-private struct OfflineConnectionNotice: View {
-    var body: some View {
-        Label("Mất kết nối internet", systemImage: "wifi.slash")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 11)
-            .background(Color(red: 0.11, green: 0.11, blue: 0.12), in: Capsule())
-            .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
-            .accessibilityLabel("Mất kết nối internet")
-    }
-}
-
-struct ElegantAppAlert: View {
-    let title: String
-    let message: String
-    let offersSettings: Bool
-    let dismiss: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            HStack(alignment: .top, spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .fill(AppTheme.red.opacity(0.12))
-                    Image(systemName: alertIcon)
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundColor(AppTheme.red)
-                }
-                .frame(width: 44, height: 44)
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(title)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.primary)
-                    Text(message)
-                        .font(.system(size: 14.5, weight: .regular))
-                        .foregroundColor(AppTheme.muted)
-                        .lineSpacing(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 0)
-                Button(action: dismiss) {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(AppTheme.muted)
-                        .frame(width: 30, height: 30)
-                        .background(AppTheme.field)
-                        .clipShape(Circle())
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Đóng")
-            }
-
-            if offersSettings {
-                Button {
-                    dismiss()
-                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                    UIApplication.shared.open(url)
-                } label: {
-                    Label("Mở Cài đặt", systemImage: "gearshape.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.white)
-                .background(
-                    LinearGradient(colors: [AppTheme.red, AppTheme.deepRed], startPoint: .leading, endPoint: .trailing)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            } else {
-                Button(title == "Kiểm tra kết nối Internet" ? "Đóng" : "Đã hiểu", action: dismiss)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(AppTheme.red)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .buttonStyle(.plain)
-            }
-        }
-        .padding(20)
-        .adaptiveGlassSurface(cornerRadius: 24, tint: AppTheme.red.opacity(0.06))
-        .shadow(color: .black.opacity(0.24), radius: 22, y: 10)
-        .frame(maxWidth: 370)
-    }
-
-    private var alertIcon: String {
-        if offersSettings { return "antenna.radiowaves.left.and.right.slash" }
-        if title == "Kiểm tra kết nối Internet" { return "wifi.slash" }
-        if title == "Cần cập nhật email" { return "envelope.badge.fill" }
-        return "exclamationmark.shield.fill"
-    }
-}
-
 struct NativeLaunchView: View {
     var body: some View {
         ZStack {
@@ -130,7 +33,7 @@ struct AuthenticationView: View {
     @EnvironmentObject private var session: SessionStore
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack {
                 LinearGradient(
                     colors: [AppTheme.ink, AppTheme.loginAccent, AppTheme.ink],
@@ -154,7 +57,7 @@ struct AuthenticationView: View {
                                 .tracking(3.5)
                                 .foregroundColor(.red.opacity(0.9))
                             Text("Chào mừng trở lại")
-                                .font(.system(size: 34, weight: .bold, design: .rounded))
+                                .font(.largeTitle.bold())
                         }
 
                         LoginForm()
@@ -170,9 +73,8 @@ struct AuthenticationView: View {
                     .padding(22)
                 }
             }
-            .navigationBarHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
         }
-        .navigationViewStyle(.stack)
     }
 }
 
@@ -323,12 +225,7 @@ private struct ForgotPasswordView: View {
         _employeeCode = State(initialValue: initialEmployeeCode.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    private var passwordRuleError: String? {
-        if newPassword.count < 6 { return "Mật khẩu phải có ít nhất 6 ký tự." }
-        if !newPassword.contains(where: \.isLetter) { return "Mật khẩu phải có ít nhất một chữ cái." }
-        if !newPassword.contains(where: \.isNumber) { return "Mật khẩu phải có ít nhất một chữ số." }
-        return nil
-    }
+    private var passwordRuleError: String? { PasswordPolicy.problem(newPassword) }
 
     var body: some View {
         NavigationStack {
@@ -342,7 +239,7 @@ private struct ForgotPasswordView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     Text(completed ? "Đã đặt lại mật khẩu" : "Khôi phục mật khẩu")
-                        .font(.system(size: 27, weight: .bold, design: .rounded))
+                        .font(.title.bold())
                     Text(completed
                          ? "Bạn có thể đăng nhập bằng mật khẩu mới."
                          : "Nhập MSNV. Mã OTP sẽ được gửi tới email đã liên kết với tài khoản.")
@@ -352,7 +249,7 @@ private struct ForgotPasswordView: View {
                     if !completed {
                         NativeField(title: "MSNV", text: $employeeCode, icon: "person.text.rectangle")
                             .disabled(otpSent)
-                            .onChange(of: employeeCode) { _ in formError = nil; session.clearForgotPasswordError() }
+                            .onChange(of: employeeCode) { _, _ in formError = nil; session.clearForgotPasswordError() }
 
                         if otpSent {
                             if let maskedEmail {
@@ -370,10 +267,10 @@ private struct ForgotPasswordView: View {
                                 passwordRuleMessage("Mã OTP phải gồm đủ 6 chữ số.")
                             }
                             NativeSecureField(title: "Mật khẩu mới", text: $newPassword)
-                                .onChange(of: newPassword) { _ in formError = nil; session.clearForgotPasswordError() }
+                                .onChange(of: newPassword) { _, _ in formError = nil; session.clearForgotPasswordError() }
                             if attemptedSubmit, let passwordRuleError { passwordRuleMessage(passwordRuleError) }
                             NativeSecureField(title: "Nhập lại mật khẩu mới", text: $confirmation)
-                                .onChange(of: confirmation) { _ in formError = nil; session.clearForgotPasswordError() }
+                                .onChange(of: confirmation) { _, _ in formError = nil; session.clearForgotPasswordError() }
                             if attemptedSubmit && confirmation != newPassword {
                                 passwordRuleMessage("Mật khẩu nhập lại không khớp.")
                             }
@@ -447,152 +344,5 @@ private struct ForgotPasswordView: View {
             .foregroundColor(AppTheme.redText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-    }
-}
-
-struct RegistrationForm: View {
-    @State private var employeeCode = ""
-    @State private var fullName = ""
-    @State private var phone = ""
-    @State private var email = ""
-    @State private var password = ""
-    @State private var isWorking = false
-    @State private var verification: VerificationContext?
-    @State private var message: String?
-
-    var body: some View {
-        VStack(spacing: 16) {
-            NativeField(title: "Mã nhân viên", text: $employeeCode, icon: "number")
-            NativeField(title: "Họ và tên", text: $fullName, icon: "person")
-            NativeField(title: "Số điện thoại (không bắt buộc)", text: $phone, icon: "phone", keyboard: .phonePad)
-            NativeField(title: "Địa chỉ Gmail", text: $email, icon: "envelope", keyboard: .emailAddress)
-            NativeSecureField(title: "Mật khẩu từ 6 ký tự", text: $password)
-
-            Button("Đăng ký và nhận mã") {
-                Task { await register() }
-            }
-            .font(.headline)
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .foregroundColor(.white)
-            .background(AppTheme.red)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .disabled(!isValid || isWorking)
-            .opacity(isValid ? 1 : 0.55)
-
-            if let message {
-                Text(message).font(.footnote).foregroundColor(AppTheme.muted)
-            }
-        }
-        .sheet(item: $verification) { context in
-            VerificationView(context: context)
-        }
-    }
-
-    private var isValid: Bool {
-        !employeeCode.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !fullName.trimmingCharacters(in: .whitespaces).isEmpty &&
-        email.lowercased().hasSuffix("@gmail.com") && password.count >= 6
-    }
-
-    private func register() async {
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            let result: RegistrationResponse = try await APIClient.shared.request(
-                "auth/register",
-                method: "POST",
-                body: RegisterBody(
-                    employeeCode: employeeCode,
-                    fullName: fullName,
-                    phoneNumber: phone.isEmpty ? nil : phone,
-                    gmailEmail: email,
-                    password: password
-                )
-            )
-            message = result.message
-            verification = VerificationContext(employeeCode: result.employeeCode, email: email.lowercased())
-        } catch {
-            message = error.localizedDescription
-        }
-    }
-}
-
-struct VerificationContext: Identifiable {
-    let employeeCode: String
-    let email: String
-    var id: String { employeeCode + email }
-}
-
-struct VerificationView: View {
-    let context: VerificationContext
-    @Environment(\.dismiss) private var dismiss
-    @State private var code = ""
-    @State private var message: String
-    @State private var isWorking = false
-
-    init(context: VerificationContext) {
-        self.context = context
-        _message = State(initialValue: "Nhập mã gồm 6 chữ số đã gửi tới \(context.email).")
-    }
-
-    var body: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Image(systemName: "envelope.badge.shield.half.filled")
-                    .font(.system(size: 48))
-                    .foregroundColor(AppTheme.red)
-                Text("Xác minh Gmail").font(.title.bold())
-                Text(message).multilineTextAlignment(.center).foregroundColor(AppTheme.muted)
-                TextField("000000", text: $code)
-                    .keyboardType(.numberPad)
-                    // iOS offers the code from Mail above the keyboard.
-                    .textContentType(.oneTimeCode)
-                    .multilineTextAlignment(.center)
-                    .font(.system(size: 30, weight: .bold, design: .monospaced))
-                    .padding()
-                    .background(AppTheme.card)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                Button("Xác minh") { Task { await verify() } }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(AppTheme.red)
-                    .foregroundColor(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
-                    .disabled(code.count != 6 || isWorking)
-                Button("Gửi lại mã") { Task { await resend() } }
-                    .foregroundColor(.white)
-                Spacer()
-            }
-            .padding(24)
-            .background(AppTheme.ink.ignoresSafeArea())
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() } } }
-        }
-    }
-
-    private func verify() async {
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            let result: MessageResponse = try await APIClient.shared.request(
-                "auth/verify-email",
-                method: "POST",
-                body: VerifyBody(employeeCode: context.employeeCode, gmailEmail: context.email, code: code)
-            )
-            message = result.message
-            code = ""
-        } catch { message = error.localizedDescription }
-    }
-
-    private func resend() async {
-        isWorking = true
-        defer { isWorking = false }
-        do {
-            let result: MessageResponse = try await APIClient.shared.request(
-                "auth/resend-verification",
-                method: "POST",
-                body: ResendBody(employeeCode: context.employeeCode, gmailEmail: context.email)
-            )
-            message = result.message
-        } catch { message = error.localizedDescription }
     }
 }

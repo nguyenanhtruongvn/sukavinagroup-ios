@@ -95,10 +95,13 @@ enum EmployeeRequestStatus: String, Codable, CaseIterable {
 }
 
 enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
-    case leave, late, early, overtime, business, attendance, gate
+    // "sunday" (Làm chủ nhật) only ever comes from EmployeeRequest.kind below:
+    // the API stores it as "overtime" with sundayWork, so released apps can
+    // still decode the request list.
+    case leave, late, early, overtime, business, attendance, gate, sunday
     var id: String { rawValue }
     var title: String {
-        switch self { case .leave: return "Xin nghỉ"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác"; case .attendance: return "Xác nhận giờ công"; case .gate: return "Ra cổng" }
+        switch self { case .leave: return "Xin nghỉ"; case .late: return "Đi trễ"; case .early: return "Về sớm"; case .overtime: return "Làm thêm giờ"; case .business: return "Công tác"; case .attendance: return "Xác nhận giờ công"; case .gate: return "Ra cổng"; case .sunday: return "Làm chủ nhật" }
     }
     var icon: String {
         switch self {
@@ -107,6 +110,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .early: return "figure.walk.departure"
         case .overtime: return "moon.stars.fill"
         case .business: return "airplane"; case .attendance: return "checkmark.circle"; case .gate: return "rectangle.portrait.and.arrow.right"
+        case .sunday: return "calendar"
         }
     }
     var color: Color {
@@ -116,6 +120,7 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
         case .early: return Color(red: 0.9, green: 0.22, blue: 0.52)
         case .overtime: return Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)
         case .business: return Color(red: 0.0, green: 0.5, blue: 0.5); case .attendance: return .green; case .gate: return .purple
+        case .sunday: return Color(red: 249.0 / 255.0, green: 115.0 / 255.0, blue: 22.0 / 255.0)
         }
     }
 }
@@ -127,7 +132,11 @@ struct EmployeeRequest: Codable, Identifiable {
         let department: String?
     }
     let id: String
-    let kind: EmployeeRequestKind
+    private let storedKind: EmployeeRequestKind
+    /// Set on "Làm chủ nhật" requests, which the API stores as "overtime".
+    let sundayWork: Bool?
+    /// The kind shown in the app.
+    var kind: EmployeeRequestKind { sundayWork == true && storedKind == .overtime ? .sunday : storedKind }
     let from: Date
     let to: Date
     let reason: String
@@ -144,7 +153,9 @@ struct EmployeeRequest: Codable, Identifiable {
     let businessExpense: Double?
 
     enum CodingKeys: String, CodingKey {
-        case id, kind, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
+        case id, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
+        case storedKind = "kind"
+        case sundayWork
         case businessDestination, businessTransport, businessDistanceKm, businessExpense
         case from = "startsAt"
         case to = "endsAt"
@@ -162,8 +173,10 @@ final class EmployeeRequestStore: ObservableObject {
         let approvals: [EmployeeRequest]
     }
 
-    @Published private(set) var requests: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
-    @Published private(set) var approvals: [EmployeeRequest] = [] { didSet { rebuildIndex() } }
+    // Every change of these two lists ends with one rebuildIndex() call
+    // (a didSet on each rebuilt it two or three times per change).
+    @Published private(set) var requests: [EmployeeRequest] = []
+    @Published private(set) var approvals: [EmployeeRequest] = []
     /// Derived once per change of the lists, not on every redraw of the
     /// screens that show them (they redraw far more often than data changes).
     private var byID: [String: EmployeeRequest] = [:]
@@ -212,6 +225,8 @@ final class EmployeeRequestStore: ObservableObject {
     private var lastLoadedAt: Date?
     private var loadTask: Task<Void, Never>?
     private var loadTaskID: UUID?
+    /// A forced load arrived while one was running: run once more.
+    private var rerunRequested = false
     private let refreshTTL: TimeInterval = 60
 
     /// Restore first so a previously loaded request list remains usable when
@@ -223,11 +238,13 @@ final class EmployeeRequestStore: ObservableObject {
         // lists are in memory, the disk copy is never newer.
         if cacheEmployeeCode == employeeCode, lastLoadedAt != nil { return }
         cacheEmployeeCode = employeeCode
-        guard let data = UserDefaults.standard.data(forKey: cachePrefix + employeeCode),
-              let cached = try? JSONDecoder().decode(CachedRequests.self, from: data),
-              Date().timeIntervalSince(cached.savedAt) < 7 * 24 * 60 * 60 else { return }
+        guard let data = AccountDocumentStore.shared.data(forKey: cachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedRequests.self, from: data) else { return }
+        // Shown until replaced (offline included); lastLoadedAt = savedAt
+        // makes an old copy revalidate at once.
         requests = cached.requests
         approvals = cached.approvals
+        rebuildIndex()
         lastLoadedAt = cached.savedAt
     }
 
@@ -236,8 +253,10 @@ final class EmployeeRequestStore: ObservableObject {
         loadTask?.cancel()
         loadTask = nil
         loadTaskID = nil
+        rerunRequested = false
         requests = []
         approvals = []
+        rebuildIndex()
         message = nil
         cacheEmployeeCode = nil
         lastLoadedAt = nil
@@ -248,7 +267,7 @@ final class EmployeeRequestStore: ObservableObject {
     private func saveCache() {
         guard let employeeCode = cacheEmployeeCode,
               let data = try? JSONEncoder().encode(CachedRequests(savedAt: Date(), requests: requests, approvals: approvals)) else { return }
-        UserDefaults.standard.set(data, forKey: cachePrefix + employeeCode)
+        AccountDocumentStore.shared.set(data, forKey: cachePrefix + employeeCode)
     }
 
     private static func actionMessage(_ error: Error, fallback: String) -> String {
@@ -266,6 +285,9 @@ final class EmployeeRequestStore: ObservableObject {
         }
 
         if let existing = loadTask {
+            // The running request may predate the change a forced load
+            // reacts to; joining it could keep showing the old lists.
+            if force { rerunRequested = true }
             await existing.value
             return
         }
@@ -277,13 +299,19 @@ final class EmployeeRequestStore: ObservableObject {
             guard let self else { return }
             defer { self.isLoading = false }
             do {
-                async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
-                async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
-                let loadedRequests = try await mine
-                let loadedApprovals = try await assigned
+                var loadedRequests: [EmployeeRequest]
+                var loadedApprovals: [EmployeeRequest]
+                repeat {
+                    self.rerunRequested = false
+                    async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
+                    async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
+                    loadedRequests = try await mine
+                    loadedApprovals = try await assigned
+                } while self.rerunRequested && !Task.isCancelled
                 guard !Task.isCancelled else { return }
                 self.requests = loadedRequests
                 self.approvals = loadedApprovals
+                self.rebuildIndex()
                 self.lastLoadedAt = Date()
                 self.saveCache()
             } catch is CancellationError {
@@ -331,6 +359,7 @@ final class EmployeeRequestStore: ObservableObject {
             )
             requests.removeAll { $0.id == created.id }
             requests.insert(created, at: 0)
+            rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
@@ -358,6 +387,7 @@ final class EmployeeRequestStore: ObservableObject {
                 requests.insert(cancelled, at: 0)
             }
             approvals.removeAll { $0.id == id }
+            rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
@@ -388,6 +418,7 @@ final class EmployeeRequestStore: ObservableObject {
             } else {
                 approvals.insert(decided, at: 0)
             }
+            rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
             Task { [weak self] in await self?.load(token, force: true) }
@@ -417,34 +448,18 @@ struct RequestsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if #available(iOS 18.0, *) {
-                    // The native TabView already reserves the tab-bar safe area.
-                    // Avoid adding a second full-width bottom inset on iOS 18+.
-                    requestPages
-                        // The pager extends under the translucent system tab
-                        // bar. Do not mask, clip, or reserve a second bottom
-                        // panel: those approaches leave a visible empty strip.
-                        .overlay(alignment: .bottomTrailing) {
-                            createRequestButton
-                                .padding(.trailing, 20)
-                                .padding(.bottom, 18)
-                        }
-                } else {
-                    // iOS 17 uses an app-owned tab bar. Keep the create button
-                    // inside the remaining safe area so the bar cannot cover it.
-                    requestPages
-                        .safeAreaInset(edge: .bottom, spacing: 0) {
-                            HStack {
-                                Spacer(minLength: 0)
-                                createRequestButton
-                            }
-                            .padding(.trailing, 20)
-                            .padding(.top, 8)
-                            .padding(.bottom, 18)
-                        }
+            // Every version hosts this page in a native tab bar controller
+            // (iOS 17 too, LegacyEmployeePortalController). The pager runs
+            // under the translucent bar and the button floats above it. The
+            // former iOS 17 branch reserved a bottom safe-area inset for an
+            // app-drawn tab bar that no longer exists: it covered the list
+            // with an empty strip above the tab bar.
+            requestPages
+                .overlay(alignment: .bottomTrailing) {
+                    createRequestButton
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 18)
                 }
-            }
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $composing) {
@@ -491,10 +506,8 @@ struct RequestsView: View {
                 await store.load(session.token)
             }
             // A realtime request_changed event (another device, a manager's
-            // decision) bumps requestRevision; reload like Android does.
-            .onChange(of: revisions.request) { _, _ in
-                Task { await store.load(session.token, force: true) }
-            }
+            // decision) reloads this shared store in SessionStore, once for
+            // the Requests and Notifications screens alike.
             .alert("Đơn từ", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) { Button("Đóng") { store.message = nil } } message: { Text(store.message ?? "") }
         }
     }
@@ -522,17 +535,10 @@ struct RequestsView: View {
                 }
             }
 
-            if #available(iOS 18.0, *) {
-                // Restore the native-tab-bar behavior used before the iOS 17
-                // compose-button workaround: only the scrollable request
-                // pager draws under Apple's transparent tab bar. The floating
-                // compose button remains anchored above it in the parent.
-                requestPager
-                    .ignoresSafeArea(.container, edges: .bottom)
-            } else {
-                // The custom iOS 17 tab bar already reserves its own safe area.
-                requestPager
-            }
+            // Only the scrollable pager draws under the system tab bar; its
+            // scroll views still inset their content by the safe area.
+            requestPager
+                .ignoresSafeArea(.container, edges: .bottom)
         }
         .padding(.top, 8)
         .onChange(of: filterIndex) { _, newIndex in
@@ -556,18 +562,19 @@ struct RequestsView: View {
         .animation(.easeInOut(duration: 0.22), value: filterIndex)
     }
 
+    /// Apple's prominent button in its circle shape, where the drawn red
+    /// circle was. It stays over the list: the navigation bar is hidden on
+    /// every tab, which draws its own title.
     private var createRequestButton: some View {
         Button { composing = true } label: {
             Image(systemName: "plus")
-                .font(.system(size: 22, weight: .bold))
-                .frame(width: 58, height: 58)
-                .background(AppTheme.red)
-                .foregroundStyle(.white)
-                .clipShape(Circle())
-                .shadow(color: AppTheme.red.opacity(0.38), radius: 18, y: 9)
+                .font(.title2.weight(.bold))
+                .frame(width: 44, height: 44)
         }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.circle)
+        .tint(AppTheme.red)
         .accessibilityLabel("Tạo đơn mới")
-        .buttonStyle(.plain)
     }
 
     private func filterButton(_ title: String, _ value: EmployeeRequestStatus?) -> some View {
@@ -870,17 +877,17 @@ struct RequestDecisionView: View {
 }
 
 struct RequestComposer: View {
-    private enum DurationUnit: String, CaseIterable, Identifiable {
-        case minutes
-        case hours
-
-        var id: String { rawValue }
-        var title: String { self == .minutes ? "Phút" : "Giờ" }
-        var maximumValue: Int { self == .minutes ? 60 : 24 }
-    }
+    /// Đi trễ, Về sớm and Làm thêm giờ last 5 minutes to 23 giờ 55 phút, in
+    /// 5-minute steps: what Apple's time picker can show as hh:mm
+    /// (`DurationClock`).
+    private static let durationRange = 5...1435
+    private static let durationStep = 5
 
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var session: SessionStore
+    // Only calls session methods and reads the shift times once: the form
+    // must not redraw (while typing) on every session change.
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var kind = EmployeeRequestKind.leave
     @State private var from = Date()
@@ -892,8 +899,7 @@ struct RequestComposer: View {
     @State private var transport = "personal_vehicle"
     @State private var distanceKm = ""
     @State private var expense = ""
-    @State private var durationValue = 30
-    @State private var durationUnit: DurationUnit = .minutes
+    @State private var durationMinutes = 30
     @State private var reasonEditorHeight: CGFloat = 150
     @State private var reasonFocused = false
     @State private var leaveScheduleWasInitialized = false
@@ -908,10 +914,15 @@ struct RequestComposer: View {
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) async -> String?
     @State private var isSubmitting = false
     @State private var submitError: String?
-    /// Typed content when the form opened; closing after changing it asks
-    /// first (Hủy or swipe down) instead of silently losing the text.
+    /// Typed content when the form opened; once it changes, a swipe down no
+    /// longer closes the form, so a stray drag cannot lose the text. Hủy is
+    /// an explicit choice and always closes at once.
     @State private var initialInput: [String]?
-    @State private var confirmingDiscard = false
+    /// Set when the employee changes a date or time. The form also assigns
+    /// `from`, `to` and `attendanceDate` itself, after it has appeared, from
+    /// the attendance month and the shift schedule; those must not count as
+    /// input, so only changes made through a picker binding set this.
+    @State private var scheduleEdited = false
     /// A rejected request this form starts from; nil for a new request.
     let template: EmployeeRequest?
     /// The first attendance lookup must not replace the template's times.
@@ -938,9 +949,8 @@ struct RequestComposer: View {
         _transport = State(initialValue: template.businessTransport.flatMap { $0.isEmpty ? nil : $0 } ?? "personal_vehicle")
         _distanceKm = State(initialValue: template.businessDistanceKm.map(Self.plainNumber) ?? "")
         _expense = State(initialValue: template.businessExpense.map(Self.plainNumber) ?? "")
-        if let value = prefill.durationValue {
-            _durationValue = State(initialValue: value)
-            _durationUnit = State(initialValue: prefill.durationIsHours ? .hours : .minutes)
+        if let minutes = prefill.durationMinutes {
+            _durationMinutes = State(initialValue: minutes)
         }
         // Keep the template's own times on the first render.
         _leaveScheduleWasInitialized = State(initialValue: true)
@@ -958,14 +968,27 @@ struct RequestComposer: View {
     }
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
     private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
-    private var singleDayEventName: String { kind == .late ? "đi trễ" : "về sớm" }
+    /// Pairs that belong together: whole-day absence (Xin nghỉ, Công tác),
+    /// shift deviations (Đi trễ, Về sớm), extra work (Làm thêm giờ, Làm chủ
+    /// nhật), then Ra cổng and Xác nhận giờ công. Same order on Android and web.
     private var compactRequestKinds: [EmployeeRequestKind] {
-        EmployeeRequestKind.allCases.filter { $0 != .attendance }
+        [.leave, .business, .late, .early, .overtime, .sunday, .gate, .attendance]
     }
-    private var durationMinutes: Int { durationUnit == .hours ? durationValue * 60 : durationValue }
-    private var durationDescription: String { "\(durationValue) \(durationUnit.title.lowercased())" }
+    /// "30 phút", "2 giờ", "1 giờ 30 phút": shown, and sent at the head of
+    /// the reason, where `RequestReasonPrefill` reads it back.
+    private var durationDescription: String { DurationClock.title(minutes: durationMinutes) }
     private var workStartTime: String? { session.dashboard?.workStartTime }
     private var workEndTime: String? { session.dashboard?.workEndTime }
+
+    /// The employee's usual shift on today's Sunday, or the next one.
+    private func applySundaySchedule(now: Date) {
+        let calendar = VietnamTime.calendar
+        let today = calendar.startOfDay(for: now)
+        let daysToSunday = (8 - calendar.component(.weekday, from: today)) % 7
+        let sunday = calendar.date(byAdding: .day, value: daysToSunday, to: today) ?? today
+        from = scheduledAttendanceTime(workStartTime, on: sunday, fallbackHour: 7, fallbackMinute: 30)
+        to = scheduledAttendanceTime(workEndTime, on: sunday, fallbackHour: 16, fallbackMinute: 30)
+    }
 
     private func applyInitialLeaveSchedule() {
         guard kind == .leave, !leaveScheduleWasInitialized else { return }
@@ -992,14 +1015,8 @@ struct RequestComposer: View {
         }
     }
 
-    private var scheduledRequestPreview: String {
-        let formatter = VietnamTime.clock
-        let dates = scheduledRequestDates
-        return "Khung giờ theo ca làm: \(formatter.string(from: dates.from)) – \(formatter.string(from: dates.to))."
-    }
 
     private var submissionDates: (from: Date, to: Date) {
-        let calendar = VietnamTime.calendar
         switch kind {
         case .late, .early, .overtime:
             return scheduledRequestDates
@@ -1011,18 +1028,6 @@ struct RequestComposer: View {
     private var submissionReason: String {
         guard usesDurationInput else { return cleanReason }
         return "\(kind.title): \(durationDescription). \(cleanReason)"
-    }
-    @ViewBuilder private func businessTransportButton(_ title: String, key: String, icon: String) -> some View {
-        Button { transport = key } label: {
-            Label(title, systemImage: icon)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1).minimumScaleFactor(0.72)
-                .frame(maxWidth: .infinity, minHeight: 42)
-                .background(transport == key ? EmployeeRequestKind.business.color.opacity(0.18) : AppTheme.card)
-                .foregroundStyle(transport == key ? EmployeeRequestKind.business.color : Color.primary)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(transport == key ? EmployeeRequestKind.business.color : Color.primary.opacity(0.1), lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }.buttonStyle(.plain)
     }
     @ViewBuilder private func labeledNumberField(
         _ title: String,
@@ -1041,18 +1046,45 @@ struct RequestComposer: View {
         .id(scrollID)
     }
 
+    /// A missing time is chosen like the booking's Bắt đầu: the whole card
+    /// is a button opening Apple's popover with Apple's time wheels
+    /// (`DatePopoverButton`).
     @ViewBuilder private func attendanceTimeCard(title: String, value: String?, missingPrompt: String, selection: Binding<Date>) -> some View {
+        if value == nil {
+            attendanceTimeCardFace(title: title, value: value, chosen: selection.wrappedValue)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .overlay(DatePopoverButton(
+                    selection: selection,
+                    accessibilityLabel: missingPrompt,
+                    accessibilityValue: VietnamTime.clock.string(from: selection.wrappedValue)
+                ))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        } else {
+            attendanceTimeCardFace(title: title, value: value, chosen: nil)
+        }
+    }
+
+    private func attendanceTimeCardFace(title: String, value: String?, chosen: Date?) -> some View {
         let compact = dynamicTypeSize <= .large
-        VStack(alignment: .leading, spacing: compact ? 4 : 6) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+        return VStack(alignment: .leading, spacing: compact ? 4 : 6) {
+            HStack {
+                Text(title).font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+                Spacer(minLength: 4)
+                if chosen != nil {
+                    Image(systemName: "chevron.down")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(AppTheme.muted)
+                }
+            }
             Text(attendanceTime(value))
                 .font(compact ? .headline.weight(.bold) : .title3.weight(.bold))
                 .monospacedDigit()
                 .foregroundStyle(value == nil ? AppTheme.red : .green)
-            if value == nil {
-                DatePicker(missingPrompt, selection: selection, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            if let chosen {
+                Label(VietnamTime.clock.string(from: chosen), systemImage: "clock")
+                    .font(.body.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.primary)
             } else {
                 Text("Đã ghi nhận").font(.caption).foregroundStyle(Color.green.opacity(0.8))
             }
@@ -1106,6 +1138,10 @@ struct RequestComposer: View {
         if kind == .business && transport == "personal_vehicle" && !(localizedDecimal(distanceKm) ?? 0 > 0) {
             return "Nhập quãng đường khi đi bằng xe cá nhân."
         }
+        if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 {
+            return "Ngày bắt đầu phải là Chủ nhật."
+        }
+        if kind == .sunday && to <= from { return "Giờ kết thúc phải sau giờ bắt đầu." }
         if cleanReason.count < 10 { return "Nội dung đơn cần tối thiểu 10 ký tự." }
         let dates = submissionDates
         if dates.to < dates.from { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
@@ -1121,13 +1157,38 @@ struct RequestComposer: View {
     }
 
     private var hasUnsavedInput: Bool {
-        initialInput.map { $0 != currentInput } ?? false
+        scheduleEdited || (initialInput.map { $0 != currentInput } ?? false)
+    }
+
+    /// `binding`, marking the schedule as edited when a picker changes it.
+    /// Never use this for the form's own prefill: that writes to the state
+    /// directly so it stays out of `hasUnsavedInput`.
+    private func editedByEmployee(_ binding: Binding<Date>) -> Binding<Date> {
+        Binding(
+            get: { binding.wrappedValue },
+            set: { newValue in
+                markScheduleEdited(from: binding.wrappedValue, to: newValue)
+                binding.wrappedValue = newValue
+            }
+        )
+    }
+
+    /// Compared to the minute: `from` starts as `Date()` with seconds that no
+    /// hour-and-minute picker shows, so a picker handing back the same minute
+    /// without them is not an edit. Every real change moves at least a minute.
+    private func markScheduleEdited(from old: Date, to new: Date) {
+        if !VietnamTime.calendar.isDate(old, equalTo: new, toGranularity: .minute) {
+            scheduleEdited = true
+        }
     }
 
     private var requestStartBinding: Binding<Date> {
         Binding(
             get: { from },
-            set: { updateRequestStart($0) }
+            set: { newValue in
+                markScheduleEdited(from: from, to: newValue)
+                updateRequestStart(newValue)
+            }
         )
     }
 
@@ -1159,7 +1220,7 @@ struct RequestComposer: View {
             composerLabel(title, icon: icon)
             VStack(spacing: 10) {
                 dateRow("Bắt đầu", selection: requestStartBinding)
-                dateRow("Kết thúc", selection: $to, range: from...)
+                dateRow("Kết thúc", selection: editedByEmployee($to), range: from...)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -1184,12 +1245,7 @@ struct RequestComposer: View {
                         .frame(width: 52, height: 52)
 
                         Text(template == nil ? "Tạo đơn mới" : "Tạo lại đơn")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                        Text(template == nil
-                             ? "Điền thông tin rõ ràng để đơn được xử lý nhanh hơn."
-                             : "Nội dung lấy từ đơn bị từ chối. Sửa lại nếu cần rồi gửi.")
-                            .font(.subheadline)
-                            .foregroundStyle(AppTheme.muted)
+                            .font(.title.bold())
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -1197,54 +1253,50 @@ struct RequestComposer: View {
                         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
                             ForEach(compactRequestKinds) { requestKindButton($0) }
                         }
-                        requestKindButton(.attendance, fullWidth: true)
                     }
 
                     if kind == .attendance {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
-                            DatePicker("Ngày chấm công", selection: $attendanceDate, displayedComponents: .date)
-                                .datePickerStyle(.compact)
+                            DatePopoverField(
+                                selection: editedByEmployee($attendanceDate),
+                                mode: .date,
+                                accessibilityLabel: "Ngày chấm công"
+                            )
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(spacing: 10) {
-                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: $from)
-                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: $to)
+                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: editedByEmployee($from))
+                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: editedByEmployee($to))
                                     }
                                 } else {
                                     HStack(spacing: 10) {
-                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: $from)
-                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: $to)
+                                        attendanceTimeCard(title: "GIỜ VÀO", value: day.checkIn, missingPrompt: "Bổ sung giờ vào", selection: editedByEmployee($from))
+                                        attendanceTimeCard(title: "GIỜ RA", value: day.checkOut, missingPrompt: "Bổ sung giờ ra", selection: editedByEmployee($to))
                                     }
                                 }
                             } else {
+                                // DatePopoverField, as the other date and
+                                // time fields.
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(alignment: .leading, spacing: 10) {
-                                        DatePicker("Giờ vào", selection: $from, displayedComponents: .hourAndMinute)
-                                        DatePicker("Giờ ra", selection: $to, displayedComponents: .hourAndMinute)
+                                        CompactDateRow(label: "Giờ vào") {
+                                            DatePopoverField(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
+                                        }
+                                        CompactDateRow(label: "Giờ ra") {
+                                            DatePopoverField(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
+                                        }
                                     }
                                 } else {
                                     HStack {
-                                        DatePicker("Giờ vào", selection: $from, displayedComponents: .hourAndMinute).labelsHidden()
-                                        DatePicker("Giờ ra", selection: $to, displayedComponents: .hourAndMinute).labelsHidden()
+                                        DatePopoverField(selection: editedByEmployee($from), mode: .time, accessibilityLabel: "Giờ vào")
+                                            .fixedSize()
+                                        DatePopoverField(selection: editedByEmployee($to), mode: .time, accessibilityLabel: "Giờ ra")
+                                            .fixedSize()
+                                        Spacer(minLength: 0)
                                     }
                                 }
-                                Text("Chưa có dữ liệu: nhập cả giờ vào và giờ ra để gửi yêu cầu bổ sung.").foregroundStyle(AppTheme.muted)
                             }
-                            if attendanceDay?.classification == "checkout_only" {
-                                Text("Đã nhận diện lượt chấm công buổi chiều. Chỉ cần bổ sung giờ vào.")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.redText)
-                            } else if attendanceDay?.classification == "checkin_only" {
-                                Text("Đã nhận diện lượt chấm công buổi sáng. Chỉ cần bổ sung giờ ra.")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.redText)
-                            } else if attendanceDay?.classification == "ambiguous" {
-                                Text("Lượt chấm công ở giữa ca; hãy xác nhận lại giờ vào và giờ ra trước khi gửi.")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.text(.orange))
-                            }
-                            Text("Giờ thiếu chỉ được cập nhật sau khi đơn được duyệt.").font(.footnote).foregroundStyle(AppTheme.muted)
                         }
                     }
                     if kind == .business {
@@ -1262,11 +1314,12 @@ struct RequestComposer: View {
                             .id("request-destination")
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("PHƯƠNG TIỆN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
-                                HStack(spacing: 8) {
-                                    businessTransportButton("Xe cá nhân", key: "personal_vehicle", icon: "car.fill")
-                                    businessTransportButton("Grab", key: "grab", icon: "location.fill")
-                                    businessTransportButton("Xe công ty", key: "company_vehicle", icon: "building.2.fill")
+                                Picker("Phương tiện", selection: $transport) {
+                                    Text("Xe cá nhân").tag("personal_vehicle")
+                                    Text("Grab").tag("grab")
+                                    Text("Xe công ty").tag("company_vehicle")
                                 }
+                                .pickerStyle(.segmented)
                             }
                             if transport == "personal_vehicle" {
                                 labeledNumberField(
@@ -1289,6 +1342,9 @@ struct RequestComposer: View {
                     if kind == .gate {
                         requestTimeRange(title: "Thời gian ra cổng", icon: "calendar.badge.clock")
                     }
+                    if kind == .sunday {
+                        requestTimeRange(title: "Thời gian làm chủ nhật", icon: "calendar.badge.clock")
+                    }
                     if kind == .leave {
                         requestTimeRange(title: "Thời gian xin nghỉ", icon: "calendar.badge.clock")
                     }
@@ -1296,38 +1352,18 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
-                            DatePicker("Ngày xảy ra", selection: $from, displayedComponents: .date)
-                                .datePickerStyle(.compact)
-                            Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
-                                .font(.footnote)
-                                .foregroundStyle(AppTheme.muted)
-                            Text(scheduledRequestPreview)
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(AppTheme.muted)
+                            DatePopoverField(
+                                selection: editedByEmployee($from),
+                                mode: .date,
+                                accessibilityLabel: "Ngày xảy ra"
+                            )
                         }
                     }
 
                     if usesDurationInput {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Thời lượng", icon: "timer")
-                            Text("Chọn thời lượng \(kind.title.lowercased()) để gửi yêu cầu.")
-                                .font(.footnote)
-                                .foregroundStyle(AppTheme.muted)
-                            HStack(spacing: 12) {
-                                durationValueMenu
-                                durationUnitMenu
-                            }
-                            Text("Thời lượng đã chọn: \(durationDescription).")
-                                .font(.footnote.weight(.medium))
-                            Text(scheduledRequestPreview)
-                                .font(.footnote)
-                                .foregroundStyle(AppTheme.muted)
-                                .foregroundStyle(kind.color)
-                        }
-                        .onChange(of: durationUnit) { previousUnit, unit in
-                            durationValue = unit == .hours && previousUnit != .hours
-                                ? 1
-                                : min(durationValue, unit.maximumValue)
+                            durationTile
                         }
                     }
 
@@ -1434,20 +1470,12 @@ struct RequestComposer: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Hủy") {
-                        if hasUnsavedInput { confirmingDiscard = true } else { dismiss() }
-                    }
+                    Button("Hủy") { dismiss() }
                         .foregroundStyle(AppTheme.muted)
                 }
             }
             .onAppear { if initialInput == nil { initialInput = currentInput } }
             .interactiveDismissDisabled(hasUnsavedInput || isSubmitting)
-            .confirmationDialog("Bỏ đơn đang soạn?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
-                Button("Bỏ đơn", role: .destructive) { dismiss() }
-                Button("Tiếp tục soạn", role: .cancel) {}
-            } message: {
-                Text("Nội dung bạn đã nhập sẽ không được lưu.")
-            }
             .safeAreaInset(edge: .bottom) {
                 // The form closes only after the server accepted the request; a
                 // failure keeps everything typed and shows the reason above.
@@ -1488,12 +1516,14 @@ struct RequestComposer: View {
                         Text(isSubmitting ? "Đang gửi…" : "Gửi đơn")
                     }
                     .font(.headline)
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .background(canSubmit ? AppTheme.red : AppTheme.red.opacity(0.32))
-                    .foregroundStyle(canSubmit ? Color.white : Color.white.opacity(0.72))
-                    .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                    .shadow(color: canSubmit ? AppTheme.red.opacity(0.28) : .clear, radius: 16, y: 7)
+                    .frame(maxWidth: .infinity)
                 }
+                // Apple's prominent button (it was a drawn red rectangle with
+                // a shadow); disabled, the system dims it.
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.roundedRectangle(radius: 17))
+                .controlSize(.large)
+                .tint(AppTheme.red)
                 .disabled(!canSubmit)
                 // Same compact rounded frosted backing as meeting booking.
                 // Only the area around the button is blurred (iOS 17+).
@@ -1520,9 +1550,10 @@ struct RequestComposer: View {
                 if newKind == .business || newKind == .gate {
                     from = now
                     to = now.addingTimeInterval(60 * 60)
+                } else if newKind == .sunday {
+                    applySundaySchedule(now: now)
                 } else if [.late, .early, .overtime].contains(newKind) {
-                    durationValue = 30
-                    durationUnit = .minutes
+                    durationMinutes = 30
                     from = VietnamTime.calendar.startOfDay(for: now)
                     to = from.addingTimeInterval(30 * 60)
                 }
@@ -1564,136 +1595,109 @@ struct RequestComposer: View {
             .foregroundStyle(.primary)
     }
 
+    /// One row per moment: the label, then the date and time at full width
+    /// ("08:00  18 thg 10, 2026"). Only the label adapts to the room left
+    /// beside it. At accessibility text sizes the label goes over the value.
     @ViewBuilder
     private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
         if usesCompactDateRows {
-            // iOS 18's compact DatePicker has a large intrinsic width. Keeping
-            // the label fixed and removing the flexible spacer prevents
-            // "Bắt đầu" and "Kết thúc" from being truncated on narrow phones.
             HStack(spacing: 6) {
-                requestDateLabel(title)
-                    .fixedSize(horizontal: true, vertical: false)
-                dateTimePicker(selection: selection, range: range)
-                    .fixedSize(horizontal: true, vertical: false)
+                requestDateLabel(title, besidePicker: true)
+                    .accessibilityHidden(true)
+                Spacer(minLength: 0)
+                dateTimePicker(title, selection: selection, range: range)
+                    .fixedSize()
+                    .layoutPriority(2)
             }
-            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 requestDateLabel(title)
-                dateTimePicker(selection: selection, range: range)
+                dateTimePicker(title, selection: selection, range: range)
             }
             .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
         }
     }
 
-    private func requestDateLabel(_ title: String) -> some View {
+    /// The icon beside the title, the same way in both rows. Beside the
+    /// picker it is set one size smaller, so "Kết thúc", the longer title,
+    /// fits as "Bắt đầu" does (02708ca chose a layout per row and drew
+    /// "Kết thúc" as a small title under its icon). It shrinks a little,
+    /// never wraps, on the narrowest phones.
+    private func requestDateLabel(_ title: String, besidePicker: Bool = false) -> some View {
         HStack(spacing: 4) {
             Image(systemName: title == "Bắt đầu" ? "arrow.right.circle.fill" : "checkmark.circle.fill")
                 .font(.subheadline.weight(.semibold))
             Text(title)
-                .font(.body.weight(.semibold))
+                .font(besidePicker ? .subheadline.weight(.semibold) : .body.weight(.semibold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.86)
+                .minimumScaleFactor(0.8)
         }
         .foregroundStyle(title == "Bắt đầu" ? AppTheme.red : Color.green)
-        .layoutPriority(1)
     }
 
-    @ViewBuilder
-    private func dateTimePicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        if let range {
-            DatePicker("", selection: selection, in: range, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden().datePickerStyle(.compact)
-        } else {
-            DatePicker("", selection: selection, displayedComponents: [.date, .hourAndMinute])
-                .labelsHidden().datePickerStyle(.compact)
-        }
+    /// The date and time, opening Apple's popover with its wheels
+    /// (`DatePopoverField`). UIKit presents it: a SwiftUI `.popover` inside
+    /// this sheet closed the whole composer when tapped (seen on iOS 27).
+    private func dateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+        DatePopoverField(
+            selection: selection,
+            mode: .dateAndTime,
+            minimum: range?.lowerBound,
+            accessibilityLabel: title
+        )
     }
 
-    private var durationValueMenu: some View {
-        durationMenu(title: "Số lượng", value: "\(durationValue)") {
-            Picker("Số lượng", selection: $durationValue) {
-                ForEach(1...durationUnit.maximumValue, id: \.self) { value in
-                    Text("\(value)").tag(value)
-                }
-            }
-        }
-    }
-
-    private var durationUnitMenu: some View {
-        durationMenu(title: "Đơn vị", value: durationUnit.title) {
-            Picker("Đơn vị", selection: $durationUnit) {
-                ForEach(DurationUnit.allCases) { unit in
-                    Text(unit.title).tag(unit)
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func durationMenu<Content: View>(title: String, value: String, @ViewBuilder content: () -> Content) -> some View {
+    /// The duration as the booking's Thời lượng: icon and chevron, caption,
+    /// bold value, the whole tile a button opening Apple's popover with
+    /// Apple's time wheels (`DatePopoverButton`). Their hours and minutes
+    /// are the length: 01:30 is 1 giờ 30 phút.
+    private var durationTile: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title.uppercased())
-                .font(.caption.weight(.semibold))
+            HStack {
+                Image(systemName: "timer")
+                    .foregroundStyle(kind.color)
+                Spacer()
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(AppTheme.muted)
+            }
+            Text("Thời lượng")
+                .font(.caption)
                 .foregroundStyle(AppTheme.muted)
-            Menu {
-                content()
-            } label: {
-                HStack(spacing: 8) {
-                    Text(value)
-                        .font(.body.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(AppTheme.muted)
-                }
-                .contentShape(Rectangle())
-                .padding(.horizontal, 14)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .background(AppTheme.card)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(title)
-            .accessibilityValue(value)
+            Text(durationDescription)
+                .font(.headline.weight(.bold).monospacedDigit())
+                .foregroundStyle(.primary)
         }
+        .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AppTheme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .overlay(DatePopoverButton(
+            selection: durationClock,
+            minuteInterval: Self.durationStep,
+            minimum: DurationClock.date(forMinutes: Self.durationRange.lowerBound, calendar: VietnamTime.calendar),
+            maximum: DurationClock.date(forMinutes: Self.durationRange.upperBound, calendar: VietnamTime.calendar),
+            accessibilityLabel: "Thời lượng",
+            accessibilityValue: durationDescription
+        ))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    @ViewBuilder
-    private func dateOnlyRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
-        if usesCompactDateRows {
-            HStack(spacing: 6) {
-                leaveDateLabel(title)
-                    .fixedSize(horizontal: true, vertical: false)
-                dateOnlyPicker(selection: selection, range: range)
-                    .fixedSize(horizontal: true, vertical: false)
+    /// `durationMinutes` as the time Apple's time wheels show ("01:30").
+    private var durationClock: Binding<Date> {
+        Binding(
+            get: { DurationClock.date(forMinutes: durationMinutes, calendar: VietnamTime.calendar) },
+            set: {
+                durationMinutes = DurationClock.minutes(
+                    from: $0,
+                    step: Self.durationStep,
+                    range: Self.durationRange,
+                    calendar: VietnamTime.calendar
+                )
             }
-            .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        } else {
-            VStack(alignment: .leading, spacing: 8) {
-                leaveDateLabel(title)
-                dateOnlyPicker(selection: selection, range: range)
-            }
-            .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
-        }
-    }
-
-    private func leaveDateLabel(_ title: String) -> some View {
-        Label(title, systemImage: title == "Từ ngày" ? "calendar.badge.plus" : "calendar.badge.checkmark")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(title == "Từ ngày" ? AppTheme.red : Color.green)
-            .lineLimit(1)
-    }
-
-    @ViewBuilder
-    private func dateOnlyPicker(selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
-        if let range {
-            DatePicker("", selection: selection, in: range, displayedComponents: .date)
-                .labelsHidden().datePickerStyle(.compact)
-        } else {
-            DatePicker("", selection: selection, displayedComponents: .date)
-                .labelsHidden().datePickerStyle(.compact)
-        }
+        )
     }
 }
