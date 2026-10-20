@@ -62,6 +62,10 @@ struct NotificationsView: View {
         requestNotifications.filter { !session.isAttendanceNotificationType($0.type) }
     }
     private var totalUnread: Int { inbox.unreadCount + inboxRequestNotifications.filter { !$0.read }.count }
+    // UIKit's semantic label color is white in Dark Mode and black in
+    // Light Mode, including when the in-app appearance overrides the system.
+    // Keep notification category/status/accent colors unchanged.
+    private var readableNotificationText: Color { Color(uiColor: .label) }
     private var notificationCornerRadius: CGFloat {
         if #available(iOS 26.0, *) { return 20 }
         return 0
@@ -92,9 +96,9 @@ struct NotificationsView: View {
                                         if let endsAt { Text("Đến: \(endsAt.requestDateTimeText)") }
                                     }
                                     .font(.caption)
-                                    .foregroundStyle(AppTheme.muted)
+                                    .foregroundStyle(readableNotificationText)
                                 }
-                                Text(item.message).font(.subheadline).foregroundStyle(AppTheme.muted)
+                                Text(item.message).font(.subheadline).foregroundStyle(readableNotificationText)
                                 Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
                             }
                             Spacer()
@@ -133,7 +137,7 @@ struct NotificationsView: View {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(item.title).font(.headline).multilineTextAlignment(.leading)
-                                    Text(item.preview).font(.subheadline).foregroundStyle(AppTheme.muted).lineLimit(2).multilineTextAlignment(.leading)
+                                    Text(item.preview).font(.subheadline).foregroundStyle(readableNotificationText).lineLimit(2).multilineTextAlignment(.leading)
                                     Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
                                 }
                                 Spacer(minLength: 0)
@@ -167,6 +171,7 @@ struct NotificationsView: View {
                     }
                     if items.isEmpty && inboxRequestNotifications.isEmpty {
                         ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
+                            .foregroundStyle(readableNotificationText)
                             .listRowBackground(notificationPageBackground)
                             .listRowSeparator(.hidden)
                     }
@@ -659,16 +664,16 @@ private struct MeetingNotificationDetail: View {
                                 systemImage: "clock.fill"
                             )
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            Label("Người tổ chức: \(details.employee.fullName)", systemImage: "person.crop.circle").font(.subheadline).foregroundStyle(.secondary)
+                            .foregroundStyle(Color(uiColor: .label))
+                            Label("Người tổ chức: \(details.employee.fullName)", systemImage: "person.crop.circle").font(.subheadline).foregroundStyle(Color(uiColor: .label))
                             if details.isLimitedViewer != true {
-                                if !details.room.location.isEmpty { Label(details.room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(.secondary) }
-                                if !details.participants.isEmpty { Text("Người tham gia: \(details.participants.map { $0.employee.fullName }.joined(separator: ", "))").font(.subheadline).foregroundStyle(.secondary) }
+                                if !details.room.location.isEmpty { Label(details.room.location, systemImage: "mappin.and.ellipse").font(.subheadline).foregroundStyle(Color(uiColor: .label)) }
+                                if !details.participants.isEmpty { Text("Người tham gia: \(details.participants.map { $0.employee.fullName }.joined(separator: ", "))").font(.subheadline).foregroundStyle(Color(uiColor: .label)) }
                             }
                         } else {
                             if let room = messageParts.first, !room.isEmpty { Label(room, systemImage: "building.2.fill").font(.headline) }
-                            if messageParts.count > 1 { Label(messageParts[1], systemImage: "clock.fill").font(.subheadline).foregroundStyle(.secondary) }
-                            else { Text(notification.message).font(.subheadline).foregroundStyle(.secondary) }
+                            if messageParts.count > 1 { Label(messageParts[1], systemImage: "clock.fill").font(.subheadline).foregroundStyle(Color(uiColor: .label)) }
+                            else { Text(notification.message).font(.subheadline).foregroundStyle(Color(uiColor: .label)) }
                             if isLoading { ProgressView().controlSize(.small) }
                         }
                     }
@@ -683,9 +688,9 @@ private struct MeetingNotificationDetail: View {
                                         ? "Một lịch phòng họp mới vừa được tạo."
                                     : "Lời mời đã được gửi đến bạn."
                         )
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline).foregroundStyle(Color(uiColor: .label))
                         Label("Nhận lúc \(deliveryDate)", systemImage: "clock.arrow.circlepath")
-                            .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                            .font(.caption.weight(.medium)).foregroundStyle(Color(uiColor: .label))
                     }
 
                     if isEndingSoonReminder, let details, isOrganizer {
@@ -698,7 +703,7 @@ private struct MeetingNotificationDetail: View {
                     }
 
                     Text("Mở Lịch của tôi để xem thời gian và thông tin phòng họp mới nhất.")
-                        .font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .center)
+                        .font(.caption).foregroundStyle(Color(uiColor: .label)).frame(maxWidth: .infinity, alignment: .center)
                 }
                 .padding(20)
             }
@@ -751,11 +756,11 @@ struct RequestNotificationDetail: View {
                 onResubmit()
                 dismiss()
             } label: {
-                RequestCard(request: request, canCancel: false, resubmittable: true, cancel: {})
+                RequestCard(request: request, canCancel: false, resubmittable: true, readableNotificationText: true, cancel: {})
             }
             .buttonStyle(.plain)
         } else {
-            RequestCard(request: request, canCancel: false, cancel: {})
+            RequestCard(request: request, canCancel: false, readableNotificationText: true, cancel: {})
         }
     }
     var body: some View { NavigationStack { ScrollView(showsIndicators: false) { VStack(alignment: .leading, spacing: 18) { card; if request.autoApproved { Label("Tự động duyệt sau 4 giờ", systemImage: "timer").foregroundStyle(.green) } }.padding(20) }.background(AppTheme.ink.ignoresSafeArea()).navigationTitle("Chi tiết đơn").toolbar { ToolbarItem(placement: .confirmationAction) { Button("Đóng") { dismiss() } } } } }
@@ -864,7 +869,7 @@ struct ArticleBlockView: View {
                 if !alt.isEmpty {
                     Text(alt)
                         .font(.caption)
-                        .foregroundColor(AppTheme.muted)
+                        .foregroundColor(Color(uiColor: .label))
                         .multilineTextAlignment(.center)
                 }
             }

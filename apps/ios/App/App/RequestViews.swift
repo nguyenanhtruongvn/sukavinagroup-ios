@@ -664,6 +664,9 @@ struct RequestCard: View {
     var canCancel = true
     /// The user's rejected request: tapping the card opens it to send again.
     var resubmittable = false
+    // Only request cards presented from Notifications use high-contrast
+    // white/black body text; other tabs keep their established appearance.
+    var readableNotificationText = false
     let cancel: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -681,7 +684,7 @@ struct RequestCard: View {
             Text(request.reason)
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
-            if let note = request.decisionNote, !note.isEmpty { Label(note, systemImage: "text.bubble").font(.caption).foregroundStyle(AppTheme.muted) }
+            if let note = request.decisionNote, !note.isEmpty { Label(note, systemImage: "text.bubble").font(.caption).foregroundStyle(readableNotificationText ? Color(uiColor: .label) : AppTheme.muted) }
             if canCancel && request.status == .pending { Button("Hủy đơn", role: .destructive, action: cancel).font(.subheadline.bold()).frame(maxWidth: .infinity, alignment: .trailing) }
             if resubmittable {
                 Label("Tạo lại đơn", systemImage: "arrow.clockwise")
@@ -739,7 +742,7 @@ struct RequestCard: View {
     private var departmentLabel: some View {
         Text(departmentName)
             .font(.caption)
-            .foregroundStyle(AppTheme.muted)
+            .foregroundStyle(readableNotificationText ? Color(uiColor: .label) : AppTheme.muted)
             .lineLimit(1)
     }
 
@@ -797,7 +800,7 @@ struct RequestCard: View {
                 .monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundStyle(AppTheme.muted)
+        .foregroundStyle(readableNotificationText ? Color(uiColor: .label) : AppTheme.muted)
     }
 }
 
