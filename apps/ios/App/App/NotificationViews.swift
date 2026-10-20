@@ -233,7 +233,7 @@ struct NotificationsView: View {
                     RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
                         await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                     }
-                    .presentationDetents([.large])
+                    .presentationDetents([.fraction(FormSheetLayout.compactFraction), .large])
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
                 }
