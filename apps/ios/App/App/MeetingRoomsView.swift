@@ -426,39 +426,39 @@ struct MeetingRoomCard: View {
                 MeetingRoomImage(room: room)
 
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(room.name)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(Color(uiColor: .label))
-                        .lineLimit(1)
+                    // Title and badge share their first line. The badge
+                    // stays pinned to the right, even when the title wraps
+                    // onto a second line; never squeeze or wrap the badge.
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(room.name)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(Color(uiColor: .label))
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
-                    // Row 2: keep the state badge against the trailing
-                    // edge of the information column, at the card's right.
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(statusColor)
-                            .frame(width: 6, height: 6)
-                        Text(isAvailable ? "Trống" : "Đang họp")
-                            .font(.caption.weight(.bold))
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 6, height: 6)
+                            Text(isAvailable ? "Trống" : "Đang họp")
+                                .font(.caption.weight(.bold))
+                        }
+                        .foregroundStyle(AppTheme.text(statusColor, chipAlpha: 0.12))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(statusColor.opacity(0.12))
+                        .clipShape(Capsule())
+                        .fixedSize(horizontal: true, vertical: true)
                     }
-                    .foregroundStyle(AppTheme.text(statusColor, chipAlpha: 0.12))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(statusColor.opacity(0.12))
-                    .clipShape(Capsule())
-                    .frame(maxWidth: .infinity, alignment: .trailing)
 
-                    // Keep the time text against the bottom of the 108pt
-                    // room image, not directly beneath the status badge.
-                    // At larger text sizes the column can grow without
-                    // clipping the full time-status message.
-                    Spacer(minLength: 0)
-
+                    // Directly below the title: row two for a short name,
+                    // row three when its name spans two lines.
                     Text(availabilityText)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.text(statusColor))
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(minHeight: 108, alignment: .top)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentShape(Rectangle())

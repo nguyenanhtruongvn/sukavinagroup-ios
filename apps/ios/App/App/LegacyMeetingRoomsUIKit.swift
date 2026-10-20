@@ -671,6 +671,9 @@ private final class LegacyRoomCardCell: UITableViewCell {
         nameLabel.font = UIFont.preferredFont(forTextStyle: .headline).withWeight(.bold)
         nameLabel.adjustsFontForContentSizeCategory = true
         nameLabel.textColor = .label
+        nameLabel.numberOfLines = 2
+        nameLabel.lineBreakMode = .byTruncatingTail
+        nameLabel.setContentHuggingPriority(.defaultHigh, for: .horizontal)
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         chipDot.layer.cornerRadius = 3
@@ -697,25 +700,20 @@ private final class LegacyRoomCardCell: UITableViewCell {
         statusLabel.numberOfLines = 0
         statusLabel.lineBreakMode = .byWordWrapping
 
-        let titleRow = UIStackView(arrangedSubviews: [nameLabel])
+        // The badge stays at the far right of the FIRST title line.
+        // If the name wraps onto a second line, the badge remains fixed.
+        let titleSpacer = UIView()
+        titleSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let titleRow = UIStackView(arrangedSubviews: [nameLabel, titleSpacer, chip])
         titleRow.spacing = 8
         titleRow.alignment = .top
-        // Keep the same three information rows as the SwiftUI card:
-        // room name, right-aligned availability badge, full time-status text.
-        // A flexible leading spacer pins the badge to the card's right edge.
-        let badgeRow = UIStackView(arrangedSubviews: [UIView(), chip])
-        badgeRow.spacing = 8
-        badgeRow.alignment = .center
-        // Flexible vertical space keeps the time status flush with the
-        // bottom edge of the photo. Expand instead of clipping when the
-        // user's Dynamic Type setting requires more than 108pt.
-        let timeSpacer = UIView()
-        timeSpacer.setContentHuggingPriority(.defaultLow, for: .vertical)
-        timeSpacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        let info = UIStackView(arrangedSubviews: [titleRow, badgeRow, timeSpacer, statusLabel])
+
+        // The time detail follows the title immediately: second row for a
+        // short title, third row when it takes two lines.
+        let info = UIStackView(arrangedSubviews: [titleRow, statusLabel])
         info.axis = .vertical
         info.spacing = 7
-        info.heightAnchor.constraint(greaterThanOrEqualTo: photo.heightAnchor).isActive = true
+        info.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let topRow = UIStackView(arrangedSubviews: [photo, info])
         topRow.spacing = 12
         topRow.alignment = .top
