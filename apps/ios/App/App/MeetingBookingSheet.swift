@@ -694,11 +694,17 @@ struct MeetingBookingSheet: View {
     private var confirmButton: some View {
         VStack(spacing: 8) {
             if let blockReason, !isSubmittingBooking {
-                Label(blockReason, systemImage: "info.circle")
+                Label(blockReason, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
+                    .foregroundStyle(Color.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.red.opacity(0.22), lineWidth: 1)
+                    }
             }
             confirmActionButton
         }

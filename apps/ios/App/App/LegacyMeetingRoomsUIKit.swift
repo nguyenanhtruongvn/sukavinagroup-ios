@@ -1639,7 +1639,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         blur.translatesAutoresizingMaskIntoConstraints = false
 
         blockLabel.font = .preferredFont(forTextStyle: .footnote).withWeight(.semibold)
-        blockLabel.textColor = .secondaryLabel
+        blockLabel.textColor = .systemRed
         blockLabel.numberOfLines = 0
 
         var configuration = UIButton.Configuration.filled()
@@ -1661,7 +1661,11 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
         let blockRow = UIStackView(arrangedSubviews: [blockLabel])
         blockRow.isLayoutMarginsRelativeArrangement = true
-        blockRow.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 6, bottom: 0, trailing: 6)
+        blockRow.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
+        blockRow.backgroundColor = UIColor.systemRed.withAlphaComponent(0.10)
+        blockRow.layer.cornerRadius = 12
+        blockRow.layer.cornerCurve = .continuous
+        blockRow.clipsToBounds = true
         self.blockRow = blockRow
         let stack = UIStackView(arrangedSubviews: [blockRow, confirmButton])
         stack.axis = .vertical
@@ -1693,8 +1697,13 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         let reason = isSubmitting ? nil : blockReason
         blockRow?.isHidden = reason == nil
         if let reason {
-            let text = NSMutableAttributedString(attributedString: NSAttributedString(attachment: NSTextAttachment(image: UIImage(systemName: "info.circle") ?? UIImage())))
-            text.append(NSAttributedString(string: " " + reason))
+            let text = NSMutableAttributedString()
+            if let icon = UIImage(systemName: "exclamationmark.triangle.fill")?.withTintColor(.systemRed, renderingMode: .alwaysOriginal) {
+                text.append(NSAttributedString(attachment: NSTextAttachment(image: icon)))
+                text.append(NSAttributedString(string: " "))
+            }
+            text.append(NSAttributedString(string: reason))
+            text.addAttribute(.foregroundColor, value: UIColor.systemRed, range: NSRange(location: 0, length: text.length))
             blockLabel.attributedText = text
         }
         let enabled = reason == nil && !isSubmitting
