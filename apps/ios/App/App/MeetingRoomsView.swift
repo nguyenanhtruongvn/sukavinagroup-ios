@@ -431,7 +431,8 @@ struct MeetingRoomCard: View {
                         .foregroundStyle(Color(uiColor: .label))
                         .lineLimit(1)
 
-                    // Row 2: compact availability badge.
+                    // Row 2: keep the state badge against the trailing
+                    // edge of the information column, at the card's right.
                     HStack(spacing: 4) {
                         Circle()
                             .fill(statusColor)
@@ -444,6 +445,7 @@ struct MeetingRoomCard: View {
                     .padding(.vertical, 5)
                     .background(statusColor.opacity(0.12))
                     .clipShape(Capsule())
+                    .frame(maxWidth: .infinity, alignment: .trailing)
 
                     // Row 3: the detailed time status has its own full
                     // line so "Còn trống cả ngày" is never squeezed by

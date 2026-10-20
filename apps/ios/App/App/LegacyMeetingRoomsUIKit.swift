@@ -701,8 +701,9 @@ private final class LegacyRoomCardCell: UITableViewCell {
         titleRow.spacing = 8
         titleRow.alignment = .top
         // Keep the same three information rows as the SwiftUI card:
-        // room name, availability badge, then full time-status text.
-        let badgeRow = UIStackView(arrangedSubviews: [chip, UIView()])
+        // room name, right-aligned availability badge, full time-status text.
+        // A flexible leading spacer pins the badge to the card's right edge.
+        let badgeRow = UIStackView(arrangedSubviews: [UIView(), chip])
         badgeRow.spacing = 8
         badgeRow.alignment = .center
         let info = UIStackView(arrangedSubviews: [titleRow, badgeRow, statusLabel])
