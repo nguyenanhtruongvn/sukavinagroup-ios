@@ -431,27 +431,27 @@ struct MeetingRoomCard: View {
                         .foregroundStyle(Color(uiColor: .label))
                         .lineLimit(1)
 
-                    HStack(spacing: 8) {
-                        Text(availabilityText)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(AppTheme.text(statusColor))
-                            .lineLimit(1)
-
-                        Spacer(minLength: 4)
-
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(statusColor)
-                                .frame(width: 6, height: 6)
-                            Text(isAvailable ? "Trống" : "Đang họp")
-                                .font(.caption.weight(.bold))
-                        }
-                        .foregroundStyle(AppTheme.text(statusColor, chipAlpha: 0.12))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(statusColor.opacity(0.12))
-                        .clipShape(Capsule())
+                    // Row 2: compact availability badge.
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(statusColor)
+                            .frame(width: 6, height: 6)
+                        Text(isAvailable ? "Trống" : "Đang họp")
+                            .font(.caption.weight(.bold))
                     }
+                    .foregroundStyle(AppTheme.text(statusColor, chipAlpha: 0.12))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(statusColor.opacity(0.12))
+                    .clipShape(Capsule())
+
+                    // Row 3: the detailed time status has its own full
+                    // line so "Còn trống cả ngày" is never squeezed by
+                    // the badge (also applies to "Trống/Đang họp đến…").
+                    Text(availabilityText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.text(statusColor))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

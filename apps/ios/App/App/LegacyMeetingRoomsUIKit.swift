@@ -694,16 +694,18 @@ private final class LegacyRoomCardCell: UITableViewCell {
 
         statusLabel.font = UIFont.preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
         statusLabel.adjustsFontForContentSizeCategory = true
+        statusLabel.numberOfLines = 0
+        statusLabel.lineBreakMode = .byWordWrapping
 
         let titleRow = UIStackView(arrangedSubviews: [nameLabel])
         titleRow.spacing = 8
         titleRow.alignment = .top
-        let statusSpacer = UIView()
-        statusSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let statusRow = UIStackView(arrangedSubviews: [statusLabel, statusSpacer, chip])
-        statusRow.spacing = 8
-        statusRow.alignment = .center
-        let info = UIStackView(arrangedSubviews: [titleRow, statusRow])
+        // Keep the same three information rows as the SwiftUI card:
+        // room name, availability badge, then full time-status text.
+        let badgeRow = UIStackView(arrangedSubviews: [chip, UIView()])
+        badgeRow.spacing = 8
+        badgeRow.alignment = .center
+        let info = UIStackView(arrangedSubviews: [titleRow, badgeRow, statusLabel])
         info.axis = .vertical
         info.spacing = 7
         let topRow = UIStackView(arrangedSubviews: [photo, info])
