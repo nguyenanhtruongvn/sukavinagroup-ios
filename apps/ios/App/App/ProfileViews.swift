@@ -80,10 +80,6 @@ struct ProfileView: View {
                             Image(systemName: "key.fill").foregroundColor(AppTheme.red).frame(width: 30)
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("Đổi mật khẩu").font(.headline).foregroundColor(.primary)
-                                if !isAdminAccount {
-                                    Text(passwordChangeDescription)
-                                        .font(.caption).foregroundColor(AppTheme.muted)
-                                }
                             }
                             Spacer()
                             Image(systemName: "chevron.right").foregroundColor(AppTheme.muted)
@@ -249,11 +245,6 @@ struct ProfileView: View {
     }
     private var isDemoAccount: Bool { account.profile?.isDemoAccount == true }
 
-    private var passwordChangeDescription: String {
-        isDemoAccount
-            ? "Xác nhận bằng mật khẩu hiện tại, không giới hạn số lần đổi."
-            : "Xác thực OTP qua email, tối đa một lần mỗi tháng."
-    }
     private func accountSectionTitle(_ title: String) -> some View {
         Text(title)
             .font(.caption.weight(.bold))
