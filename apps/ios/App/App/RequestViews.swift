@@ -800,7 +800,9 @@ struct RequestCard: View {
                 .monospacedDigit()
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .foregroundStyle(readableNotificationText ? Color(uiColor: .label) : AppTheme.muted)
+        // Calendar dates in both Requests and notification detail use
+        // system primary text: white in Dark Mode, black in Light Mode.
+        .foregroundStyle(Color(uiColor: .label))
     }
 }
 
