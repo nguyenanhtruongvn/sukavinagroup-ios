@@ -27,12 +27,6 @@ struct TodayMenuView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 5) {
                         PortalPageTitle("Thực đơn")
-                        Text("BẾP ĂN SUKAVINA")
-                            .font(.caption.bold())
-                            .tracking(1.5)
-                            .foregroundColor(AppTheme.redText)
-                        Text("Thực đơn hôm nay")
-                            .font(.headline)
                     }
 
                     LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 11) {
