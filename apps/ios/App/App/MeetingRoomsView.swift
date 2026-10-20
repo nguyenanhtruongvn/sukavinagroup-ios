@@ -447,14 +447,18 @@ struct MeetingRoomCard: View {
                     .clipShape(Capsule())
                     .frame(maxWidth: .infinity, alignment: .trailing)
 
-                    // Row 3: the detailed time status has its own full
-                    // line so "Còn trống cả ngày" is never squeezed by
-                    // the badge (also applies to "Trống/Đang họp đến…").
+                    // Keep the time text against the bottom of the 108pt
+                    // room image, not directly beneath the status badge.
+                    // At larger text sizes the column can grow without
+                    // clipping the full time-status message.
+                    Spacer(minLength: 0)
+
                     Text(availabilityText)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(AppTheme.text(statusColor))
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                .frame(minHeight: 108, alignment: .top)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .contentShape(Rectangle())

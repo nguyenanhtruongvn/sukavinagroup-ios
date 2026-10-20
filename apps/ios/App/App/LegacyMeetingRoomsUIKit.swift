@@ -706,9 +706,16 @@ private final class LegacyRoomCardCell: UITableViewCell {
         let badgeRow = UIStackView(arrangedSubviews: [UIView(), chip])
         badgeRow.spacing = 8
         badgeRow.alignment = .center
-        let info = UIStackView(arrangedSubviews: [titleRow, badgeRow, statusLabel])
+        // Flexible vertical space keeps the time status flush with the
+        // bottom edge of the photo. Expand instead of clipping when the
+        // user's Dynamic Type setting requires more than 108pt.
+        let timeSpacer = UIView()
+        timeSpacer.setContentHuggingPriority(.defaultLow, for: .vertical)
+        timeSpacer.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        let info = UIStackView(arrangedSubviews: [titleRow, badgeRow, timeSpacer, statusLabel])
         info.axis = .vertical
         info.spacing = 7
+        info.heightAnchor.constraint(greaterThanOrEqualTo: photo.heightAnchor).isActive = true
         let topRow = UIStackView(arrangedSubviews: [photo, info])
         topRow.spacing = 12
         topRow.alignment = .top
