@@ -969,7 +969,6 @@ struct RequestComposer: View {
     }
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
     private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
-    private var singleDayEventName: String { kind == .late ? "đi trễ" : "về sớm" }
     /// Pairs that belong together: whole-day absence (Xin nghỉ, Công tác),
     /// shift deviations (Đi trễ, Về sớm), extra work (Làm thêm giờ, Làm chủ
     /// nhật), then Ra cổng and Xác nhận giờ công. Same order on Android and web.
@@ -1017,11 +1016,6 @@ struct RequestComposer: View {
         }
     }
 
-    private var scheduledRequestPreview: String {
-        let formatter = VietnamTime.clock
-        let dates = scheduledRequestDates
-        return "Khung giờ theo ca làm: \(formatter.string(from: dates.from)) – \(formatter.string(from: dates.to))."
-    }
 
     private var submissionDates: (from: Date, to: Date) {
         switch kind {
@@ -1253,11 +1247,6 @@ struct RequestComposer: View {
 
                         Text(template == nil ? "Tạo đơn mới" : "Tạo lại đơn")
                             .font(.title.bold())
-                        if template != nil {
-                            Text("Nội dung lấy từ đơn bị từ chối. Sửa lại nếu cần rồi gửi.")
-                                .font(.subheadline)
-                                .foregroundStyle(AppTheme.muted)
-                        }
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -1270,15 +1259,11 @@ struct RequestComposer: View {
                     if kind == .attendance {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Ngày đối chiếu", icon: "calendar.badge.clock")
-                            // Laid out as a labelled DatePicker is (label, space,
-                            // value); see `DatePopoverField`.
-                            CompactDateRow(label: "Ngày chấm công") {
-                                DatePopoverField(
-                                    selection: editedByEmployee($attendanceDate),
-                                    mode: .date,
-                                    accessibilityLabel: "Ngày chấm công"
-                                )
-                            }
+                            DatePopoverField(
+                                selection: editedByEmployee($attendanceDate),
+                                mode: .date,
+                                accessibilityLabel: "Ngày chấm công"
+                            )
                             if let day = attendanceDay {
                                 if dynamicTypeSize.isAccessibilitySize {
                                     VStack(spacing: 10) {
@@ -1312,22 +1297,7 @@ struct RequestComposer: View {
                                         Spacer(minLength: 0)
                                     }
                                 }
-                                Text("Chưa có dữ liệu: nhập cả giờ vào và giờ ra để gửi yêu cầu bổ sung.").foregroundStyle(AppTheme.muted)
                             }
-                            if attendanceDay?.classification == "checkout_only" {
-                                Text("Đã nhận diện lượt chấm công buổi chiều. Chỉ cần bổ sung giờ vào.")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.redText)
-                            } else if attendanceDay?.classification == "checkin_only" {
-                                Text("Đã nhận diện lượt chấm công buổi sáng. Chỉ cần bổ sung giờ ra.")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.redText)
-                            } else if attendanceDay?.classification == "ambiguous" {
-                                Text("Lượt chấm công ở giữa ca; hãy xác nhận lại giờ vào và giờ ra trước khi gửi.")
-                                    .font(.footnote.weight(.medium))
-                                    .foregroundStyle(AppTheme.text(.orange))
-                            }
-                            Text("Giờ thiếu chỉ được cập nhật sau khi đơn được duyệt.").font(.footnote).foregroundStyle(AppTheme.muted)
                         }
                     }
                     if kind == .business {
@@ -1383,34 +1353,18 @@ struct RequestComposer: View {
                     if kind == .late || kind == .early {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", icon: "calendar")
-                            // As "Ngày chấm công".
-                            CompactDateRow(label: "Ngày xảy ra") {
-                                DatePopoverField(
-                                    selection: editedByEmployee($from),
-                                    mode: .date,
-                                    accessibilityLabel: "Ngày xảy ra"
-                                )
-                            }
-                            Text("Chọn đúng ngày xảy ra việc \(singleDayEventName) trước khi gửi đơn.")
-                                .font(.footnote)
-                                .foregroundStyle(AppTheme.muted)
-                            Text(scheduledRequestPreview)
-                                .font(.footnote.weight(.medium))
-                                .foregroundStyle(AppTheme.muted)
+                            DatePopoverField(
+                                selection: editedByEmployee($from),
+                                mode: .date,
+                                accessibilityLabel: "Ngày xảy ra"
+                            )
                         }
                     }
 
                     if usesDurationInput {
                         VStack(alignment: .leading, spacing: 12) {
                             composerLabel("Thời lượng", icon: "timer")
-                            Text("Chọn thời lượng \(kind.title.lowercased()) để gửi yêu cầu.")
-                                .font(.footnote)
-                                .foregroundStyle(AppTheme.muted)
                             durationTile
-                            Text(scheduledRequestPreview)
-                                .font(.footnote)
-                                .foregroundStyle(AppTheme.muted)
-                                .foregroundStyle(kind.color)
                         }
                     }
 
