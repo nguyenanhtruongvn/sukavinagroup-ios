@@ -1405,7 +1405,10 @@ struct RequestComposer: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
-                .padding(.bottom, 120)
+                // The submit footer already reserves its own safe-area
+                // space. Extra 120pt padding made a large empty strip
+                // after the last input when the form was scrolled.
+                .padding(.bottom, 16)
                 }
                 .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)

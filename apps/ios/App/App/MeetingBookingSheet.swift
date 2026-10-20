@@ -126,7 +126,10 @@ struct MeetingBookingSheet: View {
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
-                        .padding(.bottom, 110)
+                        // The pinned confirmation footer is a safe-area
+                        // inset, so it already keeps the last card visible.
+                        // Avoid a second oversized blank scroll region.
+                        .padding(.bottom, 16)
                     }
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
