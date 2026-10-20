@@ -426,10 +426,15 @@ struct MeetingRoomCard: View {
                 MeetingRoomImage(room: room)
 
                 VStack(alignment: .leading, spacing: 7) {
-                    HStack(alignment: .top, spacing: 8) {
-                        Text(room.name)
-                            .font(.headline.weight(.bold))
-                            .foregroundStyle(Color(uiColor: .label))
+                    Text(room.name)
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(Color(uiColor: .label))
+                        .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        Text(availabilityText)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(AppTheme.text(statusColor))
                             .lineLimit(1)
 
                         Spacer(minLength: 4)
@@ -447,16 +452,6 @@ struct MeetingRoomCard: View {
                         .background(statusColor.opacity(0.12))
                         .clipShape(Capsule())
                     }
-
-                    Text("\(room.capacity) chỗ · \(room.equipment.isEmpty ? "Thiết bị đang cập nhật" : room.equipment.joined(separator: " · "))")
-                        .font(.caption)
-                        .foregroundStyle(Color(uiColor: .secondaryLabel))
-                        .lineLimit(2)
-
-                    Text(availabilityText)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(AppTheme.text(statusColor))
-                        .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

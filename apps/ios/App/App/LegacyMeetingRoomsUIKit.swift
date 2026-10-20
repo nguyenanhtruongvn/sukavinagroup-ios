@@ -626,7 +626,7 @@ private final class LegacyPillButton: UIButton {
     }
 }
 
-/// One room card: photo, name, status chip, capacity · equipment, status
+/// One room card: photo, name, availability and its status chip.
 /// line and the full-width "Đặt phòng" / "Xem lịch" button (iOS 18+ card).
 private final class LegacyRoomCardCell: UITableViewCell {
     static let reuseID = "LegacyRoomCardCell"
@@ -636,7 +636,6 @@ private final class LegacyRoomCardCell: UITableViewCell {
     private let chip = UIView()
     private let chipDot = UIView()
     private let chipLabel = UILabel()
-    private let detailLabel = UILabel()
     private let statusLabel = UILabel()
     private let actionButton = UIButton(configuration: .filled())
     private var onSchedule: () -> Void = {}
@@ -693,17 +692,18 @@ private final class LegacyRoomCardCell: UITableViewCell {
         chip.setContentHuggingPriority(.required, for: .horizontal)
         chip.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        detailLabel.font = .preferredFont(forTextStyle: .caption1)
-        detailLabel.adjustsFontForContentSizeCategory = true
-        detailLabel.textColor = .secondaryLabel
-        detailLabel.numberOfLines = 2
         statusLabel.font = UIFont.preferredFont(forTextStyle: .subheadline).withWeight(.semibold)
         statusLabel.adjustsFontForContentSizeCategory = true
 
-        let titleRow = UIStackView(arrangedSubviews: [nameLabel, chip])
+        let titleRow = UIStackView(arrangedSubviews: [nameLabel])
         titleRow.spacing = 8
         titleRow.alignment = .top
-        let info = UIStackView(arrangedSubviews: [titleRow, detailLabel, statusLabel])
+        let statusSpacer = UIView()
+        statusSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let statusRow = UIStackView(arrangedSubviews: [statusLabel, statusSpacer, chip])
+        statusRow.spacing = 8
+        statusRow.alignment = .center
+        let info = UIStackView(arrangedSubviews: [titleRow, statusRow])
         info.axis = .vertical
         info.spacing = 7
         let topRow = UIStackView(arrangedSubviews: [photo, info])
@@ -764,7 +764,6 @@ private final class LegacyRoomCardCell: UITableViewCell {
         available = status.available
 
         nameLabel.text = room.name
-        detailLabel.text = "\(room.capacity) chỗ · \(room.equipment.isEmpty ? "Thiết bị đang cập nhật" : room.equipment.joined(separator: " · "))"
         statusLabel.text = status.text
         chipLabel.text = available ? "Trống" : "Đang họp"
         accessibilityLabel = "\(room.name), \(available ? "Trống" : "Đang họp"), \(status.text)"
