@@ -1395,8 +1395,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     private let peopleResults = UIStackView()
     private let departmentResults = UIStackView()
     private let errorSection = UIStackView()
-    private let hintLabel = UILabel()
-    private let capacityLabel = UILabel()
     private let blockLabel = UILabel()
     private var blockRow: UIView?
     private let confirmButton = UIButton(type: .system)
@@ -1632,15 +1630,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         card.addArrangedSubview(fieldContainer(departmentField, icon: "building.2", height: 46))
         card.addArrangedSubview(errorSection)
 
-        hintLabel.text = "Gõ tên nhân viên hoặc chọn phòng ban để hiển thị danh sách."
-        hintLabel.font = .preferredFont(forTextStyle: .caption1)
-        hintLabel.textColor = .secondaryLabel
-        hintLabel.numberOfLines = 0
-        capacityLabel.font = .preferredFont(forTextStyle: .caption1)
-        capacityLabel.textColor = .secondaryLabel
-        capacityLabel.numberOfLines = 0
-        card.addArrangedSubview(hintLabel)
-        card.addArrangedSubview(capacityLabel)
         return card
     }
 
@@ -1861,8 +1850,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             errorSection.addArrangedSubview(retry)
         }
 
-        hintLabel.isHidden = !(query.isEmpty && selectedDepartments.isEmpty)
-        capacityLabel.text = "\(selected.count + 1)/\(room.capacity) chỗ · gồm bạn và người được mời"
         renderConfirm()
 
         if followFocus, let field = [peopleField, departmentField].first(where: \.isFirstResponder) {

@@ -435,15 +435,6 @@ struct MeetingBookingSheet: View {
                 }
             }
 
-            if query.isEmpty && selectedDepartments.isEmpty {
-                Text("Gõ tên nhân viên hoặc chọn phòng ban để hiển thị danh sách.")
-                    .font(.caption)
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
-            }
-
-            Text("\(selected.count + 1)/\(room.capacity) chỗ · gồm bạn và người được mời")
-                .font(.caption)
-                .foregroundStyle(Color(uiColor: .secondaryLabel))
         }
         .padding(16)
         .background(Color(uiColor: .systemBackground))
