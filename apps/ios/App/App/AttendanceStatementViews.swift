@@ -54,12 +54,6 @@ struct AttendanceStatementListView: View {
                     ForEach(displayedReports.sorted { $0.month > $1.month }) { report in
                         NavigationLink(destination: ModernAttendanceHistoryView(initialMonth: report.month, releasedStatementMonths: displayedReports.map(\.month))) {
                             HStack(spacing: 14) {
-                                Image(systemName: "calendar")
-                                    .font(.title3.weight(.semibold))
-                                    .foregroundStyle(AppTheme.red)
-                                    .frame(width: 42, height: 42)
-                                    .background(AppTheme.red.opacity(0.12))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 Text(AttendanceMetrics.monthTitle(report.month))
                                     .font(.headline)
                                     .foregroundStyle(Color.primary)

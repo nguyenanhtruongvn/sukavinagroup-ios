@@ -714,6 +714,11 @@ struct DashboardView: View {
 struct AttendanceStatementShortcut: View {
     var body: some View {
         HStack(spacing: 12) {
+            Image(systemName: "calendar")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(AppTheme.red)
+                .frame(width: 40, height: 40)
+                .background(AppTheme.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             Text("Bảng công")
                 .font(.headline)
             Spacer(minLength: 8)
