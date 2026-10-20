@@ -1482,56 +1482,62 @@ struct RequestComposer: View {
             .onAppear { if initialInput == nil { initialInput = currentInput } }
             .interactiveDismissDisabled(hasUnsavedInput || isSubmitting)
             .safeAreaInset(edge: .bottom) {
-                // The form closes only after the server accepted the request; a
-                // failure keeps everything typed and shows the reason above.
-                if let submitError {
-                    Label(submitError, systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppTheme.redText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                } else if let missingRequirement, !isSubmitting {
-                    Label(missingRequirement, systemImage: "info.circle")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(AppTheme.muted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 20)
-                }
-                Button {
-                    let dates = submissionDates
-                    isSubmitting = true
-                    submitError = nil
-                    Task {
-                        let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
-                        isSubmitting = false
-                        if let error {
-                            submitError = error
-                        } else {
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
-                            dismiss()
-                        }
+                // Match the meeting-booking confirmation footer: validation
+                // and server errors share one visible warning immediately
+                // above Gửi đơn, inside the same rounded frosted card.
+                VStack(spacing: 8) {
+                    if !isSubmitting, let warning = submitError ?? missingRequirement {
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                Color(uiColor: .secondarySystemBackground),
+                                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(Color(uiColor: .separator).opacity(0.40), lineWidth: 0.75)
+                            }
                     }
-                } label: {
-                    HStack(spacing: 10) {
-                        if isSubmitting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "paperplane.fill")
+
+                    Button {
+                        guard canSubmit && !isSubmitting else { return }
+                        let dates = submissionDates
+                        isSubmitting = true
+                        submitError = nil
+                        Task {
+                            let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
+                            isSubmitting = false
+                            if let error {
+                                submitError = error
+                            } else {
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                dismiss()
+                            }
                         }
-                        Text(isSubmitting ? "Đang gửi…" : "Gửi đơn")
+                    } label: {
+                        HStack(spacing: 10) {
+                            if isSubmitting {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "paperplane.fill")
+                            }
+                            Text(isSubmitting ? "Đang gửi…" : "Gửi đơn")
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
                     }
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                    // Apple's prominent button (it was a drawn red rectangle
+                    // with a shadow); disabled, the system dims it.
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.roundedRectangle(radius: 17))
+                    .controlSize(.large)
+                    .tint(AppTheme.red)
+                    .disabled(!canSubmit || isSubmitting)
                 }
-                // Apple's prominent button (it was a drawn red rectangle with
-                // a shadow); disabled, the system dims it.
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.roundedRectangle(radius: 17))
-                .controlSize(.large)
-                .tint(AppTheme.red)
-                .disabled(!canSubmit)
-                // Same compact rounded frosted backing as meeting booking.
-                // Only the area around the button is blurred (iOS 17+).
                 .padding(8)
                 .background {
                     RoundedRectangle(cornerRadius: 25, style: .continuous)
