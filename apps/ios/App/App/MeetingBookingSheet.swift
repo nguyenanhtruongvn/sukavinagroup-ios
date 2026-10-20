@@ -700,10 +700,16 @@ struct MeetingBookingSheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
-                    .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    // Neutral surface and outline match the surrounding
+                    // frosted confirmation card; only the warning glyph and
+                    // text are red.
+                    .background(
+                        Color(uiColor: .secondarySystemBackground),
+                        in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    )
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(Color.red.opacity(0.22), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color(uiColor: .separator).opacity(0.40), lineWidth: 0.75)
                     }
             }
             confirmActionButton

@@ -1662,9 +1662,13 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         let blockRow = UIStackView(arrangedSubviews: [blockLabel])
         blockRow.isLayoutMarginsRelativeArrangement = true
         blockRow.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
-        blockRow.backgroundColor = UIColor.systemRed.withAlphaComponent(0.10)
-        blockRow.layer.cornerRadius = 12
+        // Match the outer rounded confirmation card with a softer neutral
+        // border; the icon and warning text remain system red.
+        blockRow.backgroundColor = .secondarySystemBackground
+        blockRow.layer.cornerRadius = 20
         blockRow.layer.cornerCurve = .continuous
+        blockRow.layer.borderWidth = 0.75
+        blockRow.layer.borderColor = UIColor.separator.withAlphaComponent(0.40).cgColor
         blockRow.clipsToBounds = true
         self.blockRow = blockRow
         let stack = UIStackView(arrangedSubviews: [blockRow, confirmButton])
@@ -2818,27 +2822,7 @@ private final class LegacyMyMeetingsController: UIViewController {
         top.alignment = .firstBaseline
         top.spacing = 12
 
-        let icon = UIImageView(image: UIImage(systemName: "calendar.badge.clock"))
-        icon.tintColor = .systemRed
-        icon.setContentHuggingPriority(.required, for: .horizontal)
-        let note = UILabel()
-        note.text = "Lịch họp được đồng bộ theo thời gian thực"
-        note.font = .preferredFont(forTextStyle: .caption1).withWeight(.medium)
-        note.textColor = .secondaryLabel
-        note.numberOfLines = 0
-        let info = UIStackView(arrangedSubviews: [icon, note])
-        info.spacing = 8
-        info.alignment = .center
-        info.isLayoutMarginsRelativeArrangement = true
-        info.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12)
-        info.backgroundColor = .secondarySystemBackground
-        info.layer.cornerRadius = 14
-        info.layer.cornerCurve = .continuous
-
-        let stack = UIStackView(arrangedSubviews: [top, info])
-        stack.axis = .vertical
-        stack.spacing = 12
-        return stack
+        return top
     }
 
     private func filterBox() -> UIView {
@@ -2894,9 +2878,6 @@ private final class LegacyMyMeetingsController: UIViewController {
         var configuration = UIContentUnavailableConfiguration.empty()
         configuration.image = UIImage(systemName: "calendar.badge.exclamationmark")
         configuration.text = showsUpcoming ? "Chưa có lịch sắp tới" : "Chưa có lịch đã qua"
-        configuration.secondaryText = showsUpcoming
-            ? "Các cuộc họp bạn tạo hoặc được mời sẽ xuất hiện tại đây."
-            : "Các cuộc họp đã kết thúc sẽ được lưu tại đây."
         let empty = UIContentUnavailableView(configuration: configuration)
         empty.backgroundColor = .systemBackground
         empty.layer.cornerRadius = 22

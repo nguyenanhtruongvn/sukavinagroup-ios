@@ -527,18 +527,6 @@ struct MyMeetingsSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
 
-            HStack(spacing: 8) {
-                Image(systemName: "calendar.badge.clock")
-                    .foregroundStyle(Color.red)
-                Text("Lịch họp được đồng bộ theo thời gian thực")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(uiColor: .secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
     }
 
@@ -556,8 +544,6 @@ struct MyMeetingsSheet: View {
     private var emptyState: some View {
         ContentUnavailableView {
             Label(showsUpcoming ? "Chưa có lịch sắp tới" : "Chưa có lịch đã qua", systemImage: "calendar.badge.exclamationmark")
-        } description: {
-            Text(showsUpcoming ? "Các cuộc họp bạn tạo hoặc được mời sẽ xuất hiện tại đây." : "Các cuộc họp đã kết thúc sẽ được lưu tại đây.")
         }
         .frame(maxWidth: .infinity, minHeight: 250)
         .padding(20)
