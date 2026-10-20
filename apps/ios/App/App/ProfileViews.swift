@@ -45,6 +45,8 @@ struct ProfileView: View {
 
                     accountSectionTitle("THÔNG TIN TÀI KHOẢN")
                     VStack(spacing: 0) {
+                        ProfileLine(label: "Chức vụ", value: displayedJobTitle)
+                        Divider().padding(.leading, 18)
                         ProfileLine(label: "Loại tài khoản", value: accountType)
                         Divider().padding(.leading, 18)
                         ProfileLine(label: "Quản lý trực tiếp", value: displayedManagerName)
@@ -227,6 +229,12 @@ struct ProfileView: View {
         case "ADMIN": return "Quản trị viên"
         default: return "Nhân viên"
         }
+    }
+    /// auth/me exposes the employee's role, kept in sync with their
+    /// job title when an administrator updates the employee record.
+    private var displayedJobTitle: String {
+        let title = account.profile?.role.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return title.isEmpty ? "Chưa cập nhật" : title
     }
     /// The session keeps the full profile (auth/me) for the signed-in account
     /// (a token renewal no longer blanks it), so read it directly.
