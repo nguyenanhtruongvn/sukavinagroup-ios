@@ -73,10 +73,6 @@ struct MeetingBookingSheet: View {
         }
     }
 
-    private var canInviteEntireDepartment: Bool {
-        selected.count + unselectedDepartmentInvitees.count + 1 <= room.capacity
-    }
-
     /// Why "Xác nhận đặt phòng" is disabled (past start, over capacity).
     private var blockReason: String? {
         MeetingBookingTime.blockReason(
@@ -411,13 +407,9 @@ struct MeetingBookingSheet: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(Color.red)
-                .disabled(!canInviteEntireDepartment)
-
-                if !canInviteEntireDepartment {
-                    Text("Số người trong phòng ban vượt quá số chỗ còn lại của phòng họp.")
-                        .font(.caption)
-                        .foregroundStyle(Color(uiColor: .secondaryLabel))
-                }
+                // Allow selecting the full department. If it exceeds capacity,
+                // the shared blockReason appears beside Xác nhận đặt phòng,
+                // in the same place as the past-start warning.
             }
 
             peopleSearchSection
@@ -499,7 +491,9 @@ struct MeetingBookingSheet: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             .buttonStyle(.plain)
-                            .disabled(!isChosen && selected.count + 1 >= room.capacity)
+                            // Selecting one extra invitee must surface the
+                            // capacity warning beside Xác nhận đặt phòng,
+                            // rather than silently disabling this result.
                         }
                     }
                     .padding(.horizontal, 1)

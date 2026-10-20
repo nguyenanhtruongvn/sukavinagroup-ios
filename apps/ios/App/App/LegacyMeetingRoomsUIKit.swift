@@ -1445,10 +1445,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         guard !selectedDepartments.isEmpty else { return [] }
         return invitees.filter { selectedDepartments.contains($0.department) && !selected.contains($0.id) }
     }
-    private var canInviteEntireDepartment: Bool {
-        selected.count + unselectedDepartmentInvitees.count + 1 <= room.capacity
-    }
-
     // MARK: Layout
 
     override func viewDidLoad() {
@@ -1775,17 +1771,14 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             configuration.attributedTitle = title
             configuration.contentInsets = NSDirectionalEdgeInsets(top: 11, leading: 12, bottom: 11, trailing: 12)
             let button = UIButton(configuration: configuration)
-            button.isEnabled = canInviteEntireDepartment
+            // Over-capacity selection is allowed here so the same inline
+            // confirmation warning explains why booking is unavailable.
             button.addAction(UIAction { [weak self] _ in
                 guard let self else { return }
                 selected.formUnion(unselectedDepartmentInvitees.map(\.id))
                 renderInvitees(followFocus: true)
             }, for: .touchUpInside)
             inviteAllSection.addArrangedSubview(button)
-            if !canInviteEntireDepartment {
-                let note = label("Số người trong phòng ban vượt quá số chỗ còn lại của phòng họp.", style: .caption1, color: .secondaryLabel)
-                inviteAllSection.addArrangedSubview(note)
-            }
         }
 
         // People results (above the people field)
@@ -1935,9 +1928,9 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             row.trailingAnchor.constraint(equalTo: control.trailingAnchor, constant: -11),
             control.widthAnchor.constraint(lessThanOrEqualToConstant: 220),
         ])
-        let full = !isChosen && selected.count + 1 >= room.capacity
-        control.isEnabled = !full
-        control.alpha = full ? 0.45 : 1
+        // Keep results selectable even when the room is already full.
+        // renderInvitees() recomputes blockReason and disables confirmation
+        // with its inline message (past time first, then over capacity).
         control.accessibilityLabel = "\(isChosen ? "Bỏ mời" : "Mời") \(person.fullName)"
         control.isAccessibilityElement = true
         control.accessibilityTraits = .button

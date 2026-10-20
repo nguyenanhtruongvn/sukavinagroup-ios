@@ -107,6 +107,40 @@ final class MeetingBookingTimeTests: XCTestCase {
         XCTAssertNotNil(MeetingBookingTime.blockReason(start: try date("2026-10-16T09:00:00+07:00"), now: now, attendeeCount: 11, capacity: 10, calendar: calendar))
     }
 
+    func testBookingCapacityWarningAppearsAtSameConfirmPositionAsPastTime() throws {
+        let now = try date("2026-10-20T17:36:00+07:00")
+        let past = try date("2026-10-20T17:30:00+07:00")
+        let future = try date("2026-10-20T19:15:00+07:00")
+        let timeWarning = "Giờ bắt đầu đã qua. Hãy chọn giờ muộn hơn."
+        let capacityWarning = "Vượt sức chứa phòng (6/5 chỗ). Hãy bớt người được mời."
+
+        // Priority 1: past start masks the capacity warning when both fail.
+        XCTAssertEqual(MeetingBookingTime.blockReason(
+            start: past, now: now, attendeeCount: 6, capacity: 5, calendar: calendar
+        ), timeWarning)
+
+        // Priority 2: only a valid future time exposes the capacity warning.
+        XCTAssertEqual(MeetingBookingTime.blockReason(
+            start: future, now: now, attendeeCount: 6, capacity: 5, calendar: calendar
+        ), capacityWarning)
+
+        // The organiser is included in attendeeCount (5 invited + organiser).
+        XCTAssertNil(MeetingBookingTime.blockReason(
+            start: future, now: now, attendeeCount: 5, capacity: 5, calendar: calendar
+        ))
+        XCTAssertEqual(MeetingBookingTime.blockReason(
+            start: future, now: now, attendeeCount: 6, capacity: 5, calendar: calendar
+        ), capacityWarning)
+    }
+
+    func testOnePersonOverCapacityAlsoWarnsWhenRoomHasNoAvailableSeats() throws {
+        let now = try date("2026-10-20T17:36:00+07:00")
+        let start = try date("2026-10-20T19:15:00+07:00")
+        XCTAssertEqual(MeetingBookingTime.blockReason(
+            start: start, now: now, attendeeCount: 1, capacity: 0, calendar: calendar
+        ), "Vượt sức chứa phòng (1/0 chỗ). Hãy bớt người được mời.")
+    }
+
     func testBackToBackMeetingLeavesNoExtension() throws {
         let end = try date("2026-10-15T10:00:00+07:00")
         let earlier = try date("2026-10-15T09:00:00+07:00")
