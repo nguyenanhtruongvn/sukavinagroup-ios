@@ -19,6 +19,43 @@ final class MeetingBookingTimeTests: XCTestCase {
         try XCTUnwrap(VietnamTime.date(fromISO8601: iso))
     }
 
+    func testMeeting00010UpcomingAt1736AndNotEndedUntil1945() throws {
+        let start = try date("2026-10-20T19:15:00+07:00")
+        let end = try date("2026-10-20T19:45:00+07:00")
+        let before = try date("2026-10-20T17:36:00+07:00")
+        XCTAssertEqual(MeetingBookingTime.phase(start: start, end: end, now: before), .upcoming)
+        XCTAssertFalse(MeetingBookingTime.hasEnded(end: end, now: before))
+        XCTAssertEqual(MeetingBookingTime.phase(start: start, end: end, now: start), .inProgress)
+        XCTAssertEqual(MeetingBookingTime.phase(
+            start: start, end: end, now: try date("2026-10-20T19:44:59+07:00")
+        ), .inProgress)
+        XCTAssertEqual(MeetingBookingTime.phase(start: start, end: end, now: end), .ended)
+        XCTAssertTrue(MeetingBookingTime.hasEnded(end: end, now: end))
+    }
+
+    func testMeetingMissingEndRemainsUpcomingUntilStart() throws {
+        let start = try date("2026-10-20T19:15:00+07:00")
+        XCTAssertEqual(MeetingBookingTime.phase(
+            start: start, end: nil, now: try date("2026-10-20T17:36:00+07:00")
+        ), .upcoming)
+        XCTAssertEqual(MeetingBookingTime.phase(start: start, end: nil, now: start), .inProgress)
+        XCTAssertFalse(MeetingBookingTime.hasEnded(end: nil, now: start))
+    }
+
+    func testMeetingLifecycleUsesAbsoluteTimeAcrossTimezones() throws {
+        let start = try date("2026-10-20T19:15:00+07:00")
+        let end = try date("2026-10-20T19:45:00+07:00")
+        XCTAssertEqual(MeetingBookingTime.phase(
+            start: start, end: end, now: try date("2026-10-20T10:36:00Z")
+        ), .upcoming)
+        XCTAssertEqual(MeetingBookingTime.phase(
+            start: start, end: end, now: try date("2026-10-20T12:30:00Z")
+        ), .inProgress)
+        XCTAssertEqual(MeetingBookingTime.phase(
+            start: start, end: end, now: try date("2026-10-20T12:45:00Z")
+        ), .ended)
+    }
+
     func testStartRoundsUpToTheNextFiveMinutes() throws {
         let day = try date("2026-10-15T00:00:00+07:00")
         let start = MeetingBookingTime.defaultStart(on: day, now: try date("2026-10-15T09:07:30+07:00"), calendar: calendar)

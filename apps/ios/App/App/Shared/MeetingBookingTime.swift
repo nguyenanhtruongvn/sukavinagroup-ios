@@ -30,6 +30,14 @@ enum DurationClock {
     }
 }
 
+/// Absolute booking lifecycle: never derive state from a future
+/// SwiftUI TimelineView.Context.date supplied during pre-rendering.
+enum MeetingBookingPhase: Equatable {
+    case upcoming
+    case inProgress
+    case ended
+}
+
 /// Start-time rules for booking a room. Mirrors Android
 /// `defaultBookingStart` / `bookingBlockReason` in MeetingBookingSheet.kt.
 enum MeetingBookingTime {
@@ -39,6 +47,19 @@ enum MeetingBookingTime {
     /// How long a booking can last, in minutes: 5 minutes to 8 hours, in
     /// steps of `minuteStep` (`DurationClock`).
     static let durationRange = 5...480
+
+    /// "now" must be Date() at evaluation time, not a scheduled
+    /// TimelineView date that might be hours into the future.
+    static func phase(start: Date, end: Date?, now: Date) -> MeetingBookingPhase {
+        if now < start { return .upcoming }
+        if hasEnded(end: end, now: now) { return .ended }
+        return .inProgress
+    }
+
+    static func hasEnded(end: Date?, now: Date) -> Bool {
+        guard let end else { return false }
+        return now >= end
+    }
 
     /// The current Vietnam time of day rounded up to the next 5-minute mark
     /// (09:07 -> 09:10), placed on `day`. Never rolls past 23:55.

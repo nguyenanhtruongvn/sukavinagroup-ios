@@ -148,8 +148,10 @@ struct MeetingBookingDetailSheet: View {
                     if isOrganizerOfLiveBooking, let startDate {
                         // "Hủy lịch" gives way to the meeting controls at the
                         // start time, also while this sheet stays open.
-                        TimelineView(.explicit(upcomingDates([startDate]))) { clock in
-                            if startDate <= max(clock.date, Date()) {
+                        // SwiftUI can pre-render a future TimelineView deadline. Use
+                        // the actual current instant to determine booking state.
+                        TimelineView(.explicit(upcomingDates([startDate, endDate]))) { _ in
+                            if MeetingBookingTime.phase(start: startDate, end: endDate, now: Date()) != .upcoming {
                                 MeetingControlCard(
                                     bookingID: currentBooking.id,
                                     roomId: currentBooking.roomId,
@@ -269,8 +271,9 @@ struct MeetingControlCard: View {
         // keeps the type shallow: on iOS 17 this card sits in the SwiftUI
         // notification detail, and iOS 17 SwiftUI aborted building deep
         // meeting view types (see LegacyMeetingRoomsUIKitView).
-        TimelineView(.explicit(upcomingDates([endDate]))) { clock in
-            AnyView(card(ended: endDate.map { $0 <= max(clock.date, Date()) } ?? false))
+        TimelineView(.explicit(upcomingDates([endDate]))) { _ in
+            // The context date may be a future refresh deadline, not "now".
+            AnyView(card(ended: MeetingBookingTime.hasEnded(end: endDate, now: Date())))
         }
     }
 
@@ -408,7 +411,8 @@ struct MyMeetingsSheet: View {
     private func meetings(at now: Date) -> [MeetingBooking] {
         myBookings.filter { meeting in
             guard let end = meeting.endDate else { return showsUpcoming }
-            return showsUpcoming ? end >= now : end < now
+            let ended = MeetingBookingTime.hasEnded(end: end, now: now)
+            return showsUpcoming ? !ended : ended
         }
     }
 
@@ -425,8 +429,10 @@ struct MyMeetingsSheet: View {
                 ScrollView(showsIndicators: false) {
                     // A meeting moves from "Sắp tới" to "Đã qua" when it
                     // ends: redraw exactly then.
-                    TimelineView(.explicit(upcomingDates(myBookings.map(\.endDate)))) { clock in
-                        let shown = meetings(at: max(clock.date, Date()))
+                    TimelineView(.explicit(upcomingDates(myBookings.map(\.endDate)))) { _ in
+                        // Scheduled deadlines only trigger rendering; the
+                        // current instant determines upcoming versus past.
+                        let shown = meetings(at: Date())
                         VStack(alignment: .leading, spacing: 18) {
                             header(count: shown.count)
                             scheduleFilter
