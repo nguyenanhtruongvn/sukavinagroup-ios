@@ -1106,7 +1106,7 @@ struct RequestComposer: View {
         if kind == .business && transport == "personal_vehicle" && !(localizedDecimal(distanceKm) ?? 0 > 0) {
             return "Nhập quãng đường khi đi bằng xe cá nhân."
         }
-        if cleanReason.count < 10 { return "Lý do cần tối thiểu 10 ký tự (đã nhập \(cleanReason.count))." }
+        if cleanReason.count < 10 { return "Nội dung đơn cần tối thiểu 10 ký tự." }
         let dates = submissionDates
         if dates.to < dates.from { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
         return nil
@@ -1332,16 +1332,15 @@ struct RequestComposer: View {
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
-                        composerLabel("Nội dung đơn", icon: "text.alignleft")
+                        HStack(spacing: 6) {
+                            composerLabel("Nội dung đơn", icon: "text.alignleft")
+                            Text("(Tối thiểu 10 ký tự)")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.muted.opacity(0.72))
+                        }
                         ZStack(alignment: .topLeading) {
                             if reason.isEmpty {
-                                Text(
-                                    kind == .business
-                                        ? "Nêu mục đích và nội dung công tác..."
-                                        : kind == .attendance
-                                            ? "Mô tả phần giờ công cần xác nhận hoặc thông tin người duyệt cần lưu ý..."
-                                            : "Mô tả lý do và thông tin cần người duyệt lưu ý..."
-                                )
+                                Text("Mô tả lý do và thông tin cần người duyệt lưu ý")
                                     .font(.body)
                                     .foregroundStyle(AppTheme.muted.opacity(0.72))
                                     .padding(.horizontal, 16)
@@ -1365,13 +1364,6 @@ struct RequestComposer: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                         .id("request-reason-editor")
 
-                        HStack {
-                            Label(cleanReason.count >= 10 ? "Nội dung hợp lệ" : "Tối thiểu 10 ký tự", systemImage: cleanReason.count >= 10 ? "checkmark.circle.fill" : "info.circle")
-                                .foregroundStyle(cleanReason.count >= 10 ? Color.green : AppTheme.muted)
-                            Spacer()
-                            Text("\(reason.count) ký tự").foregroundStyle(AppTheme.muted)
-                        }
-                        .font(.caption.weight(.medium))
                     }
                     .id("request-reason")
                 }
