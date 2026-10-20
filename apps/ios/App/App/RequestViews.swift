@@ -1373,12 +1373,7 @@ struct RequestComposer: View {
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 6) {
-                            composerLabel("Nội dung đơn", icon: "text.alignleft")
-                            Text("(Tối thiểu 10 ký tự)")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.muted.opacity(0.72))
-                        }
+                        composerLabel("Nội dung đơn", icon: "text.alignleft")
                         ZStack(alignment: .topLeading) {
                             if reason.isEmpty {
                                 Text("Mô tả lý do và thông tin cần người duyệt lưu ý")
