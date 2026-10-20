@@ -234,9 +234,7 @@ struct MeetingRoomsView: View {
                 switch destination {
                 case .booking(let room, let selectedDay):
                     AnyView(MeetingBookingSheet(room: room, day: selectedDay)
-                        .sessionEnvironment(session)
-                        .presentationDetents([.fraction(FormSheetLayout.compactFraction), .large])
-                        .presentationContentInteraction(.resizes))
+                        .sessionEnvironment(session))
                 case .schedule(let room, let selectedDay):
                     AnyView(MeetingRoomScheduleSheet(room: room, day: selectedDay)
                         .sessionEnvironment(session))
@@ -679,9 +677,7 @@ struct MeetingRoomScheduleSheet: View {
                 switch destination {
                 case .booking:
                     AnyView(MeetingBookingSheet(room: room, day: selectedDay)
-                        .sessionEnvironment(session)
-                        .presentationDetents([.fraction(FormSheetLayout.compactFraction), .large])
-                        .presentationContentInteraction(.resizes))
+                        .sessionEnvironment(session))
                 case .detail(let booking):
                     AnyView(MeetingBookingDetailSheet(booking: booking, room: room)
                         .sessionEnvironment(session))

@@ -466,7 +466,7 @@ struct RequestsView: View {
                 RequestComposer { kind, from, to, reason, destination, transport, distance, expense in
                     await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
-                    .presentationDetents([.fraction(FormSheetLayout.compactFraction), .large])
+                    .presentationDetents([.large])
                     // Let a downward pull dismiss the composer sheet instead
                     // of being retained by its form scroll view.
                     .presentationContentInteraction(.resizes)
@@ -476,7 +476,7 @@ struct RequestsView: View {
                 RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
                     await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
                 }
-                    .presentationDetents([.fraction(FormSheetLayout.compactFraction), .large])
+                    .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
                     .presentationDragIndicator(.hidden)
             }

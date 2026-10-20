@@ -32,12 +32,6 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
         }
     }
 }
-/// Compact initial height for editable sheets. The large detent remains
-/// available when the form grows or the employee needs more working room.
-enum FormSheetLayout {
-    static let compactFraction: CGFloat = 0.86
-}
-
 enum AttendanceMonthDisplayMode: String, CaseIterable, Identifiable {
     case compact
     case full

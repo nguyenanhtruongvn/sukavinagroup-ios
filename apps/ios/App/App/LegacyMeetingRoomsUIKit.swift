@@ -133,29 +133,18 @@ struct LegacyMeetingRoomsUIKitView: UIViewControllerRepresentable {
 @MainActor
 private enum LegacyMeetingUI {
     static func time(_ text: String) -> String { MeetingPresentation.time(text) }
-    /// Open bookings at the compact height, with full-height expansion
-    /// available if the employee adds invitees or uses a larger font.
+    /// The booking form keeps the original full-height sheet and its own navigation bar.
     static func presentBooking(session: SessionStore, room: MeetingRoom, day: Date, from controller: UIViewController, onDismiss: (() -> Void)? = nil) {
-        presentSheet(LegacyMeetingBookingController(session: session, room: room, day: day), from: controller, compactBooking: true, onDismiss: onDismiss)
+        presentSheet(LegacyMeetingBookingController(session: session, room: room, day: day), from: controller, onDismiss: onDismiss)
     }
 
-    /// Other meeting screens keep their original large-sheet presentation.
-    static func presentSheet(_ root: UIViewController, from controller: UIViewController, largeTitles: Bool = false, compactBooking: Bool = false, onDismiss: (() -> Void)? = nil) {
+    /// Keep the original sheet height for bookings, room schedules, My Meetings and details.
+    static func presentSheet(_ root: UIViewController, from controller: UIViewController, largeTitles: Bool = false, onDismiss: (() -> Void)? = nil) {
         let navigation = LegacySheetNavigationController(rootViewController: root)
         navigation.onDismiss = onDismiss
         navigation.navigationBar.prefersLargeTitles = largeTitles
         navigation.modalPresentationStyle = .pageSheet
-        if compactBooking, let sheet = navigation.sheetPresentationController {
-            let compact = UISheetPresentationController.Detent.custom(
-                identifier: .init("sukavina.compactMeetingBooking")
-            ) { context in
-                context.maximumDetentValue * FormSheetLayout.compactFraction
-            }
-            sheet.detents = [compact, .large()]
-            sheet.selectedDetentIdentifier = compact.identifier
-        } else {
-            navigation.sheetPresentationController?.detents = [.large()]
-        }
+        navigation.sheetPresentationController?.detents = [.large()]
         navigation.sheetPresentationController?.prefersGrabberVisible = false
         controller.present(navigation, animated: true)
     }
