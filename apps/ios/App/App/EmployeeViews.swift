@@ -625,9 +625,6 @@ struct DashboardView: View {
                     Text("Thực đơn hôm nay")
                         .font(.headline)
                         .foregroundStyle(Color.primary)
-                    Text(menu?.day.dayName ?? "Đang cập nhật")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.muted)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
