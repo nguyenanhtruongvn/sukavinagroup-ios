@@ -260,6 +260,7 @@ struct ModernAttendanceHistoryView: View {
                     )
                 }
             }
+            .padding(.top, 6)
         }
         .padding(18)
         .background(AppTheme.card)
