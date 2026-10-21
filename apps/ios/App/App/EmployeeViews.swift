@@ -269,8 +269,8 @@ struct PreloadedAttendanceDayCell: View {
             : [SplitLine(text: "CĐ", color: nightColor, size: compact ? 9.5 : 10.5, bold: true)]
         return AnyView(HStack(alignment: .top, spacing: compact ? 3 : 6) {
             splitColumn(dayLines, offset: 0)
-            // "CĐ" on the first row, level with the check-in beside it.
-            splitColumn(nightLines, offset: 0)
+            // In the normal calendar, align "CĐ" with the check-out row.
+            splitColumn(nightLines, offset: showWorkMetrics ? 0 : 18)
         }
         .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
     }
