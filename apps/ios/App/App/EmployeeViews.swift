@@ -132,12 +132,12 @@ struct PreloadedAttendanceDayCell: View {
                     .foregroundStyle(noteColor(note))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .center)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(AppTheme.text(holidayColor))
-                        .frame(height: 18, alignment: .top)
+                        .frame(height: 18, alignment: .center)
                 } else {
                     Color.clear.frame(height: 18)
                 }
@@ -147,9 +147,9 @@ struct PreloadedAttendanceDayCell: View {
         if showWorkMetrics && hasCompletePunchPair {
             return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(metrics.coefficient))
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .center)
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .center)
             }
             .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
@@ -160,9 +160,9 @@ struct PreloadedAttendanceDayCell: View {
         if showWorkMetrics && hasForgottenPunch {
             return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(0))
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .center)
                 Text("0")
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .center)
             }
             .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
@@ -199,7 +199,7 @@ struct PreloadedAttendanceDayCell: View {
             hasForgottenPunch: hasForgottenPunch,
             metrics: metrics
         )
-        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top)
+        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .center)
         guard let night = day.nightShift else { return AnyView(dayShift) }
         // Nothing to show for the day shift: the night shift alone is centred in
         // the cell like any other code, not squeezed into a half.
@@ -272,7 +272,7 @@ struct PreloadedAttendanceDayCell: View {
             // "CĐ" shares the check-in row; compact labels align at the row centre.
             splitColumn(nightLines, offset: 0)
         }
-        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
+        .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .center))
     }
 
     private func splitColumn(_ lines: [SplitLine], offset: CGFloat) -> some View {
@@ -303,24 +303,24 @@ struct PreloadedAttendanceDayCell: View {
         if showWorkMetrics {
             return AnyView(VStack(spacing: 0) {
                 Text(AttendanceMetrics.workFactorText(night.workdays))
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .center)
                 Text(AttendanceMetrics.hourText(night.overtimeHours))
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .center)
             }
             .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .foregroundStyle(color)
-            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
+            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .center))
         }
         return AnyView(Text("CĐ")
             .font(.system(size: whole ? 11 : 10.5, weight: .heavy))
             .lineLimit(1)
             .minimumScaleFactor(0.7)
             .foregroundStyle(color)
-            .frame(height: whole ? 18 : nil, alignment: .top)
-            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: whole ? .top : .center))
+            .frame(height: whole ? 18 : nil, alignment: .center)
+            .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .center))
     }
 
     private func background(for statuses: [String], note: String?) -> AnyView {
