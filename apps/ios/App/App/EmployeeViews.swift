@@ -175,7 +175,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text(time(day.checkOut))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold))
+            .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
