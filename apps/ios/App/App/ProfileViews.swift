@@ -85,7 +85,10 @@ struct ProfileView: View {
                             }
                             Spacer()
                             Image(systemName: "chevron.right").foregroundColor(AppTheme.muted)
-                        }.padding(18)
+                        }
+                        .padding(18)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .background(AppTheme.card)
@@ -166,6 +169,8 @@ struct ProfileView: View {
                         Label("Đăng xuất", systemImage: "rectangle.portrait.and.arrow.right")
                             .font(.headline)
                             .foregroundColor(AppTheme.redText)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                     }
                         .font(.headline)
                         .frame(maxWidth: .infinity, minHeight: 52)
@@ -176,6 +181,8 @@ struct ProfileView: View {
                         accountSectionTitle("VÙNG NGUY HIỂM")
                         Button("Yêu cầu xóa tài khoản", role: .destructive) { showDelete = true }
                             .font(.footnote.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
                     }
                 }
                 .padding(20)
@@ -271,7 +278,9 @@ struct ProfileView: View {
                 .foregroundColor(AppTheme.muted)
         }
         .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .frame(minHeight: 52)
+        .contentShape(Rectangle())
     }
     private var nextPasswordChangeMonth: String {
         let next = VietnamTime.calendar.date(byAdding: .month, value: 1, to: Date()) ?? Date()
