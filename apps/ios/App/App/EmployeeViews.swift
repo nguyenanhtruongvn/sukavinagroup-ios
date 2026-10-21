@@ -94,7 +94,7 @@ struct PreloadedAttendanceDayCell: View {
         // Once per cell: detail, split shifts and the label all need it.
         let metrics = AttendanceMetrics.workMetrics(day, month: month)
 
-        return VStack(spacing: 2) {
+        return VStack(spacing: 6) {
             // Keep the date/detail blocks stable while distributing the spare
             // cell height evenly above and below them.
             Spacer(minLength: 0)
