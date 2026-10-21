@@ -31,15 +31,25 @@ struct NativeLaunchView: View {
 
 struct AuthenticationView: View {
     @EnvironmentObject private var session: SessionStore
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         NavigationStack {
             ZStack {
-                LinearGradient(
-                    colors: [AppTheme.ink, AppTheme.loginAccent, AppTheme.ink],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ).ignoresSafeArea()
+                // The login screen shares the app's flat ink surface in dark
+                // mode; the branded light-mode gradient remains unchanged.
+                Group {
+                    if colorScheme == .dark {
+                        AppTheme.ink
+                    } else {
+                        LinearGradient(
+                            colors: [AppTheme.ink, AppTheme.loginAccent, AppTheme.ink],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    }
+                }
+                .ignoresSafeArea()
 
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 24) {
