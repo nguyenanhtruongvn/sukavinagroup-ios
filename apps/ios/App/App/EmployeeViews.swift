@@ -135,7 +135,7 @@ struct PreloadedAttendanceDayCell: View {
                     .frame(height: 18, alignment: .top)
                 if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                     Text(AttendanceMetrics.hourText(metrics.overtimeHours))
-                        .font(.system(size: 10, weight: .semibold))
+                        .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(AppTheme.text(holidayColor))
                         .frame(height: 18, alignment: .top)
                 } else {
@@ -151,7 +151,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text(AttendanceMetrics.hourText(metrics.overtimeHours))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold))
+            .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72))
             .lineLimit(1)
@@ -164,7 +164,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text("0")
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold))
+            .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
             .foregroundStyle(Color.primary.opacity(0.72)))
         }
@@ -219,7 +219,7 @@ struct PreloadedAttendanceDayCell: View {
     private struct SplitLine {
         let text: String
         let color: Color
-        var size: CGFloat = 10.5
+        var size: CGFloat = 11.5
         var bold = false
     }
 
@@ -307,7 +307,7 @@ struct PreloadedAttendanceDayCell: View {
                 Text(AttendanceMetrics.hourText(night.overtimeHours))
                     .frame(height: 18, alignment: .top)
             }
-            .font(.system(size: 10.5, weight: .semibold))
+            .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(0.7)
