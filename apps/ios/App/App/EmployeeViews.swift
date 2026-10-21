@@ -128,7 +128,7 @@ struct PreloadedAttendanceDayCell: View {
         if let note {
             return AnyView(VStack(spacing: 0) {
                 Text(note)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11.5, weight: .bold))
                     .foregroundStyle(noteColor(note))
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
@@ -239,7 +239,7 @@ struct PreloadedAttendanceDayCell: View {
         let compact = !showWorkMetrics && note == nil
         var dayLines: [SplitLine] = []
         if let note {
-            dayLines.append(SplitLine(text: note, color: noteColor(note), size: 11, bold: true))
+            dayLines.append(SplitLine(text: note, color: noteColor(note), size: 11.5, bold: true))
             if isHoliday && showWorkMetrics && hasCompletePunchPair && metrics.overtimeHours > 0 {
                 dayLines.append(SplitLine(text: AttendanceMetrics.hourText(metrics.overtimeHours), color: AppTheme.text(holidayColor)))
             }
