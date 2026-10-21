@@ -171,9 +171,9 @@ struct PreloadedAttendanceDayCell: View {
         if !showWorkMetrics {
             return AnyView(VStack(spacing: 0) {
                 Text(time(day.checkIn))
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .bottom)
                 Text(time(day.checkOut))
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .bottom)
             }
             .font(.system(size: 11.5, weight: .semibold))
             .monospacedDigit()
@@ -269,8 +269,8 @@ struct PreloadedAttendanceDayCell: View {
             : [SplitLine(text: "CĐ", color: nightColor, size: compact ? 9.5 : 10.5, bold: true)]
         return AnyView(HStack(alignment: .top, spacing: compact ? 3 : 6) {
             splitColumn(dayLines, offset: 0)
-            // In the normal calendar, align "CĐ" with the check-out row.
-            splitColumn(nightLines, offset: showWorkMetrics ? 0 : 18)
+            // "CĐ" shares the check-in row; each compact label aligns by its bottom edge.
+            splitColumn(nightLines, offset: 0)
         }
         .frame(maxWidth: .infinity, minHeight: 37, maxHeight: 37, alignment: .top))
     }
@@ -284,7 +284,7 @@ struct PreloadedAttendanceDayCell: View {
                     .foregroundStyle(line.color)
                     .lineLimit(1)
                     .fixedSize()
-                    .frame(height: 18, alignment: .top)
+                    .frame(height: 18, alignment: .bottom)
             }
         }
         .padding(.top, offset)
