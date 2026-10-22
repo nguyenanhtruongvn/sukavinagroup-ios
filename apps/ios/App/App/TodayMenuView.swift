@@ -18,8 +18,26 @@ struct TodayMenuView: View {
     @State private var isSessionWorking = false
     @EnvironmentObject private var menuStore: MenuStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.scenePhase) private var scenePhase
     @State private var pendingChoice: String?
+    @State private var pendingForManagedOnly = false
+    @State private var includeSelfForPendingChoice = true
+    @State private var selectedManagedEmployeeIds: Set<String> = []
     @State private var mealSheetHeight: CGFloat = 420
+
+    private var delegatedOrders: [ManagedMealEmployee] {
+        (menuStore.todayMenu?.managedEmployees ?? []).filter {
+            $0.selection != nil && $0.orderedByEmployeeId != nil
+        }
+    }
+
+    private var hasPendingDelegatedOrders: Bool {
+        delegatedOrders.contains { $0.receivedAt == nil }
+    }
+
+    private var hasAvailableManagedEmployees: Bool {
+        (menuStore.todayMenu?.managedEmployees ?? []).contains { $0.selection == nil }
+    }
 
     var body: some View {
         NavigationStack {
@@ -61,14 +79,14 @@ struct TodayMenuView: View {
                                         .font(.subheadline).foregroundColor(AppTheme.muted).lineLimit(2)
                                 }
                             }
-                            if menuStore.todayMenu?.receivedAt == nil {
-                                MealQRCodeAccessCard()
-                            } else {
-                                Label("Đã nhận món", systemImage: "checkmark.seal.fill")
-                                    .font(.headline).foregroundColor(AppTheme.text(.green))
-                                    .frame(maxWidth: .infinity).padding(.vertical, 13)
-                                    .background(Color.green.opacity(0.11))
-                                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                            MealReceiptStatusRow(
+                                title: "Tôi",
+                                detail: isWater ? "Món nước" : "Món chay",
+                                receivedAt: menuStore.todayMenu?.receivedAt
+                            )
+                            if menuStore.todayMenu?.receivedAt == nil || hasPendingDelegatedOrders {
+                                MealQRCodeAccessCard(useManagedGroupQr: hasPendingDelegatedOrders)
+                                    .id(hasPendingDelegatedOrders)
                             }
                             if menuStore.todayMenu?.receivedAt == nil {
                                 Button {
@@ -85,6 +103,9 @@ struct TodayMenuView: View {
                             }
                         } else {
                             Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                            if hasPendingDelegatedOrders {
+                                MealQRCodeAccessCard(useManagedGroupQr: true)
+                            }
                             if menuStore.todayMenu?.orderingOpen == false {
                                 HStack(spacing: 12) {
                                     Image(systemName: "clock.badge.exclamationmark.fill")
@@ -108,6 +129,33 @@ struct TodayMenuView: View {
                                 mealButton("Món chay", detail: [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "), icon: "leaf.fill", color: .green, choice: "vegetarian")
                             }
                         }
+                        if menuStore.todayMenu?.selection != nil,
+                           hasAvailableManagedEmployees,
+                           menuStore.todayMenu?.orderingOpen == true {
+                            Divider()
+                            Text("ĐẶT THÊM CHO NHÂN VIÊN")
+                                .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                            mealButton("Món nước", detail: menuStore.todayMenu?.day.featured,
+                                icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan,
+                                choice: "water", forManagedOnly: true)
+                            mealButton("Món chay", detail: [menuStore.todayMenu?.day.vegetarianMain,
+                                menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }
+                                .filter { !$0.isEmpty }.joined(separator: " · "),
+                                icon: "leaf.fill", color: .green,
+                                choice: "vegetarian", forManagedOnly: true)
+                        }
+                        if !delegatedOrders.isEmpty {
+                            Divider()
+                            Text("NHÂN VIÊN ĐƯỢC ĐẶT HỘ")
+                                .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                            ForEach(delegatedOrders) { employee in
+                                MealReceiptStatusRow(
+                                    title: employee.fullName,
+                                    detail: employee.employeeCode,
+                                    receivedAt: employee.receivedAt
+                                )
+                            }
+                        }
                     }
                     .padding(18)
                     .background(AppTheme.card.opacity(0.86))
@@ -123,7 +171,19 @@ struct TodayMenuView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .task {
-                await session.refreshTodayMenu()
+                await session.refreshTodayMenu(force: true)
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(30))
+                    guard !Task.isCancelled else { return }
+                    if scenePhase == .active {
+                        await session.refreshTodayMenu(force: true)
+                    }
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active {
+                    Task { await session.refreshTodayMenu(force: true) }
+                }
             }
             .onReceive(session.$isWorking) { isSessionWorking = $0 }
             .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
@@ -219,14 +279,26 @@ struct TodayMenuView: View {
         .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
     }
 
-    private func mealButton(_ title: String, detail: String?, icon: String, color: Color, choice: String) -> some View {
-        let selected = menuStore.todayMenu?.selection == choice
+    private func mealButton(
+        _ title: String,
+        detail: String?,
+        icon: String,
+        color: Color,
+        choice: String,
+        forManagedOnly: Bool = false
+    ) -> some View {
+        let selected = !forManagedOnly && menuStore.todayMenu?.selection == choice
         let fallbackAvailable = !(detail?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
         let available = choice == "water"
             ? (menuStore.todayMenu?.availableChoices?.water ?? fallbackAvailable)
             : (menuStore.todayMenu?.availableChoices?.vegetarian ?? fallbackAvailable)
         return Button {
-            if available { pendingChoice = choice }
+            if available {
+                pendingForManagedOnly = forManagedOnly
+                includeSelfForPendingChoice = !forManagedOnly
+                selectedManagedEmployeeIds = []
+                pendingChoice = choice
+            }
         } label: {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.title3).foregroundColor(color).frame(width: 44, height: 44).background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 14))
