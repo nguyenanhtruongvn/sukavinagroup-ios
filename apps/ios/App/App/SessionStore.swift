@@ -1220,6 +1220,23 @@ final class SessionStore: ObservableObject {
         } catch { present(error) }
     }
 
+    func selectMealWithManagedEmployees(choice: String, employeeIDs: Set<String>) async {
+        guard let token else { return }
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let value: TodayMenu = try await APIClient.shared.request(
+                "me/menu/selection/with-managed", method: "PATCH", token: token,
+                body: MealSelectionWithManagedBody(choice: choice, employeeIds: Array(employeeIDs))
+            )
+            todayMenu = value
+            todayMenuLoadedAt = Date()
+            saveTodayMenuCache(value)
+        } catch { present(error) }
+    }
+
     func cancelMealSelection() async {
         guard let token else { return }
         todayMenuRefreshTask?.cancel()

@@ -19,6 +19,7 @@ struct TodayMenuView: View {
     @EnvironmentObject private var menuStore: MenuStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var pendingChoice: String?
+    @State private var selectedManagedEmployeeIDs = Set<String>()
     @State private var mealSheetHeight: CGFloat = 420
 
     var body: some View {
@@ -139,7 +140,7 @@ struct TodayMenuView: View {
                 await session.refreshTodayMenu()
             }
             .onReceive(session.$isWorking) { isSessionWorking = $0 }
-            .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
+            .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil; selectedManagedEmployeeIDs.removeAll() } })) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
                 let title = choice == "water" ? "Món nước" : "Món chay"
@@ -166,19 +167,42 @@ struct TodayMenuView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 16))
+                        if let employees = menuStore.todayMenu?.managedEmployees, !employees.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("ĐẶT CÙNG NHÂN VIÊN").font(.caption.bold()).tracking(1).foregroundColor(AppTheme.muted)
+                                Text("Chọn nhân viên trực tiếp để đặt cùng món này.").font(.caption).foregroundColor(AppTheme.muted)
+                                ForEach(employees) { employee in
+                                    Toggle(isOn: Binding(
+                                        get: { selectedManagedEmployeeIDs.contains(employee.id) },
+                                        set: { checked in
+                                            if checked { selectedManagedEmployeeIDs.insert(employee.id) }
+                                            else { selectedManagedEmployeeIDs.remove(employee.id) }
+                                        }
+                                    )) {
+                                        VStack(alignment: .leading) {
+                                            Text(employee.fullName).font(.subheadline.weight(.semibold))
+                                            Text(employee.receivedAt == nil ? "\(employee.employeeCode) · \(employee.department)" : "Đã xác nhận nhận món").font(.caption).foregroundColor(AppTheme.muted)
+                                        }
+                                    }
+                                    .disabled(employee.receivedAt != nil)
+                                }
+                            }.padding(14).background(AppTheme.card.opacity(0.7)).clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
                     }
                     Button {
                         pendingChoice = nil
                         Task {
                             if cancelling { await session.cancelMealSelection() }
-                            else { await session.selectMeal(choice) }
+                            else if selectedManagedEmployeeIDs.isEmpty { await session.selectMeal(choice) }
+                            else { await session.selectMealWithManagedEmployees(choice: choice, employeeIDs: selectedManagedEmployeeIDs) }
+                            selectedManagedEmployeeIDs.removeAll()
                         }
                     } label: {
                         Text(cancelling ? "Xác nhận hủy" : "Xác nhận đặt món")
                             .font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 15)
                             .background(cancelling ? Color.red : AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
                     }
-                    Button("Quay lại") { pendingChoice = nil }
+                    Button("Quay lại") { pendingChoice = nil; selectedManagedEmployeeIDs.removeAll() }
                         .font(.headline).foregroundColor(AppTheme.muted).padding(.vertical, 5)
                     }
                     .frame(maxWidth: .infinity)

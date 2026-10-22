@@ -466,6 +466,11 @@ struct MealSelectionBody: Encodable {
     let choice: String
 }
 
+struct MealSelectionWithManagedBody: Encodable {
+    let choice: String
+    let employeeIds: [String]
+}
+
 struct MealQrScanBody: Encodable {
     let token: String
 }
