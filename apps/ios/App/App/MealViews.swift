@@ -11,6 +11,7 @@ import WebKit
 
 struct MealQRCodeCard: View {
     let token: String
+    var isGroup = false
     // Rendered once per token. As a computed property the QR code (and a new
     // CIContext) was regenerated on every redraw, i.e. every countdown second.
     @State private var image: UIImage?
@@ -28,7 +29,7 @@ struct MealQRCodeCard: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Text("MÃ QR NHẬN MÓN")
+            Text(isGroup ? "MÃ QR NHẬN CHUNG" : "MÃ QR NHẬN MÓN")
                 .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
             Group {
                 if let image {
@@ -56,6 +57,7 @@ struct MealQRCodeCard: View {
 }
 
 struct MealQRCodeAccessCard: View {
+    var useManagedGroupQr = false
     // Only calls session methods: must not redraw on every session change.
     @Environment(\.sessionActions) private var sessionActions
     private var session: SessionStore { sessionActions.store }
@@ -72,7 +74,7 @@ struct MealQRCodeAccessCard: View {
     var body: some View {
         VStack(spacing: 12) {
             if let issued, let expiresAt {
-                MealQRCodeCard(token: issued.token)
+                MealQRCodeCard(token: issued.token, isGroup: useManagedGroupQr)
                 // Text(timerInterval:) counts down on its own, like the Live
                 // Activity: no per-second state update or app wake-up.
                 (Text("Mã tự ẩn sau ") + Text(timerInterval: min(Date(), expiresAt)...expiresAt, countsDown: true))
@@ -86,7 +88,7 @@ struct MealQRCodeAccessCard: View {
                     HStack(spacing: 9) {
                         if isLoading { ProgressView().tint(.white) }
                         Image(systemName: "qrcode")
-                        Text(isLoading ? "Đang tạo mã..." : "Lấy mã nhận món")
+                        Text(isLoading ? "Đang tạo mã..." : (useManagedGroupQr ? "Lấy mã nhận chung" : "Lấy mã nhận món"))
                     }
                     .font(.headline)
                     .foregroundColor(.white)
@@ -97,7 +99,9 @@ struct MealQRCodeAccessCard: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isLoading)
-                Text("Mỗi mã chỉ có hiệu lực trong thời gian ngắn và sẽ thay đổi ở lần lấy tiếp theo.")
+                Text(useManagedGroupQr
+                     ? "Một lần quét sẽ xác nhận tất cả suất chưa nhận được quản lý đặt hộ và suất của quản lý nếu còn chờ."
+                     : "Mỗi mã chỉ có hiệu lực trong thời gian ngắn và sẽ thay đổi ở lần lấy tiếp theo.")
                     .font(.caption)
                     .foregroundColor(AppTheme.muted)
                     .multilineTextAlignment(.center)
@@ -123,7 +127,9 @@ struct MealQRCodeAccessCard: View {
     private func issueCode() async {
         isLoading = true
         defer { isLoading = false }
-        guard let response = await session.issueMealQRCode() else { return }
+        guard let response = await (useManagedGroupQr
+            ? session.issueManagedMealQRCode()
+            : session.issueMealQRCode()) else { return }
         let lifetime = max(1, response.expiresInSeconds)
         deadline = ContinuousClock.now + .seconds(lifetime)
         expiresAt = Date().addingTimeInterval(TimeInterval(lifetime))
@@ -157,12 +163,45 @@ struct CanteenScannerView: View {
                 }
 
                 if let result {
+                    ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
                         Image(systemName: result.alreadyReceived ? "exclamationmark.circle.fill" : "checkmark.seal.fill")
                             .font(.system(size: 54, weight: .bold))
                             .foregroundColor(result.alreadyReceived ? .orange : .green)
-                        Text(result.alreadyReceived ? "Suất ăn đã được xác nhận" : "Xác nhận suất ăn thành công")
+                        Text(result.alreadyReceived
+                             ? (result.group == true ? "Các suất ăn đã được xác nhận" : "Suất ăn đã được xác nhận")
+                             : (result.group == true ? "Xác nhận nhóm suất ăn thành công" : "Xác nhận suất ăn thành công"))
                             .font(.title3.bold()).multilineTextAlignment(.center)
+                        if result.group == true {
+                            Text("Đã xác nhận \(result.confirmedCount ?? 0)/\(result.selectionCount ?? result.confirmedEmployees?.count ?? 0) suất trong lần quét")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(AppTheme.muted)
+                        }
+                        if result.group == true, let employees = result.confirmedEmployees, !employees.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(employees) { employee in
+                                    VStack(alignment: .leading, spacing: 7) {
+                                        HStack(alignment: .top) {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(employee.fullName).font(.headline)
+                                                Text("MSNV: \(employee.employeeCode)")
+                                                    .font(.caption).foregroundColor(AppTheme.muted)
+                                            }
+                                            Spacer(minLength: 8)
+                                            Label(employee.alreadyReceived == true ? "Đã nhận trước đó" : "Đã nhận", systemImage: "checkmark.circle.fill")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundColor(AppTheme.text(.green))
+                                        }
+                                        scannerResultLine("Phòng ban", employee.department.isEmpty ? "Chưa cập nhật" : employee.department)
+                                        scannerResultLine("Loại món", employee.choice == "water" ? "Món nước" : "Món chay")
+                                        scannerResultLine("Tên món", employee.mealName.isEmpty ? "Chưa cập nhật" : employee.mealName)
+                                    }
+                                    .padding(12)
+                                    .background(AppTheme.ink.opacity(0.28))
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                                }
+                            }
+                        } else {
                         VStack(spacing: 10) {
                             scannerResultLine("Nhân viên", result.fullName)
                             scannerResultLine("MSNV", result.employeeCode)
@@ -171,6 +210,7 @@ struct CanteenScannerView: View {
                             scannerResultLine("Tên món", result.mealName?.isEmpty == false ? result.mealName! : "Chưa cập nhật")
                         }
                         .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
+                        }
                         Button {
                             self.result = nil
                             scanning = true
@@ -184,6 +224,7 @@ struct CanteenScannerView: View {
                     .padding(20)
                     .background(AppTheme.card.opacity(0.94))
                     .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    }
                 } else {
                     QRScannerView(isActive: scanning) { code in
                         scanning = false
