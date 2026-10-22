@@ -127,9 +127,13 @@ struct MealQRCodeAccessCard: View {
     private func issueCode() async {
         isLoading = true
         defer { isLoading = false }
-        guard let response = await (useManagedGroupQr
-            ? session.issueManagedMealQRCode()
-            : session.issueMealQRCode()) else { return }
+        let response: MealQrIssueResponse?
+        if useManagedGroupQr {
+            response = await session.issueManagedMealQRCode()
+        } else {
+            response = await session.issueMealQRCode()
+        }
+        guard let response else { return }
         let lifetime = max(1, response.expiresInSeconds)
         deadline = ContinuousClock.now + .seconds(lifetime)
         expiresAt = Date().addingTimeInterval(TimeInterval(lifetime))
