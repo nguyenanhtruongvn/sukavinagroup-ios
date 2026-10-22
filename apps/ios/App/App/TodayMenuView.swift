@@ -134,14 +134,21 @@ struct TodayMenuView: View {
                             Divider()
                             Text("ĐẶT THÊM CHO NHÂN VIÊN")
                                 .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                            mealButton("Món nước", detail: menuStore.todayMenu?.day.featured,
-                                icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan,
-                                choice: "water", forManagedOnly: true)
-                            mealButton("Món chay", detail: [menuStore.todayMenu?.day.vegetarianMain,
-                                menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }
-                                .filter { !$0.isEmpty }.joined(separator: " · "),
-                                icon: "leaf.fill", color: .green,
-                                choice: "vegetarian", forManagedOnly: true)
+                            // Mirror Android: a manager must cancel their own meal
+                            // before choosing that same dish again. Only offer the
+                            // alternative dish for additional delegated orders.
+                            if menuStore.todayMenu?.selection != "water" {
+                                mealButton("Món nước", detail: menuStore.todayMenu?.day.featured,
+                                    icon: "takeoutbag.and.cup.and.straw.fill", color: .cyan,
+                                    choice: "water", forManagedOnly: true)
+                            }
+                            if menuStore.todayMenu?.selection != "vegetarian" {
+                                mealButton("Món chay", detail: [menuStore.todayMenu?.day.vegetarianMain,
+                                    menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }
+                                    .filter { !$0.isEmpty }.joined(separator: " · "),
+                                    icon: "leaf.fill", color: .green,
+                                    choice: "vegetarian", forManagedOnly: true)
+                            }
                         }
                         if !delegatedOrders.isEmpty {
                             Divider()
@@ -424,12 +431,14 @@ struct TodayMenuView: View {
         let available = choice == "water"
             ? (menuStore.todayMenu?.availableChoices?.water ?? fallbackAvailable)
             : (menuStore.todayMenu?.availableChoices?.vegetarian ?? fallbackAvailable)
+        // The tile may be reused while live menu updates arrive. Prevent
+        // a duplicate selection even if the sheet was opened just beforehand.
+        let canChoose = available && menuStore.todayMenu?.selection != choice
         return Button {
-            if available {
-                includeSelfForPendingChoice = !forManagedOnly
-                selectedManagedEmployeeIds = []
-                pendingChoice = choice
-            }
+            guard canChoose else { return }
+            includeSelfForPendingChoice = !forManagedOnly
+            selectedManagedEmployeeIds = []
+            pendingChoice = choice
         } label: {
             HStack(spacing: 13) {
                 Image(systemName: icon).font(.title3).foregroundColor(color).frame(width: 44, height: 44).background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 14))
@@ -446,8 +455,8 @@ struct TodayMenuView: View {
             .shadow(color: Color.black.opacity(selected ? 0.05 : 0.03), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
-        .disabled(isSessionWorking || !available)
-        .opacity(available ? 1 : 0.58)
+        .disabled(isSessionWorking || !canChoose)
+        .opacity(canChoose ? 1 : 0.58)
     }
 }
 
