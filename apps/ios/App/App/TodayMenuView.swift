@@ -22,7 +22,8 @@ struct TodayMenuView: View {
     @State private var pendingChoice: String?
     @State private var includeSelfForPendingChoice = true
     @State private var selectedManagedEmployeeIds: Set<String> = []
-    @State private var mealSheetHeight: CGFloat = 420
+    // Measured from the actual sheet content; no fixed minimum height.
+    @State private var mealSheetHeight: CGFloat = 1
 
     private var delegatedOrders: [ManagedMealEmployee] {
         (menuStore.todayMenu?.managedEmployees ?? []).filter {
@@ -351,15 +352,22 @@ struct TodayMenuView: View {
             .padding(.horizontal, 22)
             .padding(.top, 24)
             .padding(.bottom, 18)
-        }
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(key: MealSheetHeightPreferenceKey.self, value: proxy.size.height)
+            // Measure the VStack, not the ScrollView viewport. The latter
+            // grows to the old sheet detent and creates empty space below
+            // short confirmation / cancellation content.
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: MealSheetHeightPreferenceKey.self, value: proxy.size.height)
+                }
             }
         }
         .onPreferenceChange(MealSheetHeightPreferenceKey.self) { height in
             guard height > 0 else { return }
-            mealSheetHeight = min(max(height + 8, 300), UIScreen.main.bounds.height * 0.82)
+            let maximumHeight = UIScreen.main.bounds.height * 0.82
+            let measuredHeight = min(ceil(height + 8), maximumHeight)
+            if abs(mealSheetHeight - measuredHeight) > 1 {
+                mealSheetHeight = measuredHeight
+            }
         }
         .fittedMealSheetSizing(fallbackHeight: mealSheetHeight)
         .presentationContentInteraction(.scrolls)
