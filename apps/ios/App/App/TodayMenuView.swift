@@ -186,53 +186,159 @@ struct TodayMenuView: View {
                 }
             }
             .onReceive(session.$isWorking) { isSessionWorking = $0 }
-            .mealConfirmationSheet(isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } })) {
+            .mealConfirmationSheet(isPresented: Binding(
+                get: { pendingChoice != nil },
+                set: { if !$0 { pendingChoice = nil } }
+            )) {
                 let choice = pendingChoice ?? "water"
                 let cancelling = choice == "cancel"
                 let title = choice == "water" ? "Món nước" : "Món chay"
                 let detail = choice == "water"
                     ? (menuStore.todayMenu?.day.featured ?? "...")
-                    : [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-                VStack(spacing: 18) {
-                    Image(systemName: cancelling ? "xmark.circle.fill" : (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill"))
-                        .font(.system(size: 28, weight: .bold))
-                        .foregroundColor(cancelling ? .red : (choice == "water" ? .cyan : .green))
-                        .frame(width: 64, height: 64)
-                        .background((cancelling ? Color.red : (choice == "water" ? Color.cyan : Color.green)).opacity(0.13))
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                    VStack(spacing: 7) {
-                        Text(cancelling ? "Hủy lựa chọn hôm nay?" : "Xác nhận \(title)")
-                            .font(.title2.bold())
-                        Text(cancelling ? "Bạn có thể chọn lại món khác bất cứ lúc nào trong ngày." : "Kiểm tra món trước khi xác nhận đặt.")
-                            .font(.subheadline).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
-                    }
-                    if !cancelling {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(title.uppercased()).font(.caption.bold()).tracking(1).foregroundColor(AppTheme.muted)
-                            Text(detail.isEmpty ? "..." : detail).font(.headline)
+                    : [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide]
+                        .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+                let allEmployees = menuStore.todayMenu?.managedEmployees ?? []
+                let eligibleEmployees = allEmployees.filter { $0.selection == nil }
+                let eligibleIDs = Set(eligibleEmployees.map(\.id))
+                let managerSelectable = menuStore.todayMenu?.selection == nil
+                let allSelected = !eligibleIDs.isEmpty
+                    && selectedManagedEmployeeIds == eligibleIDs
+                    && (!managerSelectable || includeSelfForPendingChoice)
+                let numberOfPeople = selectedManagedEmployeeIds.count
+                    + (managerSelectable && includeSelfForPendingChoice ? 1 : 0)
+
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        Image(systemName: cancelling ? "xmark.circle.fill" :
+                              (choice == "water" ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill"))
+                            .font(.system(size: 28, weight: .bold))
+                            .foregroundColor(cancelling ? .red : (choice == "water" ? .cyan : .green))
+                            .frame(width: 64, height: 64)
+                            .background((cancelling ? Color.red : (choice == "water" ? Color.cyan : Color.green)).opacity(0.13))
+                            .clipShape(RoundedRectangle(cornerRadius: 20))
+
+                        VStack(spacing: 7) {
+                            Text(cancelling ? "Hủy lựa chọn hôm nay?" : "Xác nhận \(title)")
+                                .font(.title2.bold())
+                            Text(cancelling ? "Bạn có thể chọn lại món khác trong thời gian cho phép."
+                                 : "Kiểm tra món và những người được đặt trước khi xác nhận.")
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.muted)
+                                .multilineTextAlignment(.center)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 16))
-                    }
-                    Button {
-                        pendingChoice = nil
-                        Task {
-                            if cancelling { await session.cancelMealSelection() }
-                            else { await session.selectMeal(choice) }
+
+                        if !cancelling {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(title.uppercased())
+                                        .font(.caption.bold()).tracking(1).foregroundColor(AppTheme.muted)
+                                    Text(detail.isEmpty ? "..." : detail).font(.headline)
+                                }
+                                Spacer(minLength: 8)
+                                if !allEmployees.isEmpty {
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text("SỐ NGƯỜI").font(.caption2.bold()).foregroundColor(AppTheme.muted)
+                                        Text("\(numberOfPeople)").font(.title2.bold()).monospacedDigit()
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+                            .background(AppTheme.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
                         }
-                    } label: {
-                        Text(cancelling ? "Xác nhận hủy" : "Xác nhận đặt món")
-                            .font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 15)
-                            .background(cancelling ? Color.red : AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
-                    }
-                    Button("Quay lại") { pendingChoice = nil }
-                        .font(.headline).foregroundColor(AppTheme.muted).padding(.vertical, 5)
+
+                        if !cancelling && !allEmployees.isEmpty {
+                            HStack(spacing: 8) {
+                                managerSelectionTile("Tôi",
+                                    selected: managerSelectable && includeSelfForPendingChoice,
+                                    enabled: managerSelectable) {
+                                    includeSelfForPendingChoice.toggle()
+                                }
+                                managerSelectionTile("Tất cả",
+                                    selected: allSelected,
+                                    enabled: !eligibleIDs.isEmpty) {
+                                    if allSelected {
+                                        selectedManagedEmployeeIds = []
+                                        if managerSelectable { includeSelfForPendingChoice = false }
+                                    } else {
+                                        selectedManagedEmployeeIds = eligibleIDs
+                                        if managerSelectable { includeSelfForPendingChoice = true }
+                                    }
+                                }
+                            }
+
+                            Text("ĐẶT CÙNG NHÂN VIÊN")
+                                .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                                ForEach(allEmployees) { employee in
+                                    let canSelect = employee.selection == nil
+                                    let selected = selectedManagedEmployeeIds.contains(employee.id)
+                                    Button {
+                                        if selected {
+                                            selectedManagedEmployeeIds.remove(employee.id)
+                                        } else {
+                                            selectedManagedEmployeeIds.insert(employee.id)
+                                        }
+                                    } label: {
+                                        Text(employee.fullName.isEmpty ? employee.employeeCode : employee.fullName)
+                                            .font(.subheadline.weight(.semibold))
+                                            .foregroundColor(canSelect ? .primary : AppTheme.muted)
+                                            .lineLimit(2)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 11)
+                                            .background(selected ? Color.green.opacity(0.16) :
+                                                (canSelect ? AppTheme.card : AppTheme.card.opacity(0.45)))
+                                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                                            .overlay {
+                                                if selected {
+                                                    RoundedRectangle(cornerRadius: 12)
+                                                        .stroke(Color.green.opacity(0.65), lineWidth: 1)
+                                                }
+                                            }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(!canSelect)
+                                }
+                            }
+                        }
+
+                        Button {
+                            guard cancelling || numberOfPeople > 0 else { return }
+                            pendingChoice = nil
+                            Task {
+                                if cancelling {
+                                    await session.cancelMealSelection()
+                                } else if selectedManagedEmployeeIds.isEmpty && includeSelfForPendingChoice && managerSelectable {
+                                    await session.selectMeal(choice)
+                                } else {
+                                    await session.selectMealWithManagedEmployees(
+                                        choice,
+                                        employeeIds: Array(selectedManagedEmployeeIds),
+                                        includeSelf: managerSelectable && includeSelfForPendingChoice
+                                    )
+                                }
+                            }
+                        } label: {
+                            Text(cancelling ? "Xác nhận hủy" : "Đặt món")
+                                .font(.headline).foregroundColor(.white)
+                                .frame(maxWidth: .infinity).padding(.vertical, 15)
+                                .background(cancelling ? Color.red : AppTheme.red)
+                                .clipShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                        .disabled(!cancelling && numberOfPeople == 0)
+                        .opacity(!cancelling && numberOfPeople == 0 ? 0.45 : 1)
+
+                        Button("Quay lại") { pendingChoice = nil }
+                            .font(.headline).foregroundColor(AppTheme.muted).padding(.vertical, 5)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, 22)
-                    // Room for Apple's drag indicator above the icon.
                     .padding(.top, 24)
                     .padding(.bottom, 18)
+                }
                 .background {
                     GeometryReader { proxy in
                         Color.clear.preference(key: MealSheetHeightPreferenceKey.self, value: proxy.size.height)
@@ -243,13 +349,35 @@ struct TodayMenuView: View {
                     mealSheetHeight = min(max(height + 8, 300), UIScreen.main.bounds.height * 0.82)
                 }
                 .fittedMealSheetSizing(fallbackHeight: mealSheetHeight)
-                // In the menu card, a downward pull is a sheet-dismiss gesture;
-                // refreshing remains available from the dashboard itself.
-                .presentationContentInteraction(.resizes)
+                .presentationContentInteraction(.scrolls)
                 .presentationDragIndicator(.visible)
                 .attachedMealSheetCorners()
             }
         }
+    }
+
+    private func managerSelectionTile(
+        _ title: String, selected: Bool, enabled: Bool, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(selected ? AppTheme.text(.green) :
+                    (enabled ? Color.primary : AppTheme.muted))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(selected ? Color.green.opacity(0.16) :
+                    (enabled ? AppTheme.card : AppTheme.card.opacity(0.45)))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 14)
+                            .stroke(Color.green.opacity(0.65), lineWidth: 1)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
     }
 
     private func selectedMealDetail(_ selection: String) -> String {
@@ -317,6 +445,31 @@ struct TodayMenuView: View {
         .buttonStyle(.plain)
         .disabled(isSessionWorking || !available)
         .opacity(available ? 1 : 0.58)
+    }
+}
+
+private struct MealReceiptStatusRow: View {
+    let title: String
+    let detail: String
+    let receivedAt: String?
+
+    var body: some View {
+        let received = receivedAt != nil
+        let color = received ? Color.green : Color.orange
+        HStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                Text(detail).font(.caption).foregroundColor(AppTheme.muted)
+            }
+            Spacer(minLength: 8)
+            Label(received ? "Đã nhận" : "Chưa nhận",
+                  systemImage: received ? "checkmark.circle.fill" : "clock")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(AppTheme.text(color, chipAlpha: 0.12))
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .background(color.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
     }
 }
 
