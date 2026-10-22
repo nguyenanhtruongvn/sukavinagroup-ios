@@ -411,6 +411,16 @@ struct TodayMenu: Codable {
     let orderingOpen: Bool
     let orderingCutoff: String
     let availableChoices: MealAvailability?
+    let managedEmployees: [ManagedMealEmployee]
+}
+
+struct ManagedMealEmployee: Codable, Identifiable {
+    let id: String
+    let employeeCode: String
+    let fullName: String
+    let department: String
+    let selection: String?
+    let receivedAt: String?
 }
 
 struct MealAvailability: Codable {
@@ -422,6 +432,7 @@ struct MealQrIssueResponse: Decodable {
     let token: String
     let expiresAt: String
     let expiresInSeconds: Int
+    let selectionCount: Int?
 }
 
 struct MealScanResponse: Decodable {
@@ -434,6 +445,21 @@ struct MealScanResponse: Decodable {
     let mealName: String?
     let mealDate: String
     let receivedAt: String
+    let group: Bool?
+    let confirmedCount: Int?
+    let selectionCount: Int?
+    let confirmedEmployees: [MealConfirmedEmployee]?
+}
+
+struct MealConfirmedEmployee: Decodable, Identifiable {
+    var id: String { employeeCode }
+    let employeeCode: String
+    let fullName: String
+    let department: String
+    let choice: String
+    let mealName: String
+    let mealDate: String
+    let receivedAt: String?
 }
 
 struct MealSelectionBody: Encodable {

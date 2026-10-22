@@ -132,6 +132,45 @@ struct MealQRCodeAccessCard: View {
     }
 }
 
+struct ManagedMealCard: View {
+    let menu: TodayMenu
+    @Environment(\.sessionActions) private var sessionActions
+    private var session: SessionStore { sessionActions.store }
+    @State private var issued: MealQrIssueResponse?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ĐẶT HỘ NHÂN VIÊN").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+            Text("Mỗi nhân viên có món và mã QR riêng.").font(.caption).foregroundColor(AppTheme.muted)
+            ForEach(menu.managedEmployees) { employee in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(employee.fullName).font(.headline)
+                    Text("\(employee.employeeCode) · \(employee.department)").font(.caption).foregroundColor(AppTheme.muted)
+                    if employee.receivedAt != nil {
+                        Label("Đã xác nhận nhận món", systemImage: "checkmark.seal.fill").font(.caption).foregroundColor(.green)
+                    } else {
+                        HStack { choiceButton("Món nước", "water", employee); choiceButton("Món chay", "vegetarian", employee) }
+                    }
+                }.padding(13).background(AppTheme.ink.opacity(0.65)).clipShape(RoundedRectangle(cornerRadius: 16))
+            }
+            if let issued {
+                MealQRCodeCard(token: issued.token)
+                Text("QR này xác nhận chung \(issued.selectionCount ?? 0) suất chưa nhận.").font(.caption).foregroundColor(AppTheme.muted)
+            } else {
+                Button { Task { issued = await session.issueManagedMealQRCode() } } label: {
+                    Label("Lấy mã QR nhận chung", systemImage: "qrcode").font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding(.vertical, 14).background(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
+                }.buttonStyle(.plain).disabled(!menu.managedEmployees.contains { $0.selection != nil && $0.receivedAt == nil })
+            }
+        }.padding(18).background(AppTheme.card.opacity(0.86)).clipShape(RoundedRectangle(cornerRadius: 22))
+    }
+
+    private func choiceButton(_ title: String, _ choice: String, _ employee: ManagedMealEmployee) -> some View {
+        Button { Task { await session.selectManagedMeal(employeeID: employee.id, choice: choice) } } label: {
+            Text(employee.selection == choice ? "✓ \(title)" : title).font(.caption.weight(.semibold)).frame(maxWidth: .infinity).padding(.vertical, 10).background(employee.selection == choice ? AppTheme.red.opacity(0.16) : Color.white.opacity(0.07)).clipShape(RoundedRectangle(cornerRadius: 12))
+        }.buttonStyle(.plain).disabled(menu.orderingOpen == false)
+    }
+}
+
 struct CanteenScannerView: View {
     // Only calls session methods; the root is rebuilt when the profile
     // changes, so this view need not redraw on every session change.
@@ -161,14 +200,21 @@ struct CanteenScannerView: View {
                         Image(systemName: result.alreadyReceived ? "exclamationmark.circle.fill" : "checkmark.seal.fill")
                             .font(.system(size: 54, weight: .bold))
                             .foregroundColor(result.alreadyReceived ? .orange : .green)
-                        Text(result.alreadyReceived ? "Suất ăn đã được xác nhận" : "Xác nhận suất ăn thành công")
+                        Text(result.alreadyReceived ? "Suất ăn đã được xác nhận" : (result.group == true ? "Đã xác nhận \(result.confirmedCount ?? 0) suất ăn" : "Xác nhận suất ăn thành công"))
                             .font(.title3.bold()).multilineTextAlignment(.center)
                         VStack(spacing: 10) {
-                            scannerResultLine("Nhân viên", result.fullName)
-                            scannerResultLine("MSNV", result.employeeCode)
-                            scannerResultLine("Phòng ban", result.department)
-                            scannerResultLine("Loại món", result.choice == "water" ? "Món nước" : "Món chay")
-                            scannerResultLine("Tên món", result.mealName?.isEmpty == false ? result.mealName! : "Chưa cập nhật")
+                            if result.group == true {
+                                scannerResultLine("Suất trong mã", "\(result.selectionCount ?? 0)")
+                                ForEach(result.confirmedEmployees ?? []) { employee in
+                                    scannerResultLine(employee.fullName, employee.choice == "water" ? "Món nước" : "Món chay")
+                                }
+                            } else {
+                                scannerResultLine("Nhân viên", result.fullName)
+                                scannerResultLine("MSNV", result.employeeCode)
+                                scannerResultLine("Phòng ban", result.department)
+                                scannerResultLine("Loại món", result.choice == "water" ? "Món nước" : "Món chay")
+                                scannerResultLine("Tên món", result.mealName?.isEmpty == false ? result.mealName! : "Chưa cập nhật")
+                            }
                         }
                         .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
                         Button {

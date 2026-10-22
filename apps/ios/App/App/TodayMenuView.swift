@@ -121,6 +121,10 @@ struct TodayMenuView: View {
                     .padding(18)
                     .background(AppTheme.card.opacity(0.86))
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                    if let menu = menuStore.todayMenu, !menu.managedEmployees.isEmpty {
+                        ManagedMealCard(menu: menu)
+                    }
                 }
                 .frame(maxWidth: horizontalSizeClass == .regular ? 760 : .infinity)
                 .frame(maxWidth: .infinity)

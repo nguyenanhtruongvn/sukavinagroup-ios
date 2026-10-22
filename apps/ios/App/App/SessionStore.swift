@@ -1170,6 +1170,18 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    func issueManagedMealQRCode() async -> MealQrIssueResponse? {
+        guard let token else { return nil }
+        do {
+            return try await APIClient.shared.request(
+                "me/menu/managed-selections/qr", method: "POST", token: token
+            )
+        } catch {
+            present(error)
+            return nil
+        }
+    }
+
     func selectMeal(_ choice: String) async {
         guard let token else { return }
         todayMenuRefreshTask?.cancel()
@@ -1189,6 +1201,23 @@ final class SessionStore: ObservableObject {
         } catch {
             present(error)
         }
+    }
+
+    func selectManagedMeal(employeeID: String, choice: String) async {
+        guard let token else { return }
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let value: TodayMenu = try await APIClient.shared.request(
+                "me/menu/managed-selections/\(employeeID)", method: "PATCH", token: token,
+                body: MealSelectionBody(choice: choice)
+            )
+            todayMenu = value
+            todayMenuLoadedAt = Date()
+            saveTodayMenuCache(value)
+        } catch { present(error) }
     }
 
     func cancelMealSelection() async {
