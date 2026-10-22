@@ -1170,6 +1170,73 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// One manager QR includes their own pending meal and all meals ordered on behalf of staff.
+    func issueManagedMealQRCode() async -> MealQrIssueResponse? {
+        guard let token else { return nil }
+        do {
+            return try await APIClient.shared.request(
+                "me/menu/managed-selections/qr",
+                method: "POST",
+                token: token
+            )
+        } catch {
+            present(error)
+            return nil
+        }
+    }
+
+    /// Uses the existing API response to update own and delegated statuses together.
+    func selectMealWithManagedEmployees(
+        _ choice: String,
+        employeeIds: [String],
+        includeSelf: Bool
+    ) async {
+        guard let token, includeSelf || !employeeIds.isEmpty else { return }
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let value: TodayMenu = try await APIClient.shared.request(
+                "me/menu/selection/with-managed",
+                method: "PATCH",
+                token: token,
+                body: MealSelectionWithManagedBody(
+                    choice: choice,
+                    employeeIds: Array(Set(employeeIds)).sorted(),
+                    includeSelf: includeSelf
+                )
+            )
+            todayMenu = value
+            todayMenuLoadedAt = Date()
+            saveTodayMenuCache(value)
+        } catch {
+            present(error)
+        }
+    }
+
+    /// Allow a manager to order an additional meal without changing their own choice.
+    func selectMealForManagedEmployee(_ employeeId: String, choice: String) async {
+        guard let token else { return }
+        todayMenuRefreshTask?.cancel()
+        todayMenuRefreshTask = nil
+        isWorking = true
+        defer { isWorking = false }
+        do {
+            let value: TodayMenu = try await APIClient.shared.request(
+                "me/menu/managed-selections/\(employeeId)",
+                method: "PATCH",
+                token: token,
+                body: MealSelectionBody(choice: choice)
+            )
+            todayMenu = value
+            todayMenuLoadedAt = Date()
+            saveTodayMenuCache(value)
+        } catch {
+            present(error)
+        }
+    }
+
     func selectMeal(_ choice: String) async {
         guard let token else { return }
         todayMenuRefreshTask?.cancel()
