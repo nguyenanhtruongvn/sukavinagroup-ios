@@ -1469,9 +1469,9 @@ struct RequestComposer: View {
                     }
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("TẠO ĐƠN CHO")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.muted)
+                        Label("Tạo đơn cho", systemImage: "person.2.fill")
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(.primary)
                         Button { showingRecipientPicker = true } label: {
                             HStack(spacing: 10) {
                                 Text(recipientSummary)
