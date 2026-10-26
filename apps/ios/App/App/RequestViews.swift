@@ -91,6 +91,7 @@ private struct RequestRecipientsPickerSheet: View {
     @ObservedObject var store: EmployeeRequestStore
     let token: String?
     @Binding var selectedIDs: Set<String>
+    @State private var sheetHeight: CGFloat = 1
 
     private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
     private var allIDs: Set<String> { Set(store.managedEmployees.map(\.id)) }
@@ -105,8 +106,15 @@ private struct RequestRecipientsPickerSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("Tạo đơn cho").font(.title2.bold())
+                    Spacer(minLength: 12)
+                    Button("Hoàn tất") { dismiss() }
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.red)
+                }
                 if !store.managedEmployeesLoaded {
                     VStack(spacing: 14) {
                         if let error = store.managedEmployeesError {
@@ -119,55 +127,61 @@ private struct RequestRecipientsPickerSheet: View {
                             ProgressView("Đang tải danh sách...")
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 28)
                 } else {
                     let selfPerson = store.managedEmployees.first(where: \.isSelf)
                     let employees = store.managedEmployees.filter { !$0.isSelf }
-                    ScrollView(showsIndicators: false) {
-                        VStack(alignment: .leading, spacing: 14) {
-                            LazyVGrid(columns: columns, spacing: 8) {
-                                if let selfPerson {
-                                    RequestRecipientChoiceTile(
-                                        title: "Tôi",
-                                        selected: selectedIDs.contains(selfPerson.id)
-                                    ) { toggle(selfPerson.id) }
-                                }
-                                RequestRecipientChoiceTile(title: "Tất cả", selected: allSelected) {
-                                    selectedIDs = allSelected ? [] : allIDs
-                                }
-                            }
-
-                            if !employees.isEmpty {
-                                Text("TẠO ĐƠN CÙNG NHÂN VIÊN")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(AppTheme.muted)
-                                    .kerning(0.8)
-                                LazyVGrid(columns: columns, spacing: 8) {
-                                    ForEach(employees) { employee in
-                                        RequestRecipientChoiceTile(
-                                            title: employee.fullName,
-                                            selected: selectedIDs.contains(employee.id)
-                                        ) { toggle(employee.id) }
-                                    }
-                                }
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        if let selfPerson {
+                            RequestRecipientChoiceTile(
+                                title: "Tôi",
+                                selected: selectedIDs.contains(selfPerson.id)
+                            ) { toggle(selfPerson.id) }
+                        }
+                        RequestRecipientChoiceTile(title: "Tất cả", selected: allSelected) {
+                            selectedIDs = allSelected ? [] : allIDs
+                        }
+                    }
+                    if !employees.isEmpty {
+                        Text("TẠO ĐƠN CÙNG NHÂN VIÊN")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.muted)
+                            .kerning(0.8)
+                        LazyVGrid(columns: columns, spacing: 8) {
+                            ForEach(employees) { employee in
+                                RequestRecipientChoiceTile(
+                                    title: employee.fullName,
+                                    selected: selectedIDs.contains(employee.id)
+                                ) { toggle(employee.id) }
                             }
                         }
-                        .padding(20)
                     }
                 }
             }
-            .background(AppTheme.ink.ignoresSafeArea())
-            .navigationTitle("Tạo đơn cho")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Hoàn tất") { dismiss() }
-                        .fontWeight(.semibold)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 22)
+            .padding(.top, 24)
+            .padding(.bottom, 18)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: MealSheetHeightPreferenceKey.self, value: proxy.size.height)
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .background(AppTheme.ink.ignoresSafeArea())
+        .onPreferenceChange(MealSheetHeightPreferenceKey.self) { height in
+            guard height > 0 else { return }
+            let maximumHeight = UIScreen.main.bounds.height * 0.82
+            let measuredHeight = min(ceil(height + 8), maximumHeight)
+            if abs(sheetHeight - measuredHeight) > 1 {
+                sheetHeight = measuredHeight
+            }
+        }
+        .fittedMealSheetSizing(fallbackHeight: sheetHeight)
+        .presentationContentInteraction(.scrolls)
         .presentationDragIndicator(.visible)
+        .attachedMealSheetCorners()
     }
 }
 
