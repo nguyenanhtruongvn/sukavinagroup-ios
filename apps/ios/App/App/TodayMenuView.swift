@@ -96,28 +96,21 @@ struct TodayMenuView: View {
                                     receivedAt: employee.receivedAt
                                 )
                             }
-                            if menuStore.todayMenu?.receivedAt == nil || hasPendingDelegatedOrders {
-                                MealQRCodeAccessCard(useManagedGroupQr: hasPendingDelegatedOrders)
-                                    .id(hasPendingDelegatedOrders)
-                            }
-                            if menuStore.todayMenu?.receivedAt == nil {
-                                Button {
-                                    pendingChoice = "cancel"
-                                } label: {
-                                    Label("Hủy lựa chọn hôm nay", systemImage: "xmark.circle.fill")
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundColor(.red.opacity(0.86))
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 12)
+                            let otherDelegatedOrders = delegatedOrders.filter { $0.selection != selection }
+                            if !otherDelegatedOrders.isEmpty {
+                                Divider()
+                                Text("NHÂN VIÊN ĐƯỢC ĐẶT HỘ MÓN KHÁC")
+                                    .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
+                                ForEach(otherDelegatedOrders) { employee in
+                                    MealReceiptStatusRow(
+                                        title: employee.fullName.isEmpty ? employee.employeeCode : employee.fullName,
+                                        detail: employee.selection == "vegetarian" ? "Món chay" : "Món nước",
+                                        receivedAt: employee.receivedAt
+                                    )
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(menuStore.todayMenu?.orderingOpen == false)
                             }
                         } else {
                             Text("LỰA CHỌN HÔM NAY").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                            if hasPendingDelegatedOrders {
-                                MealQRCodeAccessCard(useManagedGroupQr: true)
-                            }
                             if menuStore.todayMenu?.orderingOpen == false {
                                 HStack(spacing: 12) {
                                     Image(systemName: "clock.badge.exclamationmark.fill")
@@ -163,24 +156,40 @@ struct TodayMenuView: View {
                                     choice: "vegetarian", forManagedOnly: true)
                             }
                         }
-                        // A manager can choose a different meal for another
-                        // direct report later. Keep only those other dishes
-                        // in a separate group; same-dish recipients are
-                        // already shown in the main dish card above.
-                        let otherDelegatedOrders = delegatedOrders.filter {
-                            $0.selection != menuStore.todayMenu?.selection
-                        }
-                        if !otherDelegatedOrders.isEmpty {
+                        if menuStore.todayMenu?.selection == nil, !delegatedOrders.isEmpty {
                             Divider()
-                            Text(menuStore.todayMenu?.selection == nil ? "NHÂN VIÊN ĐƯỢC ĐẶT HỘ" : "NHÂN VIÊN ĐƯỢC ĐẶT HỘ MÓN KHÁC")
+                            Text("NHÂN VIÊN ĐƯỢC ĐẶT HỘ")
                                 .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                            ForEach(otherDelegatedOrders) { employee in
+                            ForEach(delegatedOrders) { employee in
                                 MealReceiptStatusRow(
                                     title: employee.fullName.isEmpty ? employee.employeeCode : employee.fullName,
                                     detail: employee.selection == "vegetarian" ? "Món chay" : "Món nước",
                                     receivedAt: employee.receivedAt
                                 )
                             }
+                        }
+                        // Keep QR and cancellation controls at the bottom,
+                        // after every meal/person row and add-more choice.
+                        if menuStore.todayMenu?.selection != nil {
+                            if menuStore.todayMenu?.receivedAt == nil {
+                                Button {
+                                    pendingChoice = "cancel"
+                                } label: {
+                                    Label("Hủy lựa chọn hôm nay", systemImage: "xmark.circle.fill")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(.red.opacity(0.86))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 12)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(menuStore.todayMenu?.orderingOpen == false)
+                            }
+                            if menuStore.todayMenu?.receivedAt == nil || hasPendingDelegatedOrders {
+                                MealQRCodeAccessCard(useManagedGroupQr: hasPendingDelegatedOrders)
+                                    .id(hasPendingDelegatedOrders)
+                            }
+                        } else if hasPendingDelegatedOrders {
+                            MealQRCodeAccessCard(useManagedGroupQr: true)
                         }
                     }
                     .padding(18)
