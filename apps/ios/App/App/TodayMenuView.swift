@@ -65,6 +65,11 @@ struct TodayMenuView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         if let selection = menuStore.todayMenu?.selection {
                             let isWater = selection == "water"
+                            // Keep every person receiving this same dish in
+                            // the dish card. Previously they were displayed
+                            // much farther down as a separate list, leaving
+                            // the card misleadingly showing only “Tôi”.
+                            let peopleWithThisMeal = delegatedOrders.filter { $0.selection == selection }
                             Text("MÓN ĂN ĐÃ ĐẶT").font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                             HStack(spacing: 14) {
                                 Image(systemName: isWater ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill")
@@ -84,6 +89,13 @@ struct TodayMenuView: View {
                                 detail: isWater ? "Món nước" : "Món chay",
                                 receivedAt: menuStore.todayMenu?.receivedAt
                             )
+                            ForEach(peopleWithThisMeal) { employee in
+                                MealReceiptStatusRow(
+                                    title: employee.fullName.isEmpty ? employee.employeeCode : employee.fullName,
+                                    detail: isWater ? "Món nước" : "Món chay",
+                                    receivedAt: employee.receivedAt
+                                )
+                            }
                             if menuStore.todayMenu?.receivedAt == nil || hasPendingDelegatedOrders {
                                 MealQRCodeAccessCard(useManagedGroupQr: hasPendingDelegatedOrders)
                                     .id(hasPendingDelegatedOrders)
@@ -151,14 +163,21 @@ struct TodayMenuView: View {
                                     choice: "vegetarian", forManagedOnly: true)
                             }
                         }
-                        if !delegatedOrders.isEmpty {
+                        // A manager can choose a different meal for another
+                        // direct report later. Keep only those other dishes
+                        // in a separate group; same-dish recipients are
+                        // already shown in the main dish card above.
+                        let otherDelegatedOrders = delegatedOrders.filter {
+                            $0.selection != menuStore.todayMenu?.selection
+                        }
+                        if !otherDelegatedOrders.isEmpty {
                             Divider()
-                            Text("NHÂN VIÊN ĐƯỢC ĐẶT HỘ")
+                            Text(menuStore.todayMenu?.selection == nil ? "NHÂN VIÊN ĐƯỢC ĐẶT HỘ" : "NHÂN VIÊN ĐƯỢC ĐẶT HỘ MÓN KHÁC")
                                 .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                            ForEach(delegatedOrders) { employee in
+                            ForEach(otherDelegatedOrders) { employee in
                                 MealReceiptStatusRow(
-                                    title: employee.fullName,
-                                    detail: employee.employeeCode,
+                                    title: employee.fullName.isEmpty ? employee.employeeCode : employee.fullName,
+                                    detail: employee.selection == "vegetarian" ? "Món chay" : "Món nước",
                                     receivedAt: employee.receivedAt
                                 )
                             }
