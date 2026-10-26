@@ -29,8 +29,6 @@ struct MealQRCodeCard: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            Text(isGroup ? "MÃ QR NHẬN CHUNG" : "MÃ QR NHẬN MÓN")
-                .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
             Group {
                 if let image {
                     Image(uiImage: image)
@@ -46,8 +44,6 @@ struct MealQRCodeCard: View {
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .task(id: token) { image = Self.makeImage(for: token) }
-            Text("Đưa mã này cho nhân viên nhà ăn quét. Mã chỉ dùng cho suất ăn hôm nay.")
-                .font(.caption).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(16)
@@ -99,12 +95,6 @@ struct MealQRCodeAccessCard: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isLoading)
-                Text(useManagedGroupQr
-                     ? "Một lần quét sẽ xác nhận tất cả suất chưa nhận được quản lý đặt hộ và suất của quản lý nếu còn chờ."
-                     : "Mỗi mã chỉ có hiệu lực trong thời gian ngắn và sẽ thay đổi ở lần lấy tiếp theo.")
-                    .font(.caption)
-                    .foregroundColor(AppTheme.muted)
-                    .multilineTextAlignment(.center)
             }
         }
         .task(id: issued?.token) {

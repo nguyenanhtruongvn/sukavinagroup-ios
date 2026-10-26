@@ -84,28 +84,22 @@ struct TodayMenuView: View {
                                         .font(.subheadline).foregroundColor(AppTheme.muted).lineLimit(2)
                                 }
                             }
-                            MealReceiptStatusRow(
-                                title: "Tôi",
-                                detail: isWater ? "Món nước" : "Món chay",
-                                receivedAt: menuStore.todayMenu?.receivedAt
+                            GroupedMealReceiptRows(
+                                pendingNames: (menuStore.todayMenu?.receivedAt == nil ? ["Tôi"] : [])
+                                    + peopleWithThisMeal.filter { $0.receivedAt == nil }.map { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName },
+                                receivedNames: (menuStore.todayMenu?.receivedAt != nil ? ["Tôi"] : [])
+                                    + peopleWithThisMeal.filter { $0.receivedAt != nil }.map { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName }
                             )
-                            ForEach(peopleWithThisMeal) { employee in
-                                MealReceiptStatusRow(
-                                    title: employee.fullName.isEmpty ? employee.employeeCode : employee.fullName,
-                                    detail: isWater ? "Món nước" : "Món chay",
-                                    receivedAt: employee.receivedAt
-                                )
-                            }
                             let otherDelegatedOrders = delegatedOrders.filter { $0.selection != selection }
                             if !otherDelegatedOrders.isEmpty {
-                                Divider()
-                                Text("NHÂN VIÊN ĐƯỢC ĐẶT HỘ MÓN KHÁC")
-                                    .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                                ForEach(otherDelegatedOrders) { employee in
-                                    MealReceiptStatusRow(
-                                        title: employee.fullName.isEmpty ? employee.employeeCode : employee.fullName,
-                                        detail: employee.selection == "vegetarian" ? "Món chay" : "Món nước",
-                                        receivedAt: employee.receivedAt
+                                let otherByChoice = Dictionary(grouping: otherDelegatedOrders, by: { $0.selection ?? "water" })
+                                ForEach(["water", "vegetarian"].filter { otherByChoice[$0] != nil }, id: \.self) { choice in
+                                    let employees = otherByChoice[choice] ?? []
+                                    Divider()
+                                    delegatedMealHeader(choice)
+                                    GroupedMealReceiptRows(
+                                        pendingNames: employees.filter { $0.receivedAt == nil }.map { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName },
+                                        receivedNames: employees.filter { $0.receivedAt != nil }.map { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName }
                                     )
                                 }
                             }
@@ -157,20 +151,24 @@ struct TodayMenuView: View {
                             }
                         }
                         if menuStore.todayMenu?.selection == nil, !delegatedOrders.isEmpty {
-                            Divider()
-                            Text("NHÂN VIÊN ĐƯỢC ĐẶT HỘ")
-                                .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
-                            ForEach(delegatedOrders) { employee in
-                                MealReceiptStatusRow(
-                                    title: employee.fullName.isEmpty ? employee.employeeCode : employee.fullName,
-                                    detail: employee.selection == "vegetarian" ? "Món chay" : "Món nước",
-                                    receivedAt: employee.receivedAt
+                            let delegatedByChoice = Dictionary(grouping: delegatedOrders, by: { $0.selection ?? "water" })
+                            ForEach(["water", "vegetarian"].filter { delegatedByChoice[$0] != nil }, id: \.self) { choice in
+                                let employees = delegatedByChoice[choice] ?? []
+                                Divider()
+                                delegatedMealHeader(choice)
+                                GroupedMealReceiptRows(
+                                    pendingNames: employees.filter { $0.receivedAt == nil }.map { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName },
+                                    receivedNames: employees.filter { $0.receivedAt != nil }.map { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName }
                                 )
                             }
                         }
                         // Keep QR and cancellation controls at the bottom,
                         // after every meal/person row and add-more choice.
                         if menuStore.todayMenu?.selection != nil {
+                            if menuStore.todayMenu?.receivedAt == nil || hasPendingDelegatedOrders {
+                                MealQRCodeAccessCard(useManagedGroupQr: hasPendingDelegatedOrders)
+                                    .id(hasPendingDelegatedOrders)
+                            }
                             if menuStore.todayMenu?.receivedAt == nil {
                                 Button {
                                     pendingChoice = "cancel"
@@ -183,10 +181,6 @@ struct TodayMenuView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .disabled(menuStore.todayMenu?.orderingOpen == false)
-                            }
-                            if menuStore.todayMenu?.receivedAt == nil || hasPendingDelegatedOrders {
-                                MealQRCodeAccessCard(useManagedGroupQr: hasPendingDelegatedOrders)
-                                    .id(hasPendingDelegatedOrders)
                             }
                         } else if hasPendingDelegatedOrders {
                             MealQRCodeAccessCard(useManagedGroupQr: true)
@@ -436,6 +430,24 @@ struct TodayMenuView: View {
         return detail.isEmpty ? "..." : detail
     }
 
+    private func delegatedMealHeader(_ choice: String) -> some View {
+        let water = choice == "water"
+        let color = water ? Color.cyan : Color.green
+        let detail = selectedMealDetail(choice)
+        return HStack(spacing: 13) {
+            Image(systemName: water ? "takeoutbag.and.cup.and.straw.fill" : "leaf.fill")
+                .font(.headline.weight(.bold))
+                .foregroundColor(color)
+                .frame(width: 44, height: 44)
+                .background(color.opacity(0.14))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(water ? "Món nước" : "Món chay").font(.title3.bold())
+                Text(detail).font(.subheadline).foregroundColor(AppTheme.muted).lineLimit(2)
+            }
+        }
+    }
+
     private func menuGroup(_ title: String, icon: String, color: Color, lines: [String?]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: icon).font(.headline).foregroundColor(color).frame(width: 42, height: 42).background(color.opacity(0.14)).clipShape(RoundedRectangle(cornerRadius: 13))
@@ -498,17 +510,14 @@ struct TodayMenuView: View {
 
 private struct MealReceiptStatusRow: View {
     let title: String
-    let detail: String
     let receivedAt: String?
 
     var body: some View {
         let received = receivedAt != nil
         let color = received ? Color.green : Color.orange
         HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.subheadline.weight(.semibold)).lineLimit(2)
-                Text(detail).font(.caption).foregroundColor(AppTheme.muted)
-            }
+            Text(title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: 8)
             Label(received ? "Đã nhận" : "Chưa nhận",
                   systemImage: received ? "checkmark.circle.fill" : "clock")
@@ -517,6 +526,22 @@ private struct MealReceiptStatusRow: View {
                 .padding(.horizontal, 10).padding(.vertical, 7)
                 .background(color.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+}
+
+private struct GroupedMealReceiptRows: View {
+    let pendingNames: [String]
+    let receivedNames: [String]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if !pendingNames.isEmpty {
+                MealReceiptStatusRow(title: pendingNames.joined(separator: ", "), receivedAt: nil)
+            }
+            if !receivedNames.isEmpty {
+                MealReceiptStatusRow(title: receivedNames.joined(separator: ", "), receivedAt: "received")
+            }
         }
     }
 }
