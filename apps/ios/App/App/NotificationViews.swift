@@ -230,8 +230,8 @@ struct NotificationsView: View {
                     )
                 }
                 .sheet(item: $resubmitting) { request in
-                    RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
-                        await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
+                    RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense, employeeIds in
+                        await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense, employeeIds: employeeIds)
                     }
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)

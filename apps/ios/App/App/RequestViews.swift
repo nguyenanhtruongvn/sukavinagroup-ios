@@ -84,6 +84,118 @@ private struct GrowingRequestReasonEditor: UIViewRepresentable {
     }
 }
 
+/// Direct-report picker shared by a manager creating a request for one or
+/// more people. Its two-column tiles intentionally match the meal-order flow.
+private struct RequestRecipientsPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var store: EmployeeRequestStore
+    let token: String?
+    @Binding var selectedIDs: Set<String>
+
+    private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
+    private var allIDs: Set<String> { Set(store.managedEmployees.map(\.id)) }
+    private var allSelected: Bool { !allIDs.isEmpty && selectedIDs.isSuperset(of: allIDs) }
+
+    private func toggle(_ id: String) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if !store.managedEmployeesLoaded {
+                    VStack(spacing: 14) {
+                        if let error = store.managedEmployeesError {
+                            Text(error).multilineTextAlignment(.center).foregroundStyle(AppTheme.muted)
+                            Button("Thử lại") {
+                                Task { await store.loadManagedEmployees(token, force: true) }
+                            }
+                            .buttonStyle(.borderedProminent).tint(AppTheme.red)
+                        } else {
+                            ProgressView("Đang tải danh sách...")
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    let selfPerson = store.managedEmployees.first(where: \.isSelf)
+                    let employees = store.managedEmployees.filter { !$0.isSelf }
+                    ScrollView(showsIndicators: false) {
+                        VStack(alignment: .leading, spacing: 14) {
+                            LazyVGrid(columns: columns, spacing: 8) {
+                                if let selfPerson {
+                                    RequestRecipientChoiceTile(
+                                        title: "Tôi",
+                                        selected: selectedIDs.contains(selfPerson.id)
+                                    ) { toggle(selfPerson.id) }
+                                }
+                                RequestRecipientChoiceTile(title: "Tất cả", selected: allSelected) {
+                                    selectedIDs = allSelected ? [] : allIDs
+                                }
+                            }
+
+                            if !employees.isEmpty {
+                                Text("TẠO ĐƠN CÙNG NHÂN VIÊN")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.muted)
+                                    .kerning(0.8)
+                                LazyVGrid(columns: columns, spacing: 8) {
+                                    ForEach(employees) { employee in
+                                        RequestRecipientChoiceTile(
+                                            title: employee.fullName,
+                                            selected: selectedIDs.contains(employee.id)
+                                        ) { toggle(employee.id) }
+                                    }
+                                }
+                            }
+                        }
+                        .padding(20)
+                    }
+                }
+            }
+            .background(AppTheme.ink.ignoresSafeArea())
+            .navigationTitle("Tạo đơn cho")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Hoàn tất") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct RequestRecipientChoiceTile: View {
+    let title: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                .padding(.horizontal, 12)
+                .foregroundStyle(selected ? Color.green : Color.primary)
+                .background(selected ? Color.green.opacity(0.16) : AppTheme.card)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(selected ? Color.green.opacity(0.65) : Color.primary.opacity(0.10), lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 enum EmployeeRequestStatus: String, Codable, CaseIterable {
     case pending, approved, rejected, cancelled
     var title: String {
@@ -162,7 +274,27 @@ struct EmployeeRequest: Codable, Identifiable {
     }
 }
 
-struct RequestBody: Encodable { let kind: String; let startsAt: Date; let endsAt: Date; let reason: String; let businessDestination: String?; let businessTransport: String?; let businessDistanceKm: Double?; let businessExpense: Double? }
+struct RequestBody: Encodable {
+    let kind: String
+    let startsAt: Date
+    let endsAt: Date
+    let reason: String
+    let businessDestination: String?
+    let businessTransport: String?
+    let businessDistanceKm: Double?
+    let businessExpense: Double?
+    /// Used only by the batch endpoint. The ordinary endpoint ignores it so
+    /// older server versions remain compatible with a request for yourself.
+    let employeeIds: [String]?
+}
+struct ManagedRequestEmployee: Codable, Identifiable {
+    let id: String
+    let employeeCode: String
+    let fullName: String
+    let department: String
+    let isSelf: Bool
+}
+private struct BatchCreatedRequests: Codable { let requests: [EmployeeRequest] }
 struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 
 @MainActor
@@ -177,6 +309,9 @@ final class EmployeeRequestStore: ObservableObject {
     // (a didSet on each rebuilt it two or three times per change).
     @Published private(set) var requests: [EmployeeRequest] = []
     @Published private(set) var approvals: [EmployeeRequest] = []
+    @Published private(set) var managedEmployees: [ManagedRequestEmployee] = []
+    @Published private(set) var managedEmployeesLoaded = false
+    @Published private(set) var managedEmployeesError: String?
     /// Derived once per change of the lists, not on every redraw of the
     /// screens that show them (they redraw far more often than data changes).
     private var byID: [String: EmployeeRequest] = [:]
@@ -225,6 +360,8 @@ final class EmployeeRequestStore: ObservableObject {
     private var lastLoadedAt: Date?
     private var loadTask: Task<Void, Never>?
     private var loadTaskID: UUID?
+    private var managedEmployeesTask: Task<Void, Never>?
+    private var managedEmployeesTaskID: UUID?
     /// A forced load arrived while one was running: run once more.
     private var rerunRequested = false
     private let refreshTTL: TimeInterval = 60
@@ -256,6 +393,12 @@ final class EmployeeRequestStore: ObservableObject {
         rerunRequested = false
         requests = []
         approvals = []
+        managedEmployeesTask?.cancel()
+        managedEmployeesTask = nil
+        managedEmployeesTaskID = nil
+        managedEmployees = []
+        managedEmployeesLoaded = false
+        managedEmployeesError = nil
         rebuildIndex()
         message = nil
         cacheEmployeeCode = nil
@@ -273,6 +416,43 @@ final class EmployeeRequestStore: ObservableObject {
     private static func actionMessage(_ error: Error, fallback: String) -> String {
         let text = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         return text.isEmpty ? fallback : text
+    }
+
+    /// The API is the authority for a manager's direct reports. Do not derive
+    /// this list from an editable employee name or code in the client.
+    func loadManagedEmployees(_ token: String?, force: Bool = false) async {
+        guard let token else { return }
+        if managedEmployeesLoaded && !force { return }
+        if let task = managedEmployeesTask {
+            await task.value
+            return
+        }
+        managedEmployeesError = nil
+        let taskID = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let employees: [ManagedRequestEmployee] = try await APIClient.shared.request(
+                    "me/requests/managed-employees", token: token
+                )
+                guard !Task.isCancelled else { return }
+                self.managedEmployees = employees
+                self.managedEmployeesLoaded = true
+                self.managedEmployeesError = nil
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.managedEmployeesError = Self.actionMessage(error, fallback: "Không tải được danh sách nhân viên.")
+            }
+        }
+        managedEmployeesTask = task
+        managedEmployeesTaskID = taskID
+        await task.value
+        if managedEmployeesTaskID == taskID {
+            managedEmployeesTask = nil
+            managedEmployeesTaskID = nil
+        }
     }
 
     func load(_ token: String?, force: Bool = false) async {
@@ -301,15 +481,19 @@ final class EmployeeRequestStore: ObservableObject {
             do {
                 var loadedRequests: [EmployeeRequest]
                 var loadedApprovals: [EmployeeRequest]
+                var delegatedRequests: [EmployeeRequest]
                 repeat {
                     self.rerunRequested = false
                     async let mine: [EmployeeRequest] = APIClient.shared.request("me/requests", token: token)
                     async let assigned: [EmployeeRequest] = APIClient.shared.request("me/requests/approvals", token: token)
+                    async let delegated: [EmployeeRequest] = APIClient.shared.request("me/requests/delegated", token: token)
                     loadedRequests = try await mine
                     loadedApprovals = try await assigned
+                    delegatedRequests = try await delegated
                 } while self.rerunRequested && !Task.isCancelled
                 guard !Task.isCancelled else { return }
-                self.requests = loadedRequests
+                var seenRequestIDs = Set<String>()
+                self.requests = (loadedRequests + delegatedRequests).filter { seenRequestIDs.insert($0.id).inserted }
                 self.approvals = loadedApprovals
                 self.rebuildIndex()
                 self.lastLoadedAt = Date()
@@ -336,29 +520,38 @@ final class EmployeeRequestStore: ObservableObject {
     }
 
     /// Nil on success, otherwise the message to show in the form (which stays open).
-    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil) async -> String? {
+    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil, employeeIds: [String]? = nil) async -> String? {
         guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
         do {
             loadTask?.cancel()
             loadTask = nil
             loadTaskID = nil
-            let created: EmployeeRequest = try await APIClient.shared.request(
-                "me/requests",
-                method: "POST",
-                token: token,
-                body: RequestBody(
-                    kind: kind.rawValue,
-                    startsAt: from,
-                    endsAt: to,
-                    reason: reason,
-                    businessDestination: destination,
-                    businessTransport: transport,
-                    businessDistanceKm: distanceKm,
-                    businessExpense: expense
-                )
+            let body = RequestBody(
+                kind: kind.rawValue,
+                startsAt: from,
+                endsAt: to,
+                reason: reason,
+                businessDestination: destination,
+                businessTransport: transport,
+                businessDistanceKm: distanceKm,
+                businessExpense: expense,
+                employeeIds: employeeIds
             )
-            requests.removeAll { $0.id == created.id }
-            requests.insert(created, at: 0)
+            let created: [EmployeeRequest]
+            if employeeIds != nil {
+                let result: BatchCreatedRequests = try await APIClient.shared.request(
+                    "me/requests/batch", method: "POST", token: token, body: body
+                )
+                created = result.requests
+            } else {
+                let request: EmployeeRequest = try await APIClient.shared.request(
+                    "me/requests", method: "POST", token: token, body: body
+                )
+                created = [request]
+            }
+            let createdIDs = Set(created.map(\.id))
+            requests.removeAll { createdIDs.contains($0.id) }
+            requests.insert(contentsOf: created, at: 0)
             rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
@@ -463,8 +656,8 @@ struct RequestsView: View {
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $composing) {
-                RequestComposer { kind, from, to, reason, destination, transport, distance, expense in
-                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
+                RequestComposer { kind, from, to, reason, destination, transport, distance, expense, employeeIds in
+                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense, employeeIds: employeeIds)
                 }
                     .presentationDetents([.large])
                     // Let a downward pull dismiss the composer sheet instead
@@ -473,8 +666,8 @@ struct RequestsView: View {
                     .presentationDragIndicator(.hidden)
             }
             .sheet(item: $resubmitting) { request in
-                RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense in
-                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense)
+                RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense, employeeIds in
+                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense, employeeIds: employeeIds)
                 }
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
@@ -892,6 +1085,7 @@ struct RequestComposer: View {
     // Only calls session methods and reads the shift times once: the form
     // must not redraw (while typing) on every session change.
     @Environment(\.sessionActions) private var sessionActions
+    @EnvironmentObject private var requestStore: EmployeeRequestStore
     private var session: SessionStore { sessionActions.store }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var kind = EmployeeRequestKind.leave
@@ -916,7 +1110,7 @@ struct RequestComposer: View {
         case expense
     }
     /// Returns nil on success, otherwise the reason the server rejected it.
-    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) async -> String?
+    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
     @State private var isSubmitting = false
     @State private var submitError: String?
     /// Typed content when the form opened; once it changes, a swipe down no
@@ -932,10 +1126,13 @@ struct RequestComposer: View {
     let template: EmployeeRequest?
     /// The first attendance lookup must not replace the template's times.
     @State private var keepTemplateAttendanceTimes = false
+    @State private var selectedRecipientIDs = Set<String>()
+    @State private var recipientsInitialized = false
+    @State private var showingRecipientPicker = false
 
     init(
         template: EmployeeRequest? = nil,
-        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?) async -> String?
+        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
     ) {
         self.template = template
         self.submit = submit
@@ -984,6 +1181,21 @@ struct RequestComposer: View {
     private var durationDescription: String { DurationClock.title(minutes: durationMinutes) }
     private var workStartTime: String? { session.dashboard?.workStartTime }
     private var workEndTime: String? { session.dashboard?.workEndTime }
+    private var recipientSummary: String {
+        guard requestStore.managedEmployeesLoaded else { return "Tôi" }
+        let people = requestStore.managedEmployees
+        let eligibleIDs = Set(people.map(\.id))
+        let selected = people.filter { selectedRecipientIDs.contains($0.id) }
+        if selected.isEmpty { return "Chưa chọn người" }
+        if !eligibleIDs.isEmpty && selectedRecipientIDs.isSuperset(of: eligibleIDs) { return "Tất cả" }
+        return selected.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ")
+    }
+
+    private func initializeRecipientsIfNeeded() {
+        guard requestStore.managedEmployeesLoaded, !recipientsInitialized else { return }
+        selectedRecipientIDs = Set(requestStore.managedEmployees.filter(\.isSelf).map(\.id))
+        recipientsInitialized = true
+    }
 
     /// The employee's usual shift on today's Sunday, or the next one.
     private func applySundaySchedule(now: Date) {
@@ -1146,6 +1358,9 @@ struct RequestComposer: View {
         if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 {
             return "Ngày bắt đầu phải là Chủ nhật."
         }
+        if requestStore.managedEmployeesLoaded && selectedRecipientIDs.isEmpty {
+            return "Chọn ít nhất một người tạo đơn."
+        }
         if kind == .sunday && to <= from { return "Giờ kết thúc phải sau giờ bắt đầu." }
         if cleanReason.count < 10 { return "Nội dung đơn cần tối thiểu 10 ký tự." }
         let dates = submissionDates
@@ -1251,6 +1466,36 @@ struct RequestComposer: View {
 
                         Text(template == nil ? "Tạo đơn mới" : "Tạo lại đơn")
                             .font(.title.bold())
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("TẠO ĐƠN CHO")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.muted)
+                        Button { showingRecipientPicker = true } label: {
+                            HStack(spacing: 10) {
+                                Text(recipientSummary)
+                                    .font(.body.weight(.semibold))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                Spacer(minLength: 8)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(AppTheme.muted)
+                            }
+                            .padding(.horizontal, 14)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(AppTheme.card)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showingRecipientPicker) {
+                            RequestRecipientsPickerSheet(
+                                store: requestStore,
+                                token: session.token,
+                                selectedIDs: $selectedRecipientIDs
+                            )
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
@@ -1432,6 +1677,13 @@ struct RequestComposer: View {
             .onAppear {
                 applyInitialLeaveSchedule()
             }
+            .task {
+                await requestStore.loadManagedEmployees(session.token)
+                initializeRecipientsIfNeeded()
+            }
+            .onChange(of: requestStore.managedEmployeesLoaded) { _, loaded in
+                if loaded { initializeRecipientsIfNeeded() }
+            }
             .onChange(of: kind) { _, nextKind in
                 if nextKind == .leave {
                     applyInitialLeaveSchedule()
@@ -1507,7 +1759,8 @@ struct RequestComposer: View {
                         isSubmitting = true
                         submitError = nil
                         Task {
-                            let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense))
+                            let employeeIDs = requestStore.managedEmployeesLoaded ? Array(selectedRecipientIDs) : nil
+                            let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense), employeeIDs)
                             isSubmitting = false
                             if let error {
                                 submitError = error
