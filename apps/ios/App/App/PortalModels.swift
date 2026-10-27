@@ -829,7 +829,7 @@ struct LogoutBody: Encodable {
     let liveActivityInstallationId: String?
 }
 struct PushBadgeResetBody: Encodable { let token: String; let acknowledgedAt: Date }
-struct ForgotPasswordRequestBody: Encodable { let employeeCode: String }
+struct ForgotPasswordRequestBody: Encodable { let employeeCode: String; let channel: String }
 struct ForgotPasswordConfirmBody: Encodable {
     let employeeCode: String
     let code: String
@@ -838,6 +838,8 @@ struct ForgotPasswordConfirmBody: Encodable {
 struct ForgotPasswordRequestResponse: Decodable {
     let message: String
     let maskedEmail: String?
+    let maskedPhone: String?
+    let channel: String?
     let expiresInMinutes: Int
 }
 struct DeleteAccountBody: Encodable { let confirmation: String }

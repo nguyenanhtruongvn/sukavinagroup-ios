@@ -2821,7 +2821,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func requestForgotPassword(employeeCode: String) async -> ForgotPasswordRequestResponse? {
+    func requestForgotPassword(employeeCode: String, channel: String = "email") async -> ForgotPasswordRequestResponse? {
         forgotPasswordError = nil
         isWorking = true
         defer { isWorking = false }
@@ -2829,7 +2829,10 @@ final class SessionStore: ObservableObject {
             return try await APIClient.shared.request(
                 "auth/forgot-password/request",
                 method: "POST",
-                body: ForgotPasswordRequestBody(employeeCode: employeeCode.trimmingCharacters(in: .whitespacesAndNewlines))
+                body: ForgotPasswordRequestBody(
+                    employeeCode: employeeCode.trimmingCharacters(in: .whitespacesAndNewlines),
+                    channel: channel
+                )
             )
         } catch {
             forgotPasswordError = error.localizedDescription

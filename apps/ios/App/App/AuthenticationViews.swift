@@ -226,7 +226,8 @@ private struct ForgotPasswordView: View {
     @State private var newPassword = ""
     @State private var confirmation = ""
     @State private var otpSent = false
-    @State private var maskedEmail: String?
+    @State private var otpChannel = "email"
+    @State private var maskedDestination: String?
     @State private var completed = false
     @State private var attemptedSubmit = false
     @State private var formError: String?
@@ -252,7 +253,7 @@ private struct ForgotPasswordView: View {
                         .font(.title.bold())
                     Text(completed
                          ? "Bạn có thể đăng nhập bằng mật khẩu mới."
-                         : "Nhập MSNV. Mã OTP sẽ được gửi tới email đã liên kết với tài khoản.")
+                         : "Nhập MSNV rồi chọn Email hoặc Zalo để nhận mã OTP.")
                         .foregroundColor(AppTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -261,9 +262,21 @@ private struct ForgotPasswordView: View {
                             .disabled(otpSent)
                             .onChange(of: employeeCode) { _, _ in formError = nil; session.clearForgotPasswordError() }
 
+                        if !otpSent {
+                            HStack(spacing: 10) {
+                                forgotDeliveryOption(title: "Email", icon: "envelope.fill", channel: "email")
+                                forgotDeliveryOption(title: "Zalo", icon: "message.fill", channel: "zalo")
+                            }
+                            Text(otpChannel == "zalo"
+                                 ? "OTP sẽ được gửi tới Zalo theo số điện thoại liên kết với MSNV."
+                                 : "OTP sẽ được gửi tới email liên kết với MSNV.")
+                                .font(.subheadline)
+                                .foregroundColor(AppTheme.muted)
+                        }
+
                         if otpSent {
-                            if let maskedEmail {
-                                Label("OTP đã gửi tới \(maskedEmail)", systemImage: "envelope.badge.fill")
+                            if let maskedDestination {
+                                Label("OTP đã gửi tới \(maskedDestination)", systemImage: otpChannel == "zalo" ? "message.badge.fill" : "envelope.badge.fill")
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundColor(AppTheme.redText)
                             }
@@ -300,13 +313,16 @@ private struct ForgotPasswordView: View {
                                     if await session.confirmForgotPassword(employeeCode: employeeCode, code: otp, newPassword: newPassword) {
                                         completed = true
                                     }
-                                } else if let response = await session.requestForgotPassword(employeeCode: employeeCode) {
-                                    if let email = response.maskedEmail, !email.isEmpty {
-                                        maskedEmail = email
+                                } else if let response = await session.requestForgotPassword(employeeCode: employeeCode, channel: otpChannel) {
+                                    let destination = otpChannel == "zalo" ? response.maskedPhone : response.maskedEmail
+                                    if let destination, !destination.isEmpty {
+                                        maskedDestination = destination
                                         otpSent = true
                                         attemptedSubmit = false
                                     } else {
-                                        formError = "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email."
+                                        formError = otpChannel == "zalo"
+                                            ? "Tài khoản chưa có số điện thoại liên kết. Vui lòng liên hệ Nhân sự để cập nhật số điện thoại."
+                                            : "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email."
                                     }
                                 }
                             }
@@ -354,5 +370,23 @@ private struct ForgotPasswordView: View {
             .foregroundColor(AppTheme.redText)
             .frame(maxWidth: .infinity, alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func forgotDeliveryOption(title: String, icon: String, channel: String) -> some View {
+        let selected = otpChannel == channel
+        return Button {
+            otpChannel = channel
+            formError = nil
+            session.clearForgotPasswordError()
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(selected ? Color(red: 0.08, green: 0.51, blue: 0.31) : AppTheme.ink)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .background(selected ? Color(red: 0.08, green: 0.51, blue: 0.31).opacity(0.13) : AppTheme.field)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(selected ? Color(red: 0.08, green: 0.51, blue: 0.31) : AppTheme.fieldBorder, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }
