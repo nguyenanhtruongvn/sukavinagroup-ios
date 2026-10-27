@@ -842,9 +842,12 @@ struct ForgotPasswordRequestResponse: Decodable {
 }
 struct DeleteAccountBody: Encodable { let confirmation: String }
 struct PasswordChangeConfirmBody: Encodable { let code: String; let currentPassword: String?; let newPassword: String }
+struct PasswordChangeRequestBody: Encodable { let channel: String }
 struct MessageResponse: Decodable { let message: String }
 struct PasswordChangeRequestResponse: Decodable {
     let message: String
-    let email: String
+    let email: String?
+    let maskedPhone: String?
+    let channel: String?
     let expiresInMinutes: Int
 }

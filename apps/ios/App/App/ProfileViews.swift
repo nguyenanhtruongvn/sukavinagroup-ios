@@ -74,8 +74,7 @@ struct ProfileView: View {
 
                     accountSectionTitle("BẢO MẬT")
                     Button {
-                        if !isDemoAccount && !session.hasLinkedEmail { session.presentMissingEmailForPasswordChange() }
-                        else if !isDemoAccount && passwordChangedThisMonth { showPasswordChangeLimit = true }
+                        if !isDemoAccount && passwordChangedThisMonth { showPasswordChangeLimit = true }
                         else { showPasswordChange = true }
                     } label: {
                         HStack(spacing: 14) {
@@ -377,6 +376,7 @@ struct PasswordChangeView: View {
     /// cannot be closed, only completed or left by signing out.
     var isForced = false
     @State private var email = ""
+    @State private var otpChannel = "email"
     @State private var code = ""
     @State private var currentPassword = ""
     @State private var newPassword = ""
@@ -424,7 +424,7 @@ struct PasswordChangeView: View {
                              ? "Bạn đang dùng mật khẩu mặc định. Hãy đặt mật khẩu mới để tiếp tục sử dụng ứng dụng."
                              : (isDemoAccount
                                 ? "Nhập mật khẩu hiện tại trước khi thiết lập mật khẩu mới."
-                                : "Xác minh email trước khi thiết lập mật khẩu mới."))
+                                : "Chọn Email hoặc Zalo để xác minh trước khi thiết lập mật khẩu mới."))
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
 
@@ -435,12 +435,18 @@ struct PasswordChangeView: View {
                     } }
 
                     if !isDemoAccount { VStack(alignment: .leading, spacing: 14) {
-                        Label(otpSent ? "OTP đã gửi tới \(email)" : (isDemoAccount ? "Xác minh qua Thông báo" : "Xác minh qua email"), systemImage: isDemoAccount ? "bell.badge.fill" : "envelope.badge.fill")
+                        Label(otpSent ? "OTP đã gửi tới \(email)" : (otpChannel == "zalo" ? "Xác minh qua Zalo" : "Xác minh qua email"), systemImage: otpChannel == "zalo" ? "message.fill" : "envelope.badge.fill")
                             .font(.headline).foregroundColor(AppTheme.redText)
+                        if !otpSent {
+                            HStack(spacing: 10) {
+                                otpDeliveryOption(title: "Email", icon: "envelope.fill", channel: "email")
+                                otpDeliveryOption(title: "Zalo", icon: "message.fill", channel: "zalo")
+                            }
+                        }
                         Text(otpSent
                              ? "Mã gồm 6 số và có hiệu lực trong 10 phút."
-                             : (isDemoAccount
-                                ? "Mã OTP giả định sẽ được gửi vào mục Thông báo và có hiệu lực trong 10 phút."
+                             : (otpChannel == "zalo"
+                                ? "Mã OTP sẽ được gửi tới Zalo theo số điện thoại đã liên kết với tài khoản."
                                 : "Mã OTP sẽ được gửi tới email liên kết. Nếu chưa có email, vui lòng liên hệ Nhân sự để cập nhật."))
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
@@ -452,7 +458,7 @@ struct PasswordChangeView: View {
                     // for an email first, the forced screen cannot, so say it
                     // here (and show a failed "Gửi mã OTP" at all).
                     if !otpSent && !isDemoAccount {
-                        if isForced && !session.hasLinkedEmail {
+                        if isForced && otpChannel == "email" && !session.hasLinkedEmail {
                             Label("Tài khoản chưa có email liên kết nên chưa thể nhận mã OTP. Vui lòng liên hệ Nhân sự để cập nhật email, sau đó mở lại ứng dụng.", systemImage: "exclamationmark.triangle.fill")
                                 .font(.subheadline).foregroundColor(AppTheme.redText)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -521,8 +527,8 @@ struct PasswordChangeView: View {
                             }
                         } else {
                             Task {
-                                if let response = await session.requestPasswordChange() {
-                                    email = response.email
+                                if let response = await session.requestPasswordChange(channel: otpChannel) {
+                                    email = otpChannel == "zalo" ? (response.maskedPhone ?? "Zalo đã liên kết") : (response.email ?? "email đã liên kết")
                                     otpSent = true
                                 }
                             }
@@ -590,6 +596,23 @@ struct PasswordChangeView: View {
                 .clipShape(Circle())
             Text(title).font(.caption.weight(.semibold)).foregroundColor(active ? .primary : AppTheme.muted)
         }.fixedSize()
+    }
+
+    private func otpDeliveryOption(title: String, icon: String, channel: String) -> some View {
+        let selected = otpChannel == channel
+        return Button {
+            otpChannel = channel
+            session.clearPasswordChangeError()
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(selected ? Color(red: 0.08, green: 0.51, blue: 0.31) : AppTheme.ink)
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .background(selected ? Color(red: 0.08, green: 0.51, blue: 0.31).opacity(0.13) : AppTheme.field)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(selected ? Color(red: 0.08, green: 0.51, blue: 0.31) : AppTheme.fieldBorder, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
     }
 }
 

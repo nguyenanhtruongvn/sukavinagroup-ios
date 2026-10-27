@@ -2290,7 +2290,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func requestPasswordChange() async -> PasswordChangeRequestResponse? {
+    func requestPasswordChange(channel: String = "email") async -> PasswordChangeRequestResponse? {
         guard let token else { return nil }
         passwordChangeRequiresEmail = false
         passwordChangeError = nil
@@ -2298,7 +2298,10 @@ final class SessionStore: ObservableObject {
         defer { isWorking = false }
         do {
             return try await APIClient.shared.request(
-                "auth/password-change/request", method: "POST", token: token
+                "auth/password-change/request",
+                method: "POST",
+                token: token,
+                body: PasswordChangeRequestBody(channel: channel)
             )
         } catch {
             // Whether the account lacks an email is a fact of its profile, not
@@ -2310,7 +2313,7 @@ final class SessionStore: ObservableObject {
                 profile = current
                 SessionCache.save(profile: current)
             }
-            if !hasLinkedEmail {
+            if channel == "email" && !hasLinkedEmail {
                 passwordChangeRequiresEmail = true
                 passwordChangeError = "Tài khoản chưa có email liên kết. Vui lòng liên hệ Nhân sự để cập nhật email."
             } else {
