@@ -693,7 +693,7 @@ struct DashboardView: View {
 
     private func attendanceTime(_ value: String) -> String {
         guard let date = VietnamTime.date(fromISO8601: value) else { return value }
-        return VietnamTime.clockWithSeconds.string(from: date)
+        return VietnamTime.clock.string(from: date)
     }
 
     private var checkInTime: String {
