@@ -416,6 +416,44 @@ final class EmployeeRequestStore: ObservableObject {
         managedEmployeesLoaded = true
     }
 
+    /// Both the request composer and the meal-order picker share one
+    /// indefinite, account-scoped employee directory. The live menu includes
+    /// the same people with additional per-day meal statuses. Only names/IDs
+    /// are saved here; meal selections stay in TodayMenu.
+    func reconcileManagedDirectoryFromMenu(_ menu: TodayMenu, profile: Profile?) {
+        guard let employees = menu.managedEmployees,
+              let profile, !profile.id.isEmpty, !profile.employeeCode.isEmpty else { return }
+        restoreManagedDirectoryCache(employeeCode: profile.employeeCode)
+        let previousSelf = managedEmployees.first(where: \.isSelf)
+        let selfEntry = ManagedRequestEmployee(
+            id: profile.id,
+            employeeCode: profile.employeeCode,
+            fullName: previousSelf?.fullName.isEmpty == false ? previousSelf!.fullName : profile.name,
+            department: previousSelf?.department ?? "",
+            isSelf: true
+        )
+        let directory = [selfEntry] + employees
+            .filter { !$0.id.isEmpty && $0.id != profile.id }
+            .map {
+                ManagedRequestEmployee(
+                    id: $0.id,
+                    employeeCode: $0.employeeCode,
+                    fullName: $0.fullName,
+                    department: $0.department,
+                    isSelf: false
+                )
+            }
+        guard !managedEmployeesLoaded || managedEmployees != directory else { return }
+        managedEmployees = directory
+        managedEmployeesLoaded = true
+        managedEmployeesError = nil
+        if let data = try? JSONEncoder().encode(CachedManagedDirectory(employees: directory)) {
+            AccountDocumentStore.shared.set(
+                data, forKey: managedDirectoryCachePrefix + profile.employeeCode
+            )
+        }
+    }
+
     /// Load only on first use, an Admin-scoped realtime change, or stream
     /// reconnection (which uses a conditional HTTP GET / ETag 304).
     func loadManagedEmployees(_ token: String?, employeeCode: String? = nil, force: Bool = false) async {
