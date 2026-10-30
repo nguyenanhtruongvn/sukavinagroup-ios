@@ -428,7 +428,7 @@ final class EmployeeRequestStore: ObservableObject {
         let selfEntry = ManagedRequestEmployee(
             id: profile.id,
             employeeCode: profile.employeeCode,
-            fullName: previousSelf?.fullName.isEmpty == false ? previousSelf!.fullName : profile.name,
+            fullName: previousSelf.flatMap { $0.fullName.isEmpty ? nil : $0.fullName } ?? profile.name,
             department: previousSelf?.department ?? "",
             isSelf: true
         )
