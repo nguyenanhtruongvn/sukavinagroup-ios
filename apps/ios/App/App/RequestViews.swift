@@ -1122,6 +1122,10 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private var kind: EmployeeRequestKind
     private var selectedRecipientIDs = Set<String>()
     private var recipientsLoaded = false
+    /// Only the first direct-report choice replaces the default manager.
+    /// Kept by the composer (rather than the pushed picker) so returning to
+    /// the picker cannot make a later choice silently remove “Tôi”.
+    private var hasChosenManagedEmployee = false
     private var isSending = false
     private var attendanceDay: AttendanceDay?
     private var keepTemplateAttendanceTimes: Bool
@@ -1301,14 +1305,16 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
         kindButton.configuration?.title = kind.title
         stack.addArrangedSubview(headerView())
-        let kindCard = card()
-        kindCard.addArrangedSubview(sectionTitle("Loại đơn", icon: "square.grid.2x2.fill"))
-        kindCard.addArrangedSubview(requestKindGrid())
-        stack.addArrangedSubview(kindCard)
+        // Match the iOS 18+ composer: the recipient is the first choice a
+        // manager sees, before selecting the request type.
         let recipientsCard = card()
         recipientsCard.addArrangedSubview(sectionTitle("Tạo đơn cho", icon: "person.2.fill"))
         recipientsCard.addArrangedSubview(recipientsButton)
         stack.addArrangedSubview(recipientsCard)
+        let kindCard = card()
+        kindCard.addArrangedSubview(sectionTitle("Loại đơn", icon: "square.grid.2x2.fill"))
+        kindCard.addArrangedSubview(requestKindGrid())
+        stack.addArrangedSubview(kindCard)
 
         let detailsCard = card()
         if kind == .attendance {
@@ -1553,8 +1559,13 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 
     @objc private func showRecipients() {
         guard recipientsLoaded else { return }
-        let picker = LegacyRequestRecipientsController(employees: store.managedEmployees, selectedIDs: selectedRecipientIDs) { [weak self] selected in
+        let picker = LegacyRequestRecipientsController(
+            employees: store.managedEmployees,
+            selectedIDs: selectedRecipientIDs,
+            hasChosenManagedEmployee: hasChosenManagedEmployee
+        ) { [weak self] selected, hasChosenManagedEmployee in
             self?.selectedRecipientIDs = selected
+            self?.hasChosenManagedEmployee = hasChosenManagedEmployee
             self?.updateRecipientsTitle()
             self?.renderValidation()
         }
@@ -1657,12 +1668,21 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 private final class LegacyRequestRecipientsController: UIViewController {
     private let employees: [ManagedRequestEmployee]
     private var selectedIDs: Set<String>
-    private let completion: (Set<String>) -> Void
+    private var hasChosenManagedEmployee: Bool
+    private let completion: (Set<String>, Bool) -> Void
     private let scroll = UIScrollView()
     private let content = UIStackView()
 
-    init(employees: [ManagedRequestEmployee], selectedIDs: Set<String>, completion: @escaping (Set<String>) -> Void) {
-        self.employees = employees; self.selectedIDs = selectedIDs; self.completion = completion
+    init(
+        employees: [ManagedRequestEmployee],
+        selectedIDs: Set<String>,
+        hasChosenManagedEmployee: Bool,
+        completion: @escaping (Set<String>, Bool) -> Void
+    ) {
+        self.employees = employees
+        self.selectedIDs = selectedIDs
+        self.hasChosenManagedEmployee = hasChosenManagedEmployee
+        self.completion = completion
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { nil }
@@ -1686,14 +1706,13 @@ private final class LegacyRequestRecipientsController: UIViewController {
 
     private func render() {
         content.arrangedSubviews.forEach { content.removeArrangedSubview($0); $0.removeFromSuperview() }
-        let helper = UILabel(); helper.text = "Chọn nhân viên trực tiếp để tạo cùng đơn này."; helper.font = .preferredFont(forTextStyle: .subheadline); helper.textColor = .secondaryLabel; helper.numberOfLines = 0
-        content.addArrangedSubview(helper)
         let selfPerson = employees.first(where: \.isSelf)
         let allIDs = Set(employees.map(\.id))
         let firstRow = UIStackView(); firstRow.axis = .horizontal; firstRow.spacing = 8; firstRow.distribution = .fillEqually
         if let selfPerson { firstRow.addArrangedSubview(tile("Tôi", selected: selectedIDs.contains(selfPerson.id)) { [weak self] in self?.toggle(selfPerson.id) }) }
         firstRow.addArrangedSubview(tile("Tất cả", selected: !allIDs.isEmpty && selectedIDs.isSuperset(of: allIDs)) { [weak self] in
             guard let self else { return }
+            self.hasChosenManagedEmployee = true
             self.selectedIDs = self.selectedIDs.isSuperset(of: allIDs) ? [] : allIDs
             self.render()
         })
@@ -1706,10 +1725,10 @@ private final class LegacyRequestRecipientsController: UIViewController {
         for index in stride(from: 0, to: directReports.count, by: 2) {
             let row = UIStackView(); row.axis = .horizontal; row.spacing = 8; row.distribution = .fillEqually
             let first = directReports[index]
-            row.addArrangedSubview(tile(first.fullName, selected: selectedIDs.contains(first.id)) { [weak self] in self?.toggle(first.id) })
+            row.addArrangedSubview(tile(first.fullName, selected: selectedIDs.contains(first.id)) { [weak self] in self?.toggleManagedEmployee(first.id) })
             if index + 1 < directReports.count {
                 let second = directReports[index + 1]
-                row.addArrangedSubview(tile(second.fullName, selected: selectedIDs.contains(second.id)) { [weak self] in self?.toggle(second.id) })
+                row.addArrangedSubview(tile(second.fullName, selected: selectedIDs.contains(second.id)) { [weak self] in self?.toggleManagedEmployee(second.id) })
             } else { row.addArrangedSubview(UIView()) }
             content.addArrangedSubview(row)
         }
@@ -1730,7 +1749,23 @@ private final class LegacyRequestRecipientsController: UIViewController {
     }
 
     private func toggle(_ id: String) { if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }; render() }
-    @objc private func done() { completion(selectedIDs); navigationController?.popViewController(animated: true) }
+    private func toggleManagedEmployee(_ id: String) {
+        guard let selfID = employees.first(where: \.isSelf)?.id else {
+            toggle(id)
+            return
+        }
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else if !hasChosenManagedEmployee && selectedIDs == [selfID] {
+            hasChosenManagedEmployee = true
+            selectedIDs = [id]
+        } else {
+            hasChosenManagedEmployee = true
+            selectedIDs.insert(id)
+        }
+        render()
+    }
+    @objc private func done() { completion(selectedIDs, hasChosenManagedEmployee); navigationController?.popViewController(animated: true) }
 }
 
 private extension UIFont {
