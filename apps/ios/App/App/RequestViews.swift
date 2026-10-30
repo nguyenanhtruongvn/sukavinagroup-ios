@@ -792,6 +792,7 @@ struct RequestsView: View {
         } else {
             LegacyRequestComposerUIKitView(
                 token: session.token,
+                session: session,
                 store: store,
                 workStartTime: session.dashboard?.workStartTime,
                 workEndTime: session.dashboard?.workEndTime,
@@ -1049,6 +1050,7 @@ struct RequestDecisionView: View {
 /// large, stateful composer tree that appears in the TestFlight crash logs.
 private struct LegacyRequestComposerUIKitView: UIViewControllerRepresentable {
     let token: String?
+    let session: SessionStore
     let store: EmployeeRequestStore
     let workStartTime: String?
     let workEndTime: String?
@@ -1057,7 +1059,7 @@ private struct LegacyRequestComposerUIKitView: UIViewControllerRepresentable {
 
     func makeUIViewController(context: Context) -> UINavigationController {
         UINavigationController(rootViewController: LegacyRequestComposerController(
-            token: token, store: store, workStartTime: workStartTime,
+            token: token, session: session, store: store, workStartTime: workStartTime,
             workEndTime: workEndTime, template: template, submit: submit
         ))
     }
@@ -1068,6 +1070,7 @@ private struct LegacyRequestComposerUIKitView: UIViewControllerRepresentable {
 @MainActor
 private final class LegacyRequestComposerController: UIViewController, UITextViewDelegate {
     private let token: String?
+    private let session: SessionStore
     private let store: EmployeeRequestStore
     private let workStartTime: String?
     private let workEndTime: String?
@@ -1079,6 +1082,8 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let fromPicker = UIDatePicker()
     private let toPicker = UIDatePicker()
     private let dayPicker = UIDatePicker()
+    private let attendanceDatePicker = UIDatePicker()
+    private let attendanceStatusLabel = UILabel()
     private let durationField = UITextField()
     private let destinationField = UITextField()
     private let distanceField = UITextField()
@@ -1094,18 +1099,24 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private var selectedRecipientIDs = Set<String>()
     private var recipientsLoaded = false
     private var isSending = false
+    private var attendanceDay: AttendanceDay?
+    private var keepTemplateAttendanceTimes: Bool
+    private var initialInput: [String] = []
+    private var scheduleEdited = false
 
     init(
-        token: String?, store: EmployeeRequestStore, workStartTime: String?, workEndTime: String?, template: EmployeeRequest?,
+        token: String?, session: SessionStore, store: EmployeeRequestStore, workStartTime: String?, workEndTime: String?, template: EmployeeRequest?,
         submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
     ) {
         self.token = token
+        self.session = session
         self.store = store
         self.workStartTime = workStartTime
         self.workEndTime = workEndTime
         self.template = template
         self.submitRequest = submit
         self.kind = template?.kind ?? .leave
+        self.keepTemplateAttendanceTimes = template?.kind == .attendance
         super.init(nibName: nil, bundle: nil)
         if let template {
             fromPicker.date = template.from
@@ -1138,6 +1149,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         if template == nil { applyScheduleDefaults(for: kind) }
         configureLayout()
         rebuildForm()
+        initialInput = currentInput
         Task { [weak self] in
             guard let self else { return }
             await store.loadManagedEmployees(token)
@@ -1153,9 +1165,16 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 
     private func configureControls() {
         [fromPicker, toPicker].forEach { $0.datePickerMode = .dateAndTime; $0.preferredDatePickerStyle = .compact }
-        [fromPicker, toPicker, dayPicker].forEach { $0.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .valueChanged) }
+        [fromPicker, toPicker, dayPicker, attendanceDatePicker].forEach { $0.addAction(UIAction { [weak self] _ in self?.scheduleEdited = true; self?.renderValidation() }, for: .valueChanged) }
         dayPicker.datePickerMode = .date
         dayPicker.preferredDatePickerStyle = .compact
+        attendanceDatePicker.datePickerMode = .date
+        attendanceDatePicker.preferredDatePickerStyle = .compact
+        attendanceDatePicker.date = template?.from ?? Date()
+        attendanceDatePicker.addAction(UIAction { [weak self] _ in self?.loadAttendanceForSelectedDay() }, for: .valueChanged)
+        attendanceStatusLabel.numberOfLines = 0
+        attendanceStatusLabel.font = .preferredFont(forTextStyle: .footnote)
+        attendanceStatusLabel.textColor = .secondaryLabel
         kindButton.showsMenuAsPrimaryAction = true
         kindButton.configuration = .tinted()
         kindButton.menu = UIMenu(children: EmployeeRequestKind.allCases.map { item in
@@ -1268,7 +1287,12 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         stack.addArrangedSubview(recipientsCard)
 
         let detailsCard = card()
-        if [.late, .early, .overtime].contains(kind) {
+        if kind == .attendance {
+            detailsCard.addArrangedSubview(section("Ngày đối chiếu", attendanceDatePicker))
+            detailsCard.addArrangedSubview(attendanceStatusLabel)
+            detailsCard.addArrangedSubview(dateSection(title: "Giờ chấm công", start: fromPicker, end: toPicker))
+            loadAttendanceForSelectedDay()
+        } else if [.late, .early, .overtime].contains(kind) {
             detailsCard.addArrangedSubview(section(kind == .late ? "Ngày đi trễ" : kind == .early ? "Ngày về sớm" : "Ngày làm thêm", dayPicker))
             detailsCard.addArrangedSubview(section("Thời lượng", durationField))
         } else {
@@ -1383,6 +1407,48 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         return VietnamTime.calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
     }
 
+    /// Mirrors the iOS 18 composer: a confirmation request starts from the
+    /// recorded check-in/check-out of the selected day.  Only a missing clock
+    /// can be edited manually; a recorded clock remains evidence, not a
+    /// value that a request form can accidentally overwrite.
+    private func loadAttendanceForSelectedDay() {
+        guard kind == .attendance, let token else { return }
+        let month = VietnamTime.monthKey.string(from: attendanceDatePicker.date)
+        let selectedKey = VietnamTime.dayKey.string(from: attendanceDatePicker.date)
+        Task { [weak self] in
+            guard let self else { return }
+            let keepTimes = keepTemplateAttendanceTimes
+            keepTemplateAttendanceTimes = false
+            func apply(_ data: AttendanceMonth) {
+                guard kind == .attendance,
+                      VietnamTime.dayKey.string(from: attendanceDatePicker.date) == selectedKey else { return }
+                attendanceDay = data.days.first { $0.date == selectedKey }
+                let scheduleStart = attendanceDay?.startTime ?? data.startTime
+                let scheduleEnd = attendanceDay?.endTime ?? data.endTime
+                if !keepTimes {
+                    fromPicker.date = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:))
+                        ?? scheduledTime(scheduleStart, on: attendanceDatePicker.date, fallbackHour: 7, fallbackMinute: 30)
+                    toPicker.date = attendanceDay?.checkOut.flatMap(VietnamTime.date(fromISO8601:))
+                        ?? scheduledTime(scheduleEnd, on: attendanceDatePicker.date, fallbackHour: 16, fallbackMinute: 30)
+                }
+                fromPicker.isEnabled = attendanceDay?.checkIn == nil
+                toPicker.isEnabled = attendanceDay?.checkOut == nil
+                let inText = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:)).map { VietnamTime.clock.string(from: $0) } ?? "Chưa có"
+                let outText = attendanceDay?.checkOut.flatMap(VietnamTime.date(fromISO8601:)).map { VietnamTime.clock.string(from: $0) } ?? "Chưa có"
+                attendanceStatusLabel.text = "Giờ vào: \(inText) · Giờ ra: \(outText)"
+                renderValidation()
+            }
+            if let cached = session.cachedAttendanceMonth(month) { apply(cached) }
+            else {
+                attendanceDay = nil
+                fromPicker.isEnabled = true; toPicker.isEnabled = true
+                attendanceStatusLabel.text = "Đang tải dữ liệu chấm công…"
+            }
+            guard session.shouldRevalidateAttendanceMonth(month), let refreshed = try? await session.loadAttendanceMonth(month, token: token) else { return }
+            apply(refreshed)
+        }
+    }
+
     private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight = .regular, color: UIColor) -> UILabel {
         let result = UILabel()
         result.text = text
@@ -1481,10 +1547,12 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             if selectedTransport == "personal_vehicle" && !(decimalValue(distanceField) ?? 0 > 0) { return "Nhập quãng đường khi đi bằng xe cá nhân." }
         }
         if [.late, .early, .overtime].contains(kind) {
-            let minutes = Int(decimalValue(durationField) ?? 0)
-            if minutes < 5 || minutes > 1435 || !minutes.isMultiple(of: 5) { return "Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút." }
+            let rawMinutes = decimalValue(durationField) ?? 0
+            let minutes = Int(rawMinutes)
+            if rawMinutes != Double(minutes) || minutes < 5 || minutes > 1435 || !minutes.isMultiple(of: 5) { return "Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút." }
         }
         if kind == .sunday && VietnamTime.calendar.component(.weekday, from: fromPicker.date) != 1 { return "Ngày bắt đầu phải là Chủ nhật." }
+        if kind == .sunday && toPicker.date <= fromPicker.date { return "Giờ kết thúc phải sau giờ bắt đầu." }
         if ![.late, .early, .overtime].contains(kind), toPicker.date < fromPicker.date { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
         return nil
     }
@@ -1499,6 +1567,12 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         configuration?.title = isSending ? "Đang gửi…" : "Gửi đơn"
         submitButton.configuration = configuration
         submitButton.isEnabled = warning == nil && !isSending
+        navigationController?.isModalInPresentation = isSending || scheduleEdited || currentInput != initialInput
+    }
+
+    private var currentInput: [String] {
+        [reasonView.text, destinationField.text, distanceField.text, expenseField.text]
+            .map { ($0 ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private func decimalValue(_ field: UITextField) -> Double? {
@@ -1517,11 +1591,12 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         var to = toPicker.date
         var submittedReason = cleanReason
         if [.late, .early, .overtime].contains(kind) {
-            let minutes = Int(numeric(durationField) ?? 0)
-            guard minutes >= 5, minutes <= 1435, minutes.isMultiple(of: 5) else { showError("Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút."); return }
+            let rawMinutes = numeric(durationField) ?? 0
+            let minutes = Int(rawMinutes)
+            guard rawMinutes == Double(minutes), minutes >= 5, minutes <= 1435, minutes.isMultiple(of: 5) else { showError("Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút."); return }
             let day = VietnamTime.calendar.startOfDay(for: dayPicker.date)
-            let start = VietnamTime.calendar.date(bySettingHour: 7, minute: 30, second: 0, of: day) ?? day
-            let end = VietnamTime.calendar.date(bySettingHour: 16, minute: 30, second: 0, of: day) ?? day
+            let start = scheduledTime(workStartTime, on: day, fallbackHour: 7, fallbackMinute: 30)
+            let end = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
             if kind == .late { from = start; to = start.addingTimeInterval(TimeInterval(minutes * 60)) }
             if kind == .early { from = end.addingTimeInterval(TimeInterval(-minutes * 60)); to = end }
             if kind == .overtime { from = end; to = end.addingTimeInterval(TimeInterval(minutes * 60)) }
@@ -1529,6 +1604,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         }
         guard to >= from else { showError("Thời gian kết thúc phải sau thời gian bắt đầu."); return }
         if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 { showError("Ngày bắt đầu phải là Chủ nhật."); return }
+        if kind == .sunday && to <= from { showError("Giờ kết thúc phải sau giờ bắt đầu."); return }
         isSending = true
         renderValidation()
         Task { [weak self] in
@@ -1553,37 +1629,82 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 }
 
 @MainActor
-private final class LegacyRequestRecipientsController: UITableViewController {
+private final class LegacyRequestRecipientsController: UIViewController {
     private let employees: [ManagedRequestEmployee]
     private var selectedIDs: Set<String>
     private let completion: (Set<String>) -> Void
+    private let scroll = UIScrollView()
+    private let content = UIStackView()
 
     init(employees: [ManagedRequestEmployee], selectedIDs: Set<String>, completion: @escaping (Set<String>) -> Void) {
         self.employees = employees; self.selectedIDs = selectedIDs; self.completion = completion
-        super.init(style: .insetGrouped)
+        super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { nil }
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Tạo đơn cho"
-        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Tất cả", style: .plain, target: self, action: #selector(toggleAll))
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Xong", style: .done, target: self, action: #selector(done))
-        tableView.allowsMultipleSelection = true
-        tableView.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = .systemGroupedBackground
+        scroll.translatesAutoresizingMaskIntoConstraints = false; scroll.showsVerticalScrollIndicator = false
+        content.translatesAutoresizingMaskIntoConstraints = false; content.axis = .vertical; content.spacing = 12
+        view.addSubview(scroll); scroll.addSubview(content)
+        NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor), scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor), scroll.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            content.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 20), content.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -20),
+            content.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 20), content.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -20),
+            content.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -40)
+        ])
+        render()
     }
-    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String { "Chọn người tạo đơn" }
-    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String { "Chạm vào tên để chọn hoặc bỏ chọn. Nhân viên được chọn sẽ nhận đơn tương ứng." }
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { employees.count }
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil); let person = employees[indexPath.row]
-        cell.textLabel?.text = person.isSelf ? "Tôi" : person.fullName; cell.detailTextLabel?.text = person.department
-        cell.accessoryType = selectedIDs.contains(person.id) ? .checkmark : .none
-        return cell
+
+    private func render() {
+        content.arrangedSubviews.forEach { content.removeArrangedSubview($0); $0.removeFromSuperview() }
+        let helper = UILabel(); helper.text = "Chọn nhân viên trực tiếp để tạo cùng đơn này."; helper.font = .preferredFont(forTextStyle: .subheadline); helper.textColor = .secondaryLabel; helper.numberOfLines = 0
+        content.addArrangedSubview(helper)
+        let selfPerson = employees.first(where: \.isSelf)
+        let allIDs = Set(employees.map(\.id))
+        let firstRow = UIStackView(); firstRow.axis = .horizontal; firstRow.spacing = 8; firstRow.distribution = .fillEqually
+        if let selfPerson { firstRow.addArrangedSubview(tile("Tôi", selected: selectedIDs.contains(selfPerson.id)) { [weak self] in self?.toggle(selfPerson.id) }) }
+        firstRow.addArrangedSubview(tile("Tất cả", selected: !allIDs.isEmpty && selectedIDs.isSuperset(of: allIDs)) { [weak self] in
+            guard let self else { return }
+            self.selectedIDs = self.selectedIDs.isSuperset(of: allIDs) ? [] : allIDs
+            self.render()
+        })
+        if selfPerson == nil { firstRow.addArrangedSubview(UIView()) }
+        content.addArrangedSubview(firstRow)
+        let directReports = employees.filter { !$0.isSelf }
+        guard !directReports.isEmpty else { return }
+        let title = UILabel(); title.text = "TẠO ĐƠN CÙNG NHÂN VIÊN"; title.font = UIFont.preferredFont(forTextStyle: .caption1).requestWeight(.bold); title.textColor = .secondaryLabel
+        content.addArrangedSubview(title)
+        for index in stride(from: 0, to: directReports.count, by: 2) {
+            let row = UIStackView(); row.axis = .horizontal; row.spacing = 8; row.distribution = .fillEqually
+            let first = directReports[index]
+            row.addArrangedSubview(tile(first.fullName, selected: selectedIDs.contains(first.id)) { [weak self] in self?.toggle(first.id) })
+            if index + 1 < directReports.count {
+                let second = directReports[index + 1]
+                row.addArrangedSubview(tile(second.fullName, selected: selectedIDs.contains(second.id)) { [weak self] in self?.toggle(second.id) })
+            } else { row.addArrangedSubview(UIView()) }
+            content.addArrangedSubview(row)
+        }
     }
-    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) { toggle(indexPath) }
-    override func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) { toggle(indexPath) }
-    private func toggle(_ indexPath: IndexPath) { let id = employees[indexPath.row].id; if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }; tableView.reloadRows(at: [indexPath], with: .none) }
-    @objc private func toggleAll() { let all = Set(employees.map(\.id)); selectedIDs = selectedIDs == all ? [] : all; tableView.reloadData() }
+
+    private func tile(_ title: String, selected: Bool, action: @escaping () -> Void) -> UIButton {
+        var config = UIButton.Configuration.plain()
+        config.title = title; config.titleAlignment = .leading
+        config.baseForegroundColor = selected ? .systemGreen : .label
+        config.background.backgroundColor = selected ? UIColor.systemGreen.withAlphaComponent(0.14) : .secondarySystemGroupedBackground
+        config.background.strokeColor = selected ? UIColor.systemGreen.withAlphaComponent(0.65) : UIColor.separator.withAlphaComponent(0.25)
+        config.background.strokeWidth = 1; config.background.cornerRadius = 12
+        config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
+        let button = UIButton(configuration: config, primaryAction: UIAction { _ in action() })
+        button.titleLabel?.font = UIFont.preferredFont(forTextStyle: .subheadline).requestWeight(.semibold)
+        button.heightAnchor.constraint(equalToConstant: 46).isActive = true
+        return button
+    }
+
+    private func toggle(_ id: String) { if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }; render() }
     @objc private func done() { completion(selectedIDs); navigationController?.popViewController(animated: true) }
 }
 
