@@ -327,9 +327,11 @@ final class EmployeeRequestStore: ObservableObject {
     private var loadTaskID: UUID?
     private var managedEmployeesTask: Task<Void, Never>?
     private var managedEmployeesTaskID: UUID?
+    private var managedEmployeesLoadedAt: Date?
     /// A forced load arrived while one was running: run once more.
     private var rerunRequested = false
     private let refreshTTL: TimeInterval = 60
+    private let managedEmployeesTTL: TimeInterval = 5 * 60
 
     /// Restore first so a previously loaded request list remains usable when
     /// the network is unavailable. Data is namespaced to the signed-in person.
@@ -364,6 +366,7 @@ final class EmployeeRequestStore: ObservableObject {
         managedEmployees = []
         managedEmployeesLoaded = false
         managedEmployeesError = nil
+        managedEmployeesLoadedAt = nil
         rebuildIndex()
         message = nil
         cacheEmployeeCode = nil
@@ -387,7 +390,12 @@ final class EmployeeRequestStore: ObservableObject {
     /// this list from an editable employee name or code in the client.
     func loadManagedEmployees(_ token: String?, force: Bool = false) async {
         guard let token else { return }
-        if managedEmployeesLoaded && !force { return }
+        if !force,
+           managedEmployeesLoaded,
+           let managedEmployeesLoadedAt,
+           Date().timeIntervalSince(managedEmployeesLoadedAt) < managedEmployeesTTL {
+            return
+        }
         if let task = managedEmployeesTask {
             await task.value
             return
@@ -404,6 +412,7 @@ final class EmployeeRequestStore: ObservableObject {
                 self.managedEmployees = employees
                 self.managedEmployeesLoaded = true
                 self.managedEmployeesError = nil
+                self.managedEmployeesLoadedAt = Date()
             } catch is CancellationError {
                 return
             } catch {
@@ -1894,7 +1903,7 @@ struct RequestComposer: View {
         let people = requestStore.managedEmployees
         let eligibleIDs = Set(people.map(\.id))
         let selected = people.filter { selectedRecipientIDs.contains($0.id) }
-        if selected.isEmpty { return "Chưa chọn người" }
+        if selected.isEmpty { return recipientsInitialized ? "Chưa chọn người" : "Tôi" }
         if !eligibleIDs.isEmpty && selectedRecipientIDs.isSuperset(of: eligibleIDs) { return "Tất cả" }
         return selected.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ")
     }
