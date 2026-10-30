@@ -1589,7 +1589,8 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         let all = Set(store.managedEmployees.map(\.id))
         let title: String
         if selected.isEmpty { title = "Chưa chọn người" }
-        else if !all.isEmpty && selectedRecipientIDs.isSuperset(of: all) { title = "Tất cả" }
+        else if selected.count == 1 && selected[0].isSelf { title = "Tôi" }
+        else if selected.count > 1 && !all.isEmpty && selectedRecipientIDs.isSuperset(of: all) { title = "Tất cả" }
         else { title = selected.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ") }
         recipientsButton.configuration?.title = title
     }
@@ -1931,7 +1932,8 @@ struct RequestComposer: View {
         let eligibleIDs = Set(people.map(\.id))
         let selected = people.filter { selectedRecipientIDs.contains($0.id) }
         if selected.isEmpty { return recipientsInitialized ? "Chưa chọn người" : "Tôi" }
-        if !eligibleIDs.isEmpty && selectedRecipientIDs.isSuperset(of: eligibleIDs) { return "Tất cả" }
+        if selected.count == 1 && selected[0].isSelf { return "Tôi" }
+        if selected.count > 1 && !eligibleIDs.isEmpty && selectedRecipientIDs.isSuperset(of: eligibleIDs) { return "Tất cả" }
         return selected.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ")
     }
 
