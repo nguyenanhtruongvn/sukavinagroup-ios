@@ -793,6 +793,8 @@ struct RequestsView: View {
             LegacyRequestComposerUIKitView(
                 token: session.token,
                 store: store,
+                workStartTime: session.dashboard?.workStartTime,
+                workEndTime: session.dashboard?.workEndTime,
                 template: template,
                 submit: submitRequest
             )
@@ -1048,12 +1050,15 @@ struct RequestDecisionView: View {
 private struct LegacyRequestComposerUIKitView: UIViewControllerRepresentable {
     let token: String?
     let store: EmployeeRequestStore
+    let workStartTime: String?
+    let workEndTime: String?
     let template: EmployeeRequest?
     let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
 
     func makeUIViewController(context: Context) -> UINavigationController {
         UINavigationController(rootViewController: LegacyRequestComposerController(
-            token: token, store: store, template: template, submit: submit
+            token: token, store: store, workStartTime: workStartTime,
+            workEndTime: workEndTime, template: template, submit: submit
         ))
     }
 
@@ -1064,6 +1069,8 @@ private struct LegacyRequestComposerUIKitView: UIViewControllerRepresentable {
 private final class LegacyRequestComposerController: UIViewController, UITextViewDelegate {
     private let token: String?
     private let store: EmployeeRequestStore
+    private let workStartTime: String?
+    private let workEndTime: String?
     private let template: EmployeeRequest?
     private let submitRequest: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
     private let scrollView = UIScrollView()
@@ -1080,17 +1087,22 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let recipientsButton = UIButton(type: .system)
     private let reasonView = UITextView()
     private let reasonPlaceholder = UILabel()
+    private let bottomBar = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterial))
+    private let submitButton = UIButton(type: .system)
+    private let validationLabel = UILabel()
     private var kind: EmployeeRequestKind
     private var selectedRecipientIDs = Set<String>()
     private var recipientsLoaded = false
     private var isSending = false
 
     init(
-        token: String?, store: EmployeeRequestStore, template: EmployeeRequest?,
+        token: String?, store: EmployeeRequestStore, workStartTime: String?, workEndTime: String?, template: EmployeeRequest?,
         submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
     ) {
         self.token = token
         self.store = store
+        self.workStartTime = workStartTime
+        self.workEndTime = workEndTime
         self.template = template
         self.submitRequest = submit
         self.kind = template?.kind ?? .leave
@@ -1120,10 +1132,10 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     override func viewDidLoad() {
         super.viewDidLoad()
         title = template == nil ? "Tạo đơn mới" : "Tạo lại đơn"
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .systemGroupedBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Hủy", style: .plain, target: self, action: #selector(close))
-        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Gửi đơn", style: .done, target: self, action: #selector(send))
         configureControls()
+        if template == nil { applyScheduleDefaults(for: kind) }
         configureLayout()
         rebuildForm()
         Task { [weak self] in
@@ -1135,11 +1147,13 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
                 selectedRecipientIDs = Set(store.managedEmployees.filter(\.isSelf).map(\.id))
             }
             updateRecipientsTitle()
+            renderValidation()
         }
     }
 
     private func configureControls() {
         [fromPicker, toPicker].forEach { $0.datePickerMode = .dateAndTime; $0.preferredDatePickerStyle = .compact }
+        [fromPicker, toPicker, dayPicker].forEach { $0.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .valueChanged) }
         dayPicker.datePickerMode = .date
         dayPicker.preferredDatePickerStyle = .compact
         kindButton.showsMenuAsPrimaryAction = true
@@ -1147,6 +1161,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         kindButton.menu = UIMenu(children: EmployeeRequestKind.allCases.map { item in
             UIAction(title: item.title, image: UIImage(systemName: item.icon), state: item == kind ? .on : .off) { [weak self] _ in
                 self?.kind = item
+                self?.applyScheduleDefaults(for: item)
                 self?.rebuildForm()
             }
         })
@@ -1160,11 +1175,13 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         [durationField, distanceField, expenseField].forEach {
             $0.keyboardType = .decimalPad
             $0.borderStyle = .roundedRect
+            $0.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
         }
         durationField.placeholder = "Số phút (bội số của 5)"
         durationField.text = "30"
         destinationField.placeholder = "Nhập địa điểm công tác"
         destinationField.borderStyle = .roundedRect
+        destinationField.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
         distanceField.placeholder = "Số km"
         expenseField.placeholder = "Chi phí (VNĐ)"
 
@@ -1184,46 +1201,196 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 
     private func configureLayout() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.keyboardDismissMode = .interactive
+        scrollView.alwaysBounceVertical = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .vertical
         stack.spacing = 16
-        stack.isLayoutMarginsRelativeArrangement = true
-        stack.layoutMargins = UIEdgeInsets(top: 20, left: 20, bottom: 28, right: 20)
+        bottomBar.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.layer.cornerRadius = 24
+        bottomBar.layer.cornerCurve = .continuous
+        bottomBar.clipsToBounds = true
+        bottomBar.layer.borderWidth = 0.75
+        bottomBar.layer.borderColor = UIColor.separator.withAlphaComponent(0.35).cgColor
+        validationLabel.font = UIFont.preferredFont(forTextStyle: .footnote).requestWeight(.semibold)
+        validationLabel.textColor = .systemRed
+        validationLabel.numberOfLines = 0
+        var configuration = UIButton.Configuration.filled()
+        configuration.cornerStyle = .fixed
+        configuration.background.cornerRadius = 16
+        configuration.image = UIImage(systemName: "paperplane.fill")
+        configuration.imagePadding = 8
+        configuration.title = "Gửi đơn"
+        configuration.baseBackgroundColor = .systemRed
+        configuration.baseForegroundColor = .white
+        submitButton.configuration = configuration
+        submitButton.heightAnchor.constraint(equalToConstant: 52).isActive = true
+        submitButton.addTarget(self, action: #selector(send), for: .touchUpInside)
+        let footerStack = UIStackView(arrangedSubviews: [validationLabel, submitButton])
+        footerStack.axis = .vertical; footerStack.spacing = 8
+        footerStack.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.contentView.addSubview(footerStack)
         view.addSubview(scrollView)
+        view.addSubview(bottomBar)
         scrollView.addSubview(stack)
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            bottomBar.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
+            bottomBar.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
+            bottomBar.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor, constant: -8),
+            footerStack.topAnchor.constraint(equalTo: bottomBar.contentView.topAnchor, constant: 8),
+            footerStack.leadingAnchor.constraint(equalTo: bottomBar.contentView.leadingAnchor, constant: 8),
+            footerStack.trailingAnchor.constraint(equalTo: bottomBar.contentView.trailingAnchor, constant: -8),
+            footerStack.bottomAnchor.constraint(equalTo: bottomBar.contentView.bottomAnchor, constant: -8),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
-            stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+            scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 16),
+            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -18),
+            stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor, constant: -32)
         ])
     }
 
     private func rebuildForm() {
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
         kindButton.configuration?.title = kind.title
-        stack.addArrangedSubview(section("Loại đơn", kindButton))
-        stack.addArrangedSubview(section("Tạo đơn cho", recipientsButton))
+        stack.addArrangedSubview(headerView())
+        let kindCard = card()
+        kindCard.addArrangedSubview(sectionTitle("Loại đơn", icon: "square.grid.2x2.fill"))
+        kindCard.addArrangedSubview(requestKindGrid())
+        stack.addArrangedSubview(kindCard)
+        let recipientsCard = card()
+        recipientsCard.addArrangedSubview(sectionTitle("Tạo đơn cho", icon: "person.2.fill"))
+        recipientsCard.addArrangedSubview(recipientsButton)
+        stack.addArrangedSubview(recipientsCard)
 
+        let detailsCard = card()
         if [.late, .early, .overtime].contains(kind) {
-            stack.addArrangedSubview(section(kind == .late ? "Ngày đi trễ" : kind == .early ? "Ngày về sớm" : "Ngày làm thêm", dayPicker))
-            stack.addArrangedSubview(section("Thời lượng", durationField))
+            detailsCard.addArrangedSubview(section(kind == .late ? "Ngày đi trễ" : kind == .early ? "Ngày về sớm" : "Ngày làm thêm", dayPicker))
+            detailsCard.addArrangedSubview(section("Thời lượng", durationField))
         } else {
-            stack.addArrangedSubview(dateSection(title: dateTitle, start: fromPicker, end: toPicker))
+            detailsCard.addArrangedSubview(dateSection(title: dateTitle, start: fromPicker, end: toPicker))
         }
         if kind == .business {
-            stack.addArrangedSubview(section("Nơi công tác", destinationField))
-            stack.addArrangedSubview(section("Phương tiện", transportButton))
-            if selectedTransport == "personal_vehicle" { stack.addArrangedSubview(section("Quãng đường", distanceField)) }
-            stack.addArrangedSubview(section("Chi phí", expenseField))
+            detailsCard.addArrangedSubview(section("Nơi công tác", destinationField))
+            detailsCard.addArrangedSubview(section("Phương tiện", transportButton))
+            if selectedTransport == "personal_vehicle" { detailsCard.addArrangedSubview(section("Quãng đường", distanceField)) }
+            detailsCard.addArrangedSubview(section("Chi phí", expenseField))
         }
-        stack.addArrangedSubview(reasonSection())
+        stack.addArrangedSubview(detailsCard)
+        let reasonCard = card(); reasonCard.addArrangedSubview(sectionTitle("Nội dung đơn", icon: "text.alignleft")); reasonCard.addArrangedSubview(reasonSection())
+        stack.addArrangedSubview(reasonCard)
         updateRecipientsTitle()
+        renderValidation()
+    }
+
+    private func headerView() -> UIView {
+        let icon = UIImageView(image: UIImage(systemName: "doc.badge.plus", withConfiguration: UIImage.SymbolConfiguration(pointSize: 24, weight: .bold)))
+        icon.tintColor = .systemRed
+        icon.contentMode = .center
+        icon.backgroundColor = UIColor.systemRed.withAlphaComponent(0.12)
+        icon.layer.cornerRadius = 17
+        icon.layer.cornerCurve = .continuous
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([icon.widthAnchor.constraint(equalToConstant: 54), icon.heightAnchor.constraint(equalToConstant: 54)])
+        let kicker = label(template == nil ? "ĐƠN TỪ" : "GỬI LẠI ĐƠN", style: .caption1, weight: .bold, color: .systemRed)
+        let heading = label(template == nil ? "Tạo đơn mới" : "Tạo lại đơn", style: .title2, weight: .bold, color: .label)
+        let subtitle = label("Điền thông tin để gửi người duyệt.", style: .subheadline, color: .secondaryLabel)
+        let texts = UIStackView(arrangedSubviews: [kicker, heading, subtitle])
+        texts.axis = .vertical; texts.spacing = 3
+        let row = UIStackView(arrangedSubviews: [icon, texts, UIView()])
+        row.alignment = .center; row.spacing = 12
+        return row
+    }
+
+    private func card() -> UIStackView {
+        let card = UIStackView()
+        card.axis = .vertical; card.spacing = 14
+        card.isLayoutMarginsRelativeArrangement = true
+        card.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
+        card.backgroundColor = .secondarySystemGroupedBackground
+        card.layer.cornerRadius = 20; card.layer.cornerCurve = .continuous
+        card.layer.borderWidth = 0.75; card.layer.borderColor = UIColor.separator.withAlphaComponent(0.22).cgColor
+        return card
+    }
+
+    private func sectionTitle(_ text: String, icon: String) -> UIView {
+        let image = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)))
+        image.tintColor = .systemRed
+        image.setContentHuggingPriority(.required, for: .horizontal)
+        let title = label(text, style: .subheadline, weight: .bold, color: .label)
+        let row = UIStackView(arrangedSubviews: [image, title, UIView()])
+        row.alignment = .center; row.spacing = 8
+        return row
+    }
+
+    private func requestKindGrid() -> UIView {
+        let columns = UIStackView(); columns.axis = .vertical; columns.spacing = 8
+        let choices = [EmployeeRequestKind.leave, .business, .late, .early, .overtime, .sunday, .gate, .attendance]
+        for index in stride(from: 0, to: choices.count, by: 2) {
+            let row = UIStackView(); row.axis = .horizontal; row.spacing = 8; row.distribution = .fillEqually
+            row.addArrangedSubview(requestKindButton(choices[index]))
+            row.addArrangedSubview(requestKindButton(choices[index + 1]))
+            columns.addArrangedSubview(row)
+        }
+        return columns
+    }
+
+    private func requestKindButton(_ item: EmployeeRequestKind) -> UIButton {
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(systemName: item.icon)
+        configuration.imagePadding = 7
+        configuration.title = item.title
+        configuration.titleLineBreakMode = .byWordWrapping
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 10, bottom: 10, trailing: 10)
+        configuration.baseForegroundColor = item == kind ? UIColor(item.color) : .label
+        configuration.background.backgroundColor = item == kind ? UIColor(item.color).withAlphaComponent(0.16) : .tertiarySystemGroupedBackground
+        configuration.background.cornerRadius = 14
+        configuration.background.strokeColor = item == kind ? UIColor(item.color).withAlphaComponent(0.75) : UIColor.separator.withAlphaComponent(0.35)
+        configuration.background.strokeWidth = 1
+        let button = UIButton(configuration: configuration, primaryAction: UIAction { [weak self] _ in
+            self?.kind = item
+            self?.applyScheduleDefaults(for: item)
+            self?.rebuildForm()
+        })
+        button.titleLabel?.font = UIFont.preferredFont(forTextStyle: .subheadline).requestWeight(.semibold)
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 50).isActive = true
+        return button
+    }
+
+    private func applyScheduleDefaults(for nextKind: EmployeeRequestKind) {
+        let calendar = VietnamTime.calendar
+        if nextKind == .sunday {
+            let today = calendar.startOfDay(for: Date())
+            let daysToSunday = (8 - calendar.component(.weekday, from: today)) % 7
+            let sunday = calendar.date(byAdding: .day, value: daysToSunday, to: today) ?? today
+            fromPicker.date = scheduledTime(workStartTime, on: sunday, fallbackHour: 7, fallbackMinute: 30)
+            toPicker.date = scheduledTime(workEndTime, on: sunday, fallbackHour: 16, fallbackMinute: 30)
+        } else if nextKind == .leave {
+            let day = calendar.startOfDay(for: fromPicker.date)
+            fromPicker.date = scheduledTime(workStartTime, on: day, fallbackHour: 7, fallbackMinute: 30)
+            toPicker.date = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
+        }
+    }
+
+    private func scheduledTime(_ value: String?, on date: Date, fallbackHour: Int, fallbackMinute: Int) -> Date {
+        let parts = value?.split(separator: ":").compactMap { Int($0) } ?? []
+        let hour = parts.count == 2 && (0...23).contains(parts[0]) ? parts[0] : fallbackHour
+        let minute = parts.count == 2 && (0...59).contains(parts[1]) ? parts[1] : fallbackMinute
+        return VietnamTime.calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
+    }
+
+    private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight = .regular, color: UIColor) -> UILabel {
+        let result = UILabel()
+        result.text = text
+        result.font = UIFont.preferredFont(forTextStyle: style).requestWeight(weight)
+        result.adjustsFontForContentSizeCategory = true
+        result.textColor = color
+        result.numberOfLines = 0
+        return result
     }
 
     private var dateTitle: String {
@@ -1262,8 +1429,6 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     }
 
     private func reasonSection() -> UIView {
-        let box = UIStackView(); box.axis = .vertical; box.spacing = 7
-        let label = UILabel(); label.text = "NỘI DUNG ĐƠN"; label.font = .preferredFont(forTextStyle: .caption1).withSize(12); label.textColor = .secondaryLabel
         let holder = UIView(); holder.addSubview(reasonView); holder.addSubview(reasonPlaceholder)
         reasonView.translatesAutoresizingMaskIntoConstraints = false; reasonPlaceholder.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -1271,8 +1436,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             reasonView.topAnchor.constraint(equalTo: holder.topAnchor), reasonView.bottomAnchor.constraint(equalTo: holder.bottomAnchor), reasonView.heightAnchor.constraint(equalToConstant: 150),
             reasonPlaceholder.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: 16), reasonPlaceholder.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: -16), reasonPlaceholder.topAnchor.constraint(equalTo: holder.topAnchor, constant: 16)
         ])
-        box.addArrangedSubview(label); box.addArrangedSubview(holder)
-        return box
+        return holder
     }
 
     private var selectedTransport: String { transportButton.accessibilityIdentifier ?? "personal_vehicle" }
@@ -1301,18 +1465,51 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         let picker = LegacyRequestRecipientsController(employees: store.managedEmployees, selectedIDs: selectedRecipientIDs) { [weak self] selected in
             self?.selectedRecipientIDs = selected
             self?.updateRecipientsTitle()
+            self?.renderValidation()
         }
         navigationController?.pushViewController(picker, animated: true)
     }
 
     @objc private func close() { dismiss(animated: true) }
 
+    private var validationMessage: String? {
+        let reason = reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if reason.count < 10 { return "Nội dung đơn cần tối thiểu 10 ký tự." }
+        if recipientsLoaded && selectedRecipientIDs.isEmpty { return "Chọn ít nhất một người tạo đơn." }
+        if kind == .business {
+            if (destinationField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count < 2 { return "Nhập nơi công tác để gửi đơn." }
+            if selectedTransport == "personal_vehicle" && !(decimalValue(distanceField) ?? 0 > 0) { return "Nhập quãng đường khi đi bằng xe cá nhân." }
+        }
+        if [.late, .early, .overtime].contains(kind) {
+            let minutes = Int(decimalValue(durationField) ?? 0)
+            if minutes < 5 || minutes > 1435 || !minutes.isMultiple(of: 5) { return "Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút." }
+        }
+        if kind == .sunday && VietnamTime.calendar.component(.weekday, from: fromPicker.date) != 1 { return "Ngày bắt đầu phải là Chủ nhật." }
+        if ![.late, .early, .overtime].contains(kind), toPicker.date < fromPicker.date { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
+        return nil
+    }
+
+    private func renderValidation() {
+        let warning = isSending ? nil : validationMessage
+        validationLabel.text = warning
+        validationLabel.isHidden = warning == nil
+        var configuration = submitButton.configuration
+        configuration?.baseBackgroundColor = warning == nil && !isSending ? .systemRed : .systemGray3
+        configuration?.background.backgroundColor = warning == nil && !isSending ? .systemRed : .systemGray3
+        configuration?.title = isSending ? "Đang gửi…" : "Gửi đơn"
+        submitButton.configuration = configuration
+        submitButton.isEnabled = warning == nil && !isSending
+    }
+
+    private func decimalValue(_ field: UITextField) -> Double? {
+        Double(field.text?.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".") ?? "")
+    }
+
     @objc private func send() {
         guard !isSending else { return }
+        if let warning = validationMessage { showError(warning); return }
         let cleanReason = reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard cleanReason.count >= 10 else { showError("Nội dung đơn cần tối thiểu 10 ký tự."); return }
-        guard !recipientsLoaded || !selectedRecipientIDs.isEmpty else { showError("Chọn ít nhất một người tạo đơn."); return }
-        let numeric: (UITextField) -> Double? = { Double($0.text?.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".") ?? "") }
+        let numeric: (UITextField) -> Double? = { [weak self] in self?.decimalValue($0) }
         let destination = destinationField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
         if kind == .business && (destination?.count ?? 0) < 2 { showError("Nhập nơi công tác để gửi đơn."); return }
         if kind == .business && selectedTransport == "personal_vehicle" && !(numeric(distanceField) ?? 0 > 0) { showError("Nhập quãng đường khi đi bằng xe cá nhân."); return }
@@ -1333,13 +1530,13 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         guard to >= from else { showError("Thời gian kết thúc phải sau thời gian bắt đầu."); return }
         if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 { showError("Ngày bắt đầu phải là Chủ nhật."); return }
         isSending = true
-        navigationItem.rightBarButtonItem?.isEnabled = false
+        renderValidation()
         Task { [weak self] in
             guard let self else { return }
             let error = await submitRequest(kind, from, to, submittedReason, destination, kind == .business ? selectedTransport : nil, kind == .business ? numeric(distanceField) : nil, kind == .business ? numeric(expenseField) : nil, recipientsLoaded ? Array(selectedRecipientIDs) : nil)
             guard !Task.isCancelled else { return }
             isSending = false
-            navigationItem.rightBarButtonItem?.isEnabled = true
+            renderValidation()
             if let error { showError(error) } else { UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss(animated: true) }
         }
     }
@@ -1350,7 +1547,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         present(alert, animated: true)
     }
 
-    func textViewDidChange(_ textView: UITextView) { updateReasonPlaceholder() }
+    func textViewDidChange(_ textView: UITextView) { updateReasonPlaceholder(); renderValidation() }
     private func updateReasonPlaceholder() { reasonPlaceholder.isHidden = !reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     private static func numberText(_ value: Double) -> String { value.rounded() == value ? String(Int(value)) : String(value) }
 }
@@ -1366,7 +1563,16 @@ private final class LegacyRequestRecipientsController: UITableViewController {
         super.init(style: .insetGrouped)
     }
     required init?(coder: NSCoder) { nil }
-    override func viewDidLoad() { super.viewDidLoad(); title = "Tạo đơn cho"; navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Xong", style: .done, target: self, action: #selector(done)); tableView.allowsMultipleSelection = true }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = "Tạo đơn cho"
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Tất cả", style: .plain, target: self, action: #selector(toggleAll))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Xong", style: .done, target: self, action: #selector(done))
+        tableView.allowsMultipleSelection = true
+        tableView.backgroundColor = .systemGroupedBackground
+    }
+    override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String { "Chọn người tạo đơn" }
+    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String { "Chạm vào tên để chọn hoặc bỏ chọn. Nhân viên được chọn sẽ nhận đơn tương ứng." }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { employees.count }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil); let person = employees[indexPath.row]
@@ -1377,7 +1583,15 @@ private final class LegacyRequestRecipientsController: UITableViewController {
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) { toggle(indexPath) }
     override func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) { toggle(indexPath) }
     private func toggle(_ indexPath: IndexPath) { let id = employees[indexPath.row].id; if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }; tableView.reloadRows(at: [indexPath], with: .none) }
+    @objc private func toggleAll() { let all = Set(employees.map(\.id)); selectedIDs = selectedIDs == all ? [] : all; tableView.reloadData() }
     @objc private func done() { completion(selectedIDs); navigationController?.popViewController(animated: true) }
+}
+
+private extension UIFont {
+    func requestWeight(_ weight: UIFont.Weight) -> UIFont {
+        let descriptor = fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
+        return UIFont(descriptor: descriptor, size: 0)
+    }
 }
 
 struct RequestComposer: View {
