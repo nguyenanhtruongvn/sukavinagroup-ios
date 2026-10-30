@@ -1030,7 +1030,7 @@ final class SessionStore: ObservableObject {
             async let directory: Void = self.requests.loadManagedEmployees(
                 accessToken, employeeCode: employeeCode
             )
-            async let roomSchedule: Void = self.refreshMeetingSchedule(date: .now)
+            async let roomSchedule: Void = self.refreshMeetingSchedule(date: .now, markViewed: false)
             if self.shouldRevalidateAttendanceMonth(currentMonth) {
                 _ = try? await self.loadAttendanceMonth(currentMonth, token: accessToken)
             }
@@ -2384,8 +2384,8 @@ final class SessionStore: ObservableObject {
 
     /// Shows the last confirmed schedule immediately and only revalidates when it is stale.
     /// Realtime/APNs events and explicit user refreshes bypass the freshness window.
-    func refreshMeetingSchedule(date: Date = .now, force: Bool = false) async {
-        hasViewedMeetingSchedule = true
+    func refreshMeetingSchedule(date: Date = .now, force: Bool = false, markViewed: Bool = true) async {
+        if markViewed { hasViewedMeetingSchedule = true }
         activeMeetingScheduleDate = date
         let day = VietnamTime.dayKey.string(from: date)
         displayCachedMeetingScheduleIfNeeded(for: day)
