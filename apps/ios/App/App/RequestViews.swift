@@ -18,6 +18,10 @@ private struct RequestRecipientsPickerSheet: View {
     let token: String?
     @Binding var selectedIDs: Set<String>
     @State private var sheetHeight: CGFloat = 1
+    /// A new request opens with only the manager selected. That default should
+    /// be replaced once by the first direct report, but must never make a
+    /// later tap on another employee silently remove “Tôi” again.
+    @State private var hasChosenManagedEmployee = false
 
     private let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
     private var allIDs: Set<String> { Set(store.managedEmployees.map(\.id)) }
@@ -27,6 +31,25 @@ private struct RequestRecipientsPickerSheet: View {
         if selectedIDs.contains(id) {
             selectedIDs.remove(id)
         } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    private func toggleManagedEmployee(_ id: String) {
+        guard let selfID = store.managedEmployees.first(where: \.isSelf)?.id else {
+            toggle(id)
+            return
+        }
+
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+        } else if !hasChosenManagedEmployee && selectedIDs == [selfID] {
+            // The first direct-report choice replaces the default “Tôi”.
+            hasChosenManagedEmployee = true
+            selectedIDs = [id]
+        } else {
+            // From then on, people are added to the current joint request.
+            hasChosenManagedEmployee = true
             selectedIDs.insert(id)
         }
     }
@@ -66,6 +89,7 @@ private struct RequestRecipientsPickerSheet: View {
                             ) { toggle(selfPerson.id) }
                         }
                         RequestRecipientChoiceTile(title: "Tất cả", selected: allSelected) {
+                            hasChosenManagedEmployee = true
                             selectedIDs = allSelected ? [] : allIDs
                         }
                     }
@@ -79,7 +103,7 @@ private struct RequestRecipientsPickerSheet: View {
                                 RequestRecipientChoiceTile(
                                     title: employee.fullName,
                                     selected: selectedIDs.contains(employee.id)
-                                ) { toggle(employee.id) }
+                                ) { toggleManagedEmployee(employee.id) }
                             }
                         }
                     }
