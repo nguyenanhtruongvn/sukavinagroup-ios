@@ -17,6 +17,7 @@ struct TodayMenuView: View {
     private var session: SessionStore { sessionActions.store }
     @State private var isSessionWorking = false
     @EnvironmentObject private var menuStore: MenuStore
+    @EnvironmentObject private var requestStore: EmployeeRequestStore
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var pendingChoice: String?
@@ -37,6 +38,29 @@ struct TodayMenuView: View {
 
     private var hasAvailableManagedEmployees: Bool {
         (menuStore.todayMenu?.managedEmployees ?? []).contains { $0.selection == nil }
+    }
+
+    /// Use the same cached employee identities as the request composer,
+    /// joined to *today's* authoritative meal selection/receipt statuses.
+    /// Never use a persistent employee cache to infer that a meal is unbooked.
+    private var managedMealChoices: [ManagedMealEmployee] {
+        let daily = menuStore.todayMenu?.managedEmployees ?? []
+        let byID = Dictionary(daily.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let known = requestStore.managedEmployees.filter { !$0.isSelf }
+        let ordered = known.compactMap { member -> ManagedMealEmployee? in
+            guard let meal = byID[member.id] else { return nil }
+            return ManagedMealEmployee(
+                id: meal.id,
+                employeeCode: member.employeeCode,
+                fullName: member.fullName.isEmpty ? member.employeeCode : member.fullName,
+                department: member.department,
+                selection: meal.selection,
+                orderedByEmployeeId: meal.orderedByEmployeeId,
+                receivedAt: meal.receivedAt
+            )
+        }
+        let orderedIDs = Set(ordered.map(\.id))
+        return ordered + daily.filter { !orderedIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -233,7 +257,7 @@ struct TodayMenuView: View {
             ? (menuStore.todayMenu?.day.featured ?? "...")
             : [menuStore.todayMenu?.day.vegetarianMain, menuStore.todayMenu?.day.vegetarianSide]
                 .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
-        let allEmployees = menuStore.todayMenu?.managedEmployees ?? []
+        let allEmployees = managedMealChoices
         let eligibleEmployees = allEmployees.filter { $0.selection == nil }
         let eligibleIDs = Set(eligibleEmployees.map(\.id))
         let managerSelectable = menuStore.todayMenu?.selection == nil
@@ -322,6 +346,8 @@ struct TodayMenuView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundColor(canSelect ? .primary : AppTheme.muted)
                                     .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .frame(minHeight: 46, alignment: .leading)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 11)
