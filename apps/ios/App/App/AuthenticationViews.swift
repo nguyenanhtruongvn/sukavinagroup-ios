@@ -253,7 +253,7 @@ private struct ForgotPasswordView: View {
                         .font(.title.bold())
                     Text(completed
                          ? "Bạn có thể đăng nhập bằng mật khẩu mới."
-                         : "Nhập MSNV rồi chọn Email hoặc Zalo để nhận mã OTP.")
+                         : "Nhập MSNV để nhận mã OTP qua email liên kết.")
                         .foregroundColor(AppTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)
 
@@ -263,13 +263,7 @@ private struct ForgotPasswordView: View {
                             .onChange(of: employeeCode) { _, _ in formError = nil; session.clearForgotPasswordError() }
 
                         if !otpSent {
-                            HStack(spacing: 10) {
-                                forgotDeliveryOption(title: "Email", icon: "envelope.fill", channel: "email")
-                                forgotDeliveryOption(title: "Zalo", icon: "message.fill", channel: "zalo")
-                            }
-                            Text(otpChannel == "zalo"
-                                 ? "OTP sẽ được gửi tới Zalo theo số điện thoại liên kết với MSNV."
-                                 : "OTP sẽ được gửi tới email liên kết với MSNV.")
+                            Text("OTP sẽ được gửi tới email liên kết với MSNV.")
                                 .font(.subheadline)
                                 .foregroundColor(AppTheme.muted)
                         }

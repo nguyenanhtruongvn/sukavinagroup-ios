@@ -424,7 +424,7 @@ struct PasswordChangeView: View {
                              ? "Bạn đang dùng mật khẩu mặc định. Hãy đặt mật khẩu mới để tiếp tục sử dụng ứng dụng."
                              : (isDemoAccount
                                 ? "Nhập mật khẩu hiện tại trước khi thiết lập mật khẩu mới."
-                                : "Chọn Email hoặc Zalo để xác minh trước khi thiết lập mật khẩu mới."))
+                                : "Xác minh qua email trước khi thiết lập mật khẩu mới."))
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
 
@@ -435,19 +435,11 @@ struct PasswordChangeView: View {
                     } }
 
                     if !isDemoAccount { VStack(alignment: .leading, spacing: 14) {
-                        Label(otpSent ? "OTP đã gửi tới \(email)" : (otpChannel == "zalo" ? "Xác minh qua Zalo" : "Xác minh qua email"), systemImage: otpChannel == "zalo" ? "message.fill" : "envelope.badge.fill")
+                        Label(otpSent ? "OTP đã gửi tới \(email)" : "Xác minh qua email", systemImage: "envelope.badge.fill")
                             .font(.headline).foregroundColor(AppTheme.redText)
-                        if !otpSent {
-                            HStack(spacing: 10) {
-                                otpDeliveryOption(title: "Email", icon: "envelope.fill", channel: "email")
-                                otpDeliveryOption(title: "Zalo", icon: "message.fill", channel: "zalo")
-                            }
-                        }
                         Text(otpSent
                              ? "Mã gồm 6 số và có hiệu lực trong 10 phút."
-                             : (otpChannel == "zalo"
-                                ? "Mã OTP sẽ được gửi tới Zalo theo số điện thoại đã liên kết với tài khoản."
-                                : "Mã OTP sẽ được gửi tới email liên kết. Nếu chưa có email, vui lòng liên hệ Nhân sự để cập nhật."))
+                             : "Mã OTP sẽ được gửi tới email liên kết. Nếu chưa có email, vui lòng liên hệ Nhân sự để cập nhật.")
                             .font(.subheadline).foregroundColor(AppTheme.muted)
                     }
                     .padding(18).background(AppTheme.card)
