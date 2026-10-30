@@ -929,6 +929,20 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// Used by both the iOS 17 UIKit portal and the iOS 18+ SwiftUI portal.
+    /// Restore locally confirmed, account-scoped navigation data *before*
+    /// publishing .signedIn; otherwise both portal variants can flash a
+    /// loading view between the first frame and the async .task/viewWillAppear.
+    private func primeCachedNavigationForCurrentAccount() {
+        guard let employeeCode = profile?.employeeCode.nilIfEmpty else { return }
+        requests.restoreManagedDirectoryCache(employeeCode: employeeCode)
+        let today = VietnamTime.dayKey.string(from: Date())
+        if displayedMeetingScheduleDay != today {
+            restoreCachedMeetingSchedule(for: today)
+            displayedMeetingScheduleDay = today
+        }
+    }
+
     private func completeRestore(accessToken savedToken: String?, refreshToken savedRefreshToken: String?, attemptID: UUID) {
         guard activeRestoreAttempt == attemptID else { return }
         activeRestoreAttempt = nil
@@ -945,6 +959,7 @@ final class SessionStore: ObservableObject {
         profile = SessionCache.loadProfile()
         restoreCachedDashboard()
         restoreCachedTodayMenu()
+        primeCachedNavigationForCurrentAccount()
         state = .signedIn
         sessionRestoreLogger.notice("Restore completed: signed in from cached session")
         loadKnownArticles()
@@ -1106,9 +1121,10 @@ final class SessionStore: ObservableObject {
             )
             applySession(response)
 
-            // Publish the authenticated UI before any optional local cleanup,
-            // notification registration or path-monitor work. This prevents a
-            // successful HTTP 201 from appearing stuck on slower cellular paths.
+            // Only local protected cache reads here; network work starts
+            // after the signed-in portal is visible. Both UIKit and SwiftUI
+            // get rooms and the manager directory in their very first frame.
+            primeCachedNavigationForCurrentAccount()
             state = .signedIn
 
             Task { @MainActor [weak self] in
@@ -1361,6 +1377,7 @@ final class SessionStore: ObservableObject {
                 return false
             }
             applySession(response)
+            primeCachedNavigationForCurrentAccount()
             state = .signedIn
             // The same follow-up as a password sign-in: it used to skip
             // auth/me (email, manager), the news state, notification
@@ -2385,6 +2402,9 @@ final class SessionStore: ObservableObject {
     /// Shows the last confirmed schedule immediately and only revalidates when it is stale.
     /// Realtime/APNs events and explicit user refreshes bypass the freshness window.
     func refreshMeetingSchedule(date: Date = .now, force: Bool = false, markViewed: Bool = true) async {
+        // The login prewarmer must not take control of the day if the user
+        // has already entered the Rooms tab and selected another date.
+        if !markViewed && hasViewedMeetingSchedule { return }
         if markViewed { hasViewedMeetingSchedule = true }
         activeMeetingScheduleDate = date
         let day = VietnamTime.dayKey.string(from: date)
