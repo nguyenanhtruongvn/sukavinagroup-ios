@@ -166,7 +166,7 @@ struct ModernAttendanceHistoryView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: 220)
                 } else {
-                    ProgressView("Đang tải tháng kế bên...")
+                    ProgressView("Đang tải dữ liệu \(monthTitle(for: month))…")
                         .tint(AppTheme.red)
                         .frame(maxWidth: .infinity, minHeight: 220)
                         .background(AppTheme.card)
