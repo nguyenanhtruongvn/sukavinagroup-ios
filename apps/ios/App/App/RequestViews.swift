@@ -76,7 +76,7 @@ private struct RequestRecipientsPickerSheet: View {
                             title: "Tôi",
                             selected: true
                         ) {
-                            if let selfID = session.profile?.id.nilIfEmpty {
+                            if let selfID = session.profile?.id, !selfID.isEmpty {
                                 selectedIDs = [selfID]
                             }
                         }
