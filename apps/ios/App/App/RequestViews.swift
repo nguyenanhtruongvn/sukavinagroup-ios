@@ -14,6 +14,8 @@ import WebKit
 /// more people. Its two-column tiles intentionally match the meal-order flow.
 private struct RequestRecipientsPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.sessionActions) private var actions
+    private var session: SessionStore { actions.store }
     @ObservedObject var store: EmployeeRequestStore
     let token: String?
     @Binding var selectedIDs: Set<String>
@@ -65,19 +67,35 @@ private struct RequestRecipientsPickerSheet: View {
                         .foregroundStyle(AppTheme.red)
                 }
                 if !store.managedEmployeesLoaded {
-                    VStack(spacing: 14) {
+                    // A first-time network sync must not replace the known
+                    // signed-in person with an empty, full-height spinner.
+                    // Direct reports appear as soon as the shared cache/API
+                    // confirms the actual server-side management relationship.
+                    VStack(alignment: .leading, spacing: 12) {
+                        RequestRecipientChoiceTile(
+                            title: "Tôi",
+                            selected: true
+                        ) {
+                            if let selfID = session.profile?.id.nilIfEmpty {
+                                selectedIDs = [selfID]
+                            }
+                        }
                         if let error = store.managedEmployeesError {
-                            Text(error).multilineTextAlignment(.center).foregroundStyle(AppTheme.muted)
+                            Text(error).font(.footnote).foregroundStyle(AppTheme.muted)
                             Button("Thử lại") {
-                                Task { await store.loadManagedEmployees(token, force: true) }
+                                Task {
+                                    await store.loadManagedEmployees(
+                                        token, employeeCode: session.profile?.employeeCode, force: true
+                                    )
+                                }
                             }
                             .buttonStyle(.borderedProminent).tint(AppTheme.red)
                         } else {
-                            ProgressView("Đang tải danh sách...")
+                            Text("Đang đồng bộ danh sách nhân viên lần đầu…")
+                                .font(.footnote).foregroundStyle(AppTheme.muted)
                         }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 28)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     let selfPerson = store.managedEmployees.first(where: \.isSelf)
                     let employees = store.managedEmployees.filter { !$0.isSelf }
@@ -132,6 +150,13 @@ private struct RequestRecipientsPickerSheet: View {
         .presentationContentInteraction(.scrolls)
         .presentationDragIndicator(.visible)
         .attachedMealSheetCorners()
+        .task {
+            // The composer may still be loading when the picker is first
+            // presented; restore independently and deduplicate the GET.
+            await store.loadManagedEmployees(
+                token, employeeCode: session.profile?.employeeCode
+            )
+        }
     }
 }
 
