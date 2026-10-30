@@ -861,6 +861,10 @@ final class SessionStore: ObservableObject {
     }
 
     private func saveTodayMenuCache(_ value: TodayMenu) {
+        // Today's menu supplies live meal status AND the same direct-report
+        // roster used by "Tạo đơn cho". Share just the roster in its separate,
+        // long-lived document; meal status remains day-scoped.
+        requests.reconcileManagedDirectoryFromMenu(value, profile: profile)
         guard let employeeCode = cacheEmployeeCode,
               let data = try? JSONEncoder().encode(CachedValue(savedAt: Date(), value: value)) else { return }
         AccountDocumentStore.shared.set(data, forKey: todayMenuCachePrefix + employeeCode)
