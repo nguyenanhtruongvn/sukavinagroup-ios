@@ -333,6 +333,8 @@ final class EmployeeRequestStore: ObservableObject {
     private var loadTaskID: UUID?
     private var managedEmployeesTask: Task<Void, Never>?
     private var managedEmployeesTaskID: UUID?
+    /// Coalesce Admin changes received while an older directory GET runs.
+    private var managedEmployeesRerunRequested = false
     /// A forced load arrived while one was running: run once more.
     private var rerunRequested = false
     private let refreshTTL: TimeInterval = 60
@@ -369,6 +371,7 @@ final class EmployeeRequestStore: ObservableObject {
         managedEmployeesTask?.cancel()
         managedEmployeesTask = nil
         managedEmployeesTaskID = nil
+        managedEmployeesRerunRequested = false
         managedEmployees = []
         managedEmployeesLoaded = false
         managedEmployeesError = nil
@@ -402,6 +405,7 @@ final class EmployeeRequestStore: ObservableObject {
         managedEmployeesTask?.cancel()
         managedEmployeesTask = nil
         managedEmployeesTaskID = nil
+        managedEmployeesRerunRequested = false
         managedDirectoryCacheOwner = employeeCode
         managedEmployees = []
         managedEmployeesLoaded = false
@@ -419,6 +423,7 @@ final class EmployeeRequestStore: ObservableObject {
         guard let token else { return }
         if !force, managedEmployeesLoaded { return }
         if let task = managedEmployeesTask {
+            if force { managedEmployeesRerunRequested = true }
             await task.value
             return
         }
@@ -453,6 +458,10 @@ final class EmployeeRequestStore: ObservableObject {
         if managedEmployeesTaskID == taskID {
             managedEmployeesTask = nil
             managedEmployeesTaskID = nil
+            if managedEmployeesRerunRequested {
+                managedEmployeesRerunRequested = false
+                await loadManagedEmployees(token, employeeCode: requestedFor, force: true)
+            }
         }
     }
 
