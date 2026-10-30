@@ -252,7 +252,7 @@ struct RequestBody: Encodable {
     /// older server versions remain compatible with a request for yourself.
     let employeeIds: [String]?
 }
-struct ManagedRequestEmployee: Codable, Identifiable {
+struct ManagedRequestEmployee: Codable, Identifiable, Equatable {
     let id: String
     let employeeCode: String
     let fullName: String
@@ -268,6 +268,10 @@ final class EmployeeRequestStore: ObservableObject {
         let savedAt: Date
         let requests: [EmployeeRequest]
         let approvals: [EmployeeRequest]
+    }
+
+    private struct CachedManagedDirectory: Codable {
+        let employees: [ManagedRequestEmployee]
     }
 
     // Every change of these two lists ends with one rebuildIndex() call
@@ -321,7 +325,9 @@ final class EmployeeRequestStore: ObservableObject {
     @Published private(set) var loadError: String?
     var hasLoaded: Bool { lastLoadedAt != nil }
     private let cachePrefix = "native-employee-requests-cache-"
+    private let managedDirectoryCachePrefix = "native-managed-request-directory-"
     private var cacheEmployeeCode: String?
+    private var managedDirectoryCacheOwner: String?
     private var lastLoadedAt: Date?
     private var loadTask: Task<Void, Never>?
     private var loadTaskID: UUID?
@@ -336,6 +342,8 @@ final class EmployeeRequestStore: ObservableObject {
     func restoreCache(employeeCode: String?) {
         guard let employeeCode = employeeCode?.trimmingCharacters(in: .whitespacesAndNewlines),
               !employeeCode.isEmpty else { return }
+        // Direct-report data uses an independent lifetime and never expires.
+        restoreManagedDirectoryCache(employeeCode: employeeCode)
         // Shared by the Requests and Notifications tabs: once this account's
         // lists are in memory, the disk copy is never newer.
         if cacheEmployeeCode == employeeCode, lastLoadedAt != nil { return }
@@ -364,6 +372,7 @@ final class EmployeeRequestStore: ObservableObject {
         managedEmployees = []
         managedEmployeesLoaded = false
         managedEmployeesError = nil
+        managedDirectoryCacheOwner = nil
         rebuildIndex()
         message = nil
         cacheEmployeeCode = nil
@@ -383,18 +392,37 @@ final class EmployeeRequestStore: ObservableObject {
         return text.isEmpty ? fallback : text
     }
 
-    /// The API is the authority for a manager's direct reports. Do not derive
-    /// this list from an editable employee name or code in the client.
-    func loadManagedEmployees(_ token: String?, force: Bool = false) async {
+    /// Read the last server-authorized directory immediately. Stored per
+    /// account in file-protected Application Support and purged on sign-out.
+    /// Revalidation is event-driven; there is deliberately no time-based TTL.
+    func restoreManagedDirectoryCache(employeeCode: String?) {
+        guard let employeeCode = employeeCode?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !employeeCode.isEmpty else { return }
+        guard managedDirectoryCacheOwner != employeeCode else { return }
+        managedEmployeesTask?.cancel()
+        managedEmployeesTask = nil
+        managedEmployeesTaskID = nil
+        managedDirectoryCacheOwner = employeeCode
+        managedEmployees = []
+        managedEmployeesLoaded = false
+        managedEmployeesError = nil
+        guard let data = AccountDocumentStore.shared.data(forKey: managedDirectoryCachePrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedManagedDirectory.self, from: data) else { return }
+        managedEmployees = cached.employees
+        managedEmployeesLoaded = true
+    }
+
+    /// Load only on first use, an Admin-scoped realtime change, or stream
+    /// reconnection (which uses a conditional HTTP GET / ETag 304).
+    func loadManagedEmployees(_ token: String?, employeeCode: String? = nil, force: Bool = false) async {
+        if let employeeCode { restoreManagedDirectoryCache(employeeCode: employeeCode) }
         guard let token else { return }
-        if !force, managedEmployeesLoaded {
-            return
-        }
+        if !force, managedEmployeesLoaded { return }
         if let task = managedEmployeesTask {
             await task.value
             return
         }
-        managedEmployeesError = nil
+        let requestedFor = managedDirectoryCacheOwner
         let taskID = UUID()
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -402,15 +430,21 @@ final class EmployeeRequestStore: ObservableObject {
                 let employees: [ManagedRequestEmployee] = try await APIClient.shared.request(
                     "me/requests/managed-employees", token: token
                 )
-                guard !Task.isCancelled else { return }
-                self.managedEmployees = employees
-                self.managedEmployeesLoaded = true
-                self.managedEmployeesError = nil
+                guard !Task.isCancelled, self.managedDirectoryCacheOwner == requestedFor else { return }
+                let changed = self.managedEmployees != employees
+                if changed { self.managedEmployees = employees }
+                if !self.managedEmployeesLoaded { self.managedEmployeesLoaded = true }
+                if self.managedEmployeesError != nil { self.managedEmployeesError = nil }
+                if let requestedFor, changed,
+                   let encoded = try? JSONEncoder().encode(CachedManagedDirectory(employees: employees)) {
+                    AccountDocumentStore.shared.set(encoded, forKey: self.managedDirectoryCachePrefix + requestedFor)
+                }
             } catch is CancellationError {
                 return
             } catch {
-                guard !Task.isCancelled else { return }
-                self.managedEmployeesError = Self.actionMessage(error, fallback: "Không tải được danh sách nhân viên.")
+                guard !Task.isCancelled, self.managedDirectoryCacheOwner == requestedFor else { return }
+                let message = Self.actionMessage(error, fallback: "Không tải được danh sách nhân viên.")
+                if self.managedEmployeesError != message { self.managedEmployeesError = message }
             }
         }
         managedEmployeesTask = task
@@ -1183,7 +1217,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         initialInput = currentInput
         Task { [weak self] in
             guard let self else { return }
-            await store.loadManagedEmployees(token)
+            await store.loadManagedEmployees(token, employeeCode: session.profile?.employeeCode)
             guard !Task.isCancelled else { return }
             recipientsLoaded = store.managedEmployeesLoaded
             if selectedRecipientIDs.isEmpty {
@@ -2391,7 +2425,7 @@ struct RequestComposer: View {
                 applyInitialLeaveSchedule()
             }
             .task {
-                await requestStore.loadManagedEmployees(session.token)
+                await requestStore.loadManagedEmployees(session.token, employeeCode: session.profile?.employeeCode)
                 initializeRecipientsIfNeeded()
             }
             .onChange(of: requestStore.managedEmployeesLoaded) { _, loaded in
