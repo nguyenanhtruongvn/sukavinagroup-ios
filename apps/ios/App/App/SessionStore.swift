@@ -2871,6 +2871,11 @@ final class SessionStore: ObservableObject {
                 // (Requests and Notifications share this store). Mirrors Android.
                 Task { await self.requests.load(self.token, force: true) }
             }
+            if events.contains("managed_recipients_changed") {
+                // The server scopes this event to the manager whose direct
+                // reports changed, so no unrelated manager refetches.
+                Task { await self.requests.loadManagedEmployees(self.token, force: true) }
+            }
             if events.contains("attendance_changed") || events.contains("employee_changed") {
                 // Employee/shift edits can change the calculated attendance
                 // status for an already cached month just like holiday edits.

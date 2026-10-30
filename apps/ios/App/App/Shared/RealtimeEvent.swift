@@ -10,6 +10,7 @@ struct RealtimeEvent: Equatable {
         case attendance = "attendance_changed"
         case employee = "employee_changed"
         case ownProfile = "own_profile_changed"
+        case managedRecipients = "managed_recipients_changed"
         case request = "request_changed"
         case meal = "meal_changed"
         case meeting = "meeting_changed"
