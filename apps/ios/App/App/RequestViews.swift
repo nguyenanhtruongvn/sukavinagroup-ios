@@ -1287,11 +1287,26 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         configureLayout()
         rebuildForm()
         initialInput = currentInput
+        // iOS 17 UIKit: restore the same protected, account-scoped directory
+        // synchronously before first paint. It must not wait for a network
+        // task and momentarily turn "Tôi" into a loading state.
+        store.restoreManagedDirectoryCache(employeeCode: session.profile?.employeeCode)
+        recipientsLoaded = store.managedEmployeesLoaded
+        selectedRecipientIDs = Set(store.managedEmployees.filter(\.isSelf).map(\.id))
+        updateRecipientsTitle()
+        renderValidation()
         Task { [weak self] in
             guard let self else { return }
             await store.loadManagedEmployees(token, employeeCode: session.profile?.employeeCode)
             guard !Task.isCancelled else { return }
             recipientsLoaded = store.managedEmployeesLoaded
+            if selectedRecipientIDs.isEmpty && !recipientsLoaded {
+                // First install/offline: preserve the visible self label; do
+                // not invent or submit an employee ID not verified by API.
+                updateRecipientsTitle()
+                renderValidation()
+                return
+            }
             if selectedRecipientIDs.isEmpty {
                 selectedRecipientIDs = Set(store.managedEmployees.filter(\.isSelf).map(\.id))
             }
@@ -2497,6 +2512,11 @@ struct RequestComposer: View {
             .dynamicTypeSize(.xSmall ... .accessibility1)
             .onAppear {
                 applyInitialLeaveSchedule()
+                // iOS 18+ SwiftUI: hydrate before the first async request.
+                // The old snapshot stays visible until an Admin-scoped
+                // change/reconnect confirms different recipients.
+                requestStore.restoreManagedDirectoryCache(employeeCode: session.profile?.employeeCode)
+                initializeRecipientsIfNeeded()
             }
             .task {
                 await requestStore.loadManagedEmployees(session.token, employeeCode: session.profile?.employeeCode)
