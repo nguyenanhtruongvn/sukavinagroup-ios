@@ -347,10 +347,10 @@ struct TodayMenuView: View {
                                     .foregroundColor(canSelect ? .primary : AppTheme.muted)
                                     .lineLimit(2)
                                     .fixedSize(horizontal: false, vertical: true)
-                                    .frame(minHeight: 46, alignment: .leading)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 11)
+                                    .frame(minHeight: 46, alignment: .leading)
                                     .background(selected ? Color.green.opacity(0.16) :
                                         (canSelect ? AppTheme.card : AppTheme.card.opacity(0.45)))
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
