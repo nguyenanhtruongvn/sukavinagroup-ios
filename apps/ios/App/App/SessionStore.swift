@@ -503,6 +503,10 @@ final class SessionStore: ObservableObject {
     private var meetingInviteesLoadedAt: Date?
     private var meetingInviteesRefreshTask: Task<String?, Never>?
     private let meetingInviteesCacheTTL: TimeInterval = 10 * 60
+    /// One bounded prewarm per signed-in account, after authentication.
+    /// Navigation screens continue to own their own TTL/realtime policy.
+    private var warmedNavigationEmployeeCode: String?
+    private var warmNavigationTask: Task<Void, Never>?
     private var todayMenuRefreshTask: Task<Void, Never>?
     private var todayMenuLoadedAt: Date?
     private let todayMenuRefreshTTL: TimeInterval = 90
@@ -992,6 +996,7 @@ final class SessionStore: ObservableObject {
             if lastSessionRefreshAt == nil { lastSessionRefreshAt = Date() }
             startRealTimeUpdates()
             startSessionRefresh()
+            warmFrequentlyOpenedScreens()
         } catch NetworkError.unauthorized {
             signOut()
         } catch {
@@ -999,6 +1004,42 @@ final class SessionStore: ObservableObject {
             present(error)
             startRealTimeUpdates()
             startSessionRefresh()
+        }
+    }
+
+    /// Populate small, frequently used account documents before the user
+    /// visits their screens. Never block Home or clear an older snapshot:
+    /// each feature reuses its persisted cache, in-flight task and ETag.
+    /// The month and schedule remain realtime-revalidated, unlike the
+    /// indefinitely retained manager-directory identities.
+    private func warmFrequentlyOpenedScreens() {
+        guard state == .signedIn,
+              profile?.accountType != "CANTEEN",
+              let employeeCode = profile?.employeeCode.nilIfEmpty,
+              let accessToken = token else { return }
+        guard warmedNavigationEmployeeCode != employeeCode else { return }
+        warmedNavigationEmployeeCode = employeeCode
+        warmNavigationTask?.cancel()
+        warmNavigationTask = Task { [weak self] in
+            guard let self, self.profile?.employeeCode == employeeCode else { return }
+            let currentMonth = VietnamTime.monthKey.string(from: Date())
+            let previousMonth = VietnamTime.calendar.date(byAdding: .month, value: -1, to: Date())
+                .map { VietnamTime.monthKey.string(from: $0) }
+
+            async let statements: [AttendanceReport] = self.loadAttendanceReports()
+            async let directory: Void = self.requests.loadManagedEmployees(
+                accessToken, employeeCode: employeeCode
+            )
+            async let roomSchedule: Void = self.refreshMeetingSchedule(date: .now)
+            if self.shouldRevalidateAttendanceMonth(currentMonth) {
+                _ = try? await self.loadAttendanceMonth(currentMonth, token: accessToken)
+            }
+            _ = await (statements, directory, roomSchedule)
+            guard !Task.isCancelled, self.profile?.employeeCode == employeeCode,
+                  let previousMonth, self.shouldRevalidateAttendanceMonth(previousMonth) else { return }
+            // A recent neighbouring month is prefetched after the visible
+            // screens, so a month swipe does not open an empty spinner.
+            _ = try? await self.loadAttendanceMonth(previousMonth, token: accessToken)
         }
     }
 
@@ -1566,6 +1607,9 @@ final class SessionStore: ObservableObject {
         attendanceReportsLoadedAt = nil
         meetingDetailsReruns.removeAll()
         todayMenuRerun = false
+        warmNavigationTask?.cancel()
+        warmNavigationTask = nil
+        warmedNavigationEmployeeCode = nil
         requests.reset()
         if let employeeCode = cacheEmployeeCode {
             UserDefaults.standard.removeObject(
@@ -1661,6 +1705,7 @@ final class SessionStore: ObservableObject {
         _ = await aiSettings
         startRealTimeUpdates()
         startSessionRefresh()
+        warmFrequentlyOpenedScreens()
         ConnectionDiagnostics.record("Sign-in completed successfully")
     }
 
