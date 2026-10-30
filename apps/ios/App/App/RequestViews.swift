@@ -144,8 +144,9 @@ private struct RequestRecipientChoiceTile: View {
         Button(action: action) {
             Text(title)
                 .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
+                .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
                 .padding(.horizontal, 12)
                 .foregroundStyle(selected ? Color.green : Color.primary)
@@ -1737,14 +1738,21 @@ private final class LegacyRequestRecipientsController: UIViewController {
     private func tile(_ title: String, selected: Bool, action: @escaping () -> Void) -> UIButton {
         var config = UIButton.Configuration.plain()
         config.title = title; config.titleAlignment = .leading
+        config.titleLineBreakMode = .byWordWrapping
         config.baseForegroundColor = selected ? .systemGreen : .label
         config.background.backgroundColor = selected ? UIColor.systemGreen.withAlphaComponent(0.14) : .secondarySystemGroupedBackground
         config.background.strokeColor = selected ? UIColor.systemGreen.withAlphaComponent(0.65) : UIColor.separator.withAlphaComponent(0.25)
         config.background.strokeWidth = 1; config.background.cornerRadius = 12
         config.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12)
         let button = UIButton(configuration: config, primaryAction: UIAction { _ in action() })
-        button.titleLabel?.font = UIFont.preferredFont(forTextStyle: .subheadline).requestWeight(.semibold)
-        button.heightAnchor.constraint(equalToConstant: 46).isActive = true
+        button.titleLabel?.font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(
+            for: UIFont.systemFont(ofSize: 17, weight: .semibold),
+            maximumPointSize: 22
+        )
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
+        button.titleLabel?.numberOfLines = 2
+        button.titleLabel?.lineBreakMode = .byWordWrapping
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 46).isActive = true
         return button
     }
 
