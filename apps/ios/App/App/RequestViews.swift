@@ -596,22 +596,10 @@ struct RequestsView: View {
             .background(AppTheme.ink.ignoresSafeArea()).navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $composing) {
-                RequestComposer { kind, from, to, reason, destination, transport, distance, expense, employeeIds in
-                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense, employeeIds: employeeIds)
-                }
-                    .presentationDetents([.large])
-                    // Let a downward pull dismiss the composer sheet instead
-                    // of being retained by its form scroll view.
-                    .presentationContentInteraction(.resizes)
-                    .presentationDragIndicator(.hidden)
+                requestComposerSheet(template: nil)
             }
             .sheet(item: $resubmitting) { request in
-                RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense, employeeIds in
-                    await store.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense, employeeIds: employeeIds)
-                }
-                    .presentationDetents([.large])
-                    .presentationContentInteraction(.resizes)
-                    .presentationDragIndicator(.hidden)
+                requestComposerSheet(template: request)
             }
             .sheet(item: $reviewing) { request in
                 RequestDecisionView(request: request) { approved, note in
@@ -789,6 +777,44 @@ struct RequestsView: View {
         }
         .scrollIndicators(.hidden)
         .refreshable { await store.load(session.token, force: true) }
+    }
+
+    /// TestFlight 144 still crashes in AttributeGraph while the large SwiftUI
+    /// composer is built on iOS 17.  The entire iOS 17 composer is native
+    /// UIKit; iOS 18 and later retain the richer SwiftUI implementation.
+    @ViewBuilder
+    private func requestComposerSheet(template: EmployeeRequest?) -> some View {
+        if #available(iOS 18.0, *) {
+            RequestComposer(template: template, submit: submitRequest)
+                .presentationDetents([.large])
+                .presentationContentInteraction(.resizes)
+                .presentationDragIndicator(.hidden)
+        } else {
+            LegacyRequestComposerUIKitView(
+                token: session.token,
+                store: store,
+                template: template,
+                submit: submitRequest
+            )
+        }
+    }
+
+    private func submitRequest(
+        kind: EmployeeRequestKind,
+        from: Date,
+        to: Date,
+        reason: String,
+        destination: String?,
+        transport: String?,
+        distance: Double?,
+        expense: Double?,
+        employeeIds: [String]?
+    ) async -> String? {
+        await store.submit(
+            token: session.token, kind: kind, from: from, to: to, reason: reason,
+            destination: destination, transport: transport, distanceKm: distance,
+            expense: expense, employeeIds: employeeIds
+        )
     }
 }
 
@@ -1012,6 +1038,346 @@ struct RequestDecisionView: View {
         }
         .interactiveDismissDisabled(working)
     }
+}
+
+// MARK: - iOS 17 native request composer
+
+/// Intentionally a thin representable.  The form itself is UIKit so opening a
+/// new request on iOS 17 never asks SwiftUI/AttributeGraph to construct the
+/// large, stateful composer tree that appears in the TestFlight crash logs.
+private struct LegacyRequestComposerUIKitView: UIViewControllerRepresentable {
+    let token: String?
+    let store: EmployeeRequestStore
+    let template: EmployeeRequest?
+    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+
+    func makeUIViewController(context: Context) -> UINavigationController {
+        UINavigationController(rootViewController: LegacyRequestComposerController(
+            token: token, store: store, template: template, submit: submit
+        ))
+    }
+
+    func updateUIViewController(_ controller: UINavigationController, context: Context) {}
+}
+
+@MainActor
+private final class LegacyRequestComposerController: UIViewController, UITextViewDelegate {
+    private let token: String?
+    private let store: EmployeeRequestStore
+    private let template: EmployeeRequest?
+    private let submitRequest: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+    private let scrollView = UIScrollView()
+    private let stack = UIStackView()
+    private let kindButton = UIButton(type: .system)
+    private let fromPicker = UIDatePicker()
+    private let toPicker = UIDatePicker()
+    private let dayPicker = UIDatePicker()
+    private let durationField = UITextField()
+    private let destinationField = UITextField()
+    private let distanceField = UITextField()
+    private let expenseField = UITextField()
+    private let transportButton = UIButton(type: .system)
+    private let recipientsButton = UIButton(type: .system)
+    private let reasonView = UITextView()
+    private let reasonPlaceholder = UILabel()
+    private var kind: EmployeeRequestKind
+    private var selectedRecipientIDs = Set<String>()
+    private var recipientsLoaded = false
+    private var isSending = false
+
+    init(
+        token: String?, store: EmployeeRequestStore, template: EmployeeRequest?,
+        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+    ) {
+        self.token = token
+        self.store = store
+        self.template = template
+        self.submitRequest = submit
+        self.kind = template?.kind ?? .leave
+        super.init(nibName: nil, bundle: nil)
+        if let template {
+            fromPicker.date = template.from
+            toPicker.date = template.to
+            dayPicker.date = template.from
+            reasonView.text = RequestReasonPrefill(
+                reason: template.reason, kindTitle: template.kind.title,
+                usesDuration: [.late, .early, .overtime].contains(template.kind)
+            ).reason
+            destinationField.text = template.businessDestination
+            distanceField.text = template.businessDistanceKm.map(Self.numberText)
+            expenseField.text = template.businessExpense.map(Self.numberText)
+            if let transport = template.businessTransport, !transport.isEmpty { transportButton.accessibilityIdentifier = transport }
+        } else {
+            let now = Date()
+            fromPicker.date = now
+            toPicker.date = VietnamTime.calendar.date(byAdding: .hour, value: 8, to: now) ?? now
+            dayPicker.date = now
+        }
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = template == nil ? "Tạo đơn mới" : "Tạo lại đơn"
+        view.backgroundColor = .systemBackground
+        navigationItem.leftBarButtonItem = UIBarButtonItem(title: "Hủy", style: .plain, target: self, action: #selector(close))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Gửi đơn", style: .done, target: self, action: #selector(send))
+        configureControls()
+        configureLayout()
+        rebuildForm()
+        Task { [weak self] in
+            guard let self else { return }
+            await store.loadManagedEmployees(token)
+            guard !Task.isCancelled else { return }
+            recipientsLoaded = store.managedEmployeesLoaded
+            if selectedRecipientIDs.isEmpty {
+                selectedRecipientIDs = Set(store.managedEmployees.filter(\.isSelf).map(\.id))
+            }
+            updateRecipientsTitle()
+        }
+    }
+
+    private func configureControls() {
+        [fromPicker, toPicker].forEach { $0.datePickerMode = .dateAndTime; $0.preferredDatePickerStyle = .compact }
+        dayPicker.datePickerMode = .date
+        dayPicker.preferredDatePickerStyle = .compact
+        kindButton.showsMenuAsPrimaryAction = true
+        kindButton.configuration = .tinted()
+        kindButton.menu = UIMenu(children: EmployeeRequestKind.allCases.map { item in
+            UIAction(title: item.title, image: UIImage(systemName: item.icon), state: item == kind ? .on : .off) { [weak self] _ in
+                self?.kind = item
+                self?.rebuildForm()
+            }
+        })
+        recipientsButton.configuration = .gray()
+        recipientsButton.addTarget(self, action: #selector(showRecipients), for: .touchUpInside)
+        transportButton.configuration = .gray()
+        transportButton.showsMenuAsPrimaryAction = true
+        let currentTransport = transportButton.accessibilityIdentifier ?? "personal_vehicle"
+        setTransport(currentTransport)
+
+        [durationField, distanceField, expenseField].forEach {
+            $0.keyboardType = .decimalPad
+            $0.borderStyle = .roundedRect
+        }
+        durationField.placeholder = "Số phút (bội số của 5)"
+        durationField.text = "30"
+        destinationField.placeholder = "Nhập địa điểm công tác"
+        destinationField.borderStyle = .roundedRect
+        distanceField.placeholder = "Số km"
+        expenseField.placeholder = "Chi phí (VNĐ)"
+
+        reasonView.font = .preferredFont(forTextStyle: .body)
+        reasonView.delegate = self
+        reasonView.layer.borderColor = UIColor.separator.cgColor
+        reasonView.layer.borderWidth = 1
+        reasonView.layer.cornerRadius = 12
+        reasonView.textContainerInset = UIEdgeInsets(top: 12, left: 10, bottom: 12, right: 10)
+        reasonPlaceholder.text = "Mô tả lý do và thông tin cần người duyệt lưu ý"
+        reasonPlaceholder.textColor = .placeholderText
+        reasonPlaceholder.font = .preferredFont(forTextStyle: .body)
+        reasonPlaceholder.numberOfLines = 0
+        reasonPlaceholder.isUserInteractionEnabled = false
+        updateReasonPlaceholder()
+    }
+
+    private func configureLayout() {
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .vertical
+        stack.spacing = 16
+        stack.isLayoutMarginsRelativeArrangement = true
+        stack.layoutMargins = UIEdgeInsets(top: 20, left: 20, bottom: 28, right: 20)
+        view.addSubview(scrollView)
+        scrollView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
+            stack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+        ])
+    }
+
+    private func rebuildForm() {
+        stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        kindButton.configuration?.title = kind.title
+        stack.addArrangedSubview(section("Loại đơn", kindButton))
+        stack.addArrangedSubview(section("Tạo đơn cho", recipientsButton))
+
+        if [.late, .early, .overtime].contains(kind) {
+            stack.addArrangedSubview(section(kind == .late ? "Ngày đi trễ" : kind == .early ? "Ngày về sớm" : "Ngày làm thêm", dayPicker))
+            stack.addArrangedSubview(section("Thời lượng", durationField))
+        } else {
+            stack.addArrangedSubview(dateSection(title: dateTitle, start: fromPicker, end: toPicker))
+        }
+        if kind == .business {
+            stack.addArrangedSubview(section("Nơi công tác", destinationField))
+            stack.addArrangedSubview(section("Phương tiện", transportButton))
+            if selectedTransport == "personal_vehicle" { stack.addArrangedSubview(section("Quãng đường", distanceField)) }
+            stack.addArrangedSubview(section("Chi phí", expenseField))
+        }
+        stack.addArrangedSubview(reasonSection())
+        updateRecipientsTitle()
+    }
+
+    private var dateTitle: String {
+        switch kind {
+        case .leave: return "Thời gian xin nghỉ"
+        case .business: return "Thời gian công tác"
+        case .gate: return "Thời gian ra cổng"
+        case .sunday: return "Thời gian làm chủ nhật"
+        case .attendance: return "Thời gian chấm công"
+        default: return "Thời gian"
+        }
+    }
+
+    private func section(_ title: String, _ control: UIView) -> UIView {
+        let box = UIStackView()
+        box.axis = .vertical; box.spacing = 7
+        let label = UILabel(); label.text = title.uppercased(); label.font = .preferredFont(forTextStyle: .caption1).withSize(12); label.textColor = .secondaryLabel
+        box.addArrangedSubview(label); box.addArrangedSubview(control)
+        return box
+    }
+
+    private func dateSection(title: String, start: UIDatePicker, end: UIDatePicker) -> UIView {
+        let box = UIStackView(); box.axis = .vertical; box.spacing = 7
+        let label = UILabel(); label.text = title.uppercased(); label.font = .preferredFont(forTextStyle: .caption1).withSize(12); label.textColor = .secondaryLabel
+        let row = UIStackView(); row.axis = .vertical; row.spacing = 8
+        row.addArrangedSubview(labeledControl("Bắt đầu", start)); row.addArrangedSubview(labeledControl("Kết thúc", end))
+        box.addArrangedSubview(label); box.addArrangedSubview(row)
+        return box
+    }
+
+    private func labeledControl(_ title: String, _ control: UIView) -> UIView {
+        let row = UIStackView(); row.axis = .horizontal; row.alignment = .center
+        let label = UILabel(); label.text = title; label.textColor = .secondaryLabel
+        row.addArrangedSubview(label); row.addArrangedSubview(UIView()) ; row.addArrangedSubview(control)
+        return row
+    }
+
+    private func reasonSection() -> UIView {
+        let box = UIStackView(); box.axis = .vertical; box.spacing = 7
+        let label = UILabel(); label.text = "NỘI DUNG ĐƠN"; label.font = .preferredFont(forTextStyle: .caption1).withSize(12); label.textColor = .secondaryLabel
+        let holder = UIView(); holder.addSubview(reasonView); holder.addSubview(reasonPlaceholder)
+        reasonView.translatesAutoresizingMaskIntoConstraints = false; reasonPlaceholder.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            reasonView.leadingAnchor.constraint(equalTo: holder.leadingAnchor), reasonView.trailingAnchor.constraint(equalTo: holder.trailingAnchor),
+            reasonView.topAnchor.constraint(equalTo: holder.topAnchor), reasonView.bottomAnchor.constraint(equalTo: holder.bottomAnchor), reasonView.heightAnchor.constraint(equalToConstant: 150),
+            reasonPlaceholder.leadingAnchor.constraint(equalTo: holder.leadingAnchor, constant: 16), reasonPlaceholder.trailingAnchor.constraint(equalTo: holder.trailingAnchor, constant: -16), reasonPlaceholder.topAnchor.constraint(equalTo: holder.topAnchor, constant: 16)
+        ])
+        box.addArrangedSubview(label); box.addArrangedSubview(holder)
+        return box
+    }
+
+    private var selectedTransport: String { transportButton.accessibilityIdentifier ?? "personal_vehicle" }
+    private func setTransport(_ value: String) {
+        transportButton.accessibilityIdentifier = value
+        let options = [("personal_vehicle", "Xe cá nhân"), ("grab", "Grab"), ("company_vehicle", "Xe công ty")]
+        transportButton.configuration?.title = options.first { $0.0 == value }?.1 ?? "Xe cá nhân"
+        transportButton.menu = UIMenu(children: options.map { code, title in
+            UIAction(title: title, state: code == value ? .on : .off) { [weak self] _ in self?.setTransport(code); self?.rebuildForm() }
+        })
+    }
+
+    private func updateRecipientsTitle() {
+        guard recipientsLoaded else { recipientsButton.configuration?.title = "Tôi"; return }
+        let selected = store.managedEmployees.filter { selectedRecipientIDs.contains($0.id) }
+        let all = Set(store.managedEmployees.map(\.id))
+        let title: String
+        if selected.isEmpty { title = "Chưa chọn người" }
+        else if !all.isEmpty && selectedRecipientIDs.isSuperset(of: all) { title = "Tất cả" }
+        else { title = selected.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ") }
+        recipientsButton.configuration?.title = title
+    }
+
+    @objc private func showRecipients() {
+        guard recipientsLoaded else { return }
+        let picker = LegacyRequestRecipientsController(employees: store.managedEmployees, selectedIDs: selectedRecipientIDs) { [weak self] selected in
+            self?.selectedRecipientIDs = selected
+            self?.updateRecipientsTitle()
+        }
+        navigationController?.pushViewController(picker, animated: true)
+    }
+
+    @objc private func close() { dismiss(animated: true) }
+
+    @objc private func send() {
+        guard !isSending else { return }
+        let cleanReason = reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleanReason.count >= 10 else { showError("Nội dung đơn cần tối thiểu 10 ký tự."); return }
+        guard !recipientsLoaded || !selectedRecipientIDs.isEmpty else { showError("Chọn ít nhất một người tạo đơn."); return }
+        let numeric: (UITextField) -> Double? = { Double($0.text?.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".") ?? "") }
+        let destination = destinationField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind == .business && (destination?.count ?? 0) < 2 { showError("Nhập nơi công tác để gửi đơn."); return }
+        if kind == .business && selectedTransport == "personal_vehicle" && !(numeric(distanceField) ?? 0 > 0) { showError("Nhập quãng đường khi đi bằng xe cá nhân."); return }
+        var from = fromPicker.date
+        var to = toPicker.date
+        var submittedReason = cleanReason
+        if [.late, .early, .overtime].contains(kind) {
+            let minutes = Int(numeric(durationField) ?? 0)
+            guard minutes >= 5, minutes <= 1435, minutes.isMultiple(of: 5) else { showError("Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút."); return }
+            let day = VietnamTime.calendar.startOfDay(for: dayPicker.date)
+            let start = VietnamTime.calendar.date(bySettingHour: 7, minute: 30, second: 0, of: day) ?? day
+            let end = VietnamTime.calendar.date(bySettingHour: 16, minute: 30, second: 0, of: day) ?? day
+            if kind == .late { from = start; to = start.addingTimeInterval(TimeInterval(minutes * 60)) }
+            if kind == .early { from = end.addingTimeInterval(TimeInterval(-minutes * 60)); to = end }
+            if kind == .overtime { from = end; to = end.addingTimeInterval(TimeInterval(minutes * 60)) }
+            submittedReason = "\(kind.title): \(DurationClock.title(minutes: minutes)). \(cleanReason)"
+        }
+        guard to >= from else { showError("Thời gian kết thúc phải sau thời gian bắt đầu."); return }
+        if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 { showError("Ngày bắt đầu phải là Chủ nhật."); return }
+        isSending = true
+        navigationItem.rightBarButtonItem?.isEnabled = false
+        Task { [weak self] in
+            guard let self else { return }
+            let error = await submitRequest(kind, from, to, submittedReason, destination, kind == .business ? selectedTransport : nil, kind == .business ? numeric(distanceField) : nil, kind == .business ? numeric(expenseField) : nil, recipientsLoaded ? Array(selectedRecipientIDs) : nil)
+            guard !Task.isCancelled else { return }
+            isSending = false
+            navigationItem.rightBarButtonItem?.isEnabled = true
+            if let error { showError(error) } else { UINotificationFeedbackGenerator().notificationOccurred(.success); dismiss(animated: true) }
+        }
+    }
+
+    private func showError(_ text: String) {
+        let alert = UIAlertController(title: "Chưa thể gửi đơn", message: text, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Đã hiểu", style: .default))
+        present(alert, animated: true)
+    }
+
+    func textViewDidChange(_ textView: UITextView) { updateReasonPlaceholder() }
+    private func updateReasonPlaceholder() { reasonPlaceholder.isHidden = !reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private static func numberText(_ value: Double) -> String { value.rounded() == value ? String(Int(value)) : String(value) }
+}
+
+@MainActor
+private final class LegacyRequestRecipientsController: UITableViewController {
+    private let employees: [ManagedRequestEmployee]
+    private var selectedIDs: Set<String>
+    private let completion: (Set<String>) -> Void
+
+    init(employees: [ManagedRequestEmployee], selectedIDs: Set<String>, completion: @escaping (Set<String>) -> Void) {
+        self.employees = employees; self.selectedIDs = selectedIDs; self.completion = completion
+        super.init(style: .insetGrouped)
+    }
+    required init?(coder: NSCoder) { nil }
+    override func viewDidLoad() { super.viewDidLoad(); title = "Tạo đơn cho"; navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Xong", style: .done, target: self, action: #selector(done)); tableView.allowsMultipleSelection = true }
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { employees.count }
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil); let person = employees[indexPath.row]
+        cell.textLabel?.text = person.isSelf ? "Tôi" : person.fullName; cell.detailTextLabel?.text = person.department
+        cell.accessoryType = selectedIDs.contains(person.id) ? .checkmark : .none
+        return cell
+    }
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) { toggle(indexPath) }
+    override func tableView(_ tableView: UITableView, didDeselectRowAt indexPath: IndexPath) { toggle(indexPath) }
+    private func toggle(_ indexPath: IndexPath) { let id = employees[indexPath.row].id; if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }; tableView.reloadRows(at: [indexPath], with: .none) }
+    @objc private func done() { completion(selectedIDs); navigationController?.popViewController(animated: true) }
 }
 
 struct RequestComposer: View {
