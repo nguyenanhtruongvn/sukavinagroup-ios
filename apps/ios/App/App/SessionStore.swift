@@ -1993,6 +1993,16 @@ final class SessionStore: ObservableObject {
                     // while the stream was disconnected without adding polling.
                     await self.refreshAiAssistantAvailability()
 
+                    // A manager's directory is an indefinitely retained,
+                    // account-scoped document. Check for missed Admin changes
+                    // on connection using HTTP ETag/304; unchanged data never
+                    // publishes a new value or redraws the composer.
+                    Task {
+                        await self.requests.loadManagedEmployees(
+                            self.token, employeeCode: self.profile?.employeeCode, force: true
+                        )
+                    }
+
                     // After a gap (app in the background, network loss) an
                     // attendance change made meanwhile, e.g. an HR attendance-code
                     // override, was not announced: mark cached months stale (an
@@ -2874,7 +2884,11 @@ final class SessionStore: ObservableObject {
             if events.contains("managed_recipients_changed") {
                 // The server scopes this event to the manager whose direct
                 // reports changed, so no unrelated manager refetches.
-                Task { await self.requests.loadManagedEmployees(self.token, force: true) }
+                Task {
+                    await self.requests.loadManagedEmployees(
+                        self.token, employeeCode: self.profile?.employeeCode, force: true
+                    )
+                }
             }
             if events.contains("attendance_changed") || events.contains("employee_changed") {
                 // Employee/shift edits can change the calculated attendance
