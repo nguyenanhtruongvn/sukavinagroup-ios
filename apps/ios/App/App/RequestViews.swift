@@ -10,80 +10,6 @@ import AVFoundation
 import CoreImage.CIFilterBuiltins
 import WebKit
 
-private struct GrowingRequestReasonEditor: UIViewRepresentable {
-    @Binding var text: String
-    @Binding var height: CGFloat
-    @Binding var isFocused: Bool
-
-    let minimumHeight: CGFloat
-    let maximumHeight: CGFloat
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
-        textView.delegate = context.coordinator
-        textView.backgroundColor = .clear
-        textView.textColor = .label
-        textView.font = UIFont.preferredFont(forTextStyle: .body)
-        textView.adjustsFontForContentSizeCategory = true
-        textView.textContainerInset = UIEdgeInsets(top: 13, left: 12, bottom: 13, right: 12)
-        textView.textContainer.lineFragmentPadding = 0
-        textView.isScrollEnabled = false
-        textView.alwaysBounceVertical = false
-        textView.showsVerticalScrollIndicator = false
-        textView.showsHorizontalScrollIndicator = false
-        return textView
-    }
-
-    func updateUIView(_ textView: UITextView, context: Context) {
-        context.coordinator.parent = self
-        if textView.text != text {
-            textView.text = text
-        }
-        if isFocused && !textView.isFirstResponder {
-            textView.becomeFirstResponder()
-        } else if !isFocused && textView.isFirstResponder {
-            textView.resignFirstResponder()
-        }
-        DispatchQueue.main.async {
-            updateHeight(for: textView)
-        }
-    }
-
-    private func updateHeight(for textView: UITextView) {
-        let width = max(textView.bounds.width, 1)
-        let fittedHeight = textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        let resolvedHeight = min(max(fittedHeight, minimumHeight), maximumHeight)
-        textView.isScrollEnabled = fittedHeight > maximumHeight
-        guard abs(height - resolvedHeight) > 0.5 else { return }
-        height = resolvedHeight
-    }
-
-    final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: GrowingRequestReasonEditor
-
-        init(parent: GrowingRequestReasonEditor) {
-            self.parent = parent
-        }
-
-        func textViewDidChange(_ textView: UITextView) {
-            parent.text = textView.text
-            parent.updateHeight(for: textView)
-        }
-
-        func textViewDidBeginEditing(_ textView: UITextView) {
-            parent.isFocused = true
-        }
-
-        func textViewDidEndEditing(_ textView: UITextView) {
-            parent.isFocused = false
-        }
-    }
-}
-
 /// Direct-report picker shared by a manager creating a request for one or
 /// more people. Its two-column tiles intentionally match the meal-order flow.
 private struct RequestRecipientsPickerSheet: View {
@@ -1113,8 +1039,7 @@ struct RequestComposer: View {
     @State private var distanceKm = ""
     @State private var expense = ""
     @State private var durationMinutes = 30
-    @State private var reasonEditorHeight: CGFloat = 150
-    @State private var reasonFocused = false
+    @FocusState private var reasonFocused: Bool
     @State private var leaveScheduleWasInitialized = false
     @FocusState private var focusedInput: RequestInputFocus?
 
@@ -1642,14 +1567,17 @@ struct RequestComposer: View {
                                     .padding(.vertical, 17)
                                     .allowsHitTesting(false)
                             }
-                            GrowingRequestReasonEditor(
-                                text: $reason,
-                                height: $reasonEditorHeight,
-                                isFocused: $reasonFocused,
-                                minimumHeight: 150,
-                                maximumHeight: 320
-                            )
-                                .frame(height: reasonEditorHeight)
+                            // A UIViewRepresentable that writes height back to
+                            // SwiftUI during updateUIView forms a layout/state
+                            // feedback loop while this iOS 17 sheet is presented.
+                            // Native TextEditor owns its own layout and scrolling.
+                            TextEditor(text: $reason)
+                                .focused($reasonFocused)
+                                .font(.body)
+                                .scrollContentBackground(.hidden)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 9)
+                                .frame(minHeight: 150, maxHeight: 260)
                         }
                         .background(AppTheme.card)
                         .overlay {
