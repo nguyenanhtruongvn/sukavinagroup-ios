@@ -1415,38 +1415,39 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         guard kind == .attendance, let token else { return }
         let month = VietnamTime.monthKey.string(from: attendanceDatePicker.date)
         let selectedKey = VietnamTime.dayKey.string(from: attendanceDatePicker.date)
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self else { return }
             let keepTimes = keepTemplateAttendanceTimes
             keepTemplateAttendanceTimes = false
-            func apply(_ data: AttendanceMonth) {
-                guard kind == .attendance,
-                      VietnamTime.dayKey.string(from: attendanceDatePicker.date) == selectedKey else { return }
-                attendanceDay = data.days.first { $0.date == selectedKey }
-                let scheduleStart = attendanceDay?.startTime ?? data.startTime
-                let scheduleEnd = attendanceDay?.endTime ?? data.endTime
-                if !keepTimes {
-                    fromPicker.date = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:))
-                        ?? scheduledTime(scheduleStart, on: attendanceDatePicker.date, fallbackHour: 7, fallbackMinute: 30)
-                    toPicker.date = attendanceDay?.checkOut.flatMap(VietnamTime.date(fromISO8601:))
-                        ?? scheduledTime(scheduleEnd, on: attendanceDatePicker.date, fallbackHour: 16, fallbackMinute: 30)
-                }
-                fromPicker.isEnabled = attendanceDay?.checkIn == nil
-                toPicker.isEnabled = attendanceDay?.checkOut == nil
-                let inText = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:)).map { VietnamTime.clock.string(from: $0) } ?? "Chưa có"
-                let outText = attendanceDay?.checkOut.flatMap(VietnamTime.date(fromISO8601:)).map { VietnamTime.clock.string(from: $0) } ?? "Chưa có"
-                attendanceStatusLabel.text = "Giờ vào: \(inText) · Giờ ra: \(outText)"
-                renderValidation()
-            }
-            if let cached = session.cachedAttendanceMonth(month) { apply(cached) }
+            if let cached = session.cachedAttendanceMonth(month) { applyAttendance(cached, selectedKey: selectedKey, keepTimes: keepTimes) }
             else {
                 attendanceDay = nil
                 fromPicker.isEnabled = true; toPicker.isEnabled = true
                 attendanceStatusLabel.text = "Đang tải dữ liệu chấm công…"
             }
             guard session.shouldRevalidateAttendanceMonth(month), let refreshed = try? await session.loadAttendanceMonth(month, token: token) else { return }
-            apply(refreshed)
+            applyAttendance(refreshed, selectedKey: selectedKey, keepTimes: keepTimes)
         }
+    }
+
+    private func applyAttendance(_ data: AttendanceMonth, selectedKey: String, keepTimes: Bool) {
+        guard kind == .attendance,
+              VietnamTime.dayKey.string(from: attendanceDatePicker.date) == selectedKey else { return }
+        attendanceDay = data.days.first { $0.date == selectedKey }
+        let scheduleStart = attendanceDay?.startTime ?? data.startTime
+        let scheduleEnd = attendanceDay?.endTime ?? data.endTime
+        if !keepTimes {
+            fromPicker.date = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:))
+                ?? scheduledTime(scheduleStart, on: attendanceDatePicker.date, fallbackHour: 7, fallbackMinute: 30)
+            toPicker.date = attendanceDay?.checkOut.flatMap(VietnamTime.date(fromISO8601:))
+                ?? scheduledTime(scheduleEnd, on: attendanceDatePicker.date, fallbackHour: 16, fallbackMinute: 30)
+        }
+        fromPicker.isEnabled = attendanceDay?.checkIn == nil
+        toPicker.isEnabled = attendanceDay?.checkOut == nil
+        let inText = attendanceDay?.checkIn.flatMap(VietnamTime.date(fromISO8601:)).map { VietnamTime.clock.string(from: $0) } ?? "Chưa có"
+        let outText = attendanceDay?.checkOut.flatMap(VietnamTime.date(fromISO8601:)).map { VietnamTime.clock.string(from: $0) } ?? "Chưa có"
+        attendanceStatusLabel.text = "Giờ vào: \(inText) · Giờ ra: \(outText)"
+        renderValidation()
     }
 
     private func label(_ text: String, style: UIFont.TextStyle, weight: UIFont.Weight = .regular, color: UIColor) -> UILabel {
