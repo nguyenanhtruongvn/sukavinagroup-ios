@@ -32,6 +32,8 @@ struct AttendanceDay: Codable, Identifiable {
     let punchCount: Int
     let status: String?
     let statuses: [String]?
+    /// Company-wide day off; same leave accounting, not an employee request.
+    var companyLeave: Bool? = nil
     let startTime: String?
     let endTime: String?
     let sources: [String]?
@@ -99,7 +101,7 @@ enum AttendanceMetrics {
     static func statuses(_ day: AttendanceDay) -> [String] {
         let serverStatuses = day.statuses ?? day.status.map { [$0] } ?? []
         let exemptStatuses: Set<String> = [
-            "holiday", "office_day_off", "leave", "weekend",
+            "holiday", "office_day_off", "leave", "company_leave", "weekend",
             "overtime", "upcoming", "not-started", "absent",
         ]
         if serverStatuses.contains(where: { exemptStatuses.contains($0) }) {
@@ -122,8 +124,10 @@ enum AttendanceMetrics {
     }
 
     static func displayStatuses(_ day: AttendanceDay) -> [String] {
-        let values = statuses(day)
-        let payrollException: Set<String> = ["holiday", "office_day_off", "leave", "weekend", "overtime"]
+        // Keep old wire statuses intact; never display a company-wide day off
+        // as a personal "Xin nghỉ" or include it in personal-request counts.
+        let values = day.companyLeave == true ? ["company_leave"] : statuses(day)
+        let payrollException: Set<String> = ["holiday", "office_day_off", "leave", "company_leave", "weekend", "overtime"]
         if isUnfinishedToday(day), !values.contains(where: { payrollException.contains($0) }) {
             return ["pending"]
         }
