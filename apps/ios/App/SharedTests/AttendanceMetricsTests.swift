@@ -105,4 +105,14 @@ final class AttendanceMetricsTests: XCTestCase {
         XCTAssertEqual(AttendanceMetrics.workFactorText(1), "1")
         XCTAssertEqual(AttendanceMetrics.workFactorText(0.5), "0.5")
     }
+    func testCompanyDayOffIsNotPresentedAsPersonalLeave() throws {
+        // Backwards-compatible wire status: only the additive companyLeave
+        // flag changes the visible status. The server still calculates NP.
+        let company = try month([day("2026-10-12", extra: #""status":"leave","statuses":["leave"],"companyLeave":true,"workdayCode":"NP""#)])
+        XCTAssertEqual(AttendanceMetrics.displayStatuses(company.days[0]), ["company_leave"])
+        XCTAssertEqual(AttendanceMetrics.calendarNote(company.days[0]), "NP")
+        let personal = try month([day("2026-10-12", extra: #""status":"leave","statuses":["leave"],"workdayCode":"NP""#)])
+        XCTAssertEqual(AttendanceMetrics.displayStatuses(personal.days[0]), ["leave"])
+    }
+
 }
