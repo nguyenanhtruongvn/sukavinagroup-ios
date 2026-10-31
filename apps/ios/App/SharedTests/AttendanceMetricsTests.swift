@@ -105,6 +105,54 @@ final class AttendanceMetricsTests: XCTestCase {
         XCTAssertEqual(AttendanceMetrics.workFactorText(1), "1")
         XCTAssertEqual(AttendanceMetrics.workFactorText(0.5), "0.5")
     }
+    func testOldAttendanceCacheIsRevalidatedAfterAddingCompanyLeave() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let saved = now.addingTimeInterval(-60)
+
+        // Cached months from older iOS versions have no schemaVersion.
+        // They still paint immediately, but must refresh even within the TTL.
+        XCTAssertTrue(AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: saved, schemaVersion: nil, staleBefore: nil,
+            month: "2026-08", currentMonth: "2026-10", now: now
+        ))
+        XCTAssertTrue(AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: saved, schemaVersion: 1, staleBefore: nil,
+            month: "2026-08", currentMonth: "2026-10", now: now
+        ))
+        XCTAssertFalse(AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: saved,
+            schemaVersion: AttendanceMonthCachePolicy.schemaVersion,
+            staleBefore: nil, month: "2026-08", currentMonth: "2026-10",
+            now: now
+        ))
+    }
+
+    func testReleasedAttendanceCacheStillRespectsRealtimeAndTtl() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let saved = now.addingTimeInterval(-120)
+        let schema = AttendanceMonthCachePolicy.schemaVersion
+
+        // Calendar change invalidates even months already released by HR.
+        XCTAssertTrue(AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: saved, schemaVersion: schema,
+            staleBefore: now.addingTimeInterval(-1),
+            month: "2026-08", currentMonth: "2026-10", now: now
+        ))
+        XCTAssertFalse(AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: saved, schemaVersion: schema, staleBefore: nil,
+            month: "2026-08", currentMonth: "2026-10", now: now
+        ))
+        XCTAssertTrue(AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: now.addingTimeInterval(-12 * 60 * 60 - 1),
+            schemaVersion: schema, staleBefore: nil,
+            month: "2026-08", currentMonth: "2026-10", now: now
+        ))
+        XCTAssertTrue(AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: saved, schemaVersion: schema, staleBefore: nil,
+            month: "2026-10", currentMonth: "2026-10", now: now
+        ))
+    }
+
     func testCompanyDayOffNeverCreatesSummaryTile() throws {
         // Historical company leave is still counted in payroll, not in the
         // personal-request summary. Legacy API data without the new field
