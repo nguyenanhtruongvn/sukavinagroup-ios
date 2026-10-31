@@ -5,6 +5,29 @@ import Foundation
 // attendance calendar and statements. Foundation-only so it is unit-tested
 // (SharedTests/AttendanceMetricsTests.swift).
 
+/// Cache metadata policy shared by iOS 17 and iOS 18+ attendance views.
+/// Version 2 adds the companyLeave origin marker. Keep old days visible during
+/// an app upgrade, but refresh their server data before trusting a summary.
+enum AttendanceMonthCachePolicy {
+    static let schemaVersion = 2
+
+    static func shouldRevalidate(
+        savedAt: Date,
+        schemaVersion: Int?,
+        staleBefore: Date?,
+        month: String,
+        currentMonth: String,
+        now: Date = Date()
+    ) -> Bool {
+        // A cached response from before companyLeave existed may incorrectly
+        // count a "Cho nghỉ" day as a personal "Xin nghỉ" day.
+        guard schemaVersion == Self.schemaVersion else { return true }
+        if let staleBefore, savedAt < staleBefore { return true }
+        let ttl: TimeInterval = month == currentMonth ? 90 : 12 * 60 * 60
+        return now.timeIntervalSince(savedAt) >= ttl
+    }
+}
+
 struct AttendanceMonth: Codable {
     let month: String
     let startTime: String?
