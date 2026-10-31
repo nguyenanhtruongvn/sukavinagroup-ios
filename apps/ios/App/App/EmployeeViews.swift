@@ -326,7 +326,7 @@ struct PreloadedAttendanceDayCell: View {
     private func background(for statuses: [String], note: String?) -> AnyView {
         let coloredStatuses: Set<String> = [
             "present", "late", "early", "missing_checkin", "missing_checkout",
-            "incomplete", "leave", "absent", "overtime"
+            "incomplete", "leave", "company_leave", "absent", "overtime"
         ]
         // Notes are distinguished by text accent, so every note keeps the
         // neutral cell surface, including the KCC absence code.
@@ -349,6 +349,7 @@ struct PreloadedAttendanceDayCell: View {
         case "late": return Self.lateColor.opacity(0.34)
         case "early": return Self.earlyColor.opacity(0.36)
         case "leave": return Self.leaveColor.opacity(0.32)
+        case "company_leave": return Color(red: 115.0 / 255.0, green: 80.0 / 255.0, blue: 164.0 / 255.0).opacity(0.32)
         case "absent": return Self.absentColor.opacity(0.46)
         case "overtime": return Self.overtimeColor.opacity(0.36)
         default: return AppTheme.muted.opacity(0.1)
