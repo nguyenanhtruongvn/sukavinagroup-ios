@@ -105,6 +105,32 @@ final class AttendanceMetricsTests: XCTestCase {
         XCTAssertEqual(AttendanceMetrics.workFactorText(1), "1")
         XCTAssertEqual(AttendanceMetrics.workFactorText(0.5), "0.5")
     }
+    func testCompanyDayOffNeverCreatesSummaryTile() throws {
+        // Historical company leave is still counted in payroll, not in the
+        // personal-request summary. Legacy API data without the new field
+        // must keep counting actual individual leave requests.
+        let companyOnly = try month([
+            day("2026-10-12", extra: #""status":"leave","statuses":["leave"],"companyLeave":true,"workdayCode":"NP""#),
+            day("2026-10-13", extra: #""status":"leave","statuses":["leave"],"companyLeave":true,"workdayCode":"RO""#),
+        ])
+        XCTAssertEqual(AttendanceMetrics.personalLeaveSummaryCount(companyOnly), 0)
+        XCTAssertEqual(AttendanceMetrics.calendarNote(companyOnly.days[0]), "NP")
+        XCTAssertEqual(AttendanceMetrics.calendarNote(companyOnly.days[1]), "RO")
+
+        let mixed = try month([
+            day("2026-10-12", extra: #""status":"leave","statuses":["leave"],"companyLeave":true,"workdayCode":"NP""#),
+            day("2026-10-13", extra: #""status":"leave","statuses":["leave"],"workdayCode":"NP""#),
+        ])
+        XCTAssertEqual(AttendanceMetrics.personalLeaveSummaryCount(mixed), 1)
+        XCTAssertEqual(AttendanceMetrics.displayStatuses(mixed.days[0]), ["company_leave"])
+        XCTAssertEqual(AttendanceMetrics.displayStatuses(mixed.days[1]), ["leave"])
+
+        let legacy = try month([
+            day("2026-10-14", extra: #""status":"leave","statuses":["leave"],"workdayCode":"NP""#),
+        ])
+        XCTAssertEqual(AttendanceMetrics.personalLeaveSummaryCount(legacy), 1)
+    }
+
     func testCompanyDayOffIsNotPresentedAsPersonalLeave() throws {
         // Backwards-compatible wire status: only the additive companyLeave
         // flag changes the visible status. The server still calculates NP.
