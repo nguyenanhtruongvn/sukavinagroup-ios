@@ -311,6 +311,9 @@ final class SessionStore: ObservableObject {
     private struct CachedAttendanceMonth: Codable {
         let savedAt: Date
         let value: AttendanceMonth
+        // Optional for old app versions; nil means revalidate without hiding
+        // the old month while the updated API response is being fetched.
+        let schemaVersion: Int?
     }
 
     // Meeting details contain participant information, so keep this cache in
@@ -669,7 +672,9 @@ final class SessionStore: ObservableObject {
         // One-release migration path for the former unversioned cache. Mark it
         // stale so it is painted immediately but refreshed in the background.
         if let legacy = try? JSONDecoder().decode(AttendanceMonth.self, from: data) {
-            attendanceMemoryCache[cacheKey] = CachedAttendanceMonth(savedAt: .distantPast, value: legacy)
+            attendanceMemoryCache[cacheKey] = CachedAttendanceMonth(
+                savedAt: .distantPast, value: legacy, schemaVersion: nil
+            )
             return legacy
         }
         return nil
@@ -686,14 +691,17 @@ final class SessionStore: ObservableObject {
             attendanceMemoryCache[cacheKey] = disk
             cached = disk
         }
-        if let employeeCode = attendanceCacheEmployeeCode(),
-           let staleBefore = UserDefaults.standard.object(forKey: attendanceStaleBeforePrefix + employeeCode) as? Date,
-           cached.savedAt < staleBefore {
-            return true
+        let staleBefore = attendanceCacheEmployeeCode().flatMap {
+            UserDefaults.standard.object(forKey: attendanceStaleBeforePrefix + $0) as? Date
         }
         let currentMonth = String(VietnamTime.dayKey.string(from: Date()).prefix(7))
-        let ttl: TimeInterval = month == currentMonth ? 90 : 12 * 60 * 60
-        return Date().timeIntervalSince(cached.savedAt) >= ttl
+        return AttendanceMonthCachePolicy.shouldRevalidate(
+            savedAt: cached.savedAt,
+            schemaVersion: cached.schemaVersion,
+            staleBefore: staleBefore,
+            month: month,
+            currentMonth: currentMonth
+        )
     }
 
     /// Concurrent callers for one month share a request. `force` (a change
@@ -796,7 +804,11 @@ final class SessionStore: ObservableObject {
     private func saveAttendanceMonth(_ month: AttendanceMonth, for keyMonth: String) {
         guard let cacheKey = attendanceMonthCacheKey(keyMonth),
               let employeeCode = profile?.employeeCode.nilIfEmpty ?? dashboard?.employeeCode.nilIfEmpty else { return }
-        let cached = CachedAttendanceMonth(savedAt: Date(), value: month)
+        let cached = CachedAttendanceMonth(
+            savedAt: Date(),
+            value: month,
+            schemaVersion: AttendanceMonthCachePolicy.schemaVersion
+        )
         attendanceMemoryCache[cacheKey] = cached
         guard let data = try? JSONEncoder().encode(cached) else { return }
         UserDefaults.standard.set(employeeCode, forKey: attendanceMonthCacheOwnerKey)
@@ -816,7 +828,11 @@ final class SessionStore: ObservableObject {
         UserDefaults.standard.set(Date(), forKey: attendanceStaleBeforePrefix + employeeCode)
         let prefix = attendanceMonthCachePrefix + employeeCode + "-"
         for (key, cached) in attendanceMemoryCache where key.hasPrefix(prefix) {
-            attendanceMemoryCache[key] = CachedAttendanceMonth(savedAt: .distantPast, value: cached.value)
+            attendanceMemoryCache[key] = CachedAttendanceMonth(
+                savedAt: .distantPast,
+                value: cached.value,
+                schemaVersion: cached.schemaVersion
+            )
         }
     }
 
