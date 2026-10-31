@@ -214,6 +214,7 @@ struct ModernAttendanceHistoryView: View {
                 ("Về sớm", preloadedCount("early", in: data), Color(red: 219.0 / 255.0, green: 39.0 / 255.0, blue: 119.0 / 255.0)),
                 ("Quên chấm công", AttendanceMetrics.missingPunchCount(data), Color(red: 8.0 / 255.0, green: 145.0 / 255.0, blue: 178.0 / 255.0)),
                 ("Xin nghỉ", preloadedCount("leave", in: data), Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)),
+                ("Cho nghỉ", preloadedCount("company_leave", in: data), Color(red: 115.0 / 255.0, green: 80.0 / 255.0, blue: 164.0 / 255.0)),
                 ("Vắng", AttendanceMetrics.absenceCount(data), Self.absentColor),
                 ("Làm chủ nhật", preloadedCount("overtime", in: data), Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)),
             ].filter { $0.1 > 0 }
