@@ -134,6 +134,15 @@ enum AttendanceMetrics {
         return values
     }
 
+    /// Only approved *personal* leave requests contribute to the "Xin nghỉ"
+    /// summary tile. A company-wide day off is shown on its calendar date
+    /// only, even though payroll uses the same NP/P/2/RO calculation.
+    static func personalLeaveSummaryCount(_ month: AttendanceMonth) -> Int {
+        month.days.filter { day in
+            day.companyLeave != true && displayStatuses(day).contains("leave")
+        }.count
+    }
+
     // A calendar note is an attendance/payroll status, not proof of worked
     // hours. Keep notes visible without manufacturing 0/0 hour lines.
     // Presentation-only alias: preserve KCC in payroll/API records and caches.
