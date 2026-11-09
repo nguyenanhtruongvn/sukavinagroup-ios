@@ -80,78 +80,10 @@ struct NotificationsView: View {
         NavigationStack {
             List {
                     ForEach(inboxRequestNotifications) { item in
-                        Button { Task { await open(item) } } label: {
-                          HStack(alignment: .top, spacing: 14) {
-                            Image(systemName: notificationIcon(item)).frame(width: 44, height: 44).background(notificationColor(item).opacity(0.16)).foregroundStyle(notificationColor(item)).clipShape(RoundedRectangle(cornerRadius: 14))
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(item.title).font(.headline)
-                                if let request = linkedRequest(item) {
-                                    Text(request.kind.title).font(.caption.bold()).foregroundStyle(request.kind.color).padding(.horizontal, 9).padding(.vertical, 4).background(request.kind.color.opacity(0.13)).clipShape(Capsule())
-                                }
-                                let startsAt = linkedRequest(item)?.from ?? item.startsAt
-                                let endsAt = linkedRequest(item)?.to ?? item.endsAt
-                                if item.type.hasPrefix("request_") && (startsAt != nil || endsAt != nil) {
-                                    VStack(alignment: .leading, spacing: 3) {
-                                        if let startsAt { Text("Từ: \(startsAt.requestDateTimeText)") }
-                                        if let endsAt { Text("Đến: \(endsAt.requestDateTimeText)") }
-                                    }
-                                    .font(.caption)
-                                    .foregroundStyle(readableNotificationText)
-                                }
-                                Text(item.message).font(.subheadline).foregroundStyle(readableNotificationText)
-                                Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
-                            }
-                            Spacer()
-                            unreadBadge(for: item)
-                          }
-                          .padding(16)
-                          .background { requestNotificationBackground(item) }
-                          .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
-                          .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
-                          .overlay(alignment: .bottom) { legacyNotificationSeparator }
-                        }.buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                Task { await deleteNotification(item) }
-                            } label: {
-                                Image(systemName: "trash.fill")
-                                    .accessibilityLabel("Xóa")
-                            }
-                        }
-                        .listRowBackground(notificationPageBackground)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(notificationRowInsets)
+                        requestNotificationRow(item)
                     }
-                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                        let isUnread = inbox.unreadArticleIDs.contains(item.id)
-                        NavigationLink(destination: ArticleDetailView(item: item)) {
-                            HStack(alignment: .top, spacing: 14) {
-                                Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(item.title).font(.headline).multilineTextAlignment(.leading)
-                                    articlePreview(item.preview)
-                                    Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
-                                }
-                                Spacer(minLength: 0)
-                                articleUnreadBadge(isUnread: isUnread)
-                            }
-                            .padding(16)
-                            .background { articleNotificationBackground(isUnread: isUnread) }
-                            .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
-                            .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
-                            .overlay(alignment: .bottom) { legacyNotificationSeparator }
-                        }.buttonStyle(.plain).simultaneousGesture(TapGesture().onEnded { session.markArticleRead(item.id) })
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                hideArticle(item)
-                            } label: {
-                                Image(systemName: "trash.fill")
-                                    .accessibilityLabel("Xóa")
-                            }
-                        }
-                        .listRowBackground(notificationPageBackground)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(notificationRowInsets)
+                    ForEach(Array(items.enumerated()), id: \.element.id) { _, item in
+                        articleNotificationRow(item, isUnread: inbox.unreadArticleIDs.contains(item.id))
                     }
                     if items.isEmpty && inboxRequestNotifications.isEmpty {
                         ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
@@ -496,6 +428,107 @@ struct NotificationsView: View {
                 .background(color.opacity(0.18))
                 .clipShape(Capsule())
         }
+    }
+
+    private func requestNotificationRow(_ item: RequestNotification) -> some View {
+        Button { Task { await open(item) } } label: {
+            requestNotificationContent(item)
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) { Task { await deleteNotification(item) } } label: {
+                Image(systemName: "trash.fill").accessibilityLabel("Xóa")
+            }
+        }
+        .listRowBackground(notificationPageBackground)
+        .listRowSeparator(.hidden)
+        .listRowInsets(notificationRowInsets)
+    }
+
+    private func requestNotificationContent(_ item: RequestNotification) -> some View {
+        let request = linkedRequest(item)
+        let startsAt = request?.from ?? item.startsAt
+        let endsAt = request?.to ?? item.endsAt
+        let color = notificationColor(item)
+        return HStack(alignment: .top, spacing: 14) {
+            Image(systemName: notificationIcon(item))
+                .frame(width: 44, height: 44)
+                .background(color.opacity(0.16))
+                .foregroundStyle(color)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.title).font(.headline)
+                if let request {
+                    Text(request.kind.title)
+                        .font(.caption.bold())
+                        .foregroundStyle(request.kind.color)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(request.kind.color.opacity(0.13))
+                        .clipShape(Capsule())
+                }
+                if item.type.hasPrefix("request_") && (startsAt != nil || endsAt != nil) {
+                    requestDateRange(startsAt: startsAt, endsAt: endsAt)
+                }
+                Text(item.message).font(.subheadline).foregroundStyle(readableNotificationText)
+                Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
+            }
+            Spacer(minLength: 0)
+            unreadBadge(for: item)
+        }
+        .padding(16)
+        .background { requestNotificationBackground(item) }
+        .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
+        .overlay(alignment: .bottom) { legacyNotificationSeparator }
+    }
+
+    @ViewBuilder
+    private func requestDateRange(startsAt: Date?, endsAt: Date?) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if let startsAt { Text("Từ: \(startsAt.requestDateTimeText)") }
+            if let endsAt { Text("Đến: \(endsAt.requestDateTimeText)") }
+        }
+        .font(.caption)
+        .foregroundStyle(readableNotificationText)
+    }
+
+    private func articleNotificationRow(_ item: ContentItem, isUnread: Bool) -> some View {
+        NavigationLink(destination: ArticleDetailView(item: item)) {
+            articleNotificationContent(item, isUnread: isUnread)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture().onEnded { session.markArticleRead(item.id) })
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) { hideArticle(item) } label: {
+                Image(systemName: "trash.fill").accessibilityLabel("Xóa")
+            }
+        }
+        .listRowBackground(notificationPageBackground)
+        .listRowSeparator(.hidden)
+        .listRowInsets(notificationRowInsets)
+    }
+
+    private func articleNotificationContent(_ item: ContentItem, isUnread: Bool) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: "megaphone.fill")
+                .frame(width: 44, height: 44)
+                .background(AppTheme.red.opacity(0.16))
+                .foregroundStyle(AppTheme.red)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.title).font(.headline).multilineTextAlignment(.leading)
+                articlePreview(item.preview)
+                Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
+            }
+            Spacer(minLength: 0)
+            articleUnreadBadge(isUnread: isUnread)
+        }
+        .padding(16)
+        .background { articleNotificationBackground(isUnread: isUnread) }
+        .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
+        .overlay(alignment: .bottom) { legacyNotificationSeparator }
     }
 
     private func articlePreview(_ preview: String) -> some View {
