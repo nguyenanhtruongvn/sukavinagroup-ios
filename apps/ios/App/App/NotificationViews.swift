@@ -140,8 +140,32 @@ struct NotificationsView: View {
                     )
                 }
                 .sheet(item: $resubmitting) { request in
-                    RequestComposer(template: request) { kind, from, to, reason, destination, transport, distance, expense, employeeIds in
-                        await requestStore.submit(token: session.token, kind: kind, from: from, to: to, reason: reason, destination: destination, transport: transport, distanceKm: distance, expense: expense, employeeIds: employeeIds)
+                    RequestComposer(template: request) {
+                        kind,
+                        from,
+                        to,
+                        reason,
+                        destination,
+                        transport,
+                        distance,
+                        expense,
+                        lunchMeal,
+                        dinnerMeal,
+                        employeeIds in
+                        await requestStore.submit(
+                            token: session.token,
+                            kind: kind,
+                            from: from,
+                            to: to,
+                            reason: reason,
+                            destination: destination,
+                            transport: transport,
+                            distanceKm: distance,
+                            expense: expense,
+                            lunchMeal: lunchMeal,
+                            dinnerMeal: dinnerMeal,
+                            employeeIds: employeeIds
+                        )
                     }
                     .presentationDetents([.large])
                     .presentationContentInteraction(.resizes)
