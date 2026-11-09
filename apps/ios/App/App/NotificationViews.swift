@@ -102,15 +102,7 @@ struct NotificationsView: View {
                                 Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
                             }
                             Spacer()
-                            if !item.read {
-                                Text("Mới")
-                                    .font(.caption2.bold())
-                                    .foregroundStyle(notificationColor(item))
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 5)
-                                    .background(notificationColor(item).opacity(0.18))
-                                    .clipShape(Capsule())
-                            }
+                            unreadBadge(for: item)
                           }
                           .padding(16)
                           .background { requestNotificationBackground(item) }
@@ -498,6 +490,20 @@ struct NotificationsView: View {
         if type.contains("rejected") { return AppTheme.red }
         if type.contains("cancelled") { return .gray }
         return .green
+    }
+
+    @ViewBuilder
+    private func unreadBadge(for item: RequestNotification) -> some View {
+        if !item.read {
+            let color = notificationColor(item)
+            Text("Mới")
+                .font(.caption2.bold())
+                .foregroundStyle(color)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(color.opacity(0.18))
+                .clipShape(Capsule())
+        }
     }
     private var notificationPageBackground: Color {
         if #available(iOS 26.0, *) { return AppTheme.ink }
