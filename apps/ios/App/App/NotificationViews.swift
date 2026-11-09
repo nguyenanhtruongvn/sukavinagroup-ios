@@ -129,19 +129,11 @@ struct NotificationsView: View {
                                 Image(systemName: "megaphone.fill").frame(width: 44, height: 44).background(AppTheme.red.opacity(0.16)).foregroundStyle(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 14))
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(item.title).font(.headline).multilineTextAlignment(.leading)
-                                    Text(item.preview).font(.subheadline).foregroundStyle(readableNotificationText).lineLimit(2).multilineTextAlignment(.leading)
+                                    articlePreview(item.preview)
                                     Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
                                 }
                                 Spacer(minLength: 0)
-                                if isUnread {
-                                    Text("Mới")
-                                        .font(.caption2.bold())
-                                        .foregroundStyle(AppTheme.redText)
-                                        .padding(.horizontal, 9)
-                                        .padding(.vertical, 5)
-                                        .background(AppTheme.red.opacity(0.18))
-                                        .clipShape(Capsule())
-                                }
+                                articleUnreadBadge(isUnread: isUnread)
                             }
                             .padding(16)
                             .background { articleNotificationBackground(isUnread: isUnread) }
@@ -502,6 +494,27 @@ struct NotificationsView: View {
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
                 .background(color.opacity(0.18))
+                .clipShape(Capsule())
+        }
+    }
+
+    private func articlePreview(_ preview: String) -> some View {
+        Text(preview)
+            .font(.subheadline)
+            .foregroundStyle(readableNotificationText)
+            .lineLimit(2)
+            .multilineTextAlignment(.leading)
+    }
+
+    @ViewBuilder
+    private func articleUnreadBadge(isUnread: Bool) -> some View {
+        if isUnread {
+            Text("Mới")
+                .font(.caption2.bold())
+                .foregroundStyle(AppTheme.redText)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AppTheme.red.opacity(0.18))
                 .clipShape(Capsule())
         }
     }
