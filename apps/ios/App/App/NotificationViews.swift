@@ -103,13 +103,7 @@ struct NotificationsView: View {
             // Title, unread count and "Xóa tất cả" stay put; only the
             // notifications scroll.
             .safeAreaInset(edge: .top, spacing: 0) {
-                PortalPinnedHeader("Thông báo", background: notificationPageBackground) {
-                    HStack {
-                        Text(totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc").font(.subheadline.bold())
-                        Spacer()
-                        if !inboxRequestNotifications.isEmpty || !items.isEmpty { Button("Xóa tất cả", role: .destructive) { confirmClear = true }.font(.subheadline.bold()) }
-                    }
-                }
+                notificationHeader
             }
             .hidesPortalBottomScrollEdgeEffect()
             .scrollContentBackground(.hidden)
@@ -198,6 +192,23 @@ struct NotificationsView: View {
             Text("Tất cả thông báo trong danh sách sẽ bị xóa.")
         }
         .ignoresSafeArea(.container, edges: .bottom)
+    }
+
+    private var unreadSummary: String {
+        totalUnread == 0 ? "Bạn đã đọc tất cả thông báo" : "\(totalUnread) thông báo chưa đọc"
+    }
+
+    private var notificationHeader: some View {
+        PortalPinnedHeader("Thông báo", background: notificationPageBackground) {
+            HStack {
+                Text(unreadSummary).font(.subheadline.bold())
+                Spacer()
+                if !inboxRequestNotifications.isEmpty || !items.isEmpty {
+                    Button("Xóa tất cả", role: .destructive) { confirmClear = true }
+                        .font(.subheadline.bold())
+                }
+            }
+        }
     }
 
     private func loadRequestNotifications() async {
