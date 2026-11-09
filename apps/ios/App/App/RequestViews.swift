@@ -253,12 +253,14 @@ struct EmployeeRequest: Codable, Identifiable {
     let businessTransport: String?
     let businessDistanceKm: Double?
     let businessExpense: Double?
+    let businessLunchMeal: Bool?
+    let businessDinnerMeal: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
         case storedKind = "kind"
         case sundayWork
-        case businessDestination, businessTransport, businessDistanceKm, businessExpense
+        case businessDestination, businessTransport, businessDistanceKm, businessExpense, businessLunchMeal, businessDinnerMeal
         case from = "startsAt"
         case to = "endsAt"
     }
@@ -273,6 +275,8 @@ struct RequestBody: Encodable {
     let businessTransport: String?
     let businessDistanceKm: Double?
     let businessExpense: Double?
+    let businessLunchMeal: Bool?
+    let businessDinnerMeal: Bool?
     /// Used only by the batch endpoint. The ordinary endpoint ignores it so
     /// older server versions remain compatible with a request for yourself.
     let employeeIds: [String]?
@@ -593,7 +597,7 @@ final class EmployeeRequestStore: ObservableObject {
     }
 
     /// Nil on success, otherwise the message to show in the form (which stays open).
-    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil, employeeIds: [String]? = nil) async -> String? {
+    func submit(token: String?, kind: EmployeeRequestKind, from: Date, to: Date, reason: String, destination: String? = nil, transport: String? = nil, distanceKm: Double? = nil, expense: Double? = nil, lunchMeal: Bool? = nil, dinnerMeal: Bool? = nil, employeeIds: [String]? = nil) async -> String? {
         guard let token else { return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại." }
         do {
             loadTask?.cancel()
@@ -608,6 +612,8 @@ final class EmployeeRequestStore: ObservableObject {
                 businessTransport: transport,
                 businessDistanceKm: distanceKm,
                 businessExpense: expense,
+                businessLunchMeal: lunchMeal,
+                businessDinnerMeal: dinnerMeal,
                 employeeIds: employeeIds
             )
             let created: [EmployeeRequest]
@@ -944,12 +950,14 @@ struct RequestsView: View {
         transport: String?,
         distance: Double?,
         expense: Double?,
+        lunchMeal: Bool?,
+        dinnerMeal: Bool?,
         employeeIds: [String]?
     ) async -> String? {
         await store.submit(
             token: session.token, kind: kind, from: from, to: to, reason: reason,
             destination: destination, transport: transport, distanceKm: distance,
-            expense: expense, employeeIds: employeeIds
+            expense: expense, lunchMeal: lunchMeal, dinnerMeal: dinnerMeal, employeeIds: employeeIds
         )
     }
 }
@@ -1188,7 +1196,7 @@ private struct LegacyRequestComposerUIKitView: UIViewControllerRepresentable {
     let workStartTime: String?
     let workEndTime: String?
     let template: EmployeeRequest?
-    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, Bool?, Bool?, [String]?) async -> String?
 
     func makeUIViewController(context: Context) -> UINavigationController {
         UINavigationController(rootViewController: LegacyRequestComposerController(
@@ -1208,7 +1216,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let workStartTime: String?
     private let workEndTime: String?
     private let template: EmployeeRequest?
-    private let submitRequest: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+    private let submitRequest: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, Bool?, Bool?, [String]?) async -> String?
     private let scrollView = UIScrollView()
     private let stack = UIStackView()
     private let kindButton = UIButton(type: .system)
@@ -1221,6 +1229,8 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let destinationField = UITextField()
     private let distanceField = UITextField()
     private let expenseField = UITextField()
+    private let lunchMealButton = UIButton(type: .system)
+    private let dinnerMealButton = UIButton(type: .system)
     private let transportButton = UIButton(type: .system)
     private let recipientsButton = UIButton(type: .system)
     private let reasonView = UITextView()
@@ -1240,10 +1250,12 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private var keepTemplateAttendanceTimes: Bool
     private var initialInput: [String] = []
     private var scheduleEdited = false
+    private var lunchMeal = false
+    private var dinnerMeal = false
 
     init(
         token: String?, session: SessionStore, store: EmployeeRequestStore, workStartTime: String?, workEndTime: String?, template: EmployeeRequest?,
-        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, Bool?, Bool?, [String]?) async -> String?
     ) {
         self.token = token
         self.session = session
@@ -1268,6 +1280,8 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             destinationField.text = template.businessDestination
             distanceField.text = template.businessDistanceKm.map(Self.numberText)
             expenseField.text = template.businessExpense.map(Self.numberText)
+            lunchMeal = template.businessLunchMeal ?? false
+            dinnerMeal = template.businessDinnerMeal ?? false
             if let transport = template.businessTransport, !transport.isEmpty { transportButton.accessibilityIdentifier = transport }
         } else {
             let now = Date()
@@ -1351,7 +1365,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         let currentTransport = transportButton.accessibilityIdentifier ?? "personal_vehicle"
         setTransport(currentTransport)
 
-        [distanceField, expenseField].forEach {
+        [distanceField].forEach {
             $0.keyboardType = .decimalPad
             $0.borderStyle = .roundedRect
             $0.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
@@ -1365,7 +1379,12 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         destinationField.borderStyle = .roundedRect
         destinationField.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
         distanceField.placeholder = "Số km"
-        expenseField.placeholder = "Chi phí (VNĐ)"
+        configureMealButton(lunchMealButton, title: "Cơm trưa", selected: lunchMeal) { [weak self] in
+            self?.lunchMeal.toggle(); self?.refreshMealButtons()
+        }
+        configureMealButton(dinnerMealButton, title: "Cơm chiều", selected: dinnerMeal) { [weak self] in
+            self?.dinnerMeal.toggle(); self?.refreshMealButtons()
+        }
 
         reasonView.font = .preferredFont(forTextStyle: .body)
         reasonView.delegate = self
@@ -1470,7 +1489,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             detailsCard.addArrangedSubview(section("Nơi công tác", destinationField))
             detailsCard.addArrangedSubview(section("Phương tiện", transportButton))
             if selectedTransport == "personal_vehicle" { detailsCard.addArrangedSubview(section("Quãng đường", distanceField)) }
-            detailsCard.addArrangedSubview(section("Chi phí", expenseField))
+            detailsCard.addArrangedSubview(mealSection())
         }
         stack.addArrangedSubview(detailsCard)
         let reasonCard = card(); reasonCard.addArrangedSubview(sectionTitle("Nội dung đơn", icon: "text.alignleft")); reasonCard.addArrangedSubview(reasonSection())
@@ -1507,6 +1526,37 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         card.layer.cornerRadius = 20; card.layer.cornerCurve = .continuous
         card.layer.borderWidth = 0.75; card.layer.borderColor = UIColor.separator.withAlphaComponent(0.22).cgColor
         return card
+    }
+
+    private func configureMealButton(_ button: UIButton, title: String, selected: Bool, action: @escaping () -> Void) {
+        button.configuration = mealConfiguration(title: title, selected: selected)
+        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
+        button.heightAnchor.constraint(equalToConstant: 42).isActive = true
+    }
+
+    private func mealConfiguration(title: String, selected: Bool) -> UIButton.Configuration {
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = title
+        configuration.cornerStyle = .medium
+        configuration.baseForegroundColor = selected ? .systemGreen : .label
+        configuration.baseBackgroundColor = selected ? .systemGreen : .secondarySystemFill
+        return configuration
+    }
+
+    private func refreshMealButtons() {
+        lunchMealButton.configuration = mealConfiguration(title: "Cơm trưa", selected: lunchMeal)
+        dinnerMealButton.configuration = mealConfiguration(title: "Cơm chiều", selected: dinnerMeal)
+    }
+
+    private func mealSection() -> UIView {
+        let row = UIStackView(arrangedSubviews: [lunchMealButton, dinnerMealButton])
+        row.axis = .horizontal
+        row.distribution = .fillEqually
+        row.spacing = 8
+        let container = UIStackView(arrangedSubviews: [label("Suất ăn", style: .subheadline, weight: .semibold, color: .secondaryLabel), row])
+        container.axis = .vertical
+        container.spacing = 8
+        return container
     }
 
     private func sectionTitle(_ text: String, icon: String) -> UIView {
@@ -1800,7 +1850,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     }
 
     private var currentInput: [String] {
-        [reasonView.text, destinationField.text, distanceField.text, expenseField.text]
+        [reasonView.text, destinationField.text, distanceField.text, String(lunchMeal), String(dinnerMeal)]
             .map { ($0 ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
@@ -1839,7 +1889,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         renderValidation()
         Task { [weak self] in
             guard let self else { return }
-            let error = await submitRequest(kind, from, to, submittedReason, destination, kind == .business ? selectedTransport : nil, kind == .business ? numeric(distanceField) : nil, kind == .business ? numeric(expenseField) : nil, recipientsLoaded ? Array(selectedRecipientIDs) : nil)
+            let error = await submitRequest(kind, from, to, submittedReason, destination, kind == .business ? selectedTransport : nil, kind == .business ? numeric(distanceField) : nil, nil, kind == .business ? lunchMeal : nil, kind == .business ? dinnerMeal : nil, recipientsLoaded ? Array(selectedRecipientIDs) : nil)
             guard !Task.isCancelled else { return }
             isSending = false
             renderValidation()
@@ -2000,6 +2050,8 @@ struct RequestComposer: View {
     @State private var transport = "personal_vehicle"
     @State private var distanceKm = ""
     @State private var expense = ""
+    @State private var lunchMeal = false
+    @State private var dinnerMeal = false
     @State private var durationMinutes = 30
     @FocusState private var reasonFocused: Bool
     @State private var leaveScheduleWasInitialized = false
@@ -2011,7 +2063,7 @@ struct RequestComposer: View {
         case expense
     }
     /// Returns nil on success, otherwise the reason the server rejected it.
-    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+    let submit: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, Bool?, Bool?, [String]?) async -> String?
     @State private var isSubmitting = false
     @State private var submitError: String?
     /// Typed content when the form opened; once it changes, a swipe down no
@@ -2033,7 +2085,7 @@ struct RequestComposer: View {
 
     init(
         template: EmployeeRequest? = nil,
-        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, [String]?) async -> String?
+        submit: @escaping (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, Bool?, Bool?, [String]?) async -> String?
     ) {
         self.template = template
         self.submit = submit
@@ -2051,7 +2103,8 @@ struct RequestComposer: View {
         _destination = State(initialValue: template.businessDestination ?? "")
         _transport = State(initialValue: template.businessTransport.flatMap { $0.isEmpty ? nil : $0 } ?? "personal_vehicle")
         _distanceKm = State(initialValue: template.businessDistanceKm.map(Self.plainNumber) ?? "")
-        _expense = State(initialValue: template.businessExpense.map(Self.plainNumber) ?? "")
+        _lunchMeal = State(initialValue: template.businessLunchMeal ?? false)
+        _dinnerMeal = State(initialValue: template.businessDinnerMeal ?? false)
         if let minutes = prefill.durationMinutes {
             _durationMinutes = State(initialValue: minutes)
         }
@@ -2146,6 +2199,22 @@ struct RequestComposer: View {
         guard usesDurationInput else { return cleanReason }
         return "\(kind.title): \(durationDescription). \(cleanReason)"
     }
+    private func mealButton(title: String, selected: Binding<Bool>) -> some View {
+        Button { selected.wrappedValue.toggle() } label: {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(selected.wrappedValue ? Color.green : Color.primary)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(selected.wrappedValue ? Color.green.opacity(0.14) : AppTheme.card)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(selected.wrappedValue ? Color.green.opacity(0.8) : AppTheme.fieldBorder, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     @ViewBuilder private func labeledNumberField(
         _ title: String,
         placeholder: String,
@@ -2273,7 +2342,7 @@ struct RequestComposer: View {
     }
 
     private var currentInput: [String] {
-        [reason, destination, distanceKm, expense].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        [reason, destination, distanceKm, String(lunchMeal), String(dinnerMeal)].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private var hasUnsavedInput: Bool {
@@ -2534,13 +2603,13 @@ struct RequestComposer: View {
                                     scrollID: "request-distance"
                                 )
                             }
-                            labeledNumberField(
-                                "Chi phí",
-                                placeholder: "Nhập chi phí (VNĐ)",
-                                text: $expense,
-                                focus: .expense,
-                                scrollID: "request-expense"
-                            )
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("SUẤT ĂN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
+                                HStack(spacing: 8) {
+                                    mealButton(title: "Cơm trưa", selected: $lunchMeal)
+                                    mealButton(title: "Cơm chiều", selected: $dinnerMeal)
+                                }
+                            }
                         }
                     }
                     if kind == .gate {
@@ -2726,7 +2795,7 @@ struct RequestComposer: View {
                         submitError = nil
                         Task {
                             let employeeIDs = requestStore.managedEmployeesLoaded ? Array(selectedRecipientIDs) : nil
-                            let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), localizedDecimal(expense), employeeIDs)
+                            let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), nil, kind == .business ? lunchMeal : nil, kind == .business ? dinnerMeal : nil, employeeIDs)
                             isSubmitting = false
                             if let error {
                                 submitError = error
