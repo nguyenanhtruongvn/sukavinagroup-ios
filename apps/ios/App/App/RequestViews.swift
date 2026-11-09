@@ -1259,10 +1259,12 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             fromPicker.date = template.from
             toPicker.date = template.to
             dayPicker.date = template.from
-            reasonView.text = RequestReasonPrefill(
+            let prefill = RequestReasonPrefill(
                 reason: template.reason, kindTitle: template.kind.title,
                 usesDuration: [.late, .early, .overtime].contains(template.kind)
-            ).reason
+            )
+            reasonView.text = prefill.reason
+            if let minutes = prefill.durationMinutes { durationField.text = String(minutes) }
             destinationField.text = template.businessDestination
             distanceField.text = template.businessDistanceKm.map(Self.numberText)
             expenseField.text = template.businessExpense.map(Self.numberText)
@@ -1316,8 +1318,14 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     }
 
     private func configureControls() {
-        [fromPicker, toPicker].forEach { $0.datePickerMode = .dateAndTime; $0.preferredDatePickerStyle = .compact }
-        [fromPicker, toPicker, dayPicker, attendanceDatePicker].forEach { $0.addAction(UIAction { [weak self] _ in self?.scheduleEdited = true; self?.renderValidation() }, for: .valueChanged) }
+        [fromPicker, toPicker].forEach {
+            $0.datePickerMode = .dateAndTime
+            $0.minuteInterval = 5
+            $0.preferredDatePickerStyle = .compact
+        }
+        fromPicker.addAction(UIAction { [weak self] _ in self?.fromTimeDidChange() }, for: .valueChanged)
+        toPicker.addAction(UIAction { [weak self] _ in self?.toTimeDidChange() }, for: .valueChanged)
+        [dayPicker, attendanceDatePicker].forEach { $0.addAction(UIAction { [weak self] _ in self?.scheduleEdited = true; self?.renderValidation() }, for: .valueChanged) }
         dayPicker.datePickerMode = .date
         dayPicker.preferredDatePickerStyle = .compact
         attendanceDatePicker.datePickerMode = .date
@@ -1343,13 +1351,16 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         let currentTransport = transportButton.accessibilityIdentifier ?? "personal_vehicle"
         setTransport(currentTransport)
 
-        [durationField, distanceField, expenseField].forEach {
+        [distanceField, expenseField].forEach {
             $0.keyboardType = .decimalPad
             $0.borderStyle = .roundedRect
             $0.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
         }
+        durationField.keyboardType = .decimalPad
+        durationField.borderStyle = .roundedRect
+        durationField.addAction(UIAction { [weak self] _ in self?.durationDidChange() }, for: .editingChanged)
         durationField.placeholder = "Số phút (bội số của 5)"
-        durationField.text = "30"
+        if durationField.text == nil { durationField.text = "30" }
         destinationField.placeholder = "Nhập địa điểm công tác"
         destinationField.borderStyle = .roundedRect
         destinationField.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
@@ -1446,8 +1457,11 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             detailsCard.addArrangedSubview(attendanceStatusLabel)
             detailsCard.addArrangedSubview(dateSection(title: "Giờ chấm công", start: fromPicker, end: toPicker))
             loadAttendanceForSelectedDay()
-        } else if [.late, .early, .overtime].contains(kind) {
-            detailsCard.addArrangedSubview(section(kind == .late ? "Ngày đi trễ" : kind == .early ? "Ngày về sớm" : "Ngày làm thêm", dayPicker))
+        } else if kind == .overtime {
+            detailsCard.addArrangedSubview(dateSection(title: "Thời gian làm thêm", start: fromPicker, end: toPicker))
+            detailsCard.addArrangedSubview(section("Thời lượng", durationField))
+        } else if [.late, .early].contains(kind) {
+            detailsCard.addArrangedSubview(section(kind == .late ? "Ngày đi trễ" : "Ngày về sớm", dayPicker))
             detailsCard.addArrangedSubview(section("Thời lượng", durationField))
         } else {
             detailsCard.addArrangedSubview(dateSection(title: dateTitle, start: fromPicker, end: toPicker))
@@ -1551,7 +1565,60 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             let day = calendar.startOfDay(for: fromPicker.date)
             fromPicker.date = scheduledTime(workStartTime, on: day, fallbackHour: 7, fallbackMinute: 30)
             toPicker.date = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
+        } else if nextKind == .overtime {
+            let day = calendar.startOfDay(for: Date())
+            let start = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
+            fromPicker.date = start
+            toPicker.date = start.addingTimeInterval(30 * 60)
+            durationField.text = "30"
         }
+    }
+
+    private var overtimeDurationMinutes: Int {
+        let raw = decimalValue(durationField) ?? 30
+        let minutes = Int(raw)
+        return raw == Double(minutes) && minutes >= 5 && minutes <= 1_435 && minutes.isMultiple(of: 5) ? minutes : 30
+    }
+
+    private func setOvertimeDuration(_ minutes: Int) {
+        durationField.text = String(minutes)
+    }
+
+    private func durationDidChange() {
+        scheduleEdited = true
+        if kind == .overtime, let raw = decimalValue(durationField) {
+            let minutes = Int(raw)
+            if raw == Double(minutes), minutes >= 5, minutes <= 1_435, minutes.isMultiple(of: 5) {
+                toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(minutes * 60))
+            }
+        }
+        renderValidation()
+    }
+
+    private func fromTimeDidChange() {
+        scheduleEdited = true
+        guard kind == .overtime else { renderValidation(); return }
+        if fromPicker.date < toPicker.date {
+            let minutes = Int(toPicker.date.timeIntervalSince(fromPicker.date) / 60)
+            setOvertimeDuration(min(max(minutes, 5), 1_435))
+            toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(overtimeDurationMinutes * 60))
+        } else {
+            toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(overtimeDurationMinutes * 60))
+        }
+        renderValidation()
+    }
+
+    private func toTimeDidChange() {
+        scheduleEdited = true
+        guard kind == .overtime else { renderValidation(); return }
+        if toPicker.date > fromPicker.date {
+            let minutes = Int(toPicker.date.timeIntervalSince(fromPicker.date) / 60)
+            setOvertimeDuration(min(max(minutes, 5), 1_435))
+            toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(overtimeDurationMinutes * 60))
+        } else {
+            fromPicker.date = toPicker.date.addingTimeInterval(TimeInterval(-overtimeDurationMinutes * 60))
+        }
+        renderValidation()
     }
 
     private func scheduledTime(_ value: String?, on date: Date, fallbackHour: Int, fallbackMinute: Int) -> Date {
@@ -1714,6 +1781,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         }
         if kind == .sunday && VietnamTime.calendar.component(.weekday, from: fromPicker.date) != 1 { return "Ngày bắt đầu phải là Chủ nhật." }
         if kind == .sunday && toPicker.date <= fromPicker.date { return "Giờ kết thúc phải sau giờ bắt đầu." }
+        if kind == .overtime && toPicker.date <= fromPicker.date { return "Giờ kết thúc phải sau giờ bắt đầu." }
         if ![.late, .early, .overtime].contains(kind), toPicker.date < fromPicker.date { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
         return nil
     }
@@ -1755,12 +1823,13 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             let rawMinutes = numeric(durationField) ?? 0
             let minutes = Int(rawMinutes)
             guard rawMinutes == Double(minutes), minutes >= 5, minutes <= 1435, minutes.isMultiple(of: 5) else { showError("Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút."); return }
-            let day = VietnamTime.calendar.startOfDay(for: dayPicker.date)
-            let start = scheduledTime(workStartTime, on: day, fallbackHour: 7, fallbackMinute: 30)
-            let end = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
-            if kind == .late { from = start; to = start.addingTimeInterval(TimeInterval(minutes * 60)) }
-            if kind == .early { from = end.addingTimeInterval(TimeInterval(-minutes * 60)); to = end }
-            if kind == .overtime { from = end; to = end.addingTimeInterval(TimeInterval(minutes * 60)) }
+            if kind == .late || kind == .early {
+                let day = VietnamTime.calendar.startOfDay(for: dayPicker.date)
+                let start = scheduledTime(workStartTime, on: day, fallbackHour: 7, fallbackMinute: 30)
+                let end = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
+                if kind == .late { from = start; to = start.addingTimeInterval(TimeInterval(minutes * 60)) }
+                if kind == .early { from = end.addingTimeInterval(TimeInterval(-minutes * 60)); to = end }
+            }
             submittedReason = "\(kind.title): \(DurationClock.title(minutes: minutes)). \(cleanReason)"
         }
         guard to >= from else { showError("Thời gian kết thúc phải sau thời gian bắt đầu."); return }
@@ -2058,8 +2127,6 @@ struct RequestComposer: View {
             return (shiftStart, shiftStart.addingTimeInterval(TimeInterval(durationMinutes * 60)))
         case .early:
             return (shiftEnd.addingTimeInterval(TimeInterval(-durationMinutes * 60)), shiftEnd)
-        case .overtime:
-            return (shiftEnd, shiftEnd.addingTimeInterval(TimeInterval(durationMinutes * 60)))
         default:
             return (from, to)
         }
@@ -2068,7 +2135,7 @@ struct RequestComposer: View {
 
     private var submissionDates: (from: Date, to: Date) {
         switch kind {
-        case .late, .early, .overtime:
+        case .late, .early:
             return scheduledRequestDates
         default:
             return (from, to)
@@ -2245,6 +2312,46 @@ struct RequestComposer: View {
         )
     }
 
+    private var overtimeStartBinding: Binding<Date> {
+        Binding(
+            get: { from },
+            set: { selected in
+                markScheduleEdited(from: from, to: selected)
+                if selected < to {
+                    from = selected
+                    durationMinutes = overtimeDuration(from: selected, to: to)
+                    to = selected.addingTimeInterval(TimeInterval(durationMinutes * 60))
+                } else {
+                    from = selected
+                    to = selected.addingTimeInterval(TimeInterval(durationMinutes * 60))
+                }
+            }
+        )
+    }
+
+    private var overtimeEndBinding: Binding<Date> {
+        Binding(
+            get: { to },
+            set: { selected in
+                markScheduleEdited(from: to, to: selected)
+                if selected > from {
+                    to = selected
+                    durationMinutes = overtimeDuration(from: from, to: selected)
+                    to = from.addingTimeInterval(TimeInterval(durationMinutes * 60))
+                } else {
+                    to = selected
+                    from = selected.addingTimeInterval(TimeInterval(-durationMinutes * 60))
+                }
+            }
+        )
+    }
+
+    private func overtimeDuration(from start: Date, to end: Date) -> Int {
+        let rawMinutes = Int(end.timeIntervalSince(start) / 60)
+        let snappedMinutes = Int((Double(rawMinutes) / Double(Self.durationStep)).rounded()) * Self.durationStep
+        return min(max(snappedMinutes, Self.durationRange.lowerBound), Self.durationRange.upperBound)
+    }
+
     private func updateRequestStart(_ selected: Date) {
         let calendar = VietnamTime.calendar
         let previousFrom = from
@@ -2274,6 +2381,20 @@ struct RequestComposer: View {
             VStack(spacing: 10) {
                 dateRow("Bắt đầu", selection: requestStartBinding)
                 dateRow("Kết thúc", selection: editedByEmployee($to), range: from...)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+    }
+
+    private func overtimeTimeRange() -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            composerLabel("Thời gian làm thêm", icon: "calendar.badge.clock")
+            VStack(spacing: 10) {
+                dateRow("Bắt đầu", selection: overtimeStartBinding, minuteInterval: Self.durationStep)
+                dateRow("Kết thúc", selection: overtimeEndBinding, minuteInterval: Self.durationStep)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
@@ -2430,6 +2551,10 @@ struct RequestComposer: View {
                     }
                     if kind == .leave {
                         requestTimeRange(title: "Thời gian xin nghỉ", icon: "calendar.badge.clock")
+                    }
+
+                    if kind == .overtime {
+                        overtimeTimeRange()
                     }
 
                     if kind == .late || kind == .early {
@@ -2644,6 +2769,7 @@ struct RequestComposer: View {
                 .padding(.bottom, 8)
             }
             .onChange(of: from) { oldValue, newValue in
+                guard kind != .overtime else { return }
                 if to < newValue {
                     to = newValue.addingTimeInterval(max(to.timeIntervalSince(oldValue), 60 * 60))
                 }
@@ -2655,9 +2781,13 @@ struct RequestComposer: View {
                     to = now.addingTimeInterval(60 * 60)
                 } else if newKind == .sunday {
                     applySundaySchedule(now: now)
-                } else if [.late, .early, .overtime].contains(newKind) {
+                } else if [.late, .early].contains(newKind) {
                     durationMinutes = 30
                     from = VietnamTime.calendar.startOfDay(for: now)
+                    to = from.addingTimeInterval(30 * 60)
+                } else if newKind == .overtime {
+                    durationMinutes = 30
+                    from = scheduledAttendanceTime(workEndTime, on: now, fallbackHour: 16, fallbackMinute: 30)
                     to = from.addingTimeInterval(30 * 60)
                 }
             }
@@ -2702,13 +2832,18 @@ struct RequestComposer: View {
     /// ("08:00  18 thg 10, 2026"). Only the label adapts to the room left
     /// beside it. At accessibility text sizes the label goes over the value.
     @ViewBuilder
-    private func dateRow(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>? = nil) -> some View {
+    private func dateRow(
+        _ title: String,
+        selection: Binding<Date>,
+        range: PartialRangeFrom<Date>? = nil,
+        minuteInterval: Int = 1
+    ) -> some View {
         if usesCompactDateRows {
             HStack(spacing: 6) {
                 requestDateLabel(title, besidePicker: true)
                     .accessibilityHidden(true)
                 Spacer(minLength: 0)
-                dateTimePicker(title, selection: selection, range: range)
+                dateTimePicker(title, selection: selection, range: range, minuteInterval: minuteInterval)
                     .fixedSize()
                     .layoutPriority(2)
             }
@@ -2716,7 +2851,7 @@ struct RequestComposer: View {
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 requestDateLabel(title)
-                dateTimePicker(title, selection: selection, range: range)
+                dateTimePicker(title, selection: selection, range: range, minuteInterval: minuteInterval)
             }
             .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
         }
@@ -2742,10 +2877,16 @@ struct RequestComposer: View {
     /// The date and time, opening Apple's popover with its wheels
     /// (`DatePopoverField`). UIKit presents it: a SwiftUI `.popover` inside
     /// this sheet closed the whole composer when tapped (seen on iOS 27).
-    private func dateTimePicker(_ title: String, selection: Binding<Date>, range: PartialRangeFrom<Date>?) -> some View {
+    private func dateTimePicker(
+        _ title: String,
+        selection: Binding<Date>,
+        range: PartialRangeFrom<Date>?,
+        minuteInterval: Int
+    ) -> some View {
         DatePopoverField(
             selection: selection,
             mode: .dateAndTime,
+            minuteInterval: minuteInterval,
             minimum: range?.lowerBound,
             accessibilityLabel: title
         )
@@ -2800,6 +2941,9 @@ struct RequestComposer: View {
                     range: Self.durationRange,
                     calendar: VietnamTime.calendar
                 )
+                if kind == .overtime {
+                    to = from.addingTimeInterval(TimeInterval(durationMinutes * 60))
+                }
             }
         )
     }

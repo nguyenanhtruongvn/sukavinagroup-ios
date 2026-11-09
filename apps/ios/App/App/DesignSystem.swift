@@ -282,6 +282,7 @@ struct CompactDateRow<Picker: View>: View {
 struct DatePopoverField: View {
     @Binding var selection: Date
     let mode: UIDatePicker.Mode
+    var minuteInterval = 1
     var minimum: Date? = nil
     let accessibilityLabel: String
 
@@ -318,6 +319,7 @@ struct DatePopoverField: View {
             .overlay(DatePopoverButton(
                 selection: $selection,
                 mode: mode,
+                minuteInterval: minuteInterval,
                 minimum: minimum,
                 accessibilityLabel: label,
                 accessibilityValue: text
