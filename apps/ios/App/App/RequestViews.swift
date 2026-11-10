@@ -36,23 +36,15 @@ private struct RequestRecipientsPickerSheet: View {
         }
     }
 
+    /// Shared with the iOS 17 picker (`RequestFormRules.toggle`): the first
+    /// direct report replaces the default “Tôi”, later ones join.
     private func toggleManagedEmployee(_ id: String) {
-        guard let selfID = store.managedEmployees.first(where: \.isSelf)?.id else {
-            toggle(id)
-            return
-        }
-
-        if selectedIDs.contains(id) {
-            selectedIDs.remove(id)
-        } else if !hasChosenManagedEmployee && selectedIDs == [selfID] {
-            // The first direct-report choice replaces the default “Tôi”.
-            hasChosenManagedEmployee = true
-            selectedIDs = [id]
-        } else {
-            // From then on, people are added to the current joint request.
-            hasChosenManagedEmployee = true
-            selectedIDs.insert(id)
-        }
+        let result = RequestFormRules.toggle(
+            id, employees: store.managedEmployees, selected: selectedIDs,
+            hasChosenManagedEmployee: hasChosenManagedEmployee
+        )
+        selectedIDs = result.selected
+        hasChosenManagedEmployee = result.hasChosenManagedEmployee
     }
 
     var body: some View {
@@ -226,6 +218,23 @@ enum EmployeeRequestKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+extension EmployeeRequestKind {
+    /// This kind for the composer rules shared by the iOS 17 and iOS 18+
+    /// forms (`App/Shared/RequestFormRules`).
+    var form: RequestFormKind {
+        switch self {
+        case .leave: return .leave
+        case .late: return .late
+        case .early: return .early
+        case .overtime: return .overtime
+        case .business: return .business
+        case .attendance: return .attendance
+        case .gate: return .gate
+        case .sunday: return .sunday
+        }
+    }
+}
+
 struct EmployeeRequest: Codable, Identifiable {
     struct EmployeeSummary: Codable {
         let fullName: String
@@ -280,7 +289,7 @@ struct RequestBody: Encodable {
     /// older server versions remain compatible with a request for yourself.
     let employeeIds: [String]?
 }
-struct ManagedRequestEmployee: Codable, Identifiable, Equatable {
+struct ManagedRequestEmployee: Codable, Identifiable, Equatable, RequestRecipient {
     let id: String
     let employeeCode: String
     let fullName: String
@@ -1641,31 +1650,21 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         return button
     }
 
+    // Defaults, durations, validation and the sent fields are the iOS 18+
+    // composer's rules (`App/Shared/RequestFormRules`), not a copy of them.
     private func applyScheduleDefaults(for nextKind: EmployeeRequestKind) {
-        let calendar = VietnamTime.calendar
-        if nextKind == .sunday {
-            let today = calendar.startOfDay(for: Date())
-            let daysToSunday = (8 - calendar.component(.weekday, from: today)) % 7
-            let sunday = calendar.date(byAdding: .day, value: daysToSunday, to: today) ?? today
-            fromPicker.date = scheduledTime(workStartTime, on: sunday, fallbackHour: 7, fallbackMinute: 30)
-            toPicker.date = scheduledTime(workEndTime, on: sunday, fallbackHour: 16, fallbackMinute: 30)
-        } else if nextKind == .leave {
-            let day = calendar.startOfDay(for: fromPicker.date)
-            fromPicker.date = scheduledTime(workStartTime, on: day, fallbackHour: 7, fallbackMinute: 30)
-            toPicker.date = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
-        } else if nextKind == .overtime {
-            let day = calendar.startOfDay(for: Date())
-            let start = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
-            fromPicker.date = start
-            toPicker.date = start.addingTimeInterval(30 * 60)
-            durationField.text = "30"
-        }
+        guard let defaults = RequestFormRules.defaults(
+            for: nextKind.form, now: Date(), currentStart: fromPicker.date,
+            workStart: workStartTime, workEnd: workEndTime, calendar: VietnamTime.calendar
+        ) else { return }
+        fromPicker.date = defaults.start
+        toPicker.date = defaults.end
+        if nextKind == .late || nextKind == .early { dayPicker.date = defaults.start }
+        if let minutes = defaults.durationMinutes { durationField.text = String(minutes) }
     }
 
     private var overtimeDurationMinutes: Int {
-        let raw = decimalValue(durationField) ?? 30
-        let minutes = Int(raw)
-        return raw == Double(minutes) && minutes >= 5 && minutes <= 1_435 && minutes.isMultiple(of: 5) ? minutes : 30
+        RequestFormRules.validDuration(RequestFormRules.decimal(durationField.text)) ?? RequestFormRules.defaultDurationMinutes
     }
 
     private func setOvertimeDuration(_ minutes: Int) {
@@ -1674,11 +1673,8 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 
     private func durationDidChange() {
         scheduleEdited = true
-        if kind == .overtime, let raw = decimalValue(durationField) {
-            let minutes = Int(raw)
-            if raw == Double(minutes), minutes >= 5, minutes <= 1_435, minutes.isMultiple(of: 5) {
-                toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(minutes * 60))
-            }
+        if kind == .overtime, let minutes = RequestFormRules.validDuration(RequestFormRules.decimal(durationField.text)) {
+            toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(minutes * 60))
         }
         renderValidation()
     }
@@ -1686,34 +1682,28 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private func fromTimeDidChange() {
         scheduleEdited = true
         guard kind == .overtime else { renderValidation(); return }
-        if fromPicker.date < toPicker.date {
-            let minutes = Int(toPicker.date.timeIntervalSince(fromPicker.date) / 60)
-            setOvertimeDuration(min(max(minutes, 5), 1_435))
-            toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(overtimeDurationMinutes * 60))
-        } else {
-            toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(overtimeDurationMinutes * 60))
-        }
+        let adjusted = RequestFormRules.overtimeAfterStartChange(
+            start: fromPicker.date, end: toPicker.date, minutes: overtimeDurationMinutes
+        )
+        setOvertimeDuration(adjusted.minutes)
+        toPicker.date = adjusted.end
         renderValidation()
     }
 
     private func toTimeDidChange() {
         scheduleEdited = true
         guard kind == .overtime else { renderValidation(); return }
-        if toPicker.date > fromPicker.date {
-            let minutes = Int(toPicker.date.timeIntervalSince(fromPicker.date) / 60)
-            setOvertimeDuration(min(max(minutes, 5), 1_435))
-            toPicker.date = fromPicker.date.addingTimeInterval(TimeInterval(overtimeDurationMinutes * 60))
-        } else {
-            fromPicker.date = toPicker.date.addingTimeInterval(TimeInterval(-overtimeDurationMinutes * 60))
-        }
+        let adjusted = RequestFormRules.overtimeAfterEndChange(
+            start: fromPicker.date, end: toPicker.date, minutes: overtimeDurationMinutes
+        )
+        setOvertimeDuration(adjusted.minutes)
+        fromPicker.date = adjusted.start
+        toPicker.date = adjusted.end
         renderValidation()
     }
 
     private func scheduledTime(_ value: String?, on date: Date, fallbackHour: Int, fallbackMinute: Int) -> Date {
-        let parts = value?.split(separator: ":").compactMap { Int($0) } ?? []
-        let hour = parts.count == 2 && (0...23).contains(parts[0]) ? parts[0] : fallbackHour
-        let minute = parts.count == 2 && (0...59).contains(parts[1]) ? parts[1] : fallbackMinute
-        return VietnamTime.calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
+        RequestFormRules.shiftTime(value, on: date, fallbackHour: fallbackHour, fallbackMinute: fallbackMinute, calendar: VietnamTime.calendar)
     }
 
     /// Mirrors the iOS 18 composer: a confirmation request starts from the
@@ -1826,15 +1816,11 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     }
 
     private func updateRecipientsTitle() {
-        guard recipientsLoaded else { recipientsButton.configuration?.title = "Tôi"; return }
-        let selected = store.managedEmployees.filter { selectedRecipientIDs.contains($0.id) }
-        let all = Set(store.managedEmployees.map(\.id))
-        let title: String
-        if selected.isEmpty { title = "Chưa chọn người" }
-        else if selected.count == 1 && selected[0].isSelf { title = "Tôi" }
-        else if selected.count > 1 && !all.isEmpty && selectedRecipientIDs.isSuperset(of: all) { title = "Tất cả" }
-        else { title = selected.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ") }
-        recipientsButton.configuration?.title = title
+        // The selection is initialised when the directory loads.
+        recipientsButton.configuration?.title = RequestFormRules.recipientSummary(
+            employees: store.managedEmployees, selected: selectedRecipientIDs,
+            loaded: recipientsLoaded, initialized: true
+        )
     }
 
     @objc private func showRecipients() {
@@ -1854,24 +1840,37 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 
     @objc private func close() { dismiss(animated: true) }
 
+    /// The typed duration, when valid (Đi trễ, Về sớm, Làm thêm giờ).
+    private var typedDuration: Int? {
+        RequestFormRules.validDuration(RequestFormRules.decimal(durationField.text))
+    }
+
+    /// The times as sent: Đi trễ / Về sớm follow the shift of the chosen day.
+    private var submissionDates: (start: Date, end: Date) {
+        RequestFormRules.submissionDates(
+            kind: kind.form, start: fromPicker.date, end: toPicker.date, day: dayPicker.date,
+            durationMinutes: typedDuration ?? 0, workStart: workStartTime, workEnd: workEndTime,
+            calendar: VietnamTime.calendar
+        )
+    }
+
     private var validationMessage: String? {
-        let reason = reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if reason.count < 10 { return "Nội dung đơn cần tối thiểu 10 ký tự." }
-        if recipientsLoaded && selectedRecipientIDs.isEmpty { return "Chọn ít nhất một người tạo đơn." }
-        if kind == .business {
-            if (destinationField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).count < 2 { return "Nhập nơi công tác để gửi đơn." }
-            if selectedTransport == "personal_vehicle" && !(decimalValue(distanceField) ?? 0 > 0) { return "Nhập quãng đường khi đi bằng xe cá nhân." }
-        }
-        if [.late, .early, .overtime].contains(kind) {
-            let rawMinutes = decimalValue(durationField) ?? 0
-            let minutes = Int(rawMinutes)
-            if rawMinutes != Double(minutes) || minutes < 5 || minutes > 1435 || !minutes.isMultiple(of: 5) { return "Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút." }
-        }
-        if kind == .sunday && VietnamTime.calendar.component(.weekday, from: fromPicker.date) != 1 { return "Ngày bắt đầu phải là Chủ nhật." }
-        if kind == .sunday && toPicker.date <= fromPicker.date { return "Giờ kết thúc phải sau giờ bắt đầu." }
-        if kind == .overtime && toPicker.date <= fromPicker.date { return "Giờ kết thúc phải sau giờ bắt đầu." }
-        if ![.late, .early, .overtime].contains(kind), toPicker.date < fromPicker.date { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
-        return nil
+        let dates = submissionDates
+        return RequestFormRules.missingRequirement(
+            RequestFormRules.Draft(
+                kind: kind.form,
+                reason: reasonView.text,
+                destination: destinationField.text ?? "",
+                transport: selectedTransport,
+                distanceText: distanceField.text ?? "",
+                durationMinutesText: RequestFormRules.decimal(durationField.text),
+                start: dates.start,
+                end: dates.end,
+                recipientsLoaded: recipientsLoaded,
+                selectedRecipientCount: selectedRecipientIDs.count
+            ),
+            calendar: VietnamTime.calendar
+        )
     }
 
     private func renderValidation() {
@@ -1892,42 +1891,24 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             .map { ($0 ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
-    private func decimalValue(_ field: UITextField) -> Double? {
-        Double(field.text?.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".") ?? "")
-    }
-
     @objc private func send() {
         guard !isSending else { return }
         if let warning = validationMessage { showError(warning); return }
         let cleanReason = reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let numeric: (UITextField) -> Double? = { [weak self] in self?.decimalValue($0) }
-        let destination = destinationField.text?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if kind == .business && (destination?.count ?? 0) < 2 { showError("Nhập nơi công tác để gửi đơn."); return }
-        if kind == .business && selectedTransport == "personal_vehicle" && !(numeric(distanceField) ?? 0 > 0) { showError("Nhập quãng đường khi đi bằng xe cá nhân."); return }
-        var from = fromPicker.date
-        var to = toPicker.date
-        var submittedReason = cleanReason
-        if [.late, .early, .overtime].contains(kind) {
-            let rawMinutes = numeric(durationField) ?? 0
-            let minutes = Int(rawMinutes)
-            guard rawMinutes == Double(minutes), minutes >= 5, minutes <= 1435, minutes.isMultiple(of: 5) else { showError("Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút."); return }
-            if kind == .late || kind == .early {
-                let day = VietnamTime.calendar.startOfDay(for: dayPicker.date)
-                let start = scheduledTime(workStartTime, on: day, fallbackHour: 7, fallbackMinute: 30)
-                let end = scheduledTime(workEndTime, on: day, fallbackHour: 16, fallbackMinute: 30)
-                if kind == .late { from = start; to = start.addingTimeInterval(TimeInterval(minutes * 60)) }
-                if kind == .early { from = end.addingTimeInterval(TimeInterval(-minutes * 60)); to = end }
-            }
-            submittedReason = "\(kind.title): \(DurationClock.title(minutes: minutes)). \(cleanReason)"
-        }
-        guard to >= from else { showError("Thời gian kết thúc phải sau thời gian bắt đầu."); return }
-        if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 { showError("Ngày bắt đầu phải là Chủ nhật."); return }
-        if kind == .sunday && to <= from { showError("Giờ kết thúc phải sau giờ bắt đầu."); return }
+        let dates = submissionDates
+        let submittedReason = kind.form.usesDuration
+            ? RequestFormRules.durationReason(kindTitle: kind.title, minutes: typedDuration ?? RequestFormRules.defaultDurationMinutes, reason: cleanReason)
+            : cleanReason
+        let business = RequestFormRules.businessFields(
+            kind: kind.form, destination: destinationField.text ?? "", transport: selectedTransport,
+            distanceText: distanceField.text ?? "", lunchMeal: lunchMeal, dinnerMeal: dinnerMeal
+        )
+        let recipients = recipientsLoaded ? Array(selectedRecipientIDs) : nil
         isSending = true
         renderValidation()
         Task { [weak self] in
             guard let self else { return }
-            let error = await submitRequest(kind, from, to, submittedReason, destination, kind == .business ? selectedTransport : nil, kind == .business ? numeric(distanceField) : nil, nil, kind == .business ? lunchMeal : nil, kind == .business ? dinnerMeal : nil, recipientsLoaded ? Array(selectedRecipientIDs) : nil)
+            let error = await submitRequest(kind, dates.start, dates.end, submittedReason, business.destination, business.transport, business.distanceKm, nil, business.lunchMeal, business.dinnerMeal, recipients)
             guard !Task.isCancelled else { return }
             isSending = false
             renderValidation()
@@ -1943,7 +1924,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 
     func textViewDidChange(_ textView: UITextView) { updateReasonPlaceholder(); renderValidation() }
     private func updateReasonPlaceholder() { reasonPlaceholder.isHidden = !reasonView.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-    private static func numberText(_ value: Double) -> String { value.rounded() == value ? String(Int(value)) : String(value) }
+    private static func numberText(_ value: Double) -> String { RequestFormRules.numberText(value) }
 }
 
 @MainActor
@@ -2039,19 +2020,12 @@ private final class LegacyRequestRecipientsController: UIViewController {
 
     private func toggle(_ id: String) { if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }; render() }
     private func toggleManagedEmployee(_ id: String) {
-        guard let selfID = employees.first(where: \.isSelf)?.id else {
-            toggle(id)
-            return
-        }
-        if selectedIDs.contains(id) {
-            selectedIDs.remove(id)
-        } else if !hasChosenManagedEmployee && selectedIDs == [selfID] {
-            hasChosenManagedEmployee = true
-            selectedIDs = [id]
-        } else {
-            hasChosenManagedEmployee = true
-            selectedIDs.insert(id)
-        }
+        // Same rule as the iOS 18+ picker (`RequestFormRules.toggle`).
+        let result = RequestFormRules.toggle(
+            id, employees: employees, selected: selectedIDs, hasChosenManagedEmployee: hasChosenManagedEmployee
+        )
+        selectedIDs = result.selected
+        hasChosenManagedEmployee = result.hasChosenManagedEmployee
         render()
     }
     @objc private func done() { completion(selectedIDs, hasChosenManagedEmployee); navigationController?.popViewController(animated: true) }
@@ -2068,8 +2042,9 @@ struct RequestComposer: View {
     /// Đi trễ, Về sớm and Làm thêm giờ last 5 minutes to 23 giờ 55 phút, in
     /// 5-minute steps: what Apple's time picker can show as hh:mm
     /// (`DurationClock`).
-    private static let durationRange = 5...1435
-    private static let durationStep = 5
+    // Rules shared with the iOS 17 UIKit composer (`App/Shared/RequestFormRules`).
+    private static let durationRange = RequestFormRules.durationRange
+    private static let durationStep = RequestFormRules.durationStep
 
     @Environment(\.dismiss) private var dismiss
     // Only calls session methods and reads the shift times once: the form
@@ -2156,12 +2131,12 @@ struct RequestComposer: View {
 
     /// 12 -> "12", 12.5 -> "12.5" for the numeric text fields.
     private static func plainNumber(_ value: Double) -> String {
-        value.rounded() == value ? String(Int(value)) : String(value)
+        RequestFormRules.numberText(value)
     }
     private var cleanReason: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
     /// `.decimalPad` follows the device locale, so Vietnamese keyboards enter `,`.
     private func localizedDecimal(_ value: String) -> Double? {
-        Double(value.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: "."))
+        RequestFormRules.decimal(value)
     }
     private var usesCompactDateRows: Bool { dynamicTypeSize <= .large }
     private var usesDurationInput: Bool { [.late, .early, .overtime].contains(kind) }
@@ -2177,14 +2152,10 @@ struct RequestComposer: View {
     private var workStartTime: String? { session.dashboard?.workStartTime }
     private var workEndTime: String? { session.dashboard?.workEndTime }
     private var recipientSummary: String {
-        guard directory.loaded else { return "Tôi" }
-        let people = directory.employees
-        let eligibleIDs = Set(people.map(\.id))
-        let selected = people.filter { selectedRecipientIDs.contains($0.id) }
-        if selected.isEmpty { return recipientsInitialized ? "Chưa chọn người" : "Tôi" }
-        if selected.count == 1 && selected[0].isSelf { return "Tôi" }
-        if selected.count > 1 && !eligibleIDs.isEmpty && selectedRecipientIDs.isSuperset(of: eligibleIDs) { return "Tất cả" }
-        return selected.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ")
+        RequestFormRules.recipientSummary(
+            employees: directory.employees, selected: selectedRecipientIDs,
+            loaded: directory.loaded, initialized: recipientsInitialized
+        )
     }
 
     private func initializeRecipientsIfNeeded() {
@@ -2194,51 +2165,35 @@ struct RequestComposer: View {
     }
 
     /// The employee's usual shift on today's Sunday, or the next one.
-    private func applySundaySchedule(now: Date) {
-        let calendar = VietnamTime.calendar
-        let today = calendar.startOfDay(for: now)
-        let daysToSunday = (8 - calendar.component(.weekday, from: today)) % 7
-        let sunday = calendar.date(byAdding: .day, value: daysToSunday, to: today) ?? today
-        from = scheduledAttendanceTime(workStartTime, on: sunday, fallbackHour: 7, fallbackMinute: 30)
-        to = scheduledAttendanceTime(workEndTime, on: sunday, fallbackHour: 16, fallbackMinute: 30)
+    /// The defaults for a newly chosen kind (shared with the iOS 17 form).
+    private func applyKindDefaults(_ newKind: EmployeeRequestKind, now: Date) {
+        guard let defaults = RequestFormRules.defaults(
+            for: newKind.form, now: now, currentStart: from,
+            workStart: workStartTime, workEnd: workEndTime, calendar: VietnamTime.calendar
+        ) else { return }
+        from = defaults.start
+        to = defaults.end
+        if let minutes = defaults.durationMinutes { durationMinutes = minutes }
     }
 
     private func applyInitialLeaveSchedule() {
         guard kind == .leave, !leaveScheduleWasInitialized else { return }
-        let leaveDay = VietnamTime.calendar.startOfDay(for: from)
-        from = scheduledAttendanceTime(workStartTime, on: leaveDay, fallbackHour: 7, fallbackMinute: 30)
-        to = scheduledAttendanceTime(workEndTime, on: leaveDay, fallbackHour: 16, fallbackMinute: 30)
+        applyKindDefaults(.leave, now: Date())
         leaveScheduleWasInitialized = true
     }
 
-    private var scheduledRequestDates: (from: Date, to: Date) {
-        let calendar = VietnamTime.calendar
-        let requestDay = calendar.startOfDay(for: from)
-        let shiftStart = scheduledAttendanceTime(workStartTime, on: requestDay, fallbackHour: 7, fallbackMinute: 30)
-        let shiftEnd = scheduledAttendanceTime(workEndTime, on: requestDay, fallbackHour: 16, fallbackMinute: 30)
-        switch kind {
-        case .late:
-            return (shiftStart, shiftStart.addingTimeInterval(TimeInterval(durationMinutes * 60)))
-        case .early:
-            return (shiftEnd.addingTimeInterval(TimeInterval(-durationMinutes * 60)), shiftEnd)
-        default:
-            return (from, to)
-        }
-    }
-
-
+    /// The times as sent: Đi trễ / Về sớm follow the shift of the chosen day.
     private var submissionDates: (from: Date, to: Date) {
-        switch kind {
-        case .late, .early:
-            return scheduledRequestDates
-        default:
-            return (from, to)
-        }
+        let dates = RequestFormRules.submissionDates(
+            kind: kind.form, start: from, end: to, day: from, durationMinutes: durationMinutes,
+            workStart: workStartTime, workEnd: workEndTime, calendar: VietnamTime.calendar
+        )
+        return (dates.start, dates.end)
     }
 
     private var submissionReason: String {
         guard usesDurationInput else { return cleanReason }
-        return "\(kind.title): \(durationDescription). \(cleanReason)"
+        return RequestFormRules.durationReason(kindTitle: kind.title, minutes: durationMinutes, reason: cleanReason)
     }
     private func mealButton(title: String, selected: Binding<Bool>) -> some View {
         Button { selected.wrappedValue.toggle() } label: {
@@ -2351,31 +2306,28 @@ struct RequestComposer: View {
     }
 
     private func scheduledAttendanceTime(_ time: String?, on date: Date, fallbackHour: Int, fallbackMinute: Int) -> Date {
-        let parts = time?.split(separator: ":").compactMap { Int($0) } ?? []
-        let hour = parts.count == 2 && (0...23).contains(parts[0]) ? parts[0] : fallbackHour
-        let minute = parts.count == 2 && (0...59).contains(parts[1]) ? parts[1] : fallbackMinute
-        return VietnamTime.calendar.date(bySettingHour: hour, minute: minute, second: 0, of: date) ?? date
+        RequestFormRules.shiftTime(time, on: date, fallbackHour: fallbackHour, fallbackMinute: fallbackMinute, calendar: VietnamTime.calendar)
     }
 
     /// What still blocks "Gửi đơn", so a disabled button is never a riddle.
-    /// Mirrors Android RequestComposer.
+    /// Same rules and order as the iOS 17 form (`RequestFormRules`).
     private var missingRequirement: String? {
-        let place = destination.trimmingCharacters(in: .whitespacesAndNewlines)
-        if kind == .business && place.count < 2 { return "Nhập nơi công tác để gửi đơn." }
-        if kind == .business && transport == "personal_vehicle" && !(localizedDecimal(distanceKm) ?? 0 > 0) {
-            return "Nhập quãng đường khi đi bằng xe cá nhân."
-        }
-        if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 {
-            return "Ngày bắt đầu phải là Chủ nhật."
-        }
-        if directory.loaded && selectedRecipientIDs.isEmpty {
-            return "Chọn ít nhất một người tạo đơn."
-        }
-        if kind == .sunday && to <= from { return "Giờ kết thúc phải sau giờ bắt đầu." }
-        if cleanReason.count < 10 { return "Nội dung đơn cần tối thiểu 10 ký tự." }
         let dates = submissionDates
-        if dates.to < dates.from { return "Thời gian kết thúc phải sau thời gian bắt đầu." }
-        return nil
+        return RequestFormRules.missingRequirement(
+            RequestFormRules.Draft(
+                kind: kind.form,
+                reason: reason,
+                destination: destination,
+                transport: transport,
+                distanceText: distanceKm,
+                durationMinutesText: Double(durationMinutes),
+                start: dates.from,
+                end: dates.to,
+                recipientsLoaded: directory.loaded,
+                selectedRecipientCount: selectedRecipientIDs.count
+            ),
+            calendar: VietnamTime.calendar
+        )
     }
 
     private var canSubmit: Bool {
@@ -2427,14 +2379,10 @@ struct RequestComposer: View {
             get: { from },
             set: { selected in
                 markScheduleEdited(from: from, to: selected)
-                if selected < to {
-                    from = selected
-                    durationMinutes = overtimeDuration(from: selected, to: to)
-                    to = selected.addingTimeInterval(TimeInterval(durationMinutes * 60))
-                } else {
-                    from = selected
-                    to = selected.addingTimeInterval(TimeInterval(durationMinutes * 60))
-                }
+                let adjusted = RequestFormRules.overtimeAfterStartChange(start: selected, end: to, minutes: durationMinutes)
+                from = adjusted.start
+                durationMinutes = adjusted.minutes
+                to = adjusted.end
             }
         )
     }
@@ -2444,22 +2392,12 @@ struct RequestComposer: View {
             get: { to },
             set: { selected in
                 markScheduleEdited(from: to, to: selected)
-                if selected > from {
-                    to = selected
-                    durationMinutes = overtimeDuration(from: from, to: selected)
-                    to = from.addingTimeInterval(TimeInterval(durationMinutes * 60))
-                } else {
-                    to = selected
-                    from = selected.addingTimeInterval(TimeInterval(-durationMinutes * 60))
-                }
+                let adjusted = RequestFormRules.overtimeAfterEndChange(start: from, end: selected, minutes: durationMinutes)
+                from = adjusted.start
+                durationMinutes = adjusted.minutes
+                to = adjusted.end
             }
         )
-    }
-
-    private func overtimeDuration(from start: Date, to end: Date) -> Int {
-        let rawMinutes = Int(end.timeIntervalSince(start) / 60)
-        let snappedMinutes = Int((Double(rawMinutes) / Double(Self.durationStep)).rounded()) * Self.durationStep
-        return min(max(snappedMinutes, Self.durationRange.lowerBound), Self.durationRange.upperBound)
     }
 
     private func updateRequestStart(_ selected: Date) {
@@ -2836,7 +2774,12 @@ struct RequestComposer: View {
                         submitError = nil
                         Task {
                             let employeeIDs = directory.loaded ? Array(selectedRecipientIDs) : nil
-                            let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), nil, kind == .business ? lunchMeal : nil, kind == .business ? dinnerMeal : nil, employeeIDs)
+                            // Business fields only for Công tác (they were sent with every kind).
+                            let business = RequestFormRules.businessFields(
+                                kind: kind.form, destination: destination, transport: transport,
+                                distanceText: distanceKm, lunchMeal: lunchMeal, dinnerMeal: dinnerMeal
+                            )
+                            let error = await submit(kind, dates.from, dates.to, submissionReason, business.destination, business.transport, business.distanceKm, nil, business.lunchMeal, business.dinnerMeal, employeeIDs)
                             isSubmitting = false
                             if let error {
                                 submitError = error
@@ -2885,21 +2828,9 @@ struct RequestComposer: View {
                 }
             }
             .onChange(of: kind) { _, newKind in
-                let now = Date()
-                if newKind == .business || newKind == .gate {
-                    from = now
-                    to = now.addingTimeInterval(60 * 60)
-                } else if newKind == .sunday {
-                    applySundaySchedule(now: now)
-                } else if [.late, .early].contains(newKind) {
-                    durationMinutes = 30
-                    from = VietnamTime.calendar.startOfDay(for: now)
-                    to = from.addingTimeInterval(30 * 60)
-                } else if newKind == .overtime {
-                    durationMinutes = 30
-                    from = scheduledAttendanceTime(workEndTime, on: now, fallbackHour: 16, fallbackMinute: 30)
-                    to = from.addingTimeInterval(30 * 60)
-                }
+                // Xin nghỉ is set by applyInitialLeaveSchedule (once per switch).
+                guard newKind != .leave else { return }
+                applyKindDefaults(newKind, now: Date())
             }
         }
         // Pickers show and select Vietnam time on any device time zone;

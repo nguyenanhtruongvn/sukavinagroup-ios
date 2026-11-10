@@ -16,6 +16,7 @@
 		FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */; };
 		FC0000000000000000000A20 /* Shared/MeetingRoomAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000A10 /* Shared/MeetingRoomAvailability.swift */; };
 		FC0000000000000000000B20 /* Shared/MeetingSharedRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000B10 /* Shared/MeetingSharedRules.swift */; };
+		FC0000000000000000000C20 /* Shared/RequestFormRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000C10 /* Shared/RequestFormRules.swift */; };
 		FC0000000000000000000720 /* Shared/AttendanceMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */; };
 		FC0000000000000000000820 /* Shared/SukavinaServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000810 /* Shared/SukavinaServer.swift */; };
 		FC0000000000000000000830 /* Shared/SukavinaServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000810 /* Shared/SukavinaServer.swift */; };
@@ -110,6 +111,7 @@
 		FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingBookingTime.swift; sourceTree = "<group>"; };
 		FC0000000000000000000A10 /* Shared/MeetingRoomAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingRoomAvailability.swift; sourceTree = "<group>"; };
 		FC0000000000000000000B10 /* Shared/MeetingSharedRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingSharedRules.swift; sourceTree = "<group>"; };
+		FC0000000000000000000C10 /* Shared/RequestFormRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/RequestFormRules.swift; sourceTree = "<group>"; };
 		FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/AttendanceMetrics.swift; sourceTree = "<group>"; };
 		FC0000000000000000000810 /* Shared/SukavinaServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SukavinaServer.swift; sourceTree = "<group>"; };
 		FC0000000000000000000910 /* Shared/PasswordPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/PasswordPolicy.swift; sourceTree = "<group>"; };
@@ -211,6 +213,7 @@
 				FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */,
 				FC0000000000000000000A10 /* Shared/MeetingRoomAvailability.swift */,
 				FC0000000000000000000B10 /* Shared/MeetingSharedRules.swift */,
+				FC0000000000000000000C10 /* Shared/RequestFormRules.swift */,
 				FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */,
 				FC0000000000000000000810 /* Shared/SukavinaServer.swift */,
 				FC0000000000000000000910 /* Shared/PasswordPolicy.swift */,
@@ -382,6 +385,7 @@
 				FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */,
 				FC0000000000000000000A20 /* Shared/MeetingRoomAvailability.swift in Sources */,
 				FC0000000000000000000B20 /* Shared/MeetingSharedRules.swift in Sources */,
+				FC0000000000000000000C20 /* Shared/RequestFormRules.swift in Sources */,
 				FC0000000000000000000720 /* Shared/AttendanceMetrics.swift in Sources */,
 				FC0000000000000000000820 /* Shared/SukavinaServer.swift in Sources */,
 				FC0000000000000000000920 /* Shared/PasswordPolicy.swift in Sources */,
