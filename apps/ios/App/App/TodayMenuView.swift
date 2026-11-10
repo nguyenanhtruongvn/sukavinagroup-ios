@@ -32,6 +32,15 @@ struct TodayMenuView: View {
         }
     }
 
+    /// Fallback polling interval while `needsStatusPolling`.
+    private static let statusPollInterval: TimeInterval = 30
+
+    /// Poll only when an event may not tell us: the live stream is down, or a
+    /// meal ordered for a direct report has not been received yet.
+    private var needsStatusPolling: Bool {
+        !session.isRealtimeLive || hasPendingDelegatedOrders
+    }
+
     private var hasPendingDelegatedOrders: Bool {
         delegatedOrders.contains { $0.receivedAt == nil }
     }
@@ -225,18 +234,26 @@ struct TodayMenuView: View {
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 await session.refreshTodayMenu(force: true)
+                // Event-driven: menu and meal changes arrive as `meal_changed`
+                // on the live stream (SessionStore refreshes the menu then).
+                // Polling is only the fallback for what may go unannounced:
+                // while the stream is down, or while a delegated meal still
+                // waits to be received at the canteen. It used to fetch every
+                // 30 s for as long as the sheet was open.
                 while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(30))
+                    try? await Task.sleep(for: .seconds(Self.statusPollInterval))
                     guard !Task.isCancelled else { return }
-                    if scenePhase == .active {
+                    if scenePhase == .active, needsStatusPolling {
                         await session.refreshTodayMenu(force: true)
                     }
                 }
             }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active {
-                    Task { await session.refreshTodayMenu(force: true) }
-                }
+                guard phase == .active else { return }
+                // Back from the background: statuses may have changed meanwhile.
+                // Without anything pending the 90 s freshness window decides.
+                let force = needsStatusPolling
+                Task { await session.refreshTodayMenu(force: force) }
             }
             .onReceive(session.$isWorking) { isSessionWorking = $0 }
             .mealConfirmationSheet(isPresented: Binding(

@@ -517,6 +517,10 @@ final class SessionStore: ObservableObject {
     /// or a server close). A reconnect after a short gap skips the catch-up
     /// burst: a quick app switch used to cost 6+ forced requests.
     private var realtimeDisconnectedAt: Date?
+    /// The live update stream is connected now, so server changes (e.g.
+    /// `meal_changed`) arrive as events. Screens poll only while it is not.
+    /// Not published: readers check it when they would poll.
+    private(set) var isRealtimeLive = false
     /// Gaps shorter than this are covered by the throttled foreground refresh.
     private static let realtimeCatchUpGap: TimeInterval = 60
     private var displayedMeetingScheduleDay: String?
@@ -617,6 +621,7 @@ final class SessionStore: ObservableObject {
                 if self.eventStreamTask != nil, self.realtimeDisconnectedAt == nil {
                     self.realtimeDisconnectedAt = Date()
                 }
+                self.isRealtimeLive = false
                 self.eventStreamTask?.cancel()
                 self.eventStreamTask = nil
             }
@@ -1621,6 +1626,7 @@ final class SessionStore: ObservableObject {
         hasViewedMeetingSchedule = false
         realtimeConnectedBefore = false
         realtimeDisconnectedAt = nil
+        isRealtimeLive = false
         lastForegroundRefreshAt = nil
         lastSessionRefreshAt = nil
         eventStreamTask?.cancel()
@@ -2123,6 +2129,7 @@ final class SessionStore: ObservableObject {
                     self.realtimeConnectedBefore = true
                     let gap = self.realtimeDisconnectedAt.map { Date().timeIntervalSince($0) } ?? .infinity
                     self.realtimeDisconnectedAt = nil
+                    self.isRealtimeLive = true
                     // First connection, or a gap long enough to have missed
                     // events. A quick app switch skips the catch-up burst; the
                     // throttled foreground refresh (appBecameActive) covers it.
@@ -2185,6 +2192,7 @@ final class SessionStore: ObservableObject {
                     if Task.isCancelled { return }
                 }
                 if self.realtimeDisconnectedAt == nil { self.realtimeDisconnectedAt = Date() }
+                self.isRealtimeLive = false
                 failures += 1
                 try? await Task.sleep(nanoseconds: SessionStore.realtimeReconnectDelay(failures: failures))
             }
