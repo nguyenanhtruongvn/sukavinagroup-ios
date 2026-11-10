@@ -528,7 +528,8 @@ struct NotificationsView: View {
         }
         .padding(16)
         .background { requestNotificationBackground(item) }
-        .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        // No shadow: applied before this clip it was cut off (invisible) but
+        // still cost an offscreen pass per scrolling row.
         .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
         .overlay(alignment: .bottom) { legacyNotificationSeparator }
     }
@@ -576,7 +577,8 @@ struct NotificationsView: View {
         }
         .padding(16)
         .background { articleNotificationBackground(isUnread: isUnread) }
-        .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        // No shadow: applied before this clip it was cut off (invisible) but
+        // still cost an offscreen pass per scrolling row.
         .clipShape(RoundedRectangle(cornerRadius: notificationCornerRadius, style: .continuous))
         .overlay(alignment: .bottom) { legacyNotificationSeparator }
     }
@@ -951,22 +953,8 @@ struct ArticleBlockView: View {
         case .image(let url, let alt):
             VStack(spacing: 10) {
                 if let url {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let image):
-                            image.resizable().scaledToFit()
-                        case .failure:
-                            Image(systemName: "photo")
-                                .font(.largeTitle)
-                                .foregroundColor(AppTheme.muted)
-                                .frame(maxWidth: .infinity, minHeight: 140)
-                        default:
-                            ProgressView()
-                                .tint(AppTheme.red)
-                                .frame(maxWidth: .infinity, minHeight: 180)
-                        }
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    ArticleImageView(url: url)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 if !alt.isEmpty {
                     Text(alt)
@@ -1011,6 +999,78 @@ struct ArticleBlockView: View {
         case 1: return .title.bold()
         case 2: return .title2.bold()
         default: return .title3.bold()
+        }
+    }
+}
+
+/// Decoded article images, kept in memory and limited to a display-sized
+/// width. AsyncImage decoded the full-size file again (on each appearance)
+/// whenever a block scrolled back into the LazyVStack; the bytes themselves
+/// already come from the enlarged `URLCache.shared`.
+enum ArticleImages {
+    private static let cache: NSCache<NSURL, UIImage> = {
+        let cache = NSCache<NSURL, UIImage>()
+        cache.countLimit = 30
+        cache.totalCostLimit = 48 * 1024 * 1024
+        return cache
+    }()
+    /// Wider than any iPhone screen and most iPad article columns, in pixels.
+    private static let maxPixelWidth: CGFloat = 2048
+
+    static func cached(_ url: URL) -> UIImage? {
+        cache.object(forKey: url as NSURL)
+    }
+
+    static func load(_ url: URL) async -> UIImage? {
+        if let image = cached(url) { return image }
+        guard let (data, _) = try? await URLSession.shared.data(from: url),
+              let decoded = UIImage(data: data) else { return nil }
+        let pixels = CGSize(width: decoded.size.width * decoded.scale, height: decoded.size.height * decoded.scale)
+        let factor = maxPixelWidth / max(pixels.width, 1)
+        let prepared: UIImage?
+        if factor < 1 {
+            prepared = await decoded.byPreparingThumbnail(
+                ofSize: CGSize(width: (pixels.width * factor).rounded(.up), height: (pixels.height * factor).rounded(.up))
+            )
+        } else {
+            prepared = await decoded.byPreparingForDisplay()
+        }
+        let image = prepared ?? decoded
+        let cost = Int(image.size.width * image.size.height * image.scale * image.scale * 4)
+        cache.setObject(image, forKey: url as NSURL, cost: cost)
+        return image
+    }
+}
+
+/// AsyncImage's three states (loading, image, failure) backed by `ArticleImages`.
+private struct ArticleImageView: View {
+    let url: URL
+    @State private var loaded: (url: URL, image: UIImage)?
+    @State private var failedURL: URL?
+
+    var body: some View {
+        // A decoded image shows at once, without a loading frame.
+        let image = (loaded?.url == url ? loaded?.image : nil) ?? ArticleImages.cached(url)
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFit()
+            } else if failedURL == url {
+                Image(systemName: "photo")
+                    .font(.largeTitle)
+                    .foregroundColor(AppTheme.muted)
+                    .frame(maxWidth: .infinity, minHeight: 140)
+            } else {
+                ProgressView()
+                    .tint(AppTheme.red)
+                    .frame(maxWidth: .infinity, minHeight: 180)
+            }
+        }
+        .task(id: url) {
+            if let image = await ArticleImages.load(url) {
+                loaded = (url, image)
+            } else if !Task.isCancelled {
+                failedURL = url
+            }
         }
     }
 }

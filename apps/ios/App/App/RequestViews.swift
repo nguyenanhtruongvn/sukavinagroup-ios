@@ -291,6 +291,15 @@ struct ManagedRequestEmployee: Codable, Identifiable, Equatable {
 private struct BatchCreatedRequests: Codable { let requests: [EmployeeRequest] }
 struct RequestDecisionBody: Encodable { let status: String; let note: String? }
 
+/// The manager's directory alone, for views that need nothing else (the
+/// request composer, the meal sheet). Observing all of EmployeeRequestStore
+/// redrew the composer, while typing, on every list load, flag or message.
+@MainActor
+final class ManagedDirectoryState: ObservableObject {
+    @Published fileprivate(set) var employees: [ManagedRequestEmployee] = []
+    @Published fileprivate(set) var loaded = false
+}
+
 @MainActor
 final class EmployeeRequestStore: ObservableObject {
     private struct CachedRequests: Codable {
@@ -307,8 +316,14 @@ final class EmployeeRequestStore: ObservableObject {
     // (a didSet on each rebuilt it two or three times per change).
     @Published private(set) var requests: [EmployeeRequest] = []
     @Published private(set) var approvals: [EmployeeRequest] = []
-    @Published private(set) var managedEmployees: [ManagedRequestEmployee] = []
-    @Published private(set) var managedEmployeesLoaded = false
+    @Published private(set) var managedEmployees: [ManagedRequestEmployee] = [] {
+        didSet { if directory.employees != managedEmployees { directory.employees = managedEmployees } }
+    }
+    @Published private(set) var managedEmployeesLoaded = false {
+        didSet { if directory.loaded != managedEmployeesLoaded { directory.loaded = managedEmployeesLoaded } }
+    }
+    /// Mirror of the two properties above for narrow observers.
+    let directory = ManagedDirectoryState()
     @Published private(set) var managedEmployeesError: String?
     /// Derived once per change of the lists, not on every redraw of the
     /// screens that show them (they redraw far more often than data changes).
@@ -995,7 +1010,16 @@ struct RequestCard: View {
                     .foregroundStyle(AppTheme.redText)
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
-        }.padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous)).shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        }
+        .padding(16)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        // Shadow on the background shape only: on the whole card (text
+        // included) it needed an offscreen pass per row while scrolling.
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(AppTheme.card)
+                .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        )
     }
 
     private var compactHeader: some View {
@@ -2037,7 +2061,10 @@ struct RequestComposer: View {
     // Only calls session methods and reads the shift times once: the form
     // must not redraw (while typing) on every session change.
     @Environment(\.sessionActions) private var sessionActions
-    @EnvironmentObject private var requestStore: EmployeeRequestStore
+    // Observes only the managed directory; the store's methods are called
+    // through the session without subscribing to its other changes.
+    @EnvironmentObject private var directory: ManagedDirectoryState
+    private var requestStore: EmployeeRequestStore { session.requests }
     private var session: SessionStore { sessionActions.store }
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var kind = EmployeeRequestKind.leave
@@ -2136,8 +2163,8 @@ struct RequestComposer: View {
     private var workStartTime: String? { session.dashboard?.workStartTime }
     private var workEndTime: String? { session.dashboard?.workEndTime }
     private var recipientSummary: String {
-        guard requestStore.managedEmployeesLoaded else { return "Tôi" }
-        let people = requestStore.managedEmployees
+        guard directory.loaded else { return "Tôi" }
+        let people = directory.employees
         let eligibleIDs = Set(people.map(\.id))
         let selected = people.filter { selectedRecipientIDs.contains($0.id) }
         if selected.isEmpty { return recipientsInitialized ? "Chưa chọn người" : "Tôi" }
@@ -2147,8 +2174,8 @@ struct RequestComposer: View {
     }
 
     private func initializeRecipientsIfNeeded() {
-        guard requestStore.managedEmployeesLoaded, !recipientsInitialized else { return }
-        selectedRecipientIDs = Set(requestStore.managedEmployees.filter(\.isSelf).map(\.id))
+        guard directory.loaded, !recipientsInitialized else { return }
+        selectedRecipientIDs = Set(directory.employees.filter(\.isSelf).map(\.id))
         recipientsInitialized = true
     }
 
@@ -2327,7 +2354,7 @@ struct RequestComposer: View {
         if kind == .sunday && VietnamTime.calendar.component(.weekday, from: from) != 1 {
             return "Ngày bắt đầu phải là Chủ nhật."
         }
-        if requestStore.managedEmployeesLoaded && selectedRecipientIDs.isEmpty {
+        if directory.loaded && selectedRecipientIDs.isEmpty {
             return "Chọn ít nhất một người tạo đơn."
         }
         if kind == .sunday && to <= from { return "Giờ kết thúc phải sau giờ bắt đầu." }
@@ -2716,7 +2743,7 @@ struct RequestComposer: View {
                 await requestStore.loadManagedEmployees(session.token, employeeCode: session.profile?.employeeCode)
                 initializeRecipientsIfNeeded()
             }
-            .onChange(of: requestStore.managedEmployeesLoaded) { _, loaded in
+            .onChange(of: directory.loaded) { _, loaded in
                 if loaded { initializeRecipientsIfNeeded() }
             }
             .onChange(of: kind) { _, nextKind in
@@ -2794,7 +2821,7 @@ struct RequestComposer: View {
                         isSubmitting = true
                         submitError = nil
                         Task {
-                            let employeeIDs = requestStore.managedEmployeesLoaded ? Array(selectedRecipientIDs) : nil
+                            let employeeIDs = directory.loaded ? Array(selectedRecipientIDs) : nil
                             let error = await submit(kind, dates.from, dates.to, submissionReason, destination, transport, localizedDecimal(distanceKm), nil, kind == .business ? lunchMeal : nil, kind == .business ? dinnerMeal : nil, employeeIDs)
                             isSubmitting = false
                             if let error {

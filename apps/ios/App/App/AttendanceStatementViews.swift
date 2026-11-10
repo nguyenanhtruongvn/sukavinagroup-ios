@@ -37,6 +37,9 @@ struct AttendanceStatementListView: View {
         // SwiftUI starts the asynchronous refresh task. This avoids a visible
         // loading flash when the employee has already opened this screen.
         let displayedReports = reports.isEmpty ? session.cachedAttendanceReports() : reports
+        // Sorted and mapped once per redraw, not once per row.
+        let sortedReports = displayedReports.sorted { $0.month > $1.month }
+        let releasedMonths = displayedReports.map(\.month)
         ScrollView(showsIndicators: false) {
             LazyVStack(spacing: 12) {
                 if isLoading && displayedReports.isEmpty {
@@ -51,8 +54,8 @@ struct AttendanceStatementListView: View {
                     )
                     .frame(maxWidth: .infinity, minHeight: 260)
                 } else {
-                    ForEach(displayedReports.sorted { $0.month > $1.month }) { report in
-                        NavigationLink(destination: ModernAttendanceHistoryView(initialMonth: report.month, releasedStatementMonths: displayedReports.map(\.month))) {
+                    ForEach(sortedReports) { report in
+                        NavigationLink(destination: ModernAttendanceHistoryView(initialMonth: report.month, releasedStatementMonths: releasedMonths)) {
                             HStack(spacing: 14) {
                                 Text(AttendanceMetrics.monthTitle(report.month))
                                     .font(.headline)

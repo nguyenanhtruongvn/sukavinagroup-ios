@@ -17,7 +17,8 @@ struct TodayMenuView: View {
     private var session: SessionStore { sessionActions.store }
     @State private var isSessionWorking = false
     @EnvironmentObject private var menuStore: MenuStore
-    @EnvironmentObject private var requestStore: EmployeeRequestStore
+    // Only the managed directory is read here, not the request lists.
+    @EnvironmentObject private var directory: ManagedDirectoryState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var pendingChoice: String?
@@ -46,7 +47,7 @@ struct TodayMenuView: View {
     private var managedMealChoices: [ManagedMealEmployee] {
         let daily = menuStore.todayMenu?.managedEmployees ?? []
         let byID = Dictionary(daily.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let known = requestStore.managedEmployees.filter { !$0.isSelf }
+        let known = directory.employees.filter { !$0.isSelf }
         let ordered = known.compactMap { member -> ManagedMealEmployee? in
             guard let meal = byID[member.id] else { return nil }
             return ManagedMealEmployee(
@@ -487,9 +488,13 @@ struct TodayMenuView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
         .padding(15)
-        .background(AppTheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
-        .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        // Shadow on the background shape only, not the whole composited card.
+        .background(
+            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                .fill(AppTheme.card)
+                .shadow(color: Color.black.opacity(0.035), radius: 5, y: 2)
+        )
     }
 
     private func mealButton(
@@ -524,9 +529,12 @@ struct TodayMenuView: View {
                 Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.title3).foregroundColor(selected ? .green : AppTheme.muted)
             }
             .padding(13)
-            .background(selected ? Color.green.opacity(0.11) : Color.white.opacity(0.035))
             .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .shadow(color: Color.black.opacity(selected ? 0.05 : 0.03), radius: 5, y: 2)
+            .background(
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .fill(selected ? Color.green.opacity(0.11) : Color.white.opacity(0.035))
+                    .shadow(color: Color.black.opacity(selected ? 0.05 : 0.03), radius: 5, y: 2)
+            )
         }
         .buttonStyle(.plain)
         .disabled(isSessionWorking || !canChoose)

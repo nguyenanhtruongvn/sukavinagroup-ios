@@ -41,6 +41,9 @@ struct ModernAttendanceHistoryView: View {
     var body: some View {
         GeometryReader { proxy in
             let useTwoPane = horizontalSizeClass == .regular && proxy.size.width >= 900
+            // Built once per redraw: each page used to rebuild and sort the
+            // merged month list again (statement mode spans many months).
+            let options = self.options
             VStack(spacing: 0) {
                 if useTwoPane {
                     HStack(spacing: 12) {
@@ -49,7 +52,7 @@ struct ModernAttendanceHistoryView: View {
                                 Text(monthTitle(for: options[index]))
                                     .font(.headline.bold())
                                     .foregroundStyle(Color.primary)
-                                preloadedMonthPage(index)
+                                preloadedMonthPage(options[index])
                             }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
@@ -59,7 +62,7 @@ struct ModernAttendanceHistoryView: View {
                     monthNavigation.padding(.horizontal, 16).padding(.bottom, 8)
                     TabView(selection: $monthIndex) {
                         ForEach(options.indices, id: \.self) { index in
-                            preloadedMonthPage(index)
+                            preloadedMonthPage(options[index])
                                 .tag(index)
                         }
                     }
@@ -133,8 +136,7 @@ struct ModernAttendanceHistoryView: View {
         }
     }
 
-    private func preloadedMonthPage(_ index: Int) -> some View {
-        let month = options[index]
+    private func preloadedMonthPage(_ month: String) -> some View {
         // Read the persisted month during the first body evaluation. Waiting
         // for hydrateCachedMonths() in .task caused a brief loading view even
         // though the statement had already been cached on this device.

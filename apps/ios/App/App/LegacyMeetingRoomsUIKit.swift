@@ -625,11 +625,20 @@ private final class LegacyPillButton: UIButton {
     }
 }
 
+/// A rounded card whose shadow follows its bounds via `shadowPath`, so table
+/// scrolling does not render each card's shadow offscreen.
+private final class LegacyShadowCardView: UIView {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: layer.cornerRadius).cgPath
+    }
+}
+
 /// One room card: photo, name, availability and its status chip.
 /// line and the full-width "Đặt phòng" / "Xem lịch" button (iOS 18+ card).
 private final class LegacyRoomCardCell: UITableViewCell {
     static let reuseID = "LegacyRoomCardCell"
-    private let card = UIView()
+    private let card = LegacyShadowCardView()
     private let photo = UIImageView()
     private let nameLabel = UILabel()
     private let chip = UIView()
@@ -1347,6 +1356,12 @@ private final class LegacyTimelineLabel: UIControl {
             : "Xem chi tiết cuộc họp \(booking.title.isEmpty ? "đã có lịch" : booking.title), \(MeetingPresentation.range(booking))"
     }
     required init?(coder: NSCoder) { nil }
+    // An explicit shadow path: without it Core Animation renders the
+    // shadow offscreen from the layer's contents on every scroll frame.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: layer.cornerRadius).cgPath
+    }
 
     override var isHighlighted: Bool {
         didSet { alpha = isHighlighted ? 0.7 : 1 }
@@ -2987,6 +3002,12 @@ private final class LegacyMeetingSummaryCard: UIControl {
         accessibilityLabel = "Xem chi tiết cuộc họp \(meeting.title)"
     }
     required init?(coder: NSCoder) { nil }
+    // An explicit shadow path: without it Core Animation renders the
+    // shadow offscreen from the layer's contents on every scroll frame.
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: layer.cornerRadius).cgPath
+    }
 
     override var isHighlighted: Bool {
         didSet { alpha = isHighlighted ? 0.7 : 1 }

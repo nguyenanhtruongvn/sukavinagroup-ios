@@ -230,6 +230,7 @@ private struct SessionEnvironment: ViewModifier {
             .environmentObject(session.meetings)
             .environmentObject(session.menu)
             .environmentObject(session.requests)
+            .environmentObject(session.requests.directory)
             .environmentObject(session.badge)
             .environmentObject(session.revisions)
             .environmentObject(session.home)

@@ -33,6 +33,9 @@ struct MeetingBookingSheet: View {
     @State private var bookingErrorMessage: String?
     @State private var confirmingDiscard = false
     @FocusState private var focusedInviteeField: InviteeSearchField?
+    /// Sorted department names, built once per invitee load: rebuilding the
+    /// Set and the localized sort on every keystroke lagged typing.
+    @State private var departmentsCache: [String] = []
 
     private enum InviteeSearchField: Hashable {
         case people
@@ -51,7 +54,11 @@ struct MeetingBookingSheet: View {
     }
 
     private var departments: [String] {
-        Array(Set(meetingStore.invitees.map(\.department)
+        departmentsCache.isEmpty ? Self.departmentList(meetingStore.invitees) : departmentsCache
+    }
+
+    private static func departmentList(_ invitees: [MeetingInvitee]) -> [String] {
+        Array(Set(invitees.map(\.department)
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }))
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
@@ -200,6 +207,10 @@ struct MeetingBookingSheet: View {
             .onAppear { start = initialStartTime }
             .task {
                 inviteesError = await session.refreshMeetingInvitees()
+                departmentsCache = Self.departmentList(meetingStore.invitees)
+            }
+            .onChange(of: meetingStore.invitees.count) { _, _ in
+                departmentsCache = Self.departmentList(meetingStore.invitees)
             }
             // Apple's alert, which stays until it is read and dismissed
             // (it was a dark notice drawn at the top that hid itself after
@@ -396,12 +407,14 @@ struct MeetingBookingSheet: View {
 
             departmentSearchResults
 
-            if !selectedDepartments.isEmpty, !unselectedDepartmentInvitees.isEmpty {
+            // Filtered once per redraw (it was filtered three times).
+            let departmentInvitees = unselectedDepartmentInvitees
+            if !selectedDepartments.isEmpty, !departmentInvitees.isEmpty {
                 Button {
-                    selected.formUnion(unselectedDepartmentInvitees.map(\.id))
+                    selected.formUnion(departmentInvitees.map(\.id))
                 } label: {
                     Label(
-                        "Mời tất cả \(unselectedDepartmentInvitees.count) người thuộc \(selectedDepartments.count) phòng ban",
+                        "Mời tất cả \(departmentInvitees.count) người thuộc \(selectedDepartments.count) phòng ban",
                         systemImage: "person.3.fill"
                     )
                     .font(.subheadline.weight(.semibold))
@@ -462,7 +475,9 @@ struct MeetingBookingSheet: View {
     }
 
     private var peopleSearchResults: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        // Filtered once per redraw; the property was evaluated twice.
+        let people = self.people
+        return VStack(alignment: .leading, spacing: 5) {
             if !people.isEmpty {
                 Text("Kết quả người tham gia")
                     .font(.caption.weight(.semibold))
@@ -578,7 +593,8 @@ struct MeetingBookingSheet: View {
     }
 
     private var departmentAutocompleteResults: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        let matchingDepartments = self.matchingDepartments
+        return VStack(alignment: .leading, spacing: 5) {
             if !matchingDepartments.isEmpty {
                 Text("Kết quả phòng ban")
                     .font(.caption.weight(.semibold))
