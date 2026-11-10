@@ -23,8 +23,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  shared-logic-tests:
+    name: Shared logic unit tests
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run shared logic unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          swift test --package-path apps/ios/App
+
   archive-and-upload:
     name: Archive and upload TestFlight build
+    # Do not ship a build whose shared logic tests fail.
+    needs: shared-logic-tests
     runs-on: macos-latest
     timeout-minutes: 45
 

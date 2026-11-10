@@ -1743,7 +1743,9 @@ final class SessionStore: ObservableObject {
     }
 
     /// `isRenewal`: the same session was refreshed, not a new sign-in.
-    private func applySession(_ response: LoginResponse, isRenewal: Bool = false) {
+    /// `tokensPersisted`: `APIClient.refreshSession()` already wrote the tokens
+    /// to Keychain; a second, later write could restore a rotated-away token.
+    private func applySession(_ response: LoginResponse, isRenewal: Bool = false, tokensPersisted: Bool = false) {
         // Apply the authenticated identity in memory first. Keychain persistence
         // must not sit on the UI-critical path between HTTP 201 and the portal.
         token = response.accessToken
@@ -1779,12 +1781,14 @@ final class SessionStore: ObservableObject {
             }
         }
 
-        let accessToken = response.accessToken
-        let refreshToken = response.refreshToken
-        Task.detached(priority: .utility) {
-            KeychainStore.save(token: accessToken)
-            if !refreshToken.isEmpty {
-                KeychainStore.save(refreshToken: refreshToken)
+        if !tokensPersisted {
+            let accessToken = response.accessToken
+            let refreshToken = response.refreshToken
+            Task.detached(priority: .utility) {
+                KeychainStore.save(token: accessToken)
+                if !refreshToken.isEmpty {
+                    KeychainStore.save(refreshToken: refreshToken)
+                }
             }
         }
 
@@ -1827,17 +1831,12 @@ final class SessionStore: ObservableObject {
     private func refreshSession() async throws {
         // Captured before any suspension so a sign-out meanwhile is detected.
         let generation = SessionGeneration.current
-        guard let refreshToken = await Self.storedRefreshToken() else {
-            throw NetworkError.unauthorized
-        }
-        let response: LoginResponse = try await APIClient.shared.request(
-            "auth/refresh",
-            method: "POST",
-            body: RefreshSessionBody(refreshToken: refreshToken)
-        )
+        // Shared with APIClient's 401 retry so the timer, foreground, SSE and
+        // request paths never send the same refresh token twice.
+        let response = try await APIClient.shared.refreshSession()
         guard generation == SessionGeneration.current, state != .signedOut else { return }
         lastSessionRefreshAt = Date()
-        applySession(response, isRenewal: true)
+        applySession(response, isRenewal: true, tokensPersisted: true)
         if biometricsEnabled, !response.refreshToken.isEmpty {
             // Keychain items with access control can block; keep them off main.
             let refreshToken = response.refreshToken

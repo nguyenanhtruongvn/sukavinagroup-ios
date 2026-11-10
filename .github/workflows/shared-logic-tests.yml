@@ -1,0 +1,40 @@
+name: Shared logic tests
+
+# Runs the SwiftPM unit tests for the Foundation-only code in
+# apps/ios/App/App/Shared on every push to main and every pull request that
+# touches the iOS sources. Uses a GitHub-hosted macOS runner only: never run
+# PR code on the self-hosted runner.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/ios/**
+      - .github/workflows/shared-logic-tests.yml
+  pull_request:
+    paths:
+      - apps/ios/**
+      - .github/workflows/shared-logic-tests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-logic-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-test:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run shared logic unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          swift --version
+          swift test --package-path apps/ios/App

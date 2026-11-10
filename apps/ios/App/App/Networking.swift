@@ -188,6 +188,36 @@ final class APIClient {
     }()
     private let refreshCoordinator = SessionRefreshCoordinator()
 
+    /// Renews the session once for every concurrent caller (401 retry, the
+    /// renewal timer, foreground and SSE). The refresh token is read and the
+    /// rotated tokens are persisted inside the coordinated operation, so a
+    /// caller that starts right after can never resend a refresh token the
+    /// server has already rotated away.
+    func refreshSession() async throws -> LoginResponse {
+        try await refreshCoordinator.run {
+            let generation = SessionGeneration.current
+            guard let refreshToken = KeychainStore.loadRefreshToken() else {
+                throw NetworkError.unauthorized
+            }
+            let refreshed: LoginResponse = try await self.request(
+                "auth/refresh",
+                method: "POST",
+                body: RefreshSessionBody(refreshToken: refreshToken),
+                allowSessionRefresh: false
+            )
+            // The user signed out while the refresh was in flight: do not
+            // write the new tokens back into a cleared Keychain.
+            guard generation == SessionGeneration.current else {
+                throw NetworkError.unauthorized
+            }
+            KeychainStore.save(token: refreshed.accessToken)
+            if !refreshed.refreshToken.isEmpty {
+                KeychainStore.save(refreshToken: refreshed.refreshToken)
+            }
+            return refreshed
+        }
+    }
+
     func request<Response: Decodable, Body: Encodable>(
         _ path: String,
         method: String = "GET",
@@ -300,23 +330,12 @@ final class APIClient {
             if token != nil,
                allowSessionRefresh,
                http.statusCode == 401,
-               let refreshToken = KeychainStore.loadRefreshToken() {
+               KeychainStore.loadRefreshToken() != nil {
                 let generation = SessionGeneration.current
-                let refreshed = try await refreshCoordinator.run {
-                    try await self.request(
-                        "auth/refresh",
-                        method: "POST",
-                        body: RefreshSessionBody(refreshToken: refreshToken),
-                        allowSessionRefresh: false
-                    )
-                }
+                let refreshed = try await refreshSession()
                 // The user signed out while the refresh was in flight.
                 guard generation == SessionGeneration.current else {
                     throw NetworkError.unauthorized
-                }
-                KeychainStore.save(token: refreshed.accessToken)
-                if !refreshed.refreshToken.isEmpty {
-                    KeychainStore.save(refreshToken: refreshed.refreshToken)
                 }
                 if !refreshed.widgetToken.isEmpty {
                     AttendanceWidgetBridge.configure(token: refreshed.widgetToken)
