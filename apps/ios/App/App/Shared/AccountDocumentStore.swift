@@ -69,6 +69,12 @@ final class AccountDocumentStore: @unchecked Sendable {
 
     func set(_ value: Data, forKey key: String) {
         lock.lock()
+        // An unchanged document (typically a 304 revalidation that callers
+        // re-encode and save again) needs no new disk write.
+        if keepsInMemory, memory[key] == value {
+            lock.unlock()
+            return
+        }
         if keepsInMemory { memory[key] = value }
         absent.remove(key)
         let generation = generation
@@ -104,8 +110,34 @@ final class AccountDocumentStore: @unchecked Sendable {
         absent.removeAll()
         generation += 1
         lock.unlock()
-        // Synchronous: a read right after sign-out must not find the files.
-        writer.sync { try? FileManager.default.removeItem(at: directory) }
+        // A read right after sign-out must not find the files, so the
+        // directory is moved aside synchronously (one rename, after any write
+        // already running); deleting its contents happens in the background
+        // instead of on the sign-out tap.
+        let directory = directory
+        let trash = directory.deletingLastPathComponent()
+            .appendingPathComponent(".\(directory.lastPathComponent)-removed-\(UUID().uuidString)", isDirectory: true)
+        let moved: Bool = writer.sync {
+            guard FileManager.default.fileExists(atPath: directory.path) else { return false }
+            do {
+                try FileManager.default.moveItem(at: directory, to: trash)
+                return true
+            } catch {
+                try? FileManager.default.removeItem(at: directory)
+                return false
+            }
+        }
+        guard moved else { return }
+        DispatchQueue.global(qos: .utility).async {
+            // Also any copy left behind when the app was killed mid-delete.
+            let parent = directory.deletingLastPathComponent()
+            let prefix = ".\(directory.lastPathComponent)-removed-"
+            let leftovers = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
+            for name in leftovers where name.hasPrefix(prefix) {
+                try? FileManager.default.removeItem(at: parent.appendingPathComponent(name, isDirectory: true))
+            }
+            try? FileManager.default.removeItem(at: trash)
+        }
     }
 
     /// Keeps the `keeping` most recently written documents whose key has `prefix`.

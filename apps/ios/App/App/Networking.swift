@@ -338,7 +338,7 @@ final class APIClient {
                     throw NetworkError.unauthorized
                 }
                 if !refreshed.widgetToken.isEmpty {
-                    AttendanceWidgetBridge.configure(token: refreshed.widgetToken)
+                    AttendanceWidgetBridge.scheduleConfigure(token: refreshed.widgetToken)
                 }
                 // Without this, SessionStore kept sending the expired token and
                 // every later request paid for a 401 plus a refresh.

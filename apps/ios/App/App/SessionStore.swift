@@ -443,6 +443,9 @@ final class SessionStore: ObservableObject {
     /// One shared `me/requests/notifications` request (count badge and screen).
     private var requestNotificationsTask: Task<[RequestNotification]?, Never>?
     private var requestNotificationsRerun = false
+    /// Last successful `me/requests/notifications` load; lets the
+    /// Notifications tab skip a forced fetch every time it appears.
+    private var requestNotificationsLoadedAt: Date?
     /// Shared attendance month requests; a forced call re-runs a running one.
     private var attendanceMonthTasks: [String: Task<AttendanceMonth, Error>] = [:]
     private var attendanceMonthReruns: Set<String> = []
@@ -477,7 +480,8 @@ final class SessionStore: ObservableObject {
     // layer survives launches; the memory layer makes repeated opens/swipes
     // avoid JSON decoding and disk reads on the main actor.
     private var attendanceMemoryCache: [String: CachedAttendanceMonth] = [:]
-    private let dashboardCachePrefix = "native-dashboard-cache-"
+    private let dashboardCachePrefix = SessionStore.dashboardCacheKeyPrefix
+    private nonisolated static let dashboardCacheKeyPrefix = "native-dashboard-cache-"
     private let todayMenuCachePrefix = "native-today-menu-cache-"
     private let requestNotificationsCachePrefix = "native-request-notifications-cache-"
     private let aiAssistantMobileEnabledKey = "native-ai-assistant-mobile-enabled"
@@ -501,6 +505,12 @@ final class SessionStore: ObservableObject {
     /// The live update stream connected at least once in this session; a
     /// later connection follows a gap in which events may have been missed.
     private var realtimeConnectedBefore = false
+    /// When the live update stream last went down (background, network loss
+    /// or a server close). A reconnect after a short gap skips the catch-up
+    /// burst: a quick app switch used to cost 6+ forced requests.
+    private var realtimeDisconnectedAt: Date?
+    /// Gaps shorter than this are covered by the throttled foreground refresh.
+    private static let realtimeCatchUpGap: TimeInterval = 60
     private var displayedMeetingScheduleDay: String?
     private var meetingScheduleRefreshTasks: [String: Task<Void, Never>] = [:]
     private var meetingInviteesLoadedAt: Date?
@@ -580,7 +590,8 @@ final class SessionStore: ObservableObject {
                 self.token = accessToken
                 self.lastSessionRefreshAt = Date()
                 if self.biometricsEnabled, !refreshToken.isEmpty {
-                    _ = BiometricKeychain.save(refreshToken: refreshToken)
+                    // Access-controlled Keychain items can block; keep them off main.
+                    Task.detached(priority: .utility) { _ = BiometricKeychain.save(refreshToken: refreshToken) }
                 }
             }
         }
@@ -592,8 +603,12 @@ final class SessionStore: ObservableObject {
             Task { @MainActor [weak self] in
                 // The realtime stream only refreshes visible UI; APNs covers the
                 // background. It is reopened in appBecameActive().
-                self?.eventStreamTask?.cancel()
-                self?.eventStreamTask = nil
+                guard let self else { return }
+                if self.eventStreamTask != nil, self.realtimeDisconnectedAt == nil {
+                    self.realtimeDisconnectedAt = Date()
+                }
+                self.eventStreamTask?.cancel()
+                self.eventStreamTask = nil
             }
         }
         apnsTokenObserver = NotificationCenter.default.addObserver(
@@ -842,12 +857,11 @@ final class SessionStore: ObservableObject {
             ?? UserDefaults.standard.string(forKey: attendanceMonthCacheOwnerKey)?.nilIfEmpty
     }
 
-    private func restoreCachedDashboard() {
-        guard let employeeCode = profile?.employeeCode.nilIfEmpty,
-              let data = AccountDocumentStore.shared.data(forKey: dashboardCachePrefix + employeeCode),
-              let cached = try? JSONDecoder().decode(CachedDashboard.self, from: data) else { return }
-        // Shown until replaced, offline included; restore always revalidates.
-        dashboard = cached.value
+    /// Thread-safe: the document store locks and the decoder is local.
+    private nonisolated static func decodeCachedDashboard(employeeCode: String) -> Dashboard? {
+        guard let data = AccountDocumentStore.shared.data(forKey: dashboardCacheKeyPrefix + employeeCode),
+              let cached = try? JSONDecoder().decode(CachedDashboard.self, from: data) else { return nil }
+        return cached.value
     }
 
     private func saveDashboardCache(_ value: Dashboard) {
@@ -935,10 +949,17 @@ final class SessionStore: ObservableObject {
             sessionRestoreLogger.notice(
                 "Keychain read completed: access=\(accessToken != nil, privacy: .public) refresh=\(refreshToken != nil, privacy: .public)"
             )
+            // Decode the cached profile and dashboard (article HTML included)
+            // here too: on the main actor it delayed the first portal frame.
+            let hasSession = accessToken != nil || refreshToken != nil
+            let cachedProfile = hasSession ? SessionCache.loadProfile() : nil
+            let cachedDashboard = cachedProfile?.employeeCode.nilIfEmpty.flatMap(SessionStore.decodeCachedDashboard)
             DispatchQueue.main.async { [weak self] in
                 self?.completeRestore(
                     accessToken: accessToken,
                     refreshToken: refreshToken,
+                    cachedProfile: cachedProfile,
+                    cachedDashboard: cachedDashboard,
                     attemptID: attemptID
                 )
             }
@@ -959,7 +980,13 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    private func completeRestore(accessToken savedToken: String?, refreshToken savedRefreshToken: String?, attemptID: UUID) {
+    private func completeRestore(
+        accessToken savedToken: String?,
+        refreshToken savedRefreshToken: String?,
+        cachedProfile: Profile?,
+        cachedDashboard: Dashboard?,
+        attemptID: UUID
+    ) {
         guard activeRestoreAttempt == attemptID else { return }
         activeRestoreAttempt = nil
         guard savedToken != nil || savedRefreshToken != nil else {
@@ -972,8 +999,9 @@ final class SessionStore: ObservableObject {
             return
         }
         token = savedToken
-        profile = SessionCache.loadProfile()
-        restoreCachedDashboard()
+        profile = cachedProfile
+        // Shown until replaced, offline included; restore always revalidates.
+        if let cachedDashboard { dashboard = cachedDashboard }
         restoreCachedTodayMenu()
         primeCachedNavigationForCurrentAccount()
         state = .signedIn
@@ -1582,6 +1610,7 @@ final class SessionStore: ObservableObject {
         LiveActivityTokenLedger.reset()
         hasViewedMeetingSchedule = false
         realtimeConnectedBefore = false
+        realtimeDisconnectedAt = nil
         lastForegroundRefreshAt = nil
         lastSessionRefreshAt = nil
         eventStreamTask?.cancel()
@@ -1632,6 +1661,7 @@ final class SessionStore: ObservableObject {
         savedRequestNotifications = nil
         requestNotificationsTask?.cancel()
         requestNotificationsTask = nil
+        requestNotificationsLoadedAt = nil
         attendanceMonthTasks.values.forEach { $0.cancel() }
         attendanceMonthTasks.removeAll()
         attendanceMonthReruns.removeAll()
@@ -1672,7 +1702,8 @@ final class SessionStore: ObservableObject {
         meetings.scheduleError = nil
         meetingBookings = []
         meetingInvitees = []
-        AttendanceWidgetBridge.clear()
+        // Keychain + App Group: off the main actor, before the state change.
+        AttendanceWidgetBridge.scheduleClear()
         unreadCount = 0
         unreadArticleIDs = []
         requestUnreadCount = 0
@@ -1777,7 +1808,7 @@ final class SessionStore: ObservableObject {
             await Task.yield()
             if let cachedProfile { SessionCache.save(profile: cachedProfile) }
             if !widgetToken.isEmpty {
-                AttendanceWidgetBridge.configure(token: widgetToken)
+                AttendanceWidgetBridge.scheduleConfigure(token: widgetToken)
             }
         }
 
@@ -1873,6 +1904,14 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// True while the last notifications load is younger than `maxAge`.
+    /// Realtime events, APNs and the foreground refresh keep the list current
+    /// in between, so showing the tab does not need another request.
+    func requestNotificationsAreFresh(maxAge: TimeInterval) -> Bool {
+        guard requestNotificationsTask == nil, let loadedAt = requestNotificationsLoadedAt else { return false }
+        return Date().timeIntervalSince(loadedAt) < maxAge
+    }
+
     func refreshRequestNotificationCount() async {
         _ = await loadRequestNotifications(force: true)
     }
@@ -1896,6 +1935,7 @@ final class SessionStore: ObservableObject {
                 values = try? await APIClient.shared.request("me/requests/notifications", token: token)
             } while self.requestNotificationsRerun && !Task.isCancelled
             guard !Task.isCancelled, let values else { return nil }
+            self.requestNotificationsLoadedAt = Date()
             self.updateRequestUnreadCount(values)
             return self.latestRequestNotifications
         }
@@ -2069,19 +2109,29 @@ final class SessionStore: ObservableObject {
                     }
                     renewedAfterUnauthorized = false
 
-                    // Revalidate once whenever SSE establishes/re-establishes.
-                    // This closes the tiny gap where an Admin toggle happened
-                    // while the stream was disconnected without adding polling.
-                    await self.refreshAiAssistantAvailability()
+                    let resumed = self.realtimeConnectedBefore
+                    self.realtimeConnectedBefore = true
+                    let gap = self.realtimeDisconnectedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+                    self.realtimeDisconnectedAt = nil
+                    // First connection, or a gap long enough to have missed
+                    // events. A quick app switch skips the catch-up burst; the
+                    // throttled foreground refresh (appBecameActive) covers it.
+                    let catchUp = !resumed || gap >= Self.realtimeCatchUpGap
 
-                    // A manager's directory is an indefinitely retained,
-                    // account-scoped document. Check for missed Admin changes
-                    // on connection using HTTP ETag/304; unchanged data never
-                    // publishes a new value or redraws the composer.
-                    Task {
-                        await self.requests.loadManagedEmployees(
-                            self.token, employeeCode: self.profile?.employeeCode, force: true
-                        )
+                    if catchUp {
+                        // Revalidate whenever SSE (re)establishes after a gap:
+                        // an Admin toggle may have happened meanwhile.
+                        await self.refreshAiAssistantAvailability()
+
+                        // A manager's directory is an indefinitely retained,
+                        // account-scoped document. Check for missed Admin changes
+                        // using HTTP ETag/304; unchanged data never publishes a
+                        // new value or redraws the composer.
+                        Task {
+                            await self.requests.loadManagedEmployees(
+                                self.token, employeeCode: self.profile?.employeeCode, force: true
+                            )
+                        }
                     }
 
                     // After a gap (app in the background, network loss) an
@@ -2089,9 +2139,7 @@ final class SessionStore: ObservableObject {
                     // override, was not announced: mark cached months stale (an
                     // open attendance screen reloads) and revalidate the dashboard
                     // within its freshness window. Mirrors Android.
-                    let resumed = self.realtimeConnectedBefore
-                    self.realtimeConnectedBefore = true
-                    if resumed {
+                    if resumed && catchUp {
                         // Events missed during the gap can concern any area,
                         // not just attendance: open request, notification and
                         // menu views reload too, and a viewed meeting schedule.
@@ -2118,6 +2166,7 @@ final class SessionStore: ObservableObject {
                 } catch {
                     if Task.isCancelled { return }
                 }
+                if self.realtimeDisconnectedAt == nil { self.realtimeDisconnectedAt = Date() }
                 failures += 1
                 try? await Task.sleep(nanoseconds: SessionStore.realtimeReconnectDelay(failures: failures))
             }

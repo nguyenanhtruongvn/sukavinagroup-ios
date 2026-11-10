@@ -35,6 +35,8 @@ extension RequestNotification {
 struct UpdateCount: Decodable { let count: Int }
 
 struct NotificationsView: View {
+    /// A notifications load younger than this is reused when the tab appears.
+    private static let notificationsFreshness: TimeInterval = 30
     // Observes InboxState (news, unread state, request notifications), not
     // the whole session, which redrew this list on every unrelated change.
     @Environment(\.sessionActions) private var sessionActions
@@ -58,9 +60,10 @@ struct NotificationsView: View {
     @State private var reloadAgainWithDashboard = false
     @State private var isReloadingNotifications = false
     private var items: [ContentItem] { inbox.articles.filter { !hiddenArticleIDs.contains($0.id) } }
-    private var inboxRequestNotifications: [RequestNotification] {
-        requestNotifications.filter { !session.isAttendanceNotificationType($0.type) }
-    }
+    /// Every source (cache, InboxState, loads) is already
+    /// `mergedRequestNotifications`, which drops attendance types; filtering
+    /// again on each access ran 3+ times per redraw.
+    private var inboxRequestNotifications: [RequestNotification] { requestNotifications }
     private var totalUnread: Int { inbox.unreadCount + inboxRequestNotifications.filter { !$0.read }.count }
     // UIKit's semantic label color is white in Dark Mode and black in
     // Light Mode, including when the in-app appearance overrides the system.
@@ -82,7 +85,7 @@ struct NotificationsView: View {
                     ForEach(inboxRequestNotifications) { item in
                         requestNotificationRow(item)
                     }
-                    ForEach(Array(items.enumerated()), id: \.element.id) { _, item in
+                    ForEach(items) { item in
                         articleNotificationRow(item, isUnread: inbox.unreadArticleIDs.contains(item.id))
                     }
                     if items.isEmpty && inboxRequestNotifications.isEmpty {
@@ -112,12 +115,24 @@ struct NotificationsView: View {
                 .refreshable { await reloadNotifications(refreshDashboard: true) }
                 .task {
                     hiddenArticleIDs = session.hiddenArticleIDs()
-                    requestNotifications = session.cachedRequestNotifications()
+                    // SessionStore already holds the current list (badge,
+                    // realtime); decode the disk cache only before its first load.
+                    if requestNotifications.isEmpty {
+                        requestNotifications = inbox.requestNotifications.isEmpty
+                            ? session.cachedRequestNotifications()
+                            : inbox.requestNotifications
+                    }
                     requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
-                    await reloadNotifications()
+                    // Showing the tab used to force a fetch every time; a
+                    // recent load is kept current by realtime events and APNs.
+                    if session.requestNotificationsAreFresh(maxAge: Self.notificationsFreshness) {
+                        if let token = session.token { await requestStore.load(token) }
+                    } else {
+                        await reloadNotifications()
+                    }
+                    // .task runs on every appearance, so no separate onAppear.
                     await openPendingAPNsRouteIfNeeded()
                 }
-                .onAppear { Task { await openPendingAPNsRouteIfNeeded() } }
                 .onChange(of: revisions.attendance) { _, _ in Task { await reloadNotifications() } }
                 // Request, meeting and inbox events (a decision, an invitation,
                 // a read on another device) are fetched once by SessionStore,

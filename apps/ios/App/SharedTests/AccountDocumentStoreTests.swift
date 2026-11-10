@@ -50,6 +50,36 @@ final class AccountDocumentStoreTests: XCTestCase {
         XCTAssertTrue(store.allKeys().isEmpty)
     }
 
+    func testRemoveAllHidesFlushedFilesAtOnceAndAcceptsNewWrites() {
+        let store = makeStore()
+        store.set(Data("old".utf8), forKey: "native-dashboard-cache-00010")
+        store.flush()
+        store.removeAll()
+        // The directory is moved aside synchronously: no file is readable.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        XCTAssertNil(makeStore().data(forKey: "native-dashboard-cache-00010"))
+        store.set(Data("new".utf8), forKey: "native-dashboard-cache-00020")
+        store.flush()
+        XCTAssertEqual(makeStore().data(forKey: "native-dashboard-cache-00020"), Data("new".utf8))
+    }
+
+    func testSettingAnUnchangedDocumentSkipsTheDiskWrite() {
+        let store = makeStore()
+        let key = "cached-meeting-rooms-v1-00010"
+        store.set(Data("rooms".utf8), forKey: key)
+        store.flush()
+        let url = directory.appendingPathComponent(key)
+        let past = Date(timeIntervalSince1970: 1_000)
+        try? FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: url.path)
+        store.set(Data("rooms".utf8), forKey: key)
+        store.flush()
+        let modified = try? FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
+        XCTAssertEqual(modified, past)
+        store.set(Data("rooms-2".utf8), forKey: key)
+        store.flush()
+        XCTAssertEqual(makeStore().data(forKey: key), Data("rooms-2".utf8))
+    }
+
     func testRemoveWherePredicateKeepsOtherDocuments() {
         let store = makeStore()
         store.set(Data("1".utf8), forKey: "month-2025-01")

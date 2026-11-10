@@ -778,6 +778,19 @@ enum AttendanceWidgetBridge {
         defaults.removeObject(forKey: tokenKey)
     }
 
+    /// Keychain (SecItem*) and App Group work can block on the security
+    /// daemon, so callers on the main actor use these. One serial queue keeps
+    /// a sign-out's clear ordered before the next sign-in's configure.
+    private static let queue = DispatchQueue(label: "net.sukavinagroup.widget-bridge", qos: .utility)
+
+    static func scheduleConfigure(token: String) {
+        queue.async { configure(token: token) }
+    }
+
+    static func scheduleClear() {
+        queue.async { clear() }
+    }
+
     static func clear() {
         let defaults = UserDefaults(suiteName: appGroup)
         let hasState = defaults?.object(forKey: stateKey) != nil
