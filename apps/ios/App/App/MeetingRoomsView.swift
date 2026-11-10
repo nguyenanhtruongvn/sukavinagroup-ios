@@ -8,7 +8,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 import UniformTypeIdentifiers
 
 enum MeetingPresentation {
@@ -373,28 +372,20 @@ struct MeetingRoomCard: View {
     let onBook: () -> Void
     let onSchedule: () -> Void
 
-    private var currentBooking: MeetingBooking? {
-        guard MeetingPresentation.calendar.isDate(day, inSameDayAs: now) else { return nil }
-        return bookings.first {
-            guard let start = $0.startDate,
-                  let end = $0.endDate else { return false }
-            return now >= start && now < end
-        }
+    /// Shared with the iOS 17 UIKit card (`App/Shared`, unit-tested).
+    private var availability: MeetingRoomAvailability {
+        MeetingRoomAvailability.status(
+            meetings: bookings.compactMap { booking in
+                guard let start = booking.startDate, let end = booking.endDate else { return nil }
+                return (start: start, end: end)
+            },
+            day: day,
+            now: now,
+            calendar: MeetingPresentation.calendar
+        )
     }
 
-    private var nextBooking: MeetingBooking? {
-        // Another day counts from its start: "day" carries the time it was
-        // chosen, so tomorrow at 10:00 used to skip meetings before 10:00.
-        let point = MeetingPresentation.calendar.isDate(day, inSameDayAs: now)
-            ? now
-            : MeetingPresentation.calendar.startOfDay(for: day)
-        return bookings.first {
-            guard let start = $0.startDate else { return false }
-            return start > point
-        }
-    }
-
-    private var isAvailable: Bool { currentBooking == nil }
+    private var isAvailable: Bool { availability.isAvailable }
     private var statusColor: Color { isAvailable ? Color.green : Color.red }
     private var cardBackground: Color {
         // Match the notification-card surface on each supported iOS design.
@@ -489,15 +480,7 @@ struct MeetingRoomCard: View {
         )
     }
 
-    private var availabilityText: String {
-        if let currentBooking {
-            return "Đang họp đến \(MeetingPresentation.time(currentBooking.endsAt))"
-        }
-        if let nextBooking {
-            return "Trống đến \(MeetingPresentation.time(nextBooking.startsAt))"
-        }
-        return "Còn trống cả ngày"
-    }
+    private var availabilityText: String { availability.text(clock: MeetingPresentation.clock) }
 }
 
 /// Decoded room photos, shared by the SwiftUI cards (iOS 18+) and the UIKit

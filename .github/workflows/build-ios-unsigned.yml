@@ -553,7 +553,7 @@ jobs:
               "size": Path(
                   os.environ["IPA_PATH"]
               ).stat().st_size,
-              "minOSVersion": "14.0",
+              "minOSVersion": "17.0",  # = IPHONEOS_DEPLOYMENT_TARGET
           }
 
 

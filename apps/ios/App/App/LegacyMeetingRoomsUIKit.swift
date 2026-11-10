@@ -176,21 +176,17 @@ private enum LegacyMeetingUI {
     /// The room's state on `day`, same rules as MeetingRoomCard (iOS 18+):
     /// in a meeting now, free until the next one, or free all day.
     static func roomStatus(bookings: [MeetingBooking], day: Date, now: Date) -> (available: Bool, text: String) {
-        let calendar = MeetingPresentation.calendar
-        let dayBookings = bookings.filter { sameDay($0, day) }
-        let isToday = calendar.isDate(day, inSameDayAs: now)
-        if isToday, let current = dayBookings.first(where: { booking in
-            guard let start = booking.startDate, let end = booking.endDate else { return false }
-            return now >= start && now < end
-        }) {
-            return (false, "Đang họp đến \(time(current.endsAt))")
-        }
-        let point = isToday ? now : calendar.startOfDay(for: day)
-        let next = dayBookings
-            .filter { ($0.startDate ?? .distantPast) > point }
-            .min { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
-        if let next { return (true, "Trống đến \(time(next.startsAt))") }
-        return (true, "Còn trống cả ngày")
+        // Same logic as the iOS 18+ card (`App/Shared`, unit-tested).
+        let status = MeetingRoomAvailability.status(
+            meetings: bookings.filter { sameDay($0, day) }.compactMap { booking in
+                guard let start = booking.startDate, let end = booking.endDate else { return nil }
+                return (start: start, end: end)
+            },
+            day: day,
+            now: now,
+            calendar: MeetingPresentation.calendar
+        )
+        return (status.isAvailable, status.text(clock: MeetingPresentation.clock))
     }
 
     /// Loading (nil symbol), failure or empty state for a list background.

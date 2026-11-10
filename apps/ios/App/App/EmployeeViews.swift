@@ -8,7 +8,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 import UniformTypeIdentifiers
 
 /// The signed-in portal on iOS 18+. iOS 17 never builds this view: just

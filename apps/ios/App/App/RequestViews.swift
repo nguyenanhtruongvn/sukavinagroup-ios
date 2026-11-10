@@ -8,7 +8,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 
 /// Direct-report picker shared by a manager creating a request for one or
 /// more people. Its two-column tiles intentionally match the meal-order flow.

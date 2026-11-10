@@ -7,7 +7,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 
 #if DEBUG
 struct SukavinaPreviewContainer: View {

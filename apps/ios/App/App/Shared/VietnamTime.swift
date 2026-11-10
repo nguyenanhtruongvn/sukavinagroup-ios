@@ -27,12 +27,26 @@ enum VietnamTime {
 
     /// Parses API timestamps with or without fractional seconds.
     static func date(fromISO8601 value: String) -> Date? {
+        // Booking start/end strings are parsed again on every redraw of the
+        // room list and per UIKit cell; the same few hundred strings repeat.
+        if let cached = parsedISO8601.object(forKey: value as NSString) {
+            return cached as Date
+        }
         // Most API timestamps carry milliseconds; try the format that matches
         // first instead of parsing every string twice.
-        value.contains(".")
+        let parsed = value.contains(".")
             ? iso8601Fractional.date(from: value) ?? iso8601Standard.date(from: value)
             : iso8601Standard.date(from: value) ?? iso8601Fractional.date(from: value)
+        if let parsed { parsedISO8601.setObject(parsed as NSDate, forKey: value as NSString) }
+        return parsed
     }
+
+    /// Thread-safe memo for `date(fromISO8601:)`; NSCache evicts under pressure.
+    private static let parsedISO8601: NSCache<NSString, NSDate> = {
+        let cache = NSCache<NSString, NSDate>()
+        cache.countLimit = 2_000
+        return cache
+    }()
 
     /// API timestamp for a date (UTC, the format the server expects).
     static func iso8601String(from date: Date) -> String {

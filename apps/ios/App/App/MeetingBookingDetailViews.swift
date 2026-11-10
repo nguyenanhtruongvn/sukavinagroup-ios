@@ -8,7 +8,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 import UniformTypeIdentifiers
 
 /// The moments still ahead, sorted: what TimelineView(.explicit(_:)) should

@@ -8,7 +8,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 import UniformTypeIdentifiers
 
 // Only non-zero numeric quantities and their units receive an accent.

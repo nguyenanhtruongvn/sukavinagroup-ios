@@ -14,6 +14,7 @@
 		FC0000000000000000000660 /* Shared/WidgetTokenKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000650 /* Shared/WidgetTokenKeychain.swift */; };
 		FC0000000000000000000670 /* Shared/WidgetTokenKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000650 /* Shared/WidgetTokenKeychain.swift */; };
 		FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */; };
+		FC0000000000000000000A20 /* Shared/MeetingRoomAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000A10 /* Shared/MeetingRoomAvailability.swift */; };
 		FC0000000000000000000720 /* Shared/AttendanceMetrics.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */; };
 		FC0000000000000000000820 /* Shared/SukavinaServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000810 /* Shared/SukavinaServer.swift */; };
 		FC0000000000000000000830 /* Shared/SukavinaServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC0000000000000000000810 /* Shared/SukavinaServer.swift */; };
@@ -106,6 +107,7 @@
 		FC0000000000000000000630 /* Shared/AccountDocumentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/AccountDocumentStore.swift; sourceTree = "<group>"; };
 		FC0000000000000000000650 /* Shared/WidgetTokenKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/WidgetTokenKeychain.swift; sourceTree = "<group>"; };
 		FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingBookingTime.swift; sourceTree = "<group>"; };
+		FC0000000000000000000A10 /* Shared/MeetingRoomAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/MeetingRoomAvailability.swift; sourceTree = "<group>"; };
 		FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/AttendanceMetrics.swift; sourceTree = "<group>"; };
 		FC0000000000000000000810 /* Shared/SukavinaServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/SukavinaServer.swift; sourceTree = "<group>"; };
 		FC0000000000000000000910 /* Shared/PasswordPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/PasswordPolicy.swift; sourceTree = "<group>"; };
@@ -205,6 +207,7 @@
 				FC0000000000000000000630 /* Shared/AccountDocumentStore.swift */,
 				FC0000000000000000000650 /* Shared/WidgetTokenKeychain.swift */,
 				FC0000000000000000000510 /* Shared/MeetingBookingTime.swift */,
+				FC0000000000000000000A10 /* Shared/MeetingRoomAvailability.swift */,
 				FC0000000000000000000710 /* Shared/AttendanceMetrics.swift */,
 				FC0000000000000000000810 /* Shared/SukavinaServer.swift */,
 				FC0000000000000000000910 /* Shared/PasswordPolicy.swift */,
@@ -374,6 +377,7 @@
 				FC0000000000000000000640 /* Shared/AccountDocumentStore.swift in Sources */,
 				FC0000000000000000000660 /* Shared/WidgetTokenKeychain.swift in Sources */,
 				FC0000000000000000000520 /* Shared/MeetingBookingTime.swift in Sources */,
+				FC0000000000000000000A20 /* Shared/MeetingRoomAvailability.swift in Sources */,
 				FC0000000000000000000720 /* Shared/AttendanceMetrics.swift in Sources */,
 				FC0000000000000000000820 /* Shared/SukavinaServer.swift in Sources */,
 				FC0000000000000000000920 /* Shared/PasswordPolicy.swift in Sources */,

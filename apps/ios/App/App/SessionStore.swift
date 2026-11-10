@@ -7,7 +7,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 import os
 
 /// Darwin notifications cross the app/WidgetKit process boundary.  The normal
@@ -325,6 +324,14 @@ final class SessionStore: ObservableObject {
         let value: MeetingBookingDetails
     }
 
+    /// The cache only grew during a session; keep the most recent entries.
+    private func trimMeetingDetailsCache() {
+        let excess = meetingDetailsCache.count - meetingDetailsCacheLimit
+        guard excess > 0 else { return }
+        let oldest = meetingDetailsCache.sorted { $0.value.savedAt < $1.value.savedAt }.prefix(excess)
+        oldest.forEach { meetingDetailsCache[$0.key] = nil }
+    }
+
     enum State {
         case restoring
         case signedOut
@@ -527,6 +534,8 @@ final class SessionStore: ObservableObject {
     private var meetingDetailsCache: [String: MeetingDetailsMemoryEntry] = [:]
     private var meetingDetailsRefreshTasks: [String: Task<MeetingBookingDetails?, Never>] = [:]
     private let meetingDetailsCacheTTL: TimeInterval = 60
+    /// Opened meeting details kept in RAM; the oldest go first beyond this.
+    private let meetingDetailsCacheLimit = 50
     private var sessionRefreshTask: Task<Void, Never>?
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "net.sukavinagroup.network-path")
@@ -2197,7 +2206,10 @@ final class SessionStore: ObservableObject {
                 ConnectionDiagnostics.record("Network path: status=\(String(describing: path.status)) cellular=\(isCellular) wifi=\(isWiFi) expensive=\(path.isExpensive) constrained=\(path.isConstrained)")
                 self.lastPathStatus = path.status
                 self.lastPathWasCellular = isCellular
-                self.isNetworkAvailable = path.status == .satisfied
+                // Path callbacks are frequent; an unchanged value would
+                // still redraw every observer.
+                let available = path.status == .satisfied
+                if self.isNetworkAvailable != available { self.isNetworkAvailable = available }
                 if path.status == .satisfied {
                     self.connectionRestored()
                 } else {
@@ -2671,6 +2683,7 @@ final class SessionStore: ObservableObject {
                     savedAt: Date(),
                     value: fresh
                 )
+                self.trimMeetingDetailsCache()
                 return fresh
             } catch is CancellationError {
                 return staleValue
@@ -2955,8 +2968,9 @@ final class SessionStore: ObservableObject {
                 organizerName: nil
             )
             if !meetingBookings.contains(where: { $0.id == optimistic.id }) {
-                meetingBookings.append(optimistic)
-                meetingBookings.sort { $0.startsAt < $1.startsAt }
+                // One assignment: append and sort each went through
+                // replaceBookings (filter, sort, grouping) separately.
+                meetingBookings = (meetingBookings + [optimistic]).sorted { $0.startsAt < $1.startsAt }
             }
             await refreshMeetingSchedule(date: start, force: true)
             return nil

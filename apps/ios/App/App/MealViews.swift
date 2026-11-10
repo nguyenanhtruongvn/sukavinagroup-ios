@@ -7,7 +7,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 
 struct MealQRCodeCard: View {
     let token: String

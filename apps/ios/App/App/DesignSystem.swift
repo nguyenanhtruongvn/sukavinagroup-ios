@@ -7,7 +7,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 
 enum AppAppearanceMode: String, CaseIterable, Identifiable {
     case system

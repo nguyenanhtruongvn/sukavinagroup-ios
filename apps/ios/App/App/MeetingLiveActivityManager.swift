@@ -165,14 +165,27 @@ enum LiveActivityTokenLedger {
         return "\(account)|\(scope)|\(token)"
     }
 
-    static func needsUpload(_ key: String) -> Bool {
+    /// Uploads in flight: `observe()` and the push-token stream could both
+    /// pass a check-then-mark for the same token and POST it twice.
+    private static var inFlight = Set<String>()
+
+    /// True when the token must be sent; it is then reserved until
+    /// `finishUpload` so a concurrent caller skips it.
+    static func beginUpload(_ key: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        guard let uploadedAt = entries()[key] else { return true }
-        return Date().timeIntervalSince1970 - uploadedAt > reassertInterval
+        guard !inFlight.contains(key) else { return false }
+        if let uploadedAt = entries()[key],
+           Date().timeIntervalSince1970 - uploadedAt <= reassertInterval {
+            return false
+        }
+        inFlight.insert(key)
+        return true
     }
 
-    static func markUploaded(_ key: String) {
+    static func finishUpload(_ key: String, succeeded: Bool) {
         lock.lock(); defer { lock.unlock() }
+        inFlight.remove(key)
+        guard succeeded else { return }
         var values = entries()
         let cutoff = Date().timeIntervalSince1970 - 7 * reassertInterval
         values = values.filter { $0.value > cutoff }
@@ -182,6 +195,7 @@ enum LiveActivityTokenLedger {
 
     static func reset() {
         lock.lock(); defer { lock.unlock() }
+        inFlight.removeAll()
         UserDefaults.standard.removeObject(forKey: storageKey)
     }
 
@@ -227,7 +241,9 @@ private enum MeetingLiveActivityPushRegistration {
         let tokenValue = token.map { String(format: "%02x", $0) }.joined()
         guard !tokenValue.isEmpty else { return }
         let registration = LiveActivityTokenLedger.key(token: tokenValue, scope: bookingID)
-        guard LiveActivityTokenLedger.needsUpload(registration) else { return }
+        guard LiveActivityTokenLedger.beginUpload(registration) else { return }
+        var succeeded = false
+        defer { LiveActivityTokenLedger.finishUpload(registration, succeeded: succeeded) }
 
         var request = URLRequest(
             url: URL(string: "me/meeting-bookings/\(bookingID)/live-activity-token", relativeTo: baseURL)!
@@ -243,7 +259,7 @@ private enum MeetingLiveActivityPushRegistration {
                 ConnectionDiagnostics.record("Live Activity push token upload was rejected")
                 return
             }
-            LiveActivityTokenLedger.markUploaded(registration)
+            succeeded = true
         } catch {
             ConnectionDiagnostics.record("Live Activity push token upload failed: \(error.localizedDescription)")
         }

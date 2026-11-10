@@ -7,7 +7,6 @@ import LocalAuthentication
 import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
-import WebKit
 
 struct MeetingRoom: Codable, Identifiable, Equatable {
     let id: String
