@@ -3,13 +3,16 @@ import Foundation
 
 enum MeetingLiveActivityManager {
     private static var activityUpdatesTask: Task<Void, Never>?
-    static func start(from userInfo: [AnyHashable: Any]) {
+    /// The returned task finishes when the activity work is done, so a
+    /// background push can wait for it before reporting to iOS.
+    @discardableResult
+    static func start(from userInfo: [AnyHashable: Any]) -> Task<Void, Never>? {
         guard userInfo["type"] as? String == "meeting_ending_soon",
               userInfo["is_owner"] as? String == "true",
               let bookingID = userInfo["booking_id"] as? String,
               let endsAt = date(userInfo["ends_at"] as? String),
               let startsAt = date(userInfo["starts_at"] as? String),
-              endsAt > Date() else { return }
+              endsAt > Date() else { return nil }
 
         // iOS 17.2+ receives the same warning through ActivityKit
         // Push-to-Start. Creating another Activity from the ordinary APNs
@@ -17,10 +20,9 @@ enum MeetingLiveActivityManager {
         // for the same booking. On these systems the ordinary notification is
         // data/UI refresh only; ActivityKit owns creation.
         if #available(iOS 17.2, *) {
-            Task {
+            return Task {
                 await removeDuplicateActivities(for: bookingID)
             }
-            return
         }
 
         let attributes = MeetingLiveActivityAttributes(
@@ -37,7 +39,7 @@ enum MeetingLiveActivityManager {
             isChoosingExtension: false
         )
 
-        Task {
+        return Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
                 await activity.update(ActivityContent(state: state, staleDate: endsAt))
                 MeetingLiveActivityPushRegistration.observe(activity)

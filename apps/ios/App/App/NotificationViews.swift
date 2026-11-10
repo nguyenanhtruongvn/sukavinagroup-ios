@@ -145,6 +145,10 @@ struct NotificationsView: View {
                 // requesting the same notifications a second time.
                 .onChange(of: inbox.requestNotifications) { _, values in
                     if requestNotifications != values { requestNotifications = values }
+                    // A pending tap whose notification only arrived now.
+                    if notificationRouter.pendingRoute != nil {
+                        Task { await openPendingAPNsRouteIfNeeded(allowReload: false) }
+                    }
                 }
                 .onChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
@@ -382,7 +386,7 @@ struct NotificationsView: View {
         session.updateRequestUnreadCount(requestNotifications)
     }
 
-    private func openPendingAPNsRouteIfNeeded() async {
+    private func openPendingAPNsRouteIfNeeded(allowReload: Bool = true) async {
         guard let route = notificationRouter.pendingRoute, session.token != nil else { return }
         if route.type == "attendance_monthly_report",
            let month = route.referenceID,
@@ -395,11 +399,23 @@ struct NotificationsView: View {
             notificationRouter.consume(route)
             return
         }
-        if requestNotifications.isEmpty { await reloadNotifications() }
-        guard let item = requestNotifications.first(where: {
-            guard $0.type == route.type else { return false }
-            return route.referenceID == nil || $0.requestId == route.referenceID
-        }) else { return }
+        func matchingItem() -> RequestNotification? {
+            requestNotifications.first {
+                guard $0.type == route.type else { return false }
+                return route.referenceID == nil || $0.requestId == route.referenceID
+            }
+        }
+        var item = matchingItem()
+        // A notification that just arrived is not in a list loaded earlier:
+        // reload it once instead of leaving the tap unanswered (the list used
+        // to reload only when empty).
+        if item == nil, allowReload {
+            await reloadNotifications()
+            item = matchingItem()
+        }
+        // Still missing (e.g. a reload already running): the route stays
+        // pending and is retried when the list changes.
+        guard let item else { return }
         notificationRouter.consume(route)
         await open(item)
     }

@@ -186,10 +186,19 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        MeetingLiveActivityManager.start(from: userInfo)
+        let activityWork = MeetingLiveActivityManager.start(from: userInfo)
         publishMeetingChangeIfNeeded(userInfo)
         reloadAttendanceWidgetIfNeeded(userInfo)
-        completionHandler(.newData)
+        let type = userInfo["type"] as? String ?? ""
+        let changedSomething = activityWork != nil || type.hasPrefix("meeting_")
+            || type == "attendance_check_in" || type == "attendance_check_out"
+        // Report only once the Live Activity work is done: iOS may suspend
+        // the app right after this handler. Always answering .newData at once
+        // also misled iOS's background budget for pushes that changed nothing.
+        Task {
+            await activityWork?.value
+            completionHandler(changedSomething ? .newData : .noData)
+        }
     }
 
     func userNotificationCenter(

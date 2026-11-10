@@ -35,6 +35,11 @@ struct EmployeePortalView: View {
             .onChange(of: notificationRouter.pendingRoute) { _, route in
                 if route != nil { selectedTab = 3 }
             }
+            // A tap that launched the app (or arrived while signed out) set
+            // the route before this view existed; onChange never sees it.
+            .onAppear {
+                if notificationRouter.pendingRoute != nil { selectedTab = 3 }
+            }
     }
 
     private var systemPortalTabs: some View {

@@ -509,7 +509,26 @@ final class SessionStore: ObservableObject {
     /// Network handoffs refresh the meeting schedule only once it was opened.
     private var hasViewedMeetingSchedule = false
     /// A badge reset the server has not confirmed yet.
-    private var badgeResetPending = false
+    /// A badge reset the server has not confirmed yet, kept per account on
+    /// disk: in memory it was lost when the app was killed, and the next push
+    /// brought the old, higher icon badge back.
+    private var badgeResetPending: Bool {
+        get {
+            guard let employeeCode = cacheEmployeeCode else { return false }
+            return UserDefaults.standard.bool(forKey: badgeResetPendingPrefix + employeeCode)
+        }
+        set {
+            guard let employeeCode = cacheEmployeeCode else { return }
+            if newValue {
+                UserDefaults.standard.set(true, forKey: badgeResetPendingPrefix + employeeCode)
+            } else {
+                UserDefaults.standard.removeObject(forKey: badgeResetPendingPrefix + employeeCode)
+            }
+        }
+    }
+    private let badgeResetPendingPrefix = "native-push-badge-reset-pending-"
+    /// One APNs registration + token upload at a time (`ensurePushRegistration`).
+    private var pushRegistrationTask: Task<Void, Never>?
     /// The live update stream connected at least once in this session; a
     /// later connection follows a gap in which events may have been missed.
     private var realtimeConnectedBefore = false
@@ -1051,6 +1070,7 @@ final class SessionStore: ObservableObject {
             }
             state = .signedIn
             startNetworkMonitoring()
+            ensurePushRegistration()
             if profile?.accountType == "CANTEEN" && profile?.employeeCode != "DEMO" {
                 await refreshProfile()
                 startSessionRefresh()
@@ -1119,6 +1139,9 @@ final class SessionStore: ObservableObject {
 
     func appBecameActive() {
         guard state == .signedIn else { return }
+        // Picks up notifications allowed in Settings meanwhile, a token the
+        // server dropped, or an upload or badge reset that failed earlier.
+        ensurePushRegistration()
         // Reopen the realtime stream closed when the app went to background.
         if eventStreamTask == nil, profile?.accountType != "CANTEEN" {
             startRealTimeUpdates()
@@ -1652,6 +1675,8 @@ final class SessionStore: ObservableObject {
         connectivityNotice = nil
         isInOutage = false
         registeredAPNsIdentity = nil
+        pushRegistrationTask?.cancel()
+        pushRegistrationTask = nil
 
         // Remove account-scoped notification data from disk on sign-out.
         // Meeting details are RAM-only and are cancelled/cleared here as well.
@@ -1661,6 +1686,7 @@ final class SessionStore: ObservableObject {
             legacyAttendanceKeyPrefixes.forEach { defaults.removeObject(forKey: $0 + employeeCode) }
             defaults.removeObject(forKey: acknowledgedNotificationBadgePrefix + employeeCode)
             defaults.removeObject(forKey: acknowledgedNotificationBadgeDatePrefix + employeeCode)
+            defaults.removeObject(forKey: badgeResetPendingPrefix + employeeCode)
             defaults.removeObject(forKey: todayMenuCachePrefix + employeeCode)
         }
         meetingDetailsRefreshTasks.values.forEach { $0.cancel() }
@@ -1845,6 +1871,24 @@ final class SessionStore: ObservableObject {
             await APNsRegistration.requestAuthorizationAndRegister()
             await self?.syncAPNsToken()
             await self?.syncPushBadgeReset()
+        }
+    }
+
+    /// Registers for APNs and uploads this iPhone's token for the signed-in
+    /// account, then retries a badge reset still pending. It used to run only
+    /// at a password sign-in, so a failed upload, notifications allowed later
+    /// in Settings, or a token the server dropped left the phone without
+    /// pushes until the next sign-in. Restore, every foreground and a regained
+    /// network now repeat it; `syncAPNsToken` skips an upload already
+    /// confirmed in this launch.
+    private func ensurePushRegistration() {
+        guard state == .signedIn, pushRegistrationTask == nil else { return }
+        pushRegistrationTask = Task { @MainActor [weak self] in
+            defer { self?.pushRegistrationTask = nil }
+            await APNsRegistration.requestAuthorizationAndRegister()
+            guard let self, !Task.isCancelled, self.state == .signedIn else { return }
+            await self.syncAPNsToken()
+            if self.badgeResetPending { await self.syncPushBadgeReset() }
         }
     }
 
@@ -2240,7 +2284,9 @@ final class SessionStore: ObservableObject {
                       wasStatus != .satisfied || wasCellular != isCellular,
                       self.token != nil,
                       UIApplication.shared.applicationState == .active else { return }
-                if self.badgeResetPending { await self.syncPushBadgeReset() }
+                if self.registeredAPNsIdentity == nil || self.badgeResetPending {
+                    self.ensurePushRegistration()
+                }
                 if self.profile?.accountType == "CANTEEN" { return }
                 // Reconnecting the stream revalidates the AI setting, and
                 // the dashboard pass refreshes the notification count.
