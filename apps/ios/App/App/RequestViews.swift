@@ -1209,40 +1209,49 @@ final class RequestMealChoice: ObservableObject {
     }
 }
 
-/// The two meal toggles (iOS 18+). They are the same UIKit `MealToggleView`
-/// as the iOS 17 form: SwiftUI's Button faded its highlight out after the
-/// finger lifted, which still read as a slow response.
+/// The two meal toggles (iOS 18+): system Buttons whose style has no
+/// animation, so the colour changes the moment the finger lifts. `.plain`
+/// (and a style with `.animation`) faded the change in, which felt slow.
 private struct RequestMealButtons: View {
     @ObservedObject var meals: RequestMealChoice
     let onChange: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            MealToggleRepresentable(title: "Cơm trưa", isOn: $meals.lunch, onChange: onChange)
-            MealToggleRepresentable(title: "Cơm chiều", isOn: $meals.dinner, onChange: onChange)
+            toggle("Cơm trưa", isOn: $meals.lunch)
+            toggle("Cơm chiều", isOn: $meals.dinner)
         }
-        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func toggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            isOn.wrappedValue.toggle()
+            onChange()
+        } label: {
+            Text(title)
+        }
+        .buttonStyle(MealToggleButtonStyle(isOn: isOn.wrappedValue))
+        .accessibilityAddTraits(isOn.wrappedValue ? .isSelected : [])
     }
 }
 
-private struct MealToggleRepresentable: UIViewRepresentable {
-    let title: String
-    @Binding var isOn: Bool
-    let onChange: () -> Void
+/// Draws the selected/pressed state directly, with every animation removed.
+private struct MealToggleButtonStyle: ButtonStyle {
+    let isOn: Bool
 
-    func makeUIView(context: Context) -> MealToggleView {
-        let view = MealToggleView(title: title)
-        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return view
-    }
-
-    func updateUIView(_ view: MealToggleView, context: Context) {
-        view.isOn = isOn
-        view.onToggle = { value in
-            isOn = value
-            onChange()
-        }
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return configuration.label
+            .font(.body.weight(.semibold))
+            .foregroundStyle(isOn ? Color.green : Color.primary)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(isOn ? Color.green.opacity(0.14) : AppTheme.card)
+            .overlay { shape.stroke(isOn ? Color.green.opacity(0.8) : AppTheme.fieldBorder, lineWidth: 1) }
+            .clipShape(shape)
+            .contentShape(shape)
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            // No inherited or implicit animation: the change is immediate.
+            .transaction { $0.animation = nil }
     }
 }
 
@@ -1281,100 +1290,53 @@ struct PlatformRequestComposer: View {
     }
 }
 
-// MARK: - Meal toggle shared by both composers
+// MARK: - iOS 17 meal toggle
 
-/// "Cơm trưa" / "Cơm chiều": highlights the moment the finger touches it and
-/// switches on lift, with no animation. UIButton (iOS 17) and SwiftUI's Button
-/// (iOS 18+) both faded their highlight out after the tap, which read as a
-/// slow, soft response. A plain UIView rather than a UIControl, so a drag that
-/// starts on it still scrolls the form (the scroll view cancels its touch).
-final class MealToggleView: UIView {
-    var isOn = false {
-        didSet { if isOn != oldValue { render() } }
+/// "Cơm trưa" / "Cơm chiều" on iOS 17: a `.custom` UIButton (no
+/// UIButton.Configuration). Configuration buttons animate every highlight
+/// and selection change, which faded the colour in; this one sets its
+/// colours directly in `isSelected` / `isHighlighted`, without animation.
+private final class MealToggleButton: UIButton {
+    override var isSelected: Bool {
+        didSet { if isSelected != oldValue { render() } }
     }
-    var onToggle: ((Bool) -> Void)?
 
-    private let label = UILabel()
-    private var isPressed = false {
-        didSet { if isPressed != oldValue { render() } }
+    override var isHighlighted: Bool {
+        didSet { if isHighlighted != oldValue { render() } }
     }
 
     init(title: String) {
         super.init(frame: .zero)
-        label.text = title
-        label.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17, weight: .semibold))
-        label.adjustsFontForContentSizeCategory = true
-        label.textAlignment = .center
-        label.numberOfLines = 1
-        label.adjustsFontSizeToFitWidth = true
-        label.minimumScaleFactor = 0.8
-        label.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 10),
-            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -10),
-            label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
-        ])
+        setTitle(title, for: .normal)
+        titleLabel?.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17, weight: .semibold))
+        titleLabel?.adjustsFontForContentSizeCategory = true
+        titleLabel?.adjustsFontSizeToFitWidth = true
+        titleLabel?.minimumScaleFactor = 0.8
+        setTitleColor(.label, for: .normal)
+        setTitleColor(.systemGreen, for: .selected)
+        setTitleColor(.systemGreen, for: [.selected, .highlighted])
         layer.cornerRadius = 14
         layer.cornerCurve = .continuous
         layer.borderWidth = 1
-        isAccessibilityElement = true
-        accessibilityLabel = title
+        heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         render()
     }
 
     required init?(coder: NSCoder) { nil }
 
-    override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: max(44, label.intrinsicContentSize.height + 20))
-    }
-
     private func render() {
         UIView.performWithoutAnimation {
-            label.textColor = isOn ? .systemGreen : .label
-            backgroundColor = isOn ? UIColor.systemGreen.withAlphaComponent(0.14) : .secondarySystemBackground
-            layer.borderColor = (isOn ? UIColor.systemGreen.withAlphaComponent(0.8) : UIColor.separator)
+            backgroundColor = isSelected ? UIColor.systemGreen.withAlphaComponent(0.14) : .secondarySystemBackground
+            layer.borderColor = (isSelected ? UIColor.systemGreen.withAlphaComponent(0.8) : UIColor.separator)
                 .resolvedColor(with: traitCollection).cgColor
-            alpha = isPressed ? 0.55 : 1
+            alpha = isHighlighted ? 0.6 : 1
+            layoutIfNeeded()
         }
-        accessibilityTraits = isOn ? [.button, .selected] : .button
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
         super.traitCollectionDidChange(previous)
         render()
-    }
-
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isPressed = true
-    }
-
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        guard let touch = touches.first else { return }
-        isPressed = bounds.insetBy(dx: -16, dy: -16).contains(touch.location(in: self))
-    }
-
-    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-        let inside = isPressed
-        isPressed = false
-        if inside { toggle() }
-    }
-
-    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-        isPressed = false
-    }
-
-    override func accessibilityActivate() -> Bool {
-        toggle()
-        return true
-    }
-
-    private func toggle() {
-        isOn.toggle()
-        onToggle?(isOn)
     }
 }
 
@@ -1431,8 +1393,8 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let destinationField = UITextField()
     private let distanceField = UITextField()
     private let expenseField = UITextField()
-    private let lunchMealButton = MealToggleView(title: "Cơm trưa")
-    private let dinnerMealButton = MealToggleView(title: "Cơm chiều")
+    private let lunchMealButton = MealToggleButton(title: "Cơm trưa")
+    private let dinnerMealButton = MealToggleButton(title: "Cơm chiều")
     private let transportButton = UIButton(type: .system)
     private let recipientsButton = UIButton(type: .system)
     private let reasonView = UITextView()
@@ -1581,10 +1543,18 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         destinationField.borderStyle = .roundedRect
         destinationField.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
         distanceField.placeholder = "Số km"
-        lunchMealButton.isOn = lunchMeal
-        lunchMealButton.onToggle = { [weak self] value in self?.lunchMeal = value }
-        dinnerMealButton.isOn = dinnerMeal
-        dinnerMealButton.onToggle = { [weak self] value in self?.dinnerMeal = value }
+        lunchMealButton.isSelected = lunchMeal
+        lunchMealButton.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.lunchMeal.toggle()
+            self.lunchMealButton.isSelected = self.lunchMeal
+        }, for: .touchUpInside)
+        dinnerMealButton.isSelected = dinnerMeal
+        dinnerMealButton.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.dinnerMeal.toggle()
+            self.dinnerMealButton.isSelected = self.dinnerMeal
+        }, for: .touchUpInside)
 
         reasonView.font = .preferredFont(forTextStyle: .body)
         reasonView.delegate = self
