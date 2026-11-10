@@ -1209,49 +1209,40 @@ final class RequestMealChoice: ObservableObject {
     }
 }
 
-/// The two meal toggles. They answer the finger at once (press feedback) and
-/// redraw alone when tapped.
+/// The two meal toggles (iOS 18+). They are the same UIKit `MealToggleView`
+/// as the iOS 17 form: SwiftUI's Button faded its highlight out after the
+/// finger lifted, which still read as a slow response.
 private struct RequestMealButtons: View {
     @ObservedObject var meals: RequestMealChoice
     let onChange: () -> Void
 
     var body: some View {
         HStack(spacing: 8) {
-            toggle("Cơm trưa", isOn: $meals.lunch)
-            toggle("Cơm chiều", isOn: $meals.dinner)
+            MealToggleRepresentable(title: "Cơm trưa", isOn: $meals.lunch, onChange: onChange)
+            MealToggleRepresentable(title: "Cơm chiều", isOn: $meals.dinner, onChange: onChange)
         }
-    }
-
-    private func toggle(_ title: String, isOn: Binding<Bool>) -> some View {
-        let selected = isOn.wrappedValue
-        return Button {
-            isOn.wrappedValue.toggle()
-            onChange()
-        } label: {
-            Text(title)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(selected ? Color.green : Color.primary)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(selected ? Color.green.opacity(0.14) : AppTheme.card)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(selected ? Color.green.opacity(0.8) : AppTheme.fieldBorder, lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(RequestChoicePressStyle())
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
-/// Immediate, short press feedback (`.plain` gave almost none).
-private struct RequestChoicePressStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .opacity(configuration.isPressed ? 0.85 : 1)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+private struct MealToggleRepresentable: UIViewRepresentable {
+    let title: String
+    @Binding var isOn: Bool
+    let onChange: () -> Void
+
+    func makeUIView(context: Context) -> MealToggleView {
+        let view = MealToggleView(title: title)
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
+    }
+
+    func updateUIView(_ view: MealToggleView, context: Context) {
+        view.isOn = isOn
+        view.onToggle = { value in
+            isOn = value
+            onChange()
+        }
     }
 }
 
@@ -1287,6 +1278,103 @@ struct PlatformRequestComposer: View {
                 submit: submit
             )
         }
+    }
+}
+
+// MARK: - Meal toggle shared by both composers
+
+/// "Cơm trưa" / "Cơm chiều": highlights the moment the finger touches it and
+/// switches on lift, with no animation. UIButton (iOS 17) and SwiftUI's Button
+/// (iOS 18+) both faded their highlight out after the tap, which read as a
+/// slow, soft response. A plain UIView rather than a UIControl, so a drag that
+/// starts on it still scrolls the form (the scroll view cancels its touch).
+final class MealToggleView: UIView {
+    var isOn = false {
+        didSet { if isOn != oldValue { render() } }
+    }
+    var onToggle: ((Bool) -> Void)?
+
+    private let label = UILabel()
+    private var isPressed = false {
+        didSet { if isPressed != oldValue { render() } }
+    }
+
+    init(title: String) {
+        super.init(frame: .zero)
+        label.text = title
+        label.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .systemFont(ofSize: 17, weight: .semibold))
+        label.adjustsFontForContentSizeCategory = true
+        label.textAlignment = .center
+        label.numberOfLines = 1
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.8
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            label.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 10),
+            label.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -10),
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 44),
+        ])
+        layer.cornerRadius = 14
+        layer.cornerCurve = .continuous
+        layer.borderWidth = 1
+        isAccessibilityElement = true
+        accessibilityLabel = title
+        render()
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: max(44, label.intrinsicContentSize.height + 20))
+    }
+
+    private func render() {
+        UIView.performWithoutAnimation {
+            label.textColor = isOn ? .systemGreen : .label
+            backgroundColor = isOn ? UIColor.systemGreen.withAlphaComponent(0.14) : .secondarySystemBackground
+            layer.borderColor = (isOn ? UIColor.systemGreen.withAlphaComponent(0.8) : UIColor.separator)
+                .resolvedColor(with: traitCollection).cgColor
+            alpha = isPressed ? 0.55 : 1
+        }
+        accessibilityTraits = isOn ? [.button, .selected] : .button
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        render()
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        isPressed = true
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        isPressed = bounds.insetBy(dx: -16, dy: -16).contains(touch.location(in: self))
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        let inside = isPressed
+        isPressed = false
+        if inside { toggle() }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        isPressed = false
+    }
+
+    override func accessibilityActivate() -> Bool {
+        toggle()
+        return true
+    }
+
+    private func toggle() {
+        isOn.toggle()
+        onToggle?(isOn)
     }
 }
 
@@ -1343,8 +1431,8 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let destinationField = UITextField()
     private let distanceField = UITextField()
     private let expenseField = UITextField()
-    private let lunchMealButton = UIButton(type: .system)
-    private let dinnerMealButton = UIButton(type: .system)
+    private let lunchMealButton = MealToggleView(title: "Cơm trưa")
+    private let dinnerMealButton = MealToggleView(title: "Cơm chiều")
     private let transportButton = UIButton(type: .system)
     private let recipientsButton = UIButton(type: .system)
     private let reasonView = UITextView()
@@ -1493,12 +1581,10 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         destinationField.borderStyle = .roundedRect
         destinationField.addAction(UIAction { [weak self] _ in self?.renderValidation() }, for: .editingChanged)
         distanceField.placeholder = "Số km"
-        configureMealButton(lunchMealButton, title: "Cơm trưa", selected: lunchMeal) { [weak self] in
-            self?.lunchMeal.toggle(); self?.refreshMealButtons()
-        }
-        configureMealButton(dinnerMealButton, title: "Cơm chiều", selected: dinnerMeal) { [weak self] in
-            self?.dinnerMeal.toggle(); self?.refreshMealButtons()
-        }
+        lunchMealButton.isOn = lunchMeal
+        lunchMealButton.onToggle = { [weak self] value in self?.lunchMeal = value }
+        dinnerMealButton.isOn = dinnerMeal
+        dinnerMealButton.onToggle = { [weak self] value in self?.dinnerMeal = value }
 
         reasonView.font = .preferredFont(forTextStyle: .body)
         reasonView.delegate = self
@@ -1643,34 +1729,6 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         card.layer.cornerRadius = 20; card.layer.cornerCurve = .continuous
         card.layer.borderWidth = 0.75; card.layer.borderColor = UIColor.separator.withAlphaComponent(0.22).cgColor
         return card
-    }
-
-    private func configureMealButton(_ button: UIButton, title: String, selected: Bool, action: @escaping () -> Void) {
-        var configuration = UIButton.Configuration.tinted()
-        configuration.title = title
-        configuration.cornerStyle = .medium
-        button.configuration = configuration
-        button.isSelected = selected
-        // Colours follow isSelected in place. Assigning a new configuration
-        // on every tap cross-faded the whole button, which read as slow.
-        button.configurationUpdateHandler = { button in
-            guard var configuration = button.configuration else { return }
-            let on = button.isSelected
-            configuration.baseForegroundColor = on ? .systemGreen : .label
-            configuration.baseBackgroundColor = on ? .systemGreen : .secondarySystemFill
-            button.configuration = configuration
-        }
-        button.addAction(UIAction { _ in action() }, for: .touchUpInside)
-        button.heightAnchor.constraint(equalToConstant: 42).isActive = true
-    }
-
-    private func refreshMealButtons() {
-        UIView.performWithoutAnimation {
-            lunchMealButton.isSelected = lunchMeal
-            dinnerMealButton.isSelected = dinnerMeal
-            lunchMealButton.layoutIfNeeded()
-            dinnerMealButton.layoutIfNeeded()
-        }
     }
 
     private func mealSection() -> UIView {
