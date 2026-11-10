@@ -116,12 +116,18 @@ struct NotificationsView: View {
                     hiddenArticleIDs = session.hiddenArticleIDs()
                     // SessionStore already holds the current list (badge,
                     // realtime); decode the disk cache only before its first load.
-                    if requestNotifications.isEmpty {
-                        requestNotifications = inbox.requestNotifications.isEmpty
-                            ? session.cachedRequestNotifications()
-                            : inbox.requestNotifications
+                    if !inbox.requestNotifications.isEmpty {
+                        // Also catches a change missed while off-window.
+                        if requestNotifications != inbox.requestNotifications {
+                            requestNotifications = inbox.requestNotifications
+                        }
+                    } else if requestNotifications.isEmpty {
+                        requestNotifications = session.cachedRequestNotifications()
                     }
                     requestStore.restoreCache(employeeCode: session.profile?.employeeCode ?? session.dashboard?.employeeCode)
+                    // A route set by a push before this view appeared opens
+                    // now, not after the network reload below.
+                    await openPendingAPNsRouteIfNeeded()
                     // Showing the tab used to force a fetch every time; a
                     // recent load is kept current by realtime events and APNs.
                     if session.requestNotificationsAreFresh(maxAge: Self.notificationsFreshness) {

@@ -2149,6 +2149,14 @@ final class SessionStore: ObservableObject {
                     // override, was not announced: mark cached months stale (an
                     // open attendance screen reloads) and revalidate the dashboard
                     // within its freshness window. Mirrors Android.
+                    if resumed && !catchUp {
+                        // A short gap: no forced reloads, but open request
+                        // and meeting views still revalidate once in case an
+                        // event was missed (the foreground refresh is
+                        // throttled and does not bump these).
+                        self.revisions.request &+= 1
+                        self.revisions.meeting &+= 1
+                    }
                     if resumed && catchUp {
                         // Events missed during the gap can concern any area,
                         // not just attendance: open request, notification and
