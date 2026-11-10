@@ -85,4 +85,11 @@ final class MeetingSharedRulesTests: XCTestCase {
         let status = MeetingRoomAvailability.status(meetings: [tomorrow], day: now, now: now, calendar: VietnamTime.calendar)
         XCTAssertEqual(status, .freeAllDay)
     }
+
+    func testRoomStatusKeepsAMeetingRunningPastMidnight() throws {
+        let now = try date("2026-11-11T00:30:00+07:00")
+        let lateNight = (start: try date("2026-11-10T23:00:00+07:00"), end: try date("2026-11-11T01:00:00+07:00"))
+        let status = MeetingRoomAvailability.status(meetings: [lateNight], day: now, now: now, calendar: VietnamTime.calendar)
+        XCTAssertEqual(status, .busy(until: lateNight.end))
+    }
 }

@@ -46,7 +46,9 @@ final class RequestFormRulesTests: XCTestCase {
     func testShiftTimesAndNextSunday() throws {
         let day = try date("2026-11-10T00:00:00+07:00") // Tuesday
         XCTAssertEqual(VietnamTime.clock.string(from: RequestFormRules.shiftStart("08:15", on: day, calendar: calendar)), "08:15")
-        XCTAssertEqual(VietnamTime.clock.string(from: RequestFormRules.shiftStart("25:00", on: day, calendar: calendar)), "07:30")
+        // An invalid hour falls back alone; the valid minute is kept (as before).
+        XCTAssertEqual(VietnamTime.clock.string(from: RequestFormRules.shiftStart("25:00", on: day, calendar: calendar)), "07:00")
+        XCTAssertEqual(VietnamTime.clock.string(from: RequestFormRules.shiftStart("abc", on: day, calendar: calendar)), "07:30")
         XCTAssertEqual(VietnamTime.clock.string(from: RequestFormRules.shiftEnd(nil, on: day, calendar: calendar)), "16:30")
         let sunday = RequestFormRules.nextSunday(from: day, calendar: calendar)
         XCTAssertEqual(VietnamTime.dayKey.string(from: sunday), "2026-11-15")

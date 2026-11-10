@@ -23,9 +23,12 @@ enum MeetingRoomAvailability: Equatable {
         now: Date,
         calendar: Calendar
     ) -> MeetingRoomAvailability {
-        // Only `day`'s bookings: the UIKit card filtered them and the SwiftUI
-        // card did not, so another day's booking could change its text.
-        let meetings = meetings.filter { calendar.isDate($0.start, inSameDayAs: day) }
+        // Only bookings that overlap `day`: the UIKit card filtered by start
+        // day and the SwiftUI card not at all. Overlap also keeps a meeting
+        // that began before midnight and is still running.
+        let dayStart = calendar.startOfDay(for: day)
+        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) ?? dayStart.addingTimeInterval(86_400)
+        let meetings = meetings.filter { $0.start < dayEnd && $0.end > dayStart }
         let isToday = calendar.isDate(day, inSameDayAs: now)
         if isToday, let current = meetings.first(where: { now >= $0.start && now < $0.end }) {
             return .busy(until: current.end)

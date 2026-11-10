@@ -1207,8 +1207,9 @@ struct PlatformRequestComposer: View {
 
     let template: EmployeeRequest?
     let submit: Submit
+    // Not observed: the iOS 18 composer must not redraw on every request-
+    // store change (it observes only ManagedDirectoryState).
     @Environment(\.sessionActions) private var sessionActions
-    @EnvironmentObject private var store: EmployeeRequestStore
 
     var body: some View {
         if #available(iOS 18.0, *) {
@@ -1221,7 +1222,7 @@ struct PlatformRequestComposer: View {
             LegacyRequestComposerUIKitView(
                 token: session.token,
                 session: session,
-                store: store,
+                store: session.requests,
                 workStartTime: session.dashboard?.workStartTime,
                 workEndTime: session.dashboard?.workEndTime,
                 template: template,
