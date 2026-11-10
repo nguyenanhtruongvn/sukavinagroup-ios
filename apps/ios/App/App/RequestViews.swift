@@ -932,27 +932,8 @@ struct RequestsView: View {
         .refreshable { await store.load(session.token, force: true) }
     }
 
-    /// TestFlight 144 still crashes in AttributeGraph while the large SwiftUI
-    /// composer is built on iOS 17.  The entire iOS 17 composer is native
-    /// UIKit; iOS 18 and later retain the richer SwiftUI implementation.
-    @ViewBuilder
     private func requestComposerSheet(template: EmployeeRequest?) -> some View {
-        if #available(iOS 18.0, *) {
-            RequestComposer(template: template, submit: submitRequest)
-                .presentationDetents([.large])
-                .presentationContentInteraction(.resizes)
-                .presentationDragIndicator(.hidden)
-        } else {
-            LegacyRequestComposerUIKitView(
-                token: session.token,
-                session: session,
-                store: store,
-                workStartTime: session.dashboard?.workStartTime,
-                workEndTime: session.dashboard?.workEndTime,
-                template: template,
-                submit: submitRequest
-            )
-        }
+        PlatformRequestComposer(template: template, submit: submitRequest)
     }
 
     private func submitRequest(
@@ -1204,6 +1185,40 @@ struct RequestDecisionView: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Đóng") { dismiss() }.disabled(working) } }
         }
         .interactiveDismissDisabled(working)
+    }
+}
+
+/// The request composer for the running iOS. TestFlight 144 still crashed in
+/// AttributeGraph while the large SwiftUI composer was built on iOS 17, so
+/// iOS 17 gets the native UIKit form and iOS 18+ the SwiftUI one. Every entry
+/// point (Requests tab, "Tạo lại đơn" from Notifications) must present this,
+/// never `RequestComposer` directly: Notifications used to, on iOS 17 too.
+struct PlatformRequestComposer: View {
+    typealias Submit = (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, Bool?, Bool?, [String]?) async -> String?
+
+    let template: EmployeeRequest?
+    let submit: Submit
+    @Environment(\.sessionActions) private var sessionActions
+    @EnvironmentObject private var store: EmployeeRequestStore
+
+    var body: some View {
+        if #available(iOS 18.0, *) {
+            RequestComposer(template: template, submit: submit)
+                .presentationDetents([.large])
+                .presentationContentInteraction(.resizes)
+                .presentationDragIndicator(.hidden)
+        } else {
+            let session = sessionActions.store
+            LegacyRequestComposerUIKitView(
+                token: session.token,
+                session: session,
+                store: store,
+                workStartTime: session.dashboard?.workStartTime,
+                workEndTime: session.dashboard?.workEndTime,
+                template: template,
+                submit: submit
+            )
+        }
     }
 }
 

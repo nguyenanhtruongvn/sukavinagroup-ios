@@ -41,15 +41,9 @@ struct MeetingBookingSheet: View {
         case departments
     }
 
+    // Form rules are shared with the iOS 17 UIKit form (`MeetingBookingForm`).
     private var people: [MeetingInvitee] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty || !selectedDepartments.isEmpty else { return [] }
-        return meetingStore.invitees.filter {
-            (selectedDepartments.isEmpty || selectedDepartments.contains($0.department))
-                && (trimmedQuery.isEmpty
-                    || $0.fullName.localizedCaseInsensitiveContains(trimmedQuery)
-                    || $0.employeeCode.localizedCaseInsensitiveContains(trimmedQuery))
-        }
+        MeetingBookingForm.people(meetingStore.invitees, query: query, departments: selectedDepartments)
     }
 
     private var departments: [String] {
@@ -57,9 +51,7 @@ struct MeetingBookingSheet: View {
     }
 
     private static func departmentList(_ invitees: [MeetingInvitee]) -> [String] {
-        Array(Set(invitees.map(\.department)
-            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }))
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        MeetingBookingForm.departments(invitees)
     }
 
     private var selectedInvitees: [MeetingInvitee] {
@@ -67,16 +59,11 @@ struct MeetingBookingSheet: View {
     }
 
     private var matchingDepartments: [String] {
-        let value = departmentQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else { return [] }
-        return departments.filter { $0.localizedCaseInsensitiveContains(value) }
+        MeetingBookingForm.matchingDepartments(departments, query: departmentQuery)
     }
 
     private var unselectedDepartmentInvitees: [MeetingInvitee] {
-        guard !selectedDepartments.isEmpty else { return [] }
-        return meetingStore.invitees.filter {
-            selectedDepartments.contains($0.department) && !selected.contains($0.id)
-        }
+        MeetingBookingForm.uninvited(meetingStore.invitees, departments: selectedDepartments, selected: selected)
     }
 
     /// Why "Xác nhận đặt phòng" is disabled (past start, over capacity).
@@ -108,7 +95,7 @@ struct MeetingBookingSheet: View {
     }
 
     private var endTime: Date {
-        start.addingTimeInterval(Double(durationMinutes * 60))
+        MeetingBookingForm.endTime(start: start, durationMinutes: durationMinutes)
     }
 
     private var dayLabel: String {

@@ -139,7 +139,8 @@ struct MeetingBookingDetails: Codable, Identifiable {
     var endDate: Date? { VietnamTime.date(fromISO8601: endsAt) }
 }
 
-struct MeetingInvitee: Codable, Identifiable {
+/// Searched by the shared booking-form rules (`App/Shared/MeetingSharedRules`).
+struct MeetingInvitee: Codable, Identifiable, MeetingInviteeSearchable {
     let id: String
     let fullName: String
     let employeeCode: String

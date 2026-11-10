@@ -13,7 +13,8 @@ enum MeetingRoomAvailability: Equatable {
         return true
     }
 
-    /// `meetings`: start and end of the room's bookings on `day`. On another
+    /// `meetings`: start and end of the room's bookings (other days are
+    /// ignored). On another
     /// day the next meeting counts from that day's start, not from `day`'s
     /// time of day.
     static func status(
@@ -22,6 +23,9 @@ enum MeetingRoomAvailability: Equatable {
         now: Date,
         calendar: Calendar
     ) -> MeetingRoomAvailability {
+        // Only `day`'s bookings: the UIKit card filtered them and the SwiftUI
+        // card did not, so another day's booking could change its text.
+        let meetings = meetings.filter { calendar.isDate($0.start, inSameDayAs: day) }
         let isToday = calendar.isDate(day, inSameDayAs: now)
         if isToday, let current = meetings.first(where: { now >= $0.start && now < $0.end }) {
             return .busy(until: current.end)

@@ -178,7 +178,7 @@ private enum LegacyMeetingUI {
     static func roomStatus(bookings: [MeetingBooking], day: Date, now: Date) -> (available: Bool, text: String) {
         // Same logic as the iOS 18+ card (`App/Shared`, unit-tested).
         let status = MeetingRoomAvailability.status(
-            meetings: bookings.filter { sameDay($0, day) }.compactMap { booking in
+            meetings: bookings.compactMap { booking in
                 guard let start = booking.startDate, let end = booking.endDate else { return nil }
                 return (start: start, end: end)
             },
@@ -1426,7 +1426,8 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     // MARK: Derived values
 
-    private var endTime: Date { start.addingTimeInterval(Double(durationMinutes * 60)) }
+    // Form rules are shared with the iOS 18+ SwiftUI sheet (`MeetingBookingForm`).
+    private var endTime: Date { MeetingBookingForm.endTime(start: start, durationMinutes: durationMinutes) }
     private var blockReason: String? {
         MeetingBookingTime.blockReason(
             start: start, now: Date(), attendeeCount: selected.count + 1,
@@ -1434,34 +1435,22 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         )
     }
     private var hasUnsavedInput: Bool {
-        !(titleField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selected.isEmpty
+        MeetingBookingForm.hasUnsavedInput(title: titleField.text ?? "", selectedCount: selected.count)
     }
     private var bookingTitle: String {
-        let text = (titleField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return text.isEmpty ? meetingType : "\(meetingType) · \(text)"
+        MeetingBookingForm.title(type: meetingType, text: titleField.text ?? "")
     }
     private var query: String { (peopleField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     private var departmentQuery: String { (departmentField.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     private var people: [MeetingInvitee] {
-        guard !query.isEmpty || !selectedDepartments.isEmpty else { return [] }
-        return invitees.filter {
-            (selectedDepartments.isEmpty || selectedDepartments.contains($0.department))
-                && (query.isEmpty
-                    || $0.fullName.localizedCaseInsensitiveContains(query)
-                    || $0.employeeCode.localizedCaseInsensitiveContains(query))
-        }
+        MeetingBookingForm.people(invitees, query: query, departments: selectedDepartments)
     }
-    private var departments: [String] {
-        Array(Set(invitees.map(\.department).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }))
-            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
+    private var departments: [String] { MeetingBookingForm.departments(invitees) }
     private var matchingDepartments: [String] {
-        guard !departmentQuery.isEmpty else { return [] }
-        return departments.filter { $0.localizedCaseInsensitiveContains(departmentQuery) }
+        MeetingBookingForm.matchingDepartments(departments, query: departmentQuery)
     }
     private var unselectedDepartmentInvitees: [MeetingInvitee] {
-        guard !selectedDepartments.isEmpty else { return [] }
-        return invitees.filter { selectedDepartments.contains($0.department) && !selected.contains($0.id) }
+        MeetingBookingForm.uninvited(invitees, departments: selectedDepartments, selected: selected)
     }
     // MARK: Layout
 
@@ -2294,33 +2283,24 @@ private final class LegacyMeetingDetailController: UIViewController {
     private var isOwner: Bool { meeting.isOwner == true }
     private var isLimitedViewer: Bool { details?.isLimitedViewer == true }
     private var accent: UIColor { isOwner ? UIColor(red: 0.13, green: 0.71, blue: 0.45, alpha: 1) : .systemBlue }
-    private var roleTitle: String {
-        if isLimitedViewer { return "Thông tin giới hạn dành cho Phòng Nhân sự" }
-        return isOwner ? "Bạn là người tổ chức" : "Bạn được mời tham dự"
-    }
-    private var roleIcon: String {
-        isLimitedViewer ? "lock.shield.fill" : isOwner ? "person.badge.key.fill" : "person.2.badge.gearshape.fill"
-    }
+    // Texts and organiser rules are shared with the iOS 18+ SwiftUI detail
+    // (`MeetingDetailRules`).
+    private var roleTitle: String { MeetingDetailRules.roleTitle(isOwner: isOwner, isLimitedViewer: isLimitedViewer) }
+    private var roleIcon: String { MeetingDetailRules.roleIcon(isOwner: isOwner, isLimitedViewer: isLimitedViewer) }
     /// The live schedule copy: an end or extension shows at once.
     private var current: MeetingBooking {
         session.meetings.bookings.first(where: { $0.id == meeting.id }) ?? meeting
     }
     private var displayedRoom: MeetingRoom { details?.room ?? room }
-    private var meetingStarted: Bool { current.startDate.map { $0 <= Date() } ?? false }
-    private var meetingEnded: Bool { current.endDate.map { $0 <= Date() } ?? false }
-    private var dateTitle: String {
-        guard let start = current.startDate else { return "Chưa xác định" }
-        return VietnamTime.weekdayLongDate.string(from: start).capitalized
-    }
-    private var durationTitle: String {
-        guard let start = current.startDate, let end = current.endDate else { return "—" }
-        return DurationClock.title(minutes: max(0, Int(end.timeIntervalSince(start) / 60)))
-    }
+    private var meetingEnded: Bool { MeetingBookingTime.hasEnded(end: current.endDate, now: Date()) }
+    private var dateTitle: String { MeetingDetailRules.dateTitle(start: current.startDate) }
+    private var durationTitle: String { MeetingDetailRules.durationTitle(start: current.startDate, end: current.endDate) }
     private var canCancel: Bool {
-        guard isOwner, current.status == "confirmed", let start = current.startDate else { return false }
-        return start > Date()
+        MeetingDetailRules.canCancel(isOwner: isOwner, status: current.status, start: current.startDate, now: Date())
     }
-    private var canShowMeetingControls: Bool { isOwner && current.status == "confirmed" && meetingStarted }
+    private var canShowMeetingControls: Bool {
+        MeetingDetailRules.showsControls(isOwner: isOwner, status: current.status, start: current.startDate, now: Date())
+    }
     private var nextBooking: MeetingBooking? {
         guard let end = current.endDate else { return nil }
         return session.meetings.nextBooking(after: end, inRoom: current.roomId, excluding: current.id)
@@ -2330,9 +2310,10 @@ private final class LegacyMeetingDetailController: UIViewController {
         return MeetingExtension.maximumMinutes(end: end, nextStart: nextBooking?.startDate)
     }
     private var extensionBlockMessage: String {
-        guard let nextBooking else { return "Không thể gia hạn vì lịch phòng đang được cập nhật." }
-        let title = nextBooking.title.isEmpty ? "cuộc họp tiếp theo" : "“\(nextBooking.title)”"
-        return "Không thể gia hạn vì \(displayedRoom.name) có \(title) lúc \(MeetingPresentation.time(nextBooking.startsAt))."
+        MeetingDetailRules.extensionBlockMessage(
+            roomName: displayedRoom.name,
+            next: nextBooking.map { (title: $0.title, startText: MeetingPresentation.time($0.startsAt)) }
+        )
     }
 
     // MARK: Lifecycle
@@ -2753,8 +2734,9 @@ private final class LegacyMyMeetingsController: UIViewController {
         session.meetings.bookings
             .filter { $0.isMine ?? false }
             .filter { meeting in
-                guard let end = meeting.endDate else { return showsUpcoming }
-                return showsUpcoming ? end >= Date() : end < Date()
+                // Same boundary as the iOS 18+ sheet: ended at its end time.
+                let upcoming = MeetingDetailRules.isUpcoming(end: meeting.endDate, now: Date())
+                return showsUpcoming ? upcoming : !upcoming
             }
             .sorted { $0.startsAt < $1.startsAt }
     }

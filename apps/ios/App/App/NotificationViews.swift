@@ -160,7 +160,8 @@ struct NotificationsView: View {
                     )
                 }
                 .sheet(item: $resubmitting) { request in
-                    RequestComposer(template: request) {
+                    // iOS 17: the UIKit form (the SwiftUI composer crashed there).
+                    PlatformRequestComposer(template: request) {
                         kind,
                         from,
                         to,
@@ -187,9 +188,6 @@ struct NotificationsView: View {
                             employeeIds: employeeIds
                         )
                     }
-                    .presentationDetents([.large])
-                    .presentationContentInteraction(.resizes)
-                    .presentationDragIndicator(.hidden)
                 }
                 .sheet(item: $meetingNotification) { notification in MeetingNotificationDetail(notification: notification) }
                 .sheet(

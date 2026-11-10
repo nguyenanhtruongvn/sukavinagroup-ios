@@ -33,12 +33,12 @@ struct MeetingBookingDetailSheet: View {
     // Role color is shared with Android: organiser green, invitee/limited blue.
     private var isLimitedViewer: Bool { details?.isLimitedViewer == true }
     private var accent: Color { booking.isOwner == true ? Color(red: 0.13, green: 0.71, blue: 0.45) : .blue }
+    // Texts are shared with the iOS 17 UIKit detail (`MeetingDetailRules`).
     private var roleTitle: String {
-        if isLimitedViewer { return "Thông tin giới hạn dành cho Phòng Nhân sự" }
-        return booking.isOwner == true ? "Bạn là người tổ chức" : "Bạn được mời tham dự"
+        MeetingDetailRules.roleTitle(isOwner: booking.isOwner == true, isLimitedViewer: isLimitedViewer)
     }
     private var roleIcon: String {
-        isLimitedViewer ? "lock.shield.fill" : booking.isOwner == true ? "person.badge.key.fill" : "person.2.badge.gearshape.fill"
+        MeetingDetailRules.roleIcon(isOwner: booking.isOwner == true, isLimitedViewer: isLimitedViewer)
     }
 
     // Read the live schedule copy first so an end/extension redraws this sheet
@@ -49,14 +49,8 @@ struct MeetingBookingDetailSheet: View {
     private var startDate: Date? { currentBooking.startDate }
     private var endDate: Date? { currentBooking.endDate }
 
-    private var dateTitle: String {
-        guard let start = startDate else { return "Chưa xác định" }
-        return VietnamTime.weekdayLongDate.string(from: start).capitalized
-    }
-    private var durationTitle: String {
-        guard let start = startDate, let end = endDate else { return "—" }
-        return DurationClock.title(minutes: max(0, Int(end.timeIntervalSince(start) / 60)))
-    }
+    private var dateTitle: String { MeetingDetailRules.dateTitle(start: startDate) }
+    private var durationTitle: String { MeetingDetailRules.durationTitle(start: startDate, end: endDate) }
     private var displayedRoom: MeetingRoom { details?.room ?? room }
     /// The organiser of a confirmed booking can cancel it before it starts
     /// and control it (end, extend) once it has started.
@@ -258,11 +252,10 @@ struct MeetingControlCard: View {
         return MeetingExtension.maximumMinutes(end: endDate, nextStart: nextBooking?.startDate)
     }
     private var extensionBlockMessage: String {
-        guard let nextBooking else {
-            return "Không thể gia hạn vì lịch phòng đang được cập nhật."
-        }
-        let title = nextBooking.title.isEmpty ? "cuộc họp tiếp theo" : "“\(nextBooking.title)”"
-        return "Không thể gia hạn vì \(roomName) có \(title) lúc \(MeetingPresentation.time(nextBooking.startsAt))."
+        MeetingDetailRules.extensionBlockMessage(
+            roomName: roomName,
+            next: nextBooking.map { (title: $0.title, startText: MeetingPresentation.time($0.startsAt)) }
+        )
     }
 
     var body: some View {
@@ -379,7 +372,7 @@ struct MeetingControlCard: View {
         submittingAction = action
         actionError = nil
         // A booking added meanwhile can lower the limit below the chosen value.
-        let minutes = min(extensionMinutes, maximumExtensionMinutes)
+        let minutes = MeetingDetailRules.extensionToSend(chosen: extensionMinutes, maximum: maximumExtensionMinutes)
         actionError = await sessionActions.store.performMeetingControl(
             bookingID: bookingID,
             action: action,
@@ -409,9 +402,9 @@ struct MyMeetingsSheet: View {
     /// The meetings of the chosen tab at `now` (bookings are already sorted).
     private func meetings(at now: Date) -> [MeetingBooking] {
         myBookings.filter { meeting in
-            guard let end = meeting.endDate else { return showsUpcoming }
-            let ended = MeetingBookingTime.hasEnded(end: end, now: now)
-            return showsUpcoming ? !ended : ended
+            // Same boundary as the iOS 17 UIKit list (`MeetingDetailRules`).
+            let upcoming = MeetingDetailRules.isUpcoming(end: meeting.endDate, now: now)
+            return showsUpcoming ? upcoming : !upcoming
         }
     }
 
