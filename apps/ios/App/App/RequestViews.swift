@@ -1197,6 +1197,64 @@ struct RequestDecisionView: View {
     }
 }
 
+/// Cơm trưa / Cơm chiều of a Công tác request, shared by reference with the
+/// SwiftUI composer so that only `RequestMealButtons` observes it.
+final class RequestMealChoice: ObservableObject {
+    @Published var lunch: Bool
+    @Published var dinner: Bool
+
+    init(lunch: Bool = false, dinner: Bool = false) {
+        self.lunch = lunch
+        self.dinner = dinner
+    }
+}
+
+/// The two meal toggles. They answer the finger at once (press feedback) and
+/// redraw alone when tapped.
+private struct RequestMealButtons: View {
+    @ObservedObject var meals: RequestMealChoice
+    let onChange: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            toggle("Cơm trưa", isOn: $meals.lunch)
+            toggle("Cơm chiều", isOn: $meals.dinner)
+        }
+    }
+
+    private func toggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        let selected = isOn.wrappedValue
+        return Button {
+            isOn.wrappedValue.toggle()
+            onChange()
+        } label: {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(selected ? Color.green : Color.primary)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(selected ? Color.green.opacity(0.14) : AppTheme.card)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(selected ? Color.green.opacity(0.8) : AppTheme.fieldBorder, lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(RequestChoicePressStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Immediate, short press feedback (`.plain` gave almost none).
+private struct RequestChoicePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
 /// The request composer for the running iOS. TestFlight 144 still crashed in
 /// AttributeGraph while the large SwiftUI composer was built on iOS 17, so
 /// iOS 17 gets the native UIKit form and iOS 18+ the SwiftUI one. Every entry
@@ -1234,6 +1292,14 @@ struct PlatformRequestComposer: View {
 
 // MARK: - iOS 17 native request composer
 
+/// The iOS 17 form's scroll view: with `delaysContentTouches` off, controls
+/// react on touch-down, and a drag starting on a button or field still scrolls.
+private final class LegacyFormScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool {
+        view is UIControl ? true : super.touchesShouldCancel(in: view)
+    }
+}
+
 /// Intentionally a thin representable.  The form itself is UIKit so opening a
 /// new request on iOS 17 never asks SwiftUI/AttributeGraph to construct the
 /// large, stateful composer tree that appears in the TestFlight crash logs.
@@ -1265,7 +1331,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let workEndTime: String?
     private let template: EmployeeRequest?
     private let submitRequest: (EmployeeRequestKind, Date, Date, String, String?, String?, Double?, Double?, Bool?, Bool?, [String]?) async -> String?
-    private let scrollView = UIScrollView()
+    private let scrollView = LegacyFormScrollView()
     private let stack = UIStackView()
     private let kindButton = UIButton(type: .system)
     private let fromPicker = UIDatePicker()
@@ -1450,6 +1516,9 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
 
     private func configureLayout() {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        // Buttons highlight on touch-down instead of ~150 ms later; a drag
+        // that starts on a control still scrolls (LegacyFormScrollView).
+        scrollView.delaysContentTouches = false
         scrollView.showsVerticalScrollIndicator = false
         scrollView.keyboardDismissMode = .interactive
         scrollView.alwaysBounceVertical = true
@@ -1577,23 +1646,31 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     }
 
     private func configureMealButton(_ button: UIButton, title: String, selected: Bool, action: @escaping () -> Void) {
-        button.configuration = mealConfiguration(title: title, selected: selected)
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = title
+        configuration.cornerStyle = .medium
+        button.configuration = configuration
+        button.isSelected = selected
+        // Colours follow isSelected in place. Assigning a new configuration
+        // on every tap cross-faded the whole button, which read as slow.
+        button.configurationUpdateHandler = { button in
+            guard var configuration = button.configuration else { return }
+            let on = button.isSelected
+            configuration.baseForegroundColor = on ? .systemGreen : .label
+            configuration.baseBackgroundColor = on ? .systemGreen : .secondarySystemFill
+            button.configuration = configuration
+        }
         button.addAction(UIAction { _ in action() }, for: .touchUpInside)
         button.heightAnchor.constraint(equalToConstant: 42).isActive = true
     }
 
-    private func mealConfiguration(title: String, selected: Bool) -> UIButton.Configuration {
-        var configuration = UIButton.Configuration.tinted()
-        configuration.title = title
-        configuration.cornerStyle = .medium
-        configuration.baseForegroundColor = selected ? .systemGreen : .label
-        configuration.baseBackgroundColor = selected ? .systemGreen : .secondarySystemFill
-        return configuration
-    }
-
     private func refreshMealButtons() {
-        lunchMealButton.configuration = mealConfiguration(title: "Cơm trưa", selected: lunchMeal)
-        dinnerMealButton.configuration = mealConfiguration(title: "Cơm chiều", selected: dinnerMeal)
+        UIView.performWithoutAnimation {
+            lunchMealButton.isSelected = lunchMeal
+            dinnerMealButton.isSelected = dinnerMeal
+            lunchMealButton.layoutIfNeeded()
+            dinnerMealButton.layoutIfNeeded()
+        }
     }
 
     private func mealSection() -> UIView {
@@ -2067,8 +2144,12 @@ struct RequestComposer: View {
     @State private var transport = "personal_vehicle"
     @State private var distanceKm = ""
     @State private var expense = ""
-    @State private var lunchMeal = false
-    @State private var dinnerMeal = false
+    // Not observed here (a class in @State): a meal tap redraws only
+    // RequestMealButtons. As @State Bools every tap rebuilt this whole form,
+    // date pickers included, so the button changed colour visibly late.
+    @State private var meals = RequestMealChoice()
+    /// Set once on the first meal change, for the unsaved-input check.
+    @State private var mealsEdited = false
     @State private var durationMinutes = 30
     @FocusState private var reasonFocused: Bool
     @State private var leaveScheduleWasInitialized = false
@@ -2120,8 +2201,10 @@ struct RequestComposer: View {
         _destination = State(initialValue: template.businessDestination ?? "")
         _transport = State(initialValue: template.businessTransport.flatMap { $0.isEmpty ? nil : $0 } ?? "personal_vehicle")
         _distanceKm = State(initialValue: template.businessDistanceKm.map(Self.plainNumber) ?? "")
-        _lunchMeal = State(initialValue: template.businessLunchMeal ?? false)
-        _dinnerMeal = State(initialValue: template.businessDinnerMeal ?? false)
+        _meals = State(initialValue: RequestMealChoice(
+            lunch: template.businessLunchMeal ?? false,
+            dinner: template.businessDinnerMeal ?? false
+        ))
         if let minutes = prefill.durationMinutes {
             _durationMinutes = State(initialValue: minutes)
         }
@@ -2195,21 +2278,6 @@ struct RequestComposer: View {
     private var submissionReason: String {
         guard usesDurationInput else { return cleanReason }
         return RequestFormRules.durationReason(kindTitle: kind.title, minutes: durationMinutes, reason: cleanReason)
-    }
-    private func mealButton(title: String, selected: Binding<Bool>) -> some View {
-        Button { selected.wrappedValue.toggle() } label: {
-            Text(title)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(selected.wrappedValue ? Color.green : Color.primary)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(selected.wrappedValue ? Color.green.opacity(0.14) : AppTheme.card)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(selected.wrappedValue ? Color.green.opacity(0.8) : AppTheme.fieldBorder, lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 
     @ViewBuilder private func labeledNumberField(
@@ -2336,11 +2404,11 @@ struct RequestComposer: View {
     }
 
     private var currentInput: [String] {
-        [reason, destination, distanceKm, String(lunchMeal), String(dinnerMeal)].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        [reason, destination, distanceKm, String(meals.lunch), String(meals.dinner)].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
     }
 
     private var hasUnsavedInput: Bool {
-        scheduleEdited || (initialInput.map { $0 != currentInput } ?? false)
+        scheduleEdited || mealsEdited || (initialInput.map { $0 != currentInput } ?? false)
     }
 
     /// `binding`, marking the schedule as edited when a picker changes it.
@@ -2585,9 +2653,8 @@ struct RequestComposer: View {
                             }
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("SUẤT ĂN").font(.caption.weight(.semibold)).foregroundStyle(AppTheme.muted)
-                                HStack(spacing: 8) {
-                                    mealButton(title: "Cơm trưa", selected: $lunchMeal)
-                                    mealButton(title: "Cơm chiều", selected: $dinnerMeal)
+                                RequestMealButtons(meals: meals) {
+                                    if !mealsEdited { mealsEdited = true }
                                 }
                             }
                         }
@@ -2778,7 +2845,7 @@ struct RequestComposer: View {
                             // Business fields only for Công tác (they were sent with every kind).
                             let business = RequestFormRules.businessFields(
                                 kind: kind.form, destination: destination, transport: transport,
-                                distanceText: distanceKm, lunchMeal: lunchMeal, dinnerMeal: dinnerMeal
+                                distanceText: distanceKm, lunchMeal: meals.lunch, dinnerMeal: meals.dinner
                             )
                             let error = await submit(kind, dates.from, dates.to, submissionReason, business.destination, business.transport, business.distanceKm, nil, business.lunchMeal, business.dinnerMeal, employeeIDs)
                             isSubmitting = false
