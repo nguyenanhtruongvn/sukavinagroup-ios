@@ -235,8 +235,8 @@ extension EmployeeRequestKind {
     }
 }
 
-struct EmployeeRequest: Codable, Identifiable {
-    struct EmployeeSummary: Codable {
+struct EmployeeRequest: Codable, Identifiable, Equatable {
+    struct EmployeeSummary: Codable, Equatable {
         let fullName: String
         let employeeCode: String
         let department: String?
@@ -593,10 +593,15 @@ final class EmployeeRequestStore: ObservableObject {
                 } while self.rerunRequested && !Task.isCancelled
                 guard !Task.isCancelled else { return }
                 var seenRequestIDs = Set<String>()
-                self.requests = (loadedRequests + delegatedRequests).filter { seenRequestIDs.insert($0.id).inserted }
+                let merged = (loadedRequests + delegatedRequests).filter { seenRequestIDs.insert($0.id).inserted }
+                self.lastLoadedAt = Date()
+                // Most reloads (request events, foreground) return the same
+                // lists: assigning them anyway redrew the Requests and
+                // Notifications tabs and re-encoded the cache on the main actor.
+                guard merged != self.requests || loadedApprovals != self.approvals else { return }
+                self.requests = merged
                 self.approvals = loadedApprovals
                 self.rebuildIndex()
-                self.lastLoadedAt = Date()
                 self.saveCache()
             } catch is CancellationError {
                 return

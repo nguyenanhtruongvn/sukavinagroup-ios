@@ -230,7 +230,8 @@ private enum MeetingLiveActivityAction {
         case .end: path = "me/meeting-bookings/\(bookingID)/end"
         case .extend: path = "me/meeting-bookings/\(bookingID)/extend"
         }
-        var request = URLRequest(url: URL(string: path, relativeTo: baseURL)!)
+        guard let url = URL(string: path, relativeTo: baseURL) else { throw MeetingLiveActivityActionError.unavailable }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 30
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -384,8 +385,15 @@ private enum MeetingLiveActivityAction {
     /// Exchanges the stored refresh token for a new access token and stores
     /// it where the app reads it. Returns nil when signed out or rejected.
     private static func renewAccessToken() async -> String? {
+        // In the app process, share APIClient's single-flight refresh: two
+        // refreshes with one rotating refresh token make the slower one fail
+        // with 401, which signed the user out.
+        if let renewInApp = MeetingLiveActivitySessionRenewal.renewInApp {
+            return await renewInApp()
+        }
         guard let refreshToken = keychainValue(account: "refresh-token") else { return nil }
-        var request = URLRequest(url: URL(string: "auth/refresh", relativeTo: baseURL)!)
+        guard let url = URL(string: "auth/refresh", relativeTo: baseURL) else { return nil }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -438,6 +446,14 @@ private enum MeetingLiveActivityAction {
               let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
+}
+
+/// Session renewal for Live Activity actions. The app sets it at launch to
+/// renew through `APIClient` (this file is also built into the widget
+/// extension, which has no APIClient and keeps its own direct refresh).
+enum MeetingLiveActivitySessionRenewal {
+    /// Returns the new access token, or nil when signed out or rejected.
+    static var renewInApp: (() async -> String?)?
 }
 
 /// `staleDate` only tells the system that content is stale; it does not end an

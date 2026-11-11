@@ -153,6 +153,28 @@ enum MeetingLiveActivityManager {
     }
 }
 
+/// Sends a Live Activity token registration with the stored access token.
+/// The upload often runs on activation, before the app renewed an access
+/// token that expired hours ago: on 401 it renews the session once through
+/// APIClient (shared with every other refresh) and retries, instead of
+/// leaving the token unregistered until the next launch.
+enum LiveActivityTokenUpload {
+    static func send(_ request: URLRequest) async throws -> HTTPURLResponse? {
+        let (_, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else { return nil }
+        guard http.statusCode == 401, KeychainStore.loadRefreshToken() != nil,
+              let refreshed = try? await APIClient.shared.refreshSession() else { return http }
+        if !refreshed.widgetToken.isEmpty {
+            AttendanceWidgetBridge.scheduleConfigure(token: refreshed.widgetToken)
+        }
+        NotificationCenter.default.post(name: .sukavinaSessionRefreshed, object: refreshed)
+        var retry = request
+        retry.setValue("Bearer \(refreshed.accessToken)", forHTTPHeaderField: "Authorization")
+        let (_, retried) = try await URLSession.shared.data(for: retry)
+        return retried as? HTTPURLResponse
+    }
+}
+
 /// Remembers which Live Activity tokens the server already accepted for the
 /// signed-in account, so lifecycle reconciliation does not POST the same
 /// token again on every activation. Entries older than a day are re-sent.
@@ -247,17 +269,16 @@ private enum MeetingLiveActivityPushRegistration {
         var succeeded = false
         defer { LiveActivityTokenLedger.finishUpload(registration, succeeded: succeeded) }
 
-        var request = URLRequest(
-            url: URL(string: "me/meeting-bookings/\(bookingID)/live-activity-token", relativeTo: baseURL)!
-        )
+        guard let url = URL(string: "me/meeting-bookings/\(bookingID)/live-activity-token", relativeTo: baseURL) else { return }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: ["token": tokenValue])
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let http = try await LiveActivityTokenUpload.send(request)
+            guard let http, (200..<300).contains(http.statusCode) else {
                 ConnectionDiagnostics.record("Live Activity push token upload was rejected")
                 return
             }
