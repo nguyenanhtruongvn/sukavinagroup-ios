@@ -27,6 +27,10 @@ struct ModernAttendanceHistoryView: View {
     @State private var errors: [String: String] = [:]
     @State private var loadingMonths = Set<String>()
     @State private var monthIndex = 0
+    /// The attendance revision this view already reacted to. `.task(id:)` also
+    /// runs when the view appears, which forced a network reload of every
+    /// month on each open once the revision was above zero.
+    @State private var handledAttendanceRevision: Int?
     @State private var releasedMonths = Set<String>()
     @State private var workMetricMonths = Set<String>()
 
@@ -123,7 +127,14 @@ struct ModernAttendanceHistoryView: View {
             releasedMonths = Set((await reportsTask).map(\.month))
         }
         .task(id: revisions.attendance) {
-            guard revisions.attendance > 0 else { return }
+            let revision = revisions.attendance
+            guard let handled = handledAttendanceRevision else {
+                // First appearance: the cache-first .task above loads it.
+                handledAttendanceRevision = revision
+                return
+            }
+            guard revision != handled else { return }
+            handledAttendanceRevision = revision
             // Keep the last rendered month visible while refreshing. Clearing
             // the in-memory cache here caused the page to flash a spinner and
             // made every realtime attendance event feel like a cold load.

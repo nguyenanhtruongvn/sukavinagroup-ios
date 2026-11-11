@@ -331,6 +331,18 @@ final class APIClient {
                http.statusCode == 401,
                KeychainStore.loadRefreshToken() != nil {
                 let generation = SessionGeneration.current
+                // Another caller (a parallel request, the refresh timer, a Live
+                // Activity action) already renewed the token this request
+                // sent: retry with it instead of spending another refresh.
+                if let current = KeychainStore.loadToken(), !current.isEmpty, current != token {
+                    return try await request(
+                        path,
+                        method: method,
+                        token: current,
+                        body: body,
+                        allowSessionRefresh: false
+                    )
+                }
                 let refreshed = try await refreshSession()
                 // The user signed out while the refresh was in flight.
                 guard generation == SessionGeneration.current else {

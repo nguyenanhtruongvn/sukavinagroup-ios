@@ -24,7 +24,7 @@ struct AiAssistantOrbView: View {
     @Environment(\.scenePhase) private var scenePhase
     var size: CGFloat = 64
     /// On screen. On another tab or under a pushed screen the timeline stops
-    /// instead of redrawing 30 times a second.
+    /// instead of redrawing 15 times a second.
     @State private var isVisible = false
 
     var body: some View {
@@ -34,7 +34,9 @@ struct AiAssistantOrbView: View {
             // stops with Reduce Motion, while the orb is off screen and
             // whenever the app is not active (scenePhase is fed by
             // ScenePhaseBridge in AppDelegate).
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion || !isVisible || scenePhase != .active)) { timeline in
+            // 15 fps: the layers turn over 5-15 s, so this looks the same as 30 fps
+            // at half the main-thread redraws while Home is on screen.
+            TimelineView(.animation(minimumInterval: 1.0 / 15.0, paused: reduceMotion || !isVisible || scenePhase != .active)) { timeline in
                 motionLayers(seconds: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate)
             }
         }

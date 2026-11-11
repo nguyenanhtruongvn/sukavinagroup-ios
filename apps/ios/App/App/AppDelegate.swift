@@ -121,6 +121,16 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         // Before anything reads the session: Keychain items outlive an
         // uninstall, so a reinstalled app must not sign the previous user in.
         InstallationGuard.forgetPreviousInstallationIfNeeded()
+        // Live Activity actions run in this process: renew through APIClient
+        // so they never race the app's own refresh with the same token.
+        MeetingLiveActivitySessionRenewal.renewInApp = {
+            guard let refreshed = try? await APIClient.shared.refreshSession() else { return nil }
+            if !refreshed.widgetToken.isEmpty {
+                AttendanceWidgetBridge.scheduleConfigure(token: refreshed.widgetToken)
+            }
+            NotificationCenter.default.post(name: .sukavinaSessionRefreshed, object: refreshed)
+            return refreshed.accessToken
+        }
         // Room and news photos (AsyncImage, the iOS 17 room list) load
         // through URLSession.shared. `/api/media` files are immutable for a
         // year; give the shared cache room to keep them across launches

@@ -664,6 +664,10 @@ final class SessionStore: ObservableObject {
                 self.meetingDetailsRefreshTasks.values.forEach { $0.cancel() }
                 self.meetingDetailsRefreshTasks.removeAll()
                 self.meetingDetailsCache.removeAll()
+                // Only reload a schedule the user opened: refreshing marks it
+                // viewed, after which every meeting event and network change
+                // reloaded it too.
+                guard self.hasViewedMeetingSchedule else { return }
                 await self.refreshMeetingSchedule(date: self.activeMeetingScheduleDate, force: true)
             }
         }
@@ -1939,6 +1943,7 @@ final class SessionStore: ObservableObject {
         sessionRefreshTask?.cancel()
         sessionRefreshTask = Task { [weak self] in
             var failures = 0
+            var renewedOnce = false
             while !Task.isCancelled {
                 // Wake 10 minutes before the current access token expires
                 // (its JWT exp), not on a fixed 12-hour cycle that ignored
@@ -1947,12 +1952,17 @@ final class SessionStore: ObservableObject {
                 guard let token = self?.token else { return }
                 let renewal = AccessTokenTiming.renewalDate(for: token, now: Date())
                 let backoff = failures == 0 ? 0 : min(15 * 60, 60 * pow(2, Double(failures - 1)))
-                let wait = max(renewal.timeIntervalSinceNow, backoff, 0)
+                // At least a minute after a renewal: with an access token that
+                // lives 10 minutes or less the renewal date is already past,
+                // which refreshed in a tight loop.
+                let minimumWait: TimeInterval = renewedOnce ? 60 : 0
+                let wait = max(renewal.timeIntervalSinceNow, backoff, minimumWait)
                 try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                 guard !Task.isCancelled, let self else { return }
                 do {
                     try await self.refreshSession()
                     failures = 0
+                    renewedOnce = true
                 } catch NetworkError.unauthorized {
                     self.signOut()
                     return
@@ -2232,6 +2242,12 @@ final class SessionStore: ObservableObject {
                     }
                     // The server closed the stream cleanly: still wait before
                     // reconnecting instead of looping immediately.
+                } catch NetworkError.unauthorized {
+                    // The refresh token was rejected: the session is over.
+                    // Reconnecting with a dead token only retried for minutes.
+                    if Task.isCancelled { return }
+                    if self.state != .signedOut { self.signOut() }
+                    return
                 } catch {
                     if Task.isCancelled { return }
                 }
@@ -2821,6 +2837,8 @@ final class SessionStore: ObservableObject {
             MeetingScheduleResponse(rooms: meetingRooms, bookings: meetingBookings),
             for: day
         )
+        // As for meeting pushes: do not mark an unopened schedule viewed.
+        guard hasViewedMeetingSchedule else { return }
         await refreshMeetingSchedule(date: activeMeetingScheduleDate, force: true)
     }
 

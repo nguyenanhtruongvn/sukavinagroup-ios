@@ -70,9 +70,8 @@ enum MeetingLiveActivityStartRegistration {
         var succeeded = false
         defer { LiveActivityTokenLedger.finishUpload(registration, succeeded: succeeded) }
 
-        var request = URLRequest(
-            url: URL(string: "me/meeting-bookings/live-activity-start-token", relativeTo: baseURL)!
-        )
+        guard let url = URL(string: "me/meeting-bookings/live-activity-start-token", relativeTo: baseURL) else { return }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 20
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -85,8 +84,8 @@ enum MeetingLiveActivityStartRegistration {
         )
 
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            let http = try await LiveActivityTokenUpload.send(request)
+            guard let http, (200..<300).contains(http.statusCode) else {
                 ConnectionDiagnostics.record("Live Activity start token upload was rejected")
                 return
             }

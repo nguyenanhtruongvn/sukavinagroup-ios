@@ -155,92 +155,102 @@ struct CanteenScannerView: View {
                     }
                 }
 
-                if let result {
-                    ScrollView(showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        Image(systemName: result.alreadyReceived ? "exclamationmark.circle.fill" : "checkmark.seal.fill")
-                            .font(.system(size: 54, weight: .bold))
-                            .foregroundColor(result.alreadyReceived ? .orange : .green)
-                        Text(result.alreadyReceived
-                             ? (result.group == true ? "Các suất ăn đã được xác nhận" : "Suất ăn đã được xác nhận")
-                             : (result.group == true ? "Xác nhận nhóm suất ăn thành công" : "Xác nhận suất ăn thành công"))
-                            .font(.title3.bold()).multilineTextAlignment(.center)
-                        if result.group == true {
-                            Text("Đã xác nhận \(result.confirmedCount ?? 0)/\(result.selectionCount ?? result.confirmedEmployees?.count ?? 0) suất trong lần quét")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundColor(AppTheme.muted)
-                        }
-                        if result.group == true, let employees = result.confirmedEmployees, !employees.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                ForEach(employees) { employee in
-                                    VStack(alignment: .leading, spacing: 7) {
-                                        HStack(alignment: .top) {
-                                            VStack(alignment: .leading, spacing: 3) {
-                                                Text(employee.fullName).font(.headline)
-                                                Text("MSNV: \(employee.employeeCode)")
-                                                    .font(.caption).foregroundColor(AppTheme.muted)
-                                            }
-                                            Spacer(minLength: 8)
-                                            Label(employee.alreadyReceived == true ? "Đã nhận trước đó" : "Đã nhận", systemImage: "checkmark.circle.fill")
-                                                .font(.caption.weight(.semibold))
-                                                .foregroundColor(AppTheme.text(.green))
-                                        }
-                                        scannerResultLine("Phòng ban", employee.department.isEmpty ? "Chưa cập nhật" : employee.department)
-                                        scannerResultLine("Loại món", employee.choice == "water" ? "Món nước" : "Món chay")
-                                        scannerResultLine("Tên món", employee.mealName.isEmpty ? "Chưa cập nhật" : employee.mealName)
-                                    }
-                                    .padding(12)
-                                    .background(AppTheme.ink.opacity(0.28))
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                // The scanner stays in the hierarchy while a result is shown: removing
+                // it tore down the camera, so every next scan waited for AVCapture to
+                // be created and configured again.
+                ZStack(alignment: .top) {
+                    VStack(spacing: 18) {
+                        QRScannerView(isActive: scanning) { code in
+                            scanning = false
+                            Task {
+                                if let response = await session.scanMealQRCode(code) {
+                                    UINotificationFeedbackGenerator().notificationOccurred(
+                                        response.alreadyReceived ? .warning : .success
+                                    )
+                                    result = response
+                                } else {
+                                    try? await Task.sleep(for: .seconds(1))
+                                    scanning = true
                                 }
                             }
-                        } else {
-                        VStack(spacing: 10) {
-                            scannerResultLine("Nhân viên", result.fullName)
-                            scannerResultLine("MSNV", result.employeeCode)
-                            scannerResultLine("Phòng ban", result.department)
-                            scannerResultLine("Loại món", result.choice == "water" ? "Món nước" : "Món chay")
-                            scannerResultLine("Tên món", result.mealName?.isEmpty == false ? result.mealName! : "Chưa cập nhật")
                         }
-                        .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(AppTheme.red.opacity(0.75), lineWidth: 2)
+                                .padding(36)
                         }
-                        Button {
-                            self.result = nil
-                            scanning = true
-                        } label: {
-                            Label("Quét mã tiếp theo", systemImage: "qrcode.viewfinder")
-                                .font(.headline).foregroundColor(.white)
-                                .frame(maxWidth: .infinity).padding(.vertical, 15)
-                                .background(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
-                        }
+                        Text("Đưa camera vào mã QR trên điện thoại của người nhận món.")
+                            .font(.subheadline).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
                     }
-                    .padding(20)
-                    .background(AppTheme.card.opacity(0.94))
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    }
-                } else {
-                    QRScannerView(isActive: scanning) { code in
-                        scanning = false
-                        Task {
-                            if let response = await session.scanMealQRCode(code) {
-                                UINotificationFeedbackGenerator().notificationOccurred(
-                                    response.alreadyReceived ? .warning : .success
-                                )
-                                result = response
+                    .opacity(result == nil ? 1 : 0)
+                    .allowsHitTesting(result == nil)
+                    .accessibilityHidden(result != nil)
+
+                    if let result {
+                        ScrollView(showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            Image(systemName: result.alreadyReceived ? "exclamationmark.circle.fill" : "checkmark.seal.fill")
+                                .font(.system(size: 54, weight: .bold))
+                                .foregroundColor(result.alreadyReceived ? .orange : .green)
+                            Text(result.alreadyReceived
+                                 ? (result.group == true ? "Các suất ăn đã được xác nhận" : "Suất ăn đã được xác nhận")
+                                 : (result.group == true ? "Xác nhận nhóm suất ăn thành công" : "Xác nhận suất ăn thành công"))
+                                .font(.title3.bold()).multilineTextAlignment(.center)
+                            if result.group == true {
+                                Text("Đã xác nhận \(result.confirmedCount ?? 0)/\(result.selectionCount ?? result.confirmedEmployees?.count ?? 0) suất trong lần quét")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(AppTheme.muted)
+                            }
+                            if result.group == true, let employees = result.confirmedEmployees, !employees.isEmpty {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    ForEach(employees) { employee in
+                                        VStack(alignment: .leading, spacing: 7) {
+                                            HStack(alignment: .top) {
+                                                VStack(alignment: .leading, spacing: 3) {
+                                                    Text(employee.fullName).font(.headline)
+                                                    Text("MSNV: \(employee.employeeCode)")
+                                                        .font(.caption).foregroundColor(AppTheme.muted)
+                                                }
+                                                Spacer(minLength: 8)
+                                                Label(employee.alreadyReceived == true ? "Đã nhận trước đó" : "Đã nhận", systemImage: "checkmark.circle.fill")
+                                                    .font(.caption.weight(.semibold))
+                                                    .foregroundColor(AppTheme.text(.green))
+                                            }
+                                            scannerResultLine("Phòng ban", employee.department.isEmpty ? "Chưa cập nhật" : employee.department)
+                                            scannerResultLine("Loại món", employee.choice == "water" ? "Món nước" : "Món chay")
+                                            scannerResultLine("Tên món", employee.mealName.isEmpty ? "Chưa cập nhật" : employee.mealName)
+                                        }
+                                        .padding(12)
+                                        .background(AppTheme.ink.opacity(0.28))
+                                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                                    }
+                                }
                             } else {
-                                try? await Task.sleep(for: .seconds(1))
+                            VStack(spacing: 10) {
+                                scannerResultLine("Nhân viên", result.fullName)
+                                scannerResultLine("MSNV", result.employeeCode)
+                                scannerResultLine("Phòng ban", result.department)
+                                scannerResultLine("Loại món", result.choice == "water" ? "Món nước" : "Món chay")
+                                scannerResultLine("Tên món", result.mealName?.isEmpty == false ? result.mealName! : "Chưa cập nhật")
+                            }
+                            .padding(16).background(AppTheme.card).clipShape(RoundedRectangle(cornerRadius: 18))
+                            }
+                            Button {
+                                self.result = nil
                                 scanning = true
+                            } label: {
+                                Label("Quét mã tiếp theo", systemImage: "qrcode.viewfinder")
+                                    .font(.headline).foregroundColor(.white)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 15)
+                                    .background(AppTheme.red).clipShape(RoundedRectangle(cornerRadius: 16))
                             }
                         }
+                        .padding(20)
+                        .background(AppTheme.card.opacity(0.94))
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        }
                     }
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(AppTheme.red.opacity(0.75), lineWidth: 2)
-                            .padding(36)
-                    }
-                    Text("Đưa camera vào mã QR trên điện thoại của người nhận món.")
-                        .font(.subheadline).foregroundColor(AppTheme.muted).multilineTextAlignment(.center)
                 }
                 Spacer(minLength: 0)
             }
