@@ -521,6 +521,25 @@ struct NotificationsView: View {
         }
     }
 
+    /// Once read, an approver's request notification shows the request's
+    /// status on the right ("Chờ duyệt" / "Đã duyệt" / "Từ chối") where the
+    /// "Mới" badge was, so it can be told apart without opening it.
+    @ViewBuilder
+    private func statusBadge(for item: RequestNotification, request: EmployeeRequest?) -> some View {
+        if item.type == "request_pending", let request,
+           [EmployeeRequestStatus.pending, .approved, .rejected].contains(request.status) {
+            Text(request.status.title)
+                .font(.caption2.bold())
+                .lineLimit(1)
+                .fixedSize()
+                .foregroundStyle(request.status.color)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(request.status.color.opacity(0.14))
+                .clipShape(Capsule())
+        }
+    }
+
     private func requestNotificationRow(_ item: RequestNotification) -> some View {
         Button { Task { await open(item) } } label: {
             requestNotificationContent(item)
@@ -550,28 +569,13 @@ struct NotificationsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.title).font(.headline)
                 if let request {
-                    HStack(spacing: 8) {
-                        Text(request.kind.title)
-                            .font(.caption.bold())
-                            .foregroundStyle(request.kind.color)
-                            .padding(.horizontal, 9)
-                            .padding(.vertical, 4)
-                            .background(request.kind.color.opacity(0.13))
-                            .clipShape(Capsule())
-                        // An approver's request notification shows "Đã duyệt" /
-                        // "Từ chối" once the request is decided, so it stands
-                        // out without opening it. Not shown while pending.
-                        if item.type == "request_pending",
-                           request.status == .approved || request.status == .rejected {
-                            Text(request.status.title)
-                                .font(.caption.bold())
-                                .foregroundStyle(request.status.color)
-                                .padding(.horizontal, 9)
-                                .padding(.vertical, 4)
-                                .background(request.status.color.opacity(0.13))
-                                .clipShape(Capsule())
-                        }
-                    }
+                    Text(request.kind.title)
+                        .font(.caption.bold())
+                        .foregroundStyle(request.kind.color)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(request.kind.color.opacity(0.13))
+                        .clipShape(Capsule())
                 }
                 if item.type.hasPrefix("request_") && (startsAt != nil || endsAt != nil) {
                     requestDateRange(startsAt: startsAt, endsAt: endsAt)
@@ -580,7 +584,11 @@ struct NotificationsView: View {
                 Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
             }
             Spacer(minLength: 0)
-            unreadBadge(for: item)
+            if item.read {
+                statusBadge(for: item, request: request)
+            } else {
+                unreadBadge(for: item)
+            }
         }
         .padding(16)
         .background { requestNotificationBackground(item) }
