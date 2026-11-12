@@ -167,6 +167,35 @@ enum RequestFormRules {
         var end: Date
         var recipientsLoaded: Bool
         var selectedRecipientCount: Int
+        /// The user's own pending or approved overtime requests (Làm thêm
+        /// giờ and Làm chủ nhật), for the overlap warning.
+        var existingOvertime: [ExistingOvertime] = []
+        /// The request is created for the user (alone or with reports).
+        var includesSelf = true
+    }
+
+    /// A pending or approved overtime request the new one may not overlap.
+    struct ExistingOvertime: Equatable {
+        var start: Date
+        var end: Date
+        var approved: Bool
+    }
+
+    /// The first existing request that shares time with start..end. Touching
+    /// intervals (one ends as the next starts) do not overlap: the server
+    /// applies the same rule and rejects the request otherwise.
+    static func overlappingOvertime(start: Date, end: Date, existing: [ExistingOvertime]) -> ExistingOvertime? {
+        existing
+            .filter { $0.start < end && $0.end > start }
+            .min { $0.start < $1.start }
+    }
+
+    /// The server's wording, shown before sending instead of after.
+    static func overtimeOverlapMessage(_ request: ExistingOvertime) -> String {
+        let start = VietnamTime.dateTime.string(from: request.start)
+        let end = VietnamTime.dateTime.string(from: request.end)
+        let status = request.approved ? "đã duyệt" : "đang chờ duyệt"
+        return "Khung giờ làm thêm bị trùng với đơn \(start) – \(end) (\(status)). Vui lòng chọn khung giờ khác."
     }
 
     /// What still blocks "Gửi đơn", or nil. One order on both iOS versions
@@ -188,6 +217,11 @@ enum RequestFormRules {
         }
         if (draft.kind == .sunday || draft.kind == .overtime) && draft.end <= draft.start {
             return "Giờ kết thúc phải sau giờ bắt đầu."
+        }
+        // Before the reason check: the time is what has to change.
+        if (draft.kind == .sunday || draft.kind == .overtime) && draft.includesSelf,
+           let clash = overlappingOvertime(start: draft.start, end: draft.end, existing: draft.existingOvertime) {
+            return overtimeOverlapMessage(clash)
         }
         if draft.kind.usesDuration && validDuration(draft.durationMinutesText) == nil {
             return "Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút."
