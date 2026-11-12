@@ -49,9 +49,16 @@ enum RequestFormRules {
     }
 
     /// Overtime after the start picker moved: the end follows so the request
-    /// keeps a valid, stepped length.
-    static func overtimeAfterStartChange(start: Date, end: Date, minutes: Int) -> (start: Date, end: Date, minutes: Int) {
-        let minutes = start < end ? overtimeMinutes(from: start, to: end) : minutes
+    /// keeps a valid, stepped length. A new start day moves the end with it
+    /// and keeps the length (moving the start a day earlier used to stretch
+    /// the request to 23 giờ 55 phút and leave the end on the old day); a new
+    /// time on the same day keeps the end and adjusts the length.
+    static func overtimeAfterStartChange(
+        previousStart: Date? = nil, start: Date, end: Date, minutes: Int,
+        calendar: Calendar = VietnamTime.calendar
+    ) -> (start: Date, end: Date, minutes: Int) {
+        let movedDay = previousStart.map { !calendar.isDate($0, inSameDayAs: start) } ?? false
+        let minutes = !movedDay && start < end ? overtimeMinutes(from: start, to: end) : minutes
         return (start, start.addingTimeInterval(TimeInterval(minutes * 60)), minutes)
     }
 

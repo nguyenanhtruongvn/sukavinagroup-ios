@@ -1808,7 +1808,9 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private func fromTimeDidChange() {
         scheduleEdited = true
         guard kind == .overtime else { renderValidation(); return }
+        // The end is always start + duration, so it gives the previous start.
         let adjusted = RequestFormRules.overtimeAfterStartChange(
+            previousStart: toPicker.date.addingTimeInterval(TimeInterval(-overtimeDurationMinutes * 60)),
             start: fromPicker.date, end: toPicker.date, minutes: overtimeDurationMinutes
         )
         setOvertimeDuration(adjusted.minutes)
@@ -2500,7 +2502,7 @@ struct RequestComposer: View {
             get: { from },
             set: { selected in
                 markScheduleEdited(from: from, to: selected)
-                let adjusted = RequestFormRules.overtimeAfterStartChange(start: selected, end: to, minutes: durationMinutes)
+                let adjusted = RequestFormRules.overtimeAfterStartChange(previousStart: from, start: selected, end: to, minutes: durationMinutes)
                 from = adjusted.start
                 durationMinutes = adjusted.minutes
                 to = adjusted.end
