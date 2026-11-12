@@ -515,7 +515,7 @@ struct NotificationsView: View {
                 .font(.caption2.bold())
                 .foregroundStyle(color)
                 .padding(.horizontal, 9)
-                .padding(.vertical, 5)
+                .padding(.vertical, 4)
                 .background(color.opacity(0.18))
                 .clipShape(Capsule())
         }
@@ -578,7 +578,12 @@ struct NotificationsView: View {
                             .background(request.kind.color.opacity(0.13))
                             .clipShape(Capsule())
                         Spacer(minLength: 0)
-                        statusBadge(for: item, request: request)
+                        // "Mới" while unread, then the approver's status.
+                        if item.read {
+                            statusBadge(for: item, request: request)
+                        } else {
+                            unreadBadge(for: item)
+                        }
                     }
                 }
                 if item.type.hasPrefix("request_") && (startsAt != nil || endsAt != nil) {
@@ -588,7 +593,10 @@ struct NotificationsView: View {
                 Text(VietnamTime.dateTime.string(from: item.createdAt)).font(.caption).foregroundStyle(AppTheme.redText)
             }
             Spacer(minLength: 0)
-            unreadBadge(for: item)
+            // Without a kind row the "Mới" badge stays in the corner.
+            if request == nil {
+                unreadBadge(for: item)
+            }
         }
         .padding(16)
         .background { requestNotificationBackground(item) }
