@@ -353,6 +353,21 @@ final class EmployeeRequestStore: ObservableObject {
     /// An approval assigned to this user that still awaits a decision.
     func isPendingApproval(_ id: String) -> Bool { pendingApprovalIDs.contains(id) }
 
+    /// The user's own pending or approved Làm thêm giờ / Làm chủ nhật
+    /// requests, so the composer warns about an overlap before sending. The
+    /// server enforces the same rule; requests created for direct reports
+    /// (delegated) belong to them and are left out.
+    func activeOwnOvertime(employeeCode: String?) -> [RequestFormRules.ExistingOvertime] {
+        let code = employeeCode?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let owner = (code?.isEmpty == false ? code : nil) ?? cacheEmployeeCode
+        return requests.compactMap { request in
+            guard request.kind == .overtime || request.kind == .sunday,
+                  request.status == .pending || request.status == .approved else { return nil }
+            if let owner, let requestOwner = request.employee?.employeeCode, requestOwner != owner { return nil }
+            return RequestFormRules.ExistingOvertime(start: request.from, end: request.to, approved: request.status == .approved)
+        }
+    }
+
     /// The user's own rejected request, which can be sent again. A request this
     /// user rejected as an approver belongs to someone else.
     func canResubmit(_ request: EmployeeRequest) -> Bool {
@@ -1978,7 +1993,9 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
                 start: dates.start,
                 end: dates.end,
                 recipientsLoaded: recipientsLoaded,
-                selectedRecipientCount: selectedRecipientIDs.count
+                selectedRecipientCount: selectedRecipientIDs.count,
+                existingOvertime: store.activeOwnOvertime(employeeCode: session.profile?.employeeCode),
+                includesSelf: !recipientsLoaded || store.managedEmployees.contains { $0.isSelf && selectedRecipientIDs.contains($0.id) }
             ),
             calendar: VietnamTime.calendar
         )
@@ -2426,7 +2443,9 @@ struct RequestComposer: View {
                 start: dates.from,
                 end: dates.to,
                 recipientsLoaded: directory.loaded,
-                selectedRecipientCount: selectedRecipientIDs.count
+                selectedRecipientCount: selectedRecipientIDs.count,
+                existingOvertime: requestStore.activeOwnOvertime(employeeCode: session.profile?.employeeCode),
+                includesSelf: !directory.loaded || directory.employees.contains { $0.isSelf && selectedRecipientIDs.contains($0.id) }
             ),
             calendar: VietnamTime.calendar
         )
