@@ -115,7 +115,14 @@ final class RequestFormRulesTests: XCTestCase {
         // Shown even before a reason is typed: the time is what must change.
         XCTAssertEqual(
             RequestFormRules.missingRequirement(overtime, calendar: calendar),
-            "Khung giờ làm thêm bị trùng với đơn 17:00 12/11/2026 – 19:00 12/11/2026 (đang chờ duyệt). Vui lòng chọn khung giờ khác."
+            "Trùng giờ với đơn làm thêm 17:00–19:00 ngày 12/11 (đang chờ duyệt)."
+        )
+        // An overnight request names both days.
+        XCTAssertEqual(
+            RequestFormRules.overtimeOverlapMessage(.init(
+                start: try date("2026-11-12T22:00:00+07:00"), end: try date("2026-11-13T02:00:00+07:00"), approved: false
+            )),
+            "Trùng giờ với đơn làm thêm 22:00 12/11 – 02:00 13/11 (đang chờ duyệt)."
         )
 
         var approved = existing
@@ -132,7 +139,7 @@ final class RequestFormRulesTests: XCTestCase {
         // Sunday work is stored as overtime and follows the same rule.
         var sunday = draft(.sunday, start: try date("2026-11-15T08:00:00+07:00"), end: try date("2026-11-15T12:00:00+07:00"))
         sunday.existingOvertime = [.init(start: try date("2026-11-15T07:30:00+07:00"), end: try date("2026-11-15T16:30:00+07:00"), approved: true)]
-        XCTAssertTrue(RequestFormRules.missingRequirement(sunday, calendar: calendar)?.hasPrefix("Khung giờ làm thêm bị trùng") == true)
+        XCTAssertTrue(RequestFormRules.missingRequirement(sunday, calendar: calendar)?.hasPrefix("Trùng giờ với đơn làm thêm") == true)
 
         // Only for the user's own request; other kinds are not checked.
         sunday.includesSelf = false
