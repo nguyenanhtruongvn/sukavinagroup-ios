@@ -167,32 +167,55 @@ enum RequestFormRules {
         var end: Date
         var recipientsLoaded: Bool
         var selectedRecipientCount: Int
-        /// The user's own pending or approved overtime requests (Làm thêm
-        /// giờ and Làm chủ nhật), for the overlap warning.
-        var existingOvertime: [ExistingOvertime] = []
+        /// The user's own pending or approved requests, for the overlap
+        /// warning (only those of the same stored kind are compared).
+        var existingRequests: [ExistingRequest] = []
         /// The request is created for the user (alone or with reports).
         var includesSelf = true
     }
 
-    /// A pending or approved overtime request the new one may not overlap.
-    struct ExistingOvertime: Equatable {
+    /// A pending or approved request the new one may not overlap.
+    struct ExistingRequest: Equatable {
+        /// The kind as the API stores it ("sunday" is stored as "overtime").
+        var kind: String
         var start: Date
         var end: Date
         var approved: Bool
     }
 
-    /// The first existing request that shares time with start..end. Touching
-    /// intervals (one ends as the next starts) do not overlap: the server
-    /// applies the same rule and rejects the request otherwise.
-    static func overlappingOvertime(start: Date, end: Date, existing: [ExistingOvertime]) -> ExistingOvertime? {
-        existing
-            .filter { $0.start < end && $0.end > start }
+    /// The kind as the API stores it: Làm chủ nhật is an overtime request.
+    static func storedKind(_ kind: RequestFormKind) -> String {
+        kind == .sunday ? RequestFormKind.overtime.rawValue : kind.rawValue
+    }
+
+    /// Lower-case names for "Trùng giờ với đơn …", as on the server.
+    static func shortName(storedKind: String) -> String {
+        switch storedKind {
+        case "leave": return "xin nghỉ"
+        case "late": return "đi trễ"
+        case "early": return "về sớm"
+        case "overtime": return "làm thêm"
+        case "business": return "công tác"
+        case "attendance": return "xác nhận giờ công"
+        case "gate": return "ra cổng"
+        default: return "từ"
+        }
+    }
+
+    /// The first existing request of the same stored kind that shares time
+    /// with start..end. Touching intervals (one ends as the next starts) do
+    /// not overlap; the same zero-length time does. The server applies the
+    /// same rule and rejects the request otherwise.
+    static func overlappingRequest(kind: RequestFormKind, start: Date, end: Date, existing: [ExistingRequest]) -> ExistingRequest? {
+        let stored = storedKind(kind)
+        return existing
+            .filter { $0.kind == stored && (($0.start < end && $0.end > start) || ($0.start == start && $0.end == end)) }
             .min { $0.start < $1.start }
     }
 
-    /// Short, as on Android and the server: "Trùng giờ với đơn làm thêm
-    /// 16:30–17:00 ngày 11/11 (đã duyệt)." An overnight request shows both days.
-    static func overtimeOverlapMessage(_ request: ExistingOvertime) -> String {
+    /// Short, as on Android and the server: "Trùng giờ với đơn xin nghỉ
+    /// 07:30–16:30 ngày 11/11 (đã duyệt)." An overnight request shows both days.
+    static func overlapMessage(_ request: ExistingRequest) -> String {
         let status = request.approved ? "đã duyệt" : "đang chờ duyệt"
         let startDay = VietnamTime.dayMonth.string(from: request.start)
         let endDay = VietnamTime.dayMonth.string(from: request.end)
@@ -201,7 +224,7 @@ enum RequestFormRules {
         let time = startDay == endDay
             ? "\(startClock)–\(endClock) ngày \(startDay)"
             : "\(startClock) \(startDay) – \(endClock) \(endDay)"
-        return "Trùng giờ với đơn làm thêm \(time) (\(status))."
+        return "Trùng giờ với đơn \(shortName(storedKind: request.kind)) \(time) (\(status))."
     }
 
     /// What still blocks "Gửi đơn", or nil. One order on both iOS versions
@@ -224,13 +247,14 @@ enum RequestFormRules {
         if (draft.kind == .sunday || draft.kind == .overtime) && draft.end <= draft.start {
             return "Giờ kết thúc phải sau giờ bắt đầu."
         }
-        // Before the reason check: the time is what has to change.
-        if (draft.kind == .sunday || draft.kind == .overtime) && draft.includesSelf,
-           let clash = overlappingOvertime(start: draft.start, end: draft.end, existing: draft.existingOvertime) {
-            return overtimeOverlapMessage(clash)
-        }
         if draft.kind.usesDuration && validDuration(draft.durationMinutesText) == nil {
             return "Thời lượng phải từ 5 phút đến 23 giờ 55 phút, theo bước 5 phút."
+        }
+        // Before the reason check: the time is what has to change. After the
+        // duration check: Đi trễ / Về sớm times come from the duration.
+        if draft.includesSelf,
+           let clash = overlappingRequest(kind: draft.kind, start: draft.start, end: draft.end, existing: draft.existingRequests) {
+            return overlapMessage(clash)
         }
         if draft.reason.trimmingCharacters(in: .whitespacesAndNewlines).count < 10 {
             return "Nội dung đơn cần tối thiểu 10 ký tự."
