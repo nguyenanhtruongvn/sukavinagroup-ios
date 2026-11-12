@@ -190,12 +190,18 @@ enum RequestFormRules {
             .min { $0.start < $1.start }
     }
 
-    /// The server's wording, shown before sending instead of after.
+    /// Short, as on Android and the server: "Trùng giờ với đơn làm thêm
+    /// 16:30–17:00 ngày 11/11 (đã duyệt)." An overnight request shows both days.
     static func overtimeOverlapMessage(_ request: ExistingOvertime) -> String {
-        let start = VietnamTime.dateTime.string(from: request.start)
-        let end = VietnamTime.dateTime.string(from: request.end)
         let status = request.approved ? "đã duyệt" : "đang chờ duyệt"
-        return "Khung giờ làm thêm bị trùng với đơn \(start) – \(end) (\(status)). Vui lòng chọn khung giờ khác."
+        let startDay = VietnamTime.dayMonth.string(from: request.start)
+        let endDay = VietnamTime.dayMonth.string(from: request.end)
+        let startClock = VietnamTime.clock.string(from: request.start)
+        let endClock = VietnamTime.clock.string(from: request.end)
+        let time = startDay == endDay
+            ? "\(startClock)–\(endClock) ngày \(startDay)"
+            : "\(startClock) \(startDay) – \(endClock) \(endDay)"
+        return "Trùng giờ với đơn làm thêm \(time) (\(status))."
     }
 
     /// What still blocks "Gửi đơn", or nil. One order on both iOS versions
