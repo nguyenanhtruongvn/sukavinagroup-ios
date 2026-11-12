@@ -550,13 +550,28 @@ struct NotificationsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.title).font(.headline)
                 if let request {
-                    Text(request.kind.title)
-                        .font(.caption.bold())
-                        .foregroundStyle(request.kind.color)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
-                        .background(request.kind.color.opacity(0.13))
-                        .clipShape(Capsule())
+                    HStack(spacing: 8) {
+                        Text(request.kind.title)
+                            .font(.caption.bold())
+                            .foregroundStyle(request.kind.color)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(request.kind.color.opacity(0.13))
+                            .clipShape(Capsule())
+                        // An approver's request notification shows "Đã duyệt" /
+                        // "Từ chối" once the request is decided, so it stands
+                        // out without opening it. Not shown while pending.
+                        if item.type == "request_pending",
+                           request.status == .approved || request.status == .rejected {
+                            Text(request.status.title)
+                                .font(.caption.bold())
+                                .foregroundStyle(request.status.color)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4)
+                                .background(request.status.color.opacity(0.13))
+                                .clipShape(Capsule())
+                        }
+                    }
                 }
                 if item.type.hasPrefix("request_") && (startsAt != nil || endsAt != nil) {
                     requestDateRange(startsAt: startsAt, endsAt: endsAt)
