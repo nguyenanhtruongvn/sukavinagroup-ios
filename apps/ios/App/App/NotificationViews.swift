@@ -352,9 +352,22 @@ struct NotificationsView: View {
             )
             await requestStore.load(token, force: true)
             if !opened, viewing == nil, reviewing == nil, meetingNotification == nil,
-               !presentRequest(for: item, allowViewingPending: true), item.requestId != nil {
-                // Say so instead of leaving the tap without any response.
-                requestNotFound = true
+               !presentRequest(for: item, allowViewingPending: true), let id = item.requestId {
+                // Still missing (an old notification): fetch that request
+                // alone; say so instead of leaving the tap without a response.
+                let fetched: EmployeeRequest? = try? await APIClient.shared.request("me/requests/\(id)", token: token)
+                if viewing != nil || reviewing != nil || meetingNotification != nil {
+                    // Something else opened meanwhile: leave it.
+                } else if let fetched {
+                    // A pending approval notification goes to its approver.
+                    if item.type == "request_pending" && fetched.status == .pending {
+                        reviewing = fetched
+                    } else {
+                        viewing = fetched
+                    }
+                } else {
+                    requestNotFound = true
+                }
             }
             await reloadNotifications()
         }
