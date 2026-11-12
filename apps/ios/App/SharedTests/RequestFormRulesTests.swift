@@ -43,6 +43,27 @@ final class RequestFormRulesTests: XCTestCase {
         XCTAssertEqual(moved.end, start.addingTimeInterval(30 * 60))
     }
 
+    func testOvertimeEndFollowsANewStartDay() throws {
+        // 16:30–17:00 on 12/11; the start date changes to 11/11 (same time).
+        let previousStart = try date("2026-11-12T16:30:00+07:00")
+        let end = try date("2026-11-12T17:00:00+07:00")
+        let earlier = try date("2026-11-11T16:30:00+07:00")
+        let back = RequestFormRules.overtimeAfterStartChange(previousStart: previousStart, start: earlier, end: end, minutes: 30, calendar: calendar)
+        XCTAssertEqual(back.end, try date("2026-11-11T17:00:00+07:00"))
+        XCTAssertEqual(back.minutes, 30)
+
+        let later = try date("2026-11-14T16:30:00+07:00")
+        let forward = RequestFormRules.overtimeAfterStartChange(previousStart: previousStart, start: later, end: end, minutes: 30, calendar: calendar)
+        XCTAssertEqual(forward.end, try date("2026-11-14T17:00:00+07:00"))
+        XCTAssertEqual(forward.minutes, 30)
+
+        // A new time on the same day still keeps the end and adjusts the length.
+        let sameDay = try date("2026-11-12T16:00:00+07:00")
+        let earlierTime = RequestFormRules.overtimeAfterStartChange(previousStart: previousStart, start: sameDay, end: end, minutes: 30, calendar: calendar)
+        XCTAssertEqual(earlierTime.end, end)
+        XCTAssertEqual(earlierTime.minutes, 60)
+    }
+
     func testShiftTimesAndNextSunday() throws {
         let day = try date("2026-11-10T00:00:00+07:00") // Tuesday
         XCTAssertEqual(VietnamTime.clock.string(from: RequestFormRules.shiftStart("08:15", on: day, calendar: calendar)), "08:15")
