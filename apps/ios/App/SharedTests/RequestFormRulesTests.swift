@@ -103,14 +103,15 @@ final class RequestFormRulesTests: XCTestCase {
         XCTAssertEqual(RequestFormRules.missingRequirement(leave, calendar: calendar), "Thời gian kết thúc phải sau thời gian bắt đầu.")
     }
 
-    func testOvertimeOverlapIsShownBeforeSending() throws {
-        let existing = RequestFormRules.ExistingOvertime(
+    func testSameKindOverlapIsShownBeforeSending() throws {
+        let existing = RequestFormRules.ExistingRequest(
+            kind: "overtime",
             start: try date("2026-11-12T17:00:00+07:00"),
             end: try date("2026-11-12T19:00:00+07:00"),
             approved: false
         )
         var overtime = draft(.overtime, start: try date("2026-11-12T18:00:00+07:00"), end: try date("2026-11-12T20:00:00+07:00"))
-        overtime.existingOvertime = [existing]
+        overtime.existingRequests = [existing]
         overtime.reason = ""
         // Shown even before a reason is typed: the time is what must change.
         XCTAssertEqual(
@@ -119,15 +120,15 @@ final class RequestFormRulesTests: XCTestCase {
         )
         // An overnight request names both days.
         XCTAssertEqual(
-            RequestFormRules.overtimeOverlapMessage(.init(
-                start: try date("2026-11-12T22:00:00+07:00"), end: try date("2026-11-13T02:00:00+07:00"), approved: false
+            RequestFormRules.overlapMessage(.init(
+                kind: "overtime", start: try date("2026-11-12T22:00:00+07:00"), end: try date("2026-11-13T02:00:00+07:00"), approved: false
             )),
             "Trùng giờ với đơn làm thêm 22:00 12/11 – 02:00 13/11 (đang chờ duyệt)."
         )
 
         var approved = existing
         approved.approved = true
-        overtime.existingOvertime = [approved]
+        overtime.existingRequests = [approved]
         XCTAssertTrue(RequestFormRules.missingRequirement(overtime, calendar: calendar)?.contains("(đã duyệt)") == true)
 
         // Back-to-back is allowed, as on the server.
@@ -138,15 +139,31 @@ final class RequestFormRulesTests: XCTestCase {
 
         // Sunday work is stored as overtime and follows the same rule.
         var sunday = draft(.sunday, start: try date("2026-11-15T08:00:00+07:00"), end: try date("2026-11-15T12:00:00+07:00"))
-        sunday.existingOvertime = [.init(start: try date("2026-11-15T07:30:00+07:00"), end: try date("2026-11-15T16:30:00+07:00"), approved: true)]
+        sunday.existingRequests = [.init(kind: "overtime", start: try date("2026-11-15T07:30:00+07:00"), end: try date("2026-11-15T16:30:00+07:00"), approved: true)]
         XCTAssertTrue(RequestFormRules.missingRequirement(sunday, calendar: calendar)?.hasPrefix("Trùng giờ với đơn làm thêm") == true)
-
-        // Only for the user's own request; other kinds are not checked.
+        // Only for the user's own request.
         sunday.includesSelf = false
         XCTAssertNil(RequestFormRules.missingRequirement(sunday, calendar: calendar))
-        var leave = draft(.leave, start: try date("2026-11-12T18:00:00+07:00"), end: try date("2026-11-12T20:00:00+07:00"))
-        leave.existingOvertime = [existing]
+
+        // Every kind: a leave may not overlap another leave...
+        var leave = draft(.leave, start: try date("2026-11-12T13:00:00+07:00"), end: try date("2026-11-12T16:30:00+07:00"))
+        leave.existingRequests = [.init(kind: "leave", start: try date("2026-11-12T07:30:00+07:00"), end: try date("2026-11-12T16:30:00+07:00"), approved: true)]
+        XCTAssertEqual(
+            RequestFormRules.missingRequirement(leave, calendar: calendar),
+            "Trùng giờ với đơn xin nghỉ 07:30–16:30 ngày 12/11 (đã duyệt)."
+        )
+        // ...but different kinds may share hours.
+        leave.existingRequests = [existing, .init(kind: "gate", start: try date("2026-11-12T13:00:00+07:00"), end: try date("2026-11-12T14:00:00+07:00"), approved: true)]
         XCTAssertNil(RequestFormRules.missingRequirement(leave, calendar: calendar))
+
+        // The same zero-length time is a duplicate.
+        let point = try date("2026-11-12T10:00:00+07:00")
+        var gate = draft(.gate, start: point, end: point)
+        gate.existingRequests = [.init(kind: "gate", start: point, end: point, approved: false)]
+        XCTAssertEqual(
+            RequestFormRules.missingRequirement(gate, calendar: calendar),
+            "Trùng giờ với đơn ra cổng 10:00–10:00 ngày 12/11 (đang chờ duyệt)."
+        )
     }
 
     func testBusinessFieldsOnlyForBusiness() {
