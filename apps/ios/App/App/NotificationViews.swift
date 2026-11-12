@@ -54,6 +54,8 @@ struct NotificationsView: View {
     @State private var meetingNotification: RequestNotification?
     @State private var attendanceReportMonth: String?
     @State private var confirmClear = false
+    /// A tapped request that is still missing after a reload.
+    @State private var requestNotFound = false
     @State private var hiddenArticleIDs = Set<String>()
     @State private var reloadAgain = false
     @State private var reloadAgainWithDashboard = false
@@ -225,6 +227,11 @@ struct NotificationsView: View {
         } message: {
             Text("Tất cả thông báo trong danh sách sẽ bị xóa.")
         }
+        .alert("Không mở được đơn", isPresented: $requestNotFound) {
+            Button("Đóng", role: .cancel) {}
+        } message: {
+            Text("Đơn này không còn trong danh sách. Hãy kéo xuống để tải lại hoặc xem trong tab Đơn từ.")
+        }
         .alert(
             "Xóa tất cả thông báo?",
             isPresented: Binding(
@@ -344,8 +351,23 @@ struct NotificationsView: View {
                 token: token
             )
             await requestStore.load(token, force: true)
-            if !opened, viewing == nil, reviewing == nil, meetingNotification == nil {
-                presentRequest(for: item, allowViewingPending: true)
+            if !opened, viewing == nil, reviewing == nil, meetingNotification == nil,
+               !presentRequest(for: item, allowViewingPending: true), let id = item.requestId {
+                // Still missing (an old notification): fetch that request
+                // alone; say so instead of leaving the tap without a response.
+                let fetched: EmployeeRequest? = try? await APIClient.shared.request("me/requests/\(id)", token: token)
+                if viewing != nil || reviewing != nil || meetingNotification != nil {
+                    // Something else opened meanwhile: leave it.
+                } else if let fetched {
+                    // A pending approval notification goes to its approver.
+                    if item.type == "request_pending" && fetched.status == .pending {
+                        reviewing = fetched
+                    } else {
+                        viewing = fetched
+                    }
+                } else {
+                    requestNotFound = true
+                }
             }
             await reloadNotifications()
         }
