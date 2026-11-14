@@ -107,13 +107,11 @@ private struct RequestRecipientsPickerSheet: View {
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.muted)
                             .kerning(0.8)
-                        LazyVGrid(columns: columns, spacing: 8) {
-                            ForEach(employees) { employee in
-                                RequestRecipientChoiceTile(
-                                    title: employee.fullName,
-                                    selected: selectedIDs.contains(employee.id)
-                                ) { toggleManagedEmployee(employee.id) }
-                            }
+                        PairedNameGrid(items: employees, name: \.fullName) { employee in
+                            RequestRecipientChoiceTile(
+                                title: employee.fullName,
+                                selected: selectedIDs.contains(employee.id)
+                            ) { toggleManagedEmployee(employee.id) }
                         }
                     }
                 }
@@ -151,6 +149,50 @@ private struct RequestRecipientsPickerSheet: View {
     }
 }
 
+/// Two-column name tiles where names that need two lines share rows and
+/// both tiles of a row are as tall (RequestFormRules.pairedRows). Tiles fill
+/// the height they are given.
+struct PairedNameGrid<Item: Identifiable, Tile: View>: View {
+    let items: [Item]
+    let name: (Item) -> String
+    @ViewBuilder let tile: (Item) -> Tile
+    @State private var width: CGFloat = 0
+    // Re-pairs when the text size changes.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let rows = RequestFormRules.pairedRows(items) { needsTwoLines(name($0)) }
+        VStack(spacing: 8) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(row) { item in
+                        tile(item).frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    if row.count == 1 { Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { width = proxy.size.width }
+                    .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
+            }
+        }
+    }
+
+    /// Semibold subheadline in a tile of half the row, 12 pt inset each side.
+    private func needsTwoLines(_ text: String) -> Bool {
+        guard width > 0 else { return false }
+        let size = UIFont.preferredFont(forTextStyle: .subheadline).pointSize
+        let font = UIFont.systemFont(ofSize: size, weight: .semibold)
+        let available = (width - 8) / 2 - 24
+        return (text as NSString).size(withAttributes: [.font: font]).width > available
+    }
+}
+
 private struct RequestRecipientChoiceTile: View {
     let title: String
     let selected: Bool
@@ -163,7 +205,8 @@ private struct RequestRecipientChoiceTile: View {
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+                // maxHeight: as tall as its row's neighbour (PairedNameGrid).
+                .frame(maxWidth: .infinity, minHeight: 46, maxHeight: .infinity, alignment: .leading)
                 .padding(.horizontal, 12)
                 .foregroundStyle(selected ? Color.green : Color.primary)
                 .background(selected ? Color.green.opacity(0.16) : AppTheme.card)
@@ -2183,14 +2226,21 @@ private final class LegacyRequestRecipientsController: UIViewController {
         guard !directReports.isEmpty else { return }
         let title = UILabel(); title.text = "TẠO ĐƠN CÙNG NHÂN VIÊN"; title.font = UIFont.preferredFont(forTextStyle: .caption1).requestWeight(.bold); title.textColor = .secondaryLabel
         content.addArrangedSubview(title)
-        for index in stride(from: 0, to: directReports.count, by: 2) {
+        // Two-line names share rows (both tiles of a row are as tall: the
+        // stack's fill alignment).
+        let rowWidth = (view.bounds.width > 0 ? view.bounds.width : UIScreen.main.bounds.width) - 40
+        let tileFont = UIFontMetrics(forTextStyle: .subheadline).scaledFont(
+            for: UIFont.systemFont(ofSize: 17, weight: .semibold), maximumPointSize: 22
+        )
+        let rows = RequestFormRules.pairedRows(directReports) { person in
+            (person.fullName as NSString).size(withAttributes: [.font: tileFont]).width > (rowWidth - 8) / 2 - 24
+        }
+        for people in rows {
             let row = UIStackView(); row.axis = .horizontal; row.spacing = 8; row.distribution = .fillEqually
-            let first = directReports[index]
-            row.addArrangedSubview(tile(first.fullName, selected: selectedIDs.contains(first.id)) { [weak self] in self?.toggleManagedEmployee(first.id) })
-            if index + 1 < directReports.count {
-                let second = directReports[index + 1]
-                row.addArrangedSubview(tile(second.fullName, selected: selectedIDs.contains(second.id)) { [weak self] in self?.toggleManagedEmployee(second.id) })
-            } else { row.addArrangedSubview(UIView()) }
+            for person in people {
+                row.addArrangedSubview(tile(person.fullName, selected: selectedIDs.contains(person.id)) { [weak self] in self?.toggleManagedEmployee(person.id) })
+            }
+            if people.count == 1 { row.addArrangedSubview(UIView()) }
             content.addArrangedSubview(row)
         }
     }

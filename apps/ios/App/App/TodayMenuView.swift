@@ -348,8 +348,7 @@ struct TodayMenuView: View {
                     Text("ĐẶT CÙNG NHÂN VIÊN")
                         .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        ForEach(allEmployees) { employee in
+                    PairedNameGrid(items: allEmployees, name: { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName }) { employee in
                             let canSelect = employee.selection == nil
                             let selected = selectedManagedEmployeeIds.contains(employee.id)
                             Button {
@@ -367,7 +366,8 @@ struct TodayMenuView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 11)
-                                    .frame(minHeight: 46, alignment: .leading)
+                                    // As tall as its row's neighbour (PairedNameGrid).
+                                    .frame(minHeight: 46, maxHeight: .infinity, alignment: .leading)
                                     .background(selected ? Color.green.opacity(0.16) :
                                         (canSelect ? AppTheme.card : AppTheme.card.opacity(0.45)))
                                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -380,7 +380,6 @@ struct TodayMenuView: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(!canSelect)
-                        }
                     }
                 }
 
