@@ -225,5 +225,13 @@ final class RequestFormRulesTests: XCTestCase {
         XCTAssertEqual(second.selected, ["a", "me"])
         let removed = RequestFormRules.toggle("a", employees: people, selected: second.selected, hasChosenManagedEmployee: true)
         XCTAssertEqual(removed.selected, ["me"])
+
+        // A request for others is one request, approved by the user's manager.
+        XCTAssertNil(RequestFormRules.groupRoutingNote(employees: people, selected: ["me"], loaded: true))
+        XCTAssertNil(RequestFormRules.groupRoutingNote(employees: people, selected: ["a"], loaded: false))
+        XCTAssertEqual(
+            RequestFormRules.groupRoutingNote(employees: people, selected: ["me", "a", "b"], loaded: true),
+            "Gửi 1 đơn chung cho 3 người · quản lý cấp trên của bạn sẽ duyệt."
+        )
     }
 }

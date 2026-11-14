@@ -304,6 +304,18 @@ enum RequestFormRules {
         return chosen.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ")
     }
 
+    /// Shown under "Tạo đơn cho" once anyone besides the user is chosen: a
+    /// request for others goes, as one request for everyone, to the user's
+    /// own manager.
+    static func groupRoutingNote<Person: RequestRecipient>(
+        employees: [Person], selected: Set<String>, loaded: Bool
+    ) -> String? {
+        guard loaded else { return nil }
+        let chosen = employees.filter { selected.contains($0.id) }
+        guard chosen.contains(where: { !$0.isSelf }) else { return nil }
+        return "Gửi 1 đơn chung cho \(chosen.count) người · quản lý cấp trên của bạn sẽ duyệt."
+    }
+
     /// Tapping a direct report: the first one replaces the default "Tôi",
     /// later ones join the request; tapping a chosen one removes it.
     static func toggle<Person: RequestRecipient>(
