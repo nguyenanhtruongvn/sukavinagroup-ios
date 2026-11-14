@@ -99,7 +99,7 @@ struct MeetingBookingSheet: View {
     }
 
     /// The booking's day: the one opened from the schedule until another is
-    /// picked in the Ngày họp tile (`start` carries it).
+    /// picked in the Ngày họp row (`start` carries it).
     private var dayLabel: String {
         VietnamTime.weekdayDate.string(from: start).capitalized
     }
@@ -121,6 +121,7 @@ struct MeetingBookingSheet: View {
                             // Limit the generic type metadata resolved in one
                             // pass by iOS 17 while retaining the same native form.
                             AnyView(bookingHeader)
+                            AnyView(bookingDayRow)
                             AnyView(meetingDetailsCard)
                             AnyView(inviteesCard)
                         }
@@ -238,7 +239,7 @@ struct MeetingBookingSheet: View {
                 Text(room.name)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(Color(uiColor: .label))
-                Text("\(room.capacity) chỗ · \(dayLabel)")
+                Text("\(room.capacity) chỗ")
                     .font(.caption)
                     .foregroundStyle(Color(uiColor: .secondaryLabel))
                     .lineLimit(1)
@@ -247,6 +248,41 @@ struct MeetingBookingSheet: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)
+    }
+
+    /// The booking day, right under the header and compact as on Android:
+    /// one row, wholly a button. Apple's calendar popover changes the date of
+    /// `start` and keeps its time, so another day can be booked without going
+    /// back to the schedule. Days before today cannot be picked.
+    private var bookingDayRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "calendar")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color.red)
+            Text(dayLabel)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(Color(uiColor: .label))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.down")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(Color(uiColor: .secondaryLabel))
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 50)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .systemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+        .overlay(DatePopoverButton(
+            selection: $start,
+            mode: .date,
+            minimum: earliestBookingDay,
+            accessibilityLabel: "Ngày họp",
+            accessibilityValue: dayLabel
+        ))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var meetingDetailsCard: some View {
@@ -272,21 +308,6 @@ struct MeetingBookingSheet: View {
                     .background(Color(uiColor: .secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
-
-            // The day, wholly a button: Apple's calendar popover changes the
-            // date of `start` and keeps its time, so another day can be
-            // booked without going back to the schedule.
-            bookingTile(title: "Ngày họp", value: dayLabel, icon: "calendar")
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .overlay(DatePopoverButton(
-                    selection: $start,
-                    mode: .date,
-                    minimum: earliestBookingDay,
-                    accessibilityLabel: "Ngày họp",
-                    accessibilityValue: dayLabel
-                ))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             // The two facts of a booking as tiles: when it starts (hh:mm) and
             // how long it lasts. Each tile is wholly a button opening Apple's
