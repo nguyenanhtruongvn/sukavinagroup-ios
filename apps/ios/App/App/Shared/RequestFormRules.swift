@@ -304,6 +304,27 @@ enum RequestFormRules {
         return chosen.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ")
     }
 
+    /// Two-column rows of name tiles (group requests, group meals). Names
+    /// that need two lines are paired with each other, and so are one-line
+    /// names, so a row never pairs a tall tile with a short one. Order stays
+    /// alphabetical as far as possible: each row takes the next name and the
+    /// nearest later name of the same kind; only when one kind runs out does
+    /// a row mix the two.
+    static func pairedRows<Item>(_ items: [Item], needsTwoLines: (Item) -> Bool) -> [[Item]] {
+        var remaining = items
+        var rows: [[Item]] = []
+        while !remaining.isEmpty {
+            let first = remaining.removeFirst()
+            let long = needsTwoLines(first)
+            if let partner = remaining.firstIndex(where: { needsTwoLines($0) == long }) ?? (remaining.isEmpty ? nil : 0) {
+                rows.append([first, remaining.remove(at: partner)])
+            } else {
+                rows.append([first])
+            }
+        }
+        return rows
+    }
+
     /// Shown under "Tạo đơn cho" once anyone besides the user is chosen: a
     /// request for others goes, as one request for everyone, to the user's
     /// own manager.

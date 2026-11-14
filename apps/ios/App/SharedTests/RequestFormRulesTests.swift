@@ -226,6 +226,11 @@ final class RequestFormRulesTests: XCTestCase {
         let removed = RequestFormRules.toggle("a", employees: people, selected: second.selected, hasChosenManagedEmployee: true)
         XCTAssertEqual(removed.selected, ["me"])
 
+        // Two-line names (upper case here) share rows; order is kept otherwise.
+        let paired = RequestFormRules.pairedRows(Array("aBcDefG")) { $0.isUppercase }.map { String($0) }
+        XCTAssertEqual(paired, ["ac", "BD", "ef", "G"])
+        XCTAssertEqual(RequestFormRules.pairedRows(Array("abcD")) { $0.isUppercase }.map { String($0) }, ["ab", "cD"])
+
         // A request for others is one request, approved by the user's manager.
         XCTAssertNil(RequestFormRules.groupRoutingNote(employees: people, selected: ["me"], loaded: true))
         XCTAssertNil(RequestFormRules.groupRoutingNote(employees: people, selected: ["a"], loaded: false))
