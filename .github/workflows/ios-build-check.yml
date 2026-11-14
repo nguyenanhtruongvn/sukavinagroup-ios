@@ -1,15 +1,16 @@
 name: iOS build check
 
 # Compiles the App target and its embedded AttendanceWidget extension (Release,
-# unsigned) on every push to main and every pull request that touches the iOS
+# unsigned) on every push (any branch, so a fix branch is checked before it is
+# merged into main without a PR) and every pull request that touches the iOS
 # app, so compile errors and the Release iOS 17 linkage check (SwiftUICore
-# must not be strongly linked) fail the PR instead of a release build.
+# must not be strongly linked) fail before a release build.
 # Uses a GitHub-hosted macOS runner and no secrets: never run PR code on the
 # self-hosted runner. Nothing is uploaded.
 on:
   push:
     branches:
-      - main
+      - '**'
     paths:
       - apps/ios/**
       - .github/workflows/ios-build-check.yml

@@ -1,13 +1,14 @@
 name: Shared logic tests
 
 # Runs the SwiftPM unit tests for the Foundation-only code in
-# apps/ios/App/App/Shared on every push to main and every pull request that
-# touches the iOS sources. Uses a GitHub-hosted macOS runner only: never run
+# apps/ios/App/App/Shared on every push (any branch, so a fix branch is
+# checked before it is merged into main) and every pull request that touches
+# the iOS sources. Uses a GitHub-hosted macOS runner only: never run
 # PR code on the self-hosted runner.
 on:
   push:
     branches:
-      - main
+      - '**'
     paths:
       - apps/ios/**
       - .github/workflows/shared-logic-tests.yml
