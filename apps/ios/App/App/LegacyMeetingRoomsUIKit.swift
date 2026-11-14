@@ -1403,6 +1403,12 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     // (DatePopoverControl).
     private let startTileControl = DatePopoverControl()
     private let startValueLabel = UILabel()
+    /// The Ngày họp tile: Apple's calendar popover; it changes the date of
+    /// `start` and keeps its time.
+    private let dayTileControl = DatePopoverControl()
+    private let dayValueLabel = UILabel()
+    /// "N chỗ · <day>" in the header, kept in step with the picked day.
+    private weak var headerMetaLabel: UILabel?
     private let durationTileControl = DatePopoverControl()
     private let durationValueLabel = UILabel()
     private let expectedLabel = UILabel()
@@ -1532,6 +1538,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         let kicker = label("ĐẶT PHÒNG", style: .caption1, weight: .bold, color: red)
         let name = label(room.name, style: .title3, weight: .bold, color: .label)
         let meta = label("\(room.capacity) chỗ · \(VietnamTime.weekdayDate.string(from: day).capitalized)", style: .caption1, color: .secondaryLabel)
+        headerMetaLabel = meta
         let texts = UIStackView(arrangedSubviews: [kicker, name, meta])
         texts.axis = .vertical
         texts.spacing = 3
@@ -1570,8 +1577,10 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         // lasts. Both open Apple's compact time bubble, so one tap moves
         // from either to the other (a system menu for Thời lượng could
         // not hand over to the time bubble).
+        configureDayPicker()
         configureStartTimePicker()
         configureDurationPicker()
+        card.addArrangedSubview(makeTile(title: "Ngày họp", icon: "calendar", valueLabel: dayValueLabel, control: dayTileControl))
         let tiles = UIStackView(arrangedSubviews: [
             makeTile(title: "Bắt đầu", icon: "clock.fill", valueLabel: startValueLabel, control: startTileControl),
             makeTile(title: "Thời lượng", icon: "timer", valueLabel: durationValueLabel, control: durationTileControl),
@@ -1696,6 +1705,10 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
     private func render() {
         typeControl.selectedSegmentIndex = meetingType == "Tiếp khách" ? 1 : 0
+        if dayTileControl.date != start { dayTileControl.date = start }
+        dayValueLabel.text = VietnamTime.weekdayDate.string(from: start).capitalized
+        dayTileControl.accessibilityValue = dayValueLabel.text
+        headerMetaLabel?.text = "\(room.capacity) chỗ · \(VietnamTime.weekdayDate.string(from: start).capitalized)"
         if startTileControl.date != start { startTileControl.date = start }
         startValueLabel.text = MeetingPresentation.clock.string(from: start)
         startTileControl.accessibilityValue = startValueLabel.text
@@ -2044,6 +2057,18 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     /// The Bắt đầu tile opens Apple's popover with Apple's time wheels, in
     /// Vietnam time and 5-minute steps (`MeetingBookingTime.minuteStep`), as
     /// on iOS 18 (`DatePopoverControl`). It keeps the booking's day.
+    private func configureDayPicker() {
+        dayTileControl.mode = .date
+        dayTileControl.minimumDate = MeetingPresentation.calendar.startOfDay(for: Date())
+        dayTileControl.date = start
+        dayTileControl.accessibilityLabel = "Ngày họp"
+        dayTileControl.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.start = self.dayTileControl.date
+            self.render()
+        }, for: .valueChanged)
+    }
+
     private func configureStartTimePicker() {
         startTileControl.minuteInterval = MeetingBookingTime.minuteStep
         startTileControl.date = start

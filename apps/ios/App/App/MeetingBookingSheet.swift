@@ -98,8 +98,15 @@ struct MeetingBookingSheet: View {
         MeetingBookingForm.endTime(start: start, durationMinutes: durationMinutes)
     }
 
+    /// The booking's day: the one opened from the schedule until another is
+    /// picked in the Ngày họp tile (`start` carries it).
     private var dayLabel: String {
-        VietnamTime.weekdayDate.string(from: day).capitalized
+        VietnamTime.weekdayDate.string(from: start).capitalized
+    }
+
+    /// Bookings start today or later.
+    private var earliestBookingDay: Date {
+        MeetingPresentation.calendar.startOfDay(for: Date())
     }
 
     var body: some View {
@@ -265,6 +272,21 @@ struct MeetingBookingSheet: View {
                     .background(Color(uiColor: .secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
+
+            // The day, wholly a button: Apple's calendar popover changes the
+            // date of `start` and keeps its time, so another day can be
+            // booked without going back to the schedule.
+            bookingTile(title: "Ngày họp", value: dayLabel, icon: "calendar")
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .overlay(DatePopoverButton(
+                    selection: $start,
+                    mode: .date,
+                    minimum: earliestBookingDay,
+                    accessibilityLabel: "Ngày họp",
+                    accessibilityValue: dayLabel
+                ))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             // The two facts of a booking as tiles: when it starts (hh:mm) and
             // how long it lasts. Each tile is wholly a button opening Apple's
