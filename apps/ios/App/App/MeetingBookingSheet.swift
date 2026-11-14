@@ -239,10 +239,6 @@ struct MeetingBookingSheet: View {
                 Text(room.name)
                     .font(.title3.weight(.bold))
                     .foregroundStyle(Color(uiColor: .label))
-                Text("\(room.capacity) chỗ")
-                    .font(.caption)
-                    .foregroundStyle(Color(uiColor: .secondaryLabel))
-                    .lineLimit(1)
             }
 
             Spacer(minLength: 0)

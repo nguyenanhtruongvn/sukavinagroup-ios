@@ -1537,8 +1537,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
         let kicker = label("ĐẶT PHÒNG", style: .caption1, weight: .bold, color: red)
         let name = label(room.name, style: .title3, weight: .bold, color: .label)
-        let meta = label("\(room.capacity) chỗ", style: .caption1, color: .secondaryLabel)
-        let texts = UIStackView(arrangedSubviews: [kicker, name, meta])
+        let texts = UIStackView(arrangedSubviews: [kicker, name])
         texts.axis = .vertical
         texts.spacing = 3
         let row = UIStackView(arrangedSubviews: [icon, texts])
