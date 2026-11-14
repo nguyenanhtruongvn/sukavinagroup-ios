@@ -256,6 +256,18 @@ struct EmployeeRequest: Codable, Identifiable, Equatable {
     let decisionNote: String?
     let autoApproved: Bool
     let employee: EmployeeSummary?
+    /// One person's place in a group request.
+    struct GroupMember: Codable, Equatable {
+        let requestId: String
+        let fullName: String
+        let status: String
+    }
+    /// A manager's request for several people: one request per person
+    /// sharing groupId, approved or rejected together by the manager's
+    /// superior. Older servers send none of these.
+    let groupId: String?
+    let groupMembers: [GroupMember]?
+    let createdBy: EmployeeSummary?
     // Business-trip details, used to prefill a resubmitted request.
     let businessDestination: String?
     let businessTransport: String?
@@ -266,6 +278,7 @@ struct EmployeeRequest: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, reason, status, createdAt, dueAt, decisionNote, autoApproved, employee
+        case groupId, groupMembers, createdBy
         case storedKind = "kind"
         case sundayWork
         case businessDestination, businessTransport, businessDistanceKm, businessExpense, businessLunchMeal, businessDinnerMeal
@@ -380,8 +393,11 @@ final class EmployeeRequestStore: ObservableObject {
         pendingApprovalIDs = Set(approvals.lazy.filter { $0.status == .pending }.map(\.id))
         ownIDs = Set(requests.lazy.map(\.id))
         var seen = Set<String>()
+        // A group request shows once: for its approver the first still
+        // pending member (approvals list pending first), for the manager who
+        // made it their own or the first member's request.
         combined = (approvals + requests)
-            .filter { seen.insert($0.id).inserted }
+            .filter { seen.insert($0.id).inserted && seen.insert("group:" + ($0.groupId ?? $0.id)).inserted }
             .sorted { $0.createdAt > $1.createdAt }
         combinedByStatus = Dictionary(grouping: combined, by: \.status)
     }
@@ -733,6 +749,11 @@ final class EmployeeRequestStore: ObservableObject {
             } else {
                 approvals.insert(decided, at: 0)
             }
+            // A group request is decided as a whole: hide its other pending
+            // members until the reload brings their new status.
+            if let groupId = decided.groupId {
+                approvals.removeAll { $0.groupId == groupId && $0.id != decided.id && $0.status == .pending }
+            }
             rebuildIndex()
             lastLoadedAt = Date()
             saveCache()
@@ -1008,6 +1029,11 @@ struct RequestCard: View {
             }
 
             requestPeriod
+            if let groupText {
+                Label(groupText, systemImage: "person.3.fill")
+                    .font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Text(request.reason)
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1067,7 +1093,25 @@ struct RequestCard: View {
         }
     }
 
+    /// "Gồm: An, Bình (đã hủy)" for a group request, "Tạo bởi: …" for a
+    /// request a manager made for one person, nil otherwise.
+    private var groupText: String? {
+        guard request.groupId != nil else { return nil }
+        let members = request.groupMembers ?? []
+        if members.count > 1 {
+            return "Gồm: " + members.map { $0.status == "cancelled" ? "\($0.fullName) (đã hủy)" : $0.fullName }
+                .joined(separator: ", ")
+        }
+        guard let creator = request.createdBy?.fullName, !creator.isEmpty else { return nil }
+        return "Tạo bởi: \(creator)"
+    }
+
     private var creatorName: String {
+        let members = request.groupMembers ?? []
+        if members.count > 1 {
+            let creator = request.createdBy?.fullName ?? request.employee?.fullName ?? ""
+            return creator.isEmpty ? "\(members.count) người" : "\(creator) · \(members.count) người"
+        }
         let name = request.employee?.fullName.trimmingCharacters(in: .whitespacesAndNewlines)
         let code = request.employee?.employeeCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let name, !name.isEmpty else { return "Đơn của tôi" }
@@ -1160,6 +1204,14 @@ struct RequestDecisionView: View {
 
     private var trimmedNote: String { note.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// A group request is decided for everyone still pending in it.
+    private var decisionTitle: String {
+        let group = (request.groupMembers ?? []).filter { $0.status == "pending" }.count
+        if working { return "Đang xử lý…" }
+        if group > 1 { return rejecting ? "Từ chối cả \(group) người" : "Duyệt cả \(group) người" }
+        return rejecting ? "Xác nhận từ chối" : "Duyệt đơn"
+    }
+
     var body: some View {
         NavigationStack {
             // Scrolls so the note and the buttons stay reachable above the keyboard.
@@ -1200,7 +1252,7 @@ struct RequestDecisionView: View {
                     } label: {
                         HStack(spacing: 8) {
                             if working { ProgressView().tint(.white) }
-                            Text(working ? "Đang xử lý…" : rejecting ? "Xác nhận từ chối" : "Duyệt đơn")
+                            Text(decisionTitle)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -1424,6 +1476,16 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let validationLabel = UILabel()
     private var kind: EmployeeRequestKind
     private var selectedRecipientIDs = Set<String>()
+    /// "Gửi 1 đơn chung cho N người · …", under the recipients button.
+    private lazy var groupNoteLabel: UILabel = {
+        let label = UILabel()
+        label.font = UIFont.preferredFont(forTextStyle: .caption1)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = .secondaryLabel
+        label.numberOfLines = 0
+        label.isHidden = true
+        return label
+    }()
     private var recipientsLoaded = false
     /// Only the first direct-report choice replaces the default manager.
     /// Kept by the composer (rather than the pushed picker) so returning to
@@ -1657,6 +1719,7 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         let recipientsCard = card()
         recipientsCard.addArrangedSubview(sectionTitle("Tạo đơn cho", icon: "person.2.fill"))
         recipientsCard.addArrangedSubview(recipientsButton)
+        recipientsCard.addArrangedSubview(groupNoteLabel)
         stack.addArrangedSubview(recipientsCard)
         let kindCard = card()
         kindCard.addArrangedSubview(sectionTitle("Loại đơn", icon: "square.grid.2x2.fill"))
@@ -1949,6 +2012,11 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
             employees: store.managedEmployees, selected: selectedRecipientIDs,
             loaded: recipientsLoaded, initialized: true
         )
+        let note = RequestFormRules.groupRoutingNote(
+            employees: store.managedEmployees, selected: selectedRecipientIDs, loaded: recipientsLoaded
+        )
+        groupNoteLabel.text = note
+        groupNoteLabel.isHidden = note == nil
     }
 
     @objc private func showRecipients() {
@@ -2620,6 +2688,14 @@ struct RequestComposer: View {
                                 token: session.token,
                                 selectedIDs: $selectedRecipientIDs
                             )
+                        }
+                        if let note = RequestFormRules.groupRoutingNote(
+                            employees: directory.employees, selected: selectedRecipientIDs, loaded: directory.loaded
+                        ) {
+                            Text(note)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.muted)
+                                .fixedSize(horizontal: false, vertical: true)
                         }
                     }
 
