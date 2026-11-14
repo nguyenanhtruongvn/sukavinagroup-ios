@@ -1407,8 +1407,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     /// `start` and keeps its time.
     private let dayTileControl = DatePopoverControl()
     private let dayValueLabel = UILabel()
-    /// "N chỗ · <day>" in the header, kept in step with the picked day.
-    private weak var headerMetaLabel: UILabel?
     private let durationTileControl = DatePopoverControl()
     private let durationValueLabel = UILabel()
     private let expectedLabel = UILabel()
@@ -1499,6 +1497,8 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         ])
 
         content.addArrangedSubview(makeHeader())
+        configureDayPicker()
+        content.addArrangedSubview(makeDayRow())
         content.addArrangedSubview(makeDetailsCard())
         content.addArrangedSubview(makeInviteesCard())
 
@@ -1537,8 +1537,7 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
 
         let kicker = label("ĐẶT PHÒNG", style: .caption1, weight: .bold, color: red)
         let name = label(room.name, style: .title3, weight: .bold, color: .label)
-        let meta = label("\(room.capacity) chỗ · \(VietnamTime.weekdayDate.string(from: day).capitalized)", style: .caption1, color: .secondaryLabel)
-        headerMetaLabel = meta
+        let meta = label("\(room.capacity) chỗ", style: .caption1, color: .secondaryLabel)
         let texts = UIStackView(arrangedSubviews: [kicker, name, meta])
         texts.axis = .vertical
         texts.spacing = 3
@@ -1577,10 +1576,8 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         // lasts. Both open Apple's compact time bubble, so one tap moves
         // from either to the other (a system menu for Thời lượng could
         // not hand over to the time bubble).
-        configureDayPicker()
         configureStartTimePicker()
         configureDurationPicker()
-        card.addArrangedSubview(makeTile(title: "Ngày họp", icon: "calendar", valueLabel: dayValueLabel, control: dayTileControl))
         let tiles = UIStackView(arrangedSubviews: [
             makeTile(title: "Bắt đầu", icon: "clock.fill", valueLabel: startValueLabel, control: startTileControl),
             makeTile(title: "Thời lượng", icon: "timer", valueLabel: durationValueLabel, control: durationTileControl),
@@ -1708,7 +1705,6 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         if dayTileControl.date != start { dayTileControl.date = start }
         dayValueLabel.text = VietnamTime.weekdayDate.string(from: start).capitalized
         dayTileControl.accessibilityValue = dayValueLabel.text
-        headerMetaLabel?.text = "\(room.capacity) chỗ · \(VietnamTime.weekdayDate.string(from: start).capitalized)"
         if startTileControl.date != start { startTileControl.date = start }
         startValueLabel.text = MeetingPresentation.clock.string(from: start)
         startTileControl.accessibilityValue = startValueLabel.text
@@ -2084,6 +2080,61 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
     /// value. `control` fills the tile underneath and takes every tap; the
     /// drawn face on top covers it and takes none. Built once; `render()`
     /// only updates `valueLabel`.
+    /// The booking day, right under the header and compact as on Android
+    /// and iOS 18: icon, day, chevron in one row. `dayTileControl` fills the
+    /// row underneath and takes every tap (Apple's calendar popover); the face
+    /// on top takes none.
+    private func makeDayRow() -> UIView {
+        let row = UIView()
+        row.layer.cornerRadius = 14
+        row.layer.cornerCurve = .continuous
+        row.clipsToBounds = true
+        dayTileControl.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(dayTileControl)
+
+        let face = UIView()
+        face.backgroundColor = .systemBackground
+        face.isUserInteractionEnabled = false
+        face.accessibilityElementsHidden = true
+        face.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(face)
+
+        let iconView = UIImageView(image: UIImage(systemName: "calendar"))
+        iconView.tintColor = red
+        iconView.setContentHuggingPriority(.required, for: .horizontal)
+        dayValueLabel.font = .preferredFont(forTextStyle: .body).withWeight(.semibold)
+        dayValueLabel.textColor = .label
+        dayValueLabel.adjustsFontForContentSizeCategory = true
+        let chevron = UIImageView(image: UIImage(
+            systemName: "chevron.down",
+            withConfiguration: UIImage.SymbolConfiguration(textStyle: .caption1, scale: .medium)
+        ))
+        chevron.tintColor = .secondaryLabel
+        chevron.setContentHuggingPriority(.required, for: .horizontal)
+        let stack = UIStackView(arrangedSubviews: [iconView, dayValueLabel, chevron])
+        stack.spacing = 10
+        stack.alignment = .center
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        face.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 50),
+            dayTileControl.topAnchor.constraint(equalTo: row.topAnchor),
+            dayTileControl.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+            dayTileControl.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            dayTileControl.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            face.topAnchor.constraint(equalTo: row.topAnchor),
+            face.bottomAnchor.constraint(equalTo: row.bottomAnchor),
+            face.leadingAnchor.constraint(equalTo: row.leadingAnchor),
+            face.trailingAnchor.constraint(equalTo: row.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: face.topAnchor, constant: 12),
+            stack.bottomAnchor.constraint(equalTo: face.bottomAnchor, constant: -12),
+            stack.leadingAnchor.constraint(equalTo: face.leadingAnchor, constant: 14),
+            stack.trailingAnchor.constraint(equalTo: face.trailingAnchor, constant: -14),
+        ])
+        return row
+    }
+
     private func makeTile(title: String, icon: String, valueLabel: UILabel, control: UIView) -> UIView {
         let tile = UIView()
         tile.layer.cornerRadius = 14
