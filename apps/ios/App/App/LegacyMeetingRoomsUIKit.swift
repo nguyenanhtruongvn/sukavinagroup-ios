@@ -2088,6 +2088,16 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
         row.layer.cornerRadius = 14
         row.layer.cornerCurve = .continuous
         row.clipsToBounds = true
+        // Outlined, so the row stands out in light and dark mode alike; a
+        // CGColor does not follow the appearance, so it is set again on change.
+        row.layer.borderWidth = 1
+        let outline = { (view: UIView) in
+            view.layer.borderColor = UIColor.separator.resolvedColor(with: view.traitCollection).cgColor
+        }
+        outline(row)
+        row.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: UIView, _: UITraitCollection) in
+            outline(view)
+        }
         dayTileControl.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(dayTileControl)
 
