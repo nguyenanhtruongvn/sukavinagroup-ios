@@ -1519,6 +1519,9 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
     private let validationLabel = UILabel()
     private var kind: EmployeeRequestKind
     private var selectedRecipientIDs = Set<String>()
+    /// The "Tạo đơn cho" card, hidden for someone who creates requests for
+    /// themself only.
+    private weak var recipientsCardView: UIView?
     /// "Gửi 1 đơn chung cho N người · …", under the recipients button.
     private lazy var groupNoteLabel: UILabel = {
         let label = UILabel()
@@ -1764,6 +1767,10 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         recipientsCard.addArrangedSubview(recipientsButton)
         recipientsCard.addArrangedSubview(groupNoteLabel)
         stack.addArrangedSubview(recipientsCard)
+        recipientsCardView = recipientsCard
+        recipientsCard.isHidden = !RequestFormRules.offersOtherRecipients(
+            employees: store.managedEmployees, loaded: recipientsLoaded
+        )
         let kindCard = card()
         kindCard.addArrangedSubview(sectionTitle("Loại đơn", icon: "square.grid.2x2.fill"))
         kindCard.addArrangedSubview(requestKindGrid())
@@ -2060,6 +2067,10 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         )
         groupNoteLabel.text = note
         groupNoteLabel.isHidden = note == nil
+        // Only for someone who may create requests for others.
+        recipientsCardView?.isHidden = !RequestFormRules.offersOtherRecipients(
+            employees: store.managedEmployees, loaded: recipientsLoaded
+        )
     }
 
     @objc private func showRecipients() {
@@ -2711,6 +2722,8 @@ struct RequestComposer: View {
                             .font(.title.bold())
                     }
 
+                    // Only for someone who may create requests for others.
+                    if RequestFormRules.offersOtherRecipients(employees: directory.employees, loaded: directory.loaded) {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Tạo đơn cho", systemImage: "person.2.fill")
                             .font(.headline.weight(.bold))
@@ -2747,6 +2760,7 @@ struct RequestComposer: View {
                                 .foregroundStyle(AppTheme.muted)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                    }
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
