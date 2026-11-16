@@ -269,6 +269,12 @@ struct MeetingBookingSheet: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(uiColor: .systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        // Outlined in the system separator colour (clearer than the faint
+        // card border), so the row stands out in light and dark mode alike.
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color(uiColor: .separator), lineWidth: 1)
+        }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
         .overlay(DatePopoverButton(
