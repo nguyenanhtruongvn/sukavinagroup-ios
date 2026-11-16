@@ -325,6 +325,13 @@ enum RequestFormRules {
         return rows
     }
 
+    /// "Tạo đơn cho" is shown only to a user who may create requests for
+    /// others ("Quyền tạo đơn nhóm"): the server then lists colleagues besides
+    /// the user. Everyone else creates requests for themself only.
+    static func offersOtherRecipients<Person: RequestRecipient>(employees: [Person], loaded: Bool) -> Bool {
+        loaded && employees.contains { !$0.isSelf }
+    }
+
     /// Shown under "Tạo đơn cho" once anyone besides the user is chosen: a
     /// request for others goes, as one request for everyone, to the user's
     /// own manager.
