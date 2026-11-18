@@ -58,6 +58,9 @@
 		A10000000000000000000001 /* AttendanceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000002 /* AttendanceWidget.swift */; };
 		A10000000000000000000003 /* AttendanceWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000004 /* AttendanceWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B20000000000000000000010 /* App PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000011 /* App PrivacyInfo.xcprivacy */; };
+		F8E10000000000000000000E /* celebration_birthday.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E10000000000000000000E /* celebration_birthday.mp3 */; };
+		F8E20000000000000000000E /* celebration_christmas.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E20000000000000000000E /* celebration_christmas.mp3 */; };
+		F8E30000000000000000000E /* celebration_newyear.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E30000000000000000000E /* celebration_newyear.mp3 */; };
 		B20000000000000000000012 /* Widget PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -154,6 +157,9 @@
 		A10000000000000000000009 /* AttendanceWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AttendanceWidget.entitlements; sourceTree = "<group>"; };
 		A1000000000000000000000A /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		B20000000000000000000011 /* App PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		F7E10000000000000000000E /* celebration_birthday.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_birthday.mp3; sourceTree = "<group>"; };
+		F7E20000000000000000000E /* celebration_christmas.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_christmas.mp3; sourceTree = "<group>"; };
+		F7E30000000000000000000E /* celebration_newyear.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_newyear.mp3; sourceTree = "<group>"; };
 		B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -242,6 +248,9 @@
 				504EC3131FED79650016851F /* Info.plist */,
 				A1000000000000000000000A /* App.entitlements */,
 				B20000000000000000000011 /* App PrivacyInfo.xcprivacy */,
+				F7E10000000000000000000E /* celebration_birthday.mp3 */,
+				F7E20000000000000000000E /* celebration_christmas.mp3 */,
+				F7E30000000000000000000E /* celebration_newyear.mp3 */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -350,6 +359,9 @@
 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
 				B20000000000000000000010 /* App PrivacyInfo.xcprivacy in Resources */,
+				F8E10000000000000000000E /* celebration_birthday.mp3 in Resources */,
+				F8E20000000000000000000E /* celebration_christmas.mp3 in Resources */,
+				F8E30000000000000000000E /* celebration_newyear.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

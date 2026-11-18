@@ -1254,6 +1254,9 @@ struct CelebrationOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var start = Date()
     @State private var shown = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var music = CelebrationMusic()
+    @State private var muted = CelebrationMusic.isMuted
 
     var body: some View {
         let accent = Celebration.color(item.key)
@@ -1283,11 +1286,30 @@ struct CelebrationOverlay: View {
         .onAppear {
             start = Date()
             withAnimation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.62)) { shown = true }
+            music.start(item.key)
+        }
+        .onDisappear { music.stop() }
+        // Quiet while the app is in the background.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { music.resume() } else if phase == .background { music.pause() }
         }
     }
 
     private func close() {
+        music.stop()
         onDismiss()
+    }
+
+    /// Music on/off, remembered for next time.
+    private func toggleMusic() {
+        muted.toggle()
+        CelebrationMusic.isMuted = muted
+        if muted {
+            music.stop()
+        } else {
+            music = CelebrationMusic()
+            music.start(item.key)
+        }
     }
 
     private func card(accent: Color) -> some View {
@@ -1340,6 +1362,18 @@ struct CelebrationOverlay: View {
         // Taps on the card do not close it.
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .onTapGesture {}
+        .overlay(alignment: .topTrailing) {
+            Button(action: toggleMusic) {
+                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color(white: 0.78))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(muted ? "Bật nhạc" : "Tắt nhạc")
+            .padding(6)
+        }
     }
 }
 
@@ -1479,6 +1513,136 @@ enum CelebrationEffects {
                 context.stroke(tail, with: .color(color.opacity(alpha * 0.55)), lineWidth: 1.4)
                 context.fill(Path(ellipseIn: CGRect(x: CGFloat(px - 1.6), y: CGFloat(py - 1.6), width: 3.2, height: 3.2)), with: .color(color.opacity(alpha)))
             }
+        }
+    }
+}
+
+/// Soft background music for the greeting card (arrangements made for the
+/// app: "Jingle Bells" and "Happy Birthday" are public-domain melodies, the
+/// Tết tune is original). Each MP3 holds one loop plus its first 0.25 s, so a
+/// window of exactly one loop taken just after the decoder's start-up delay
+/// repeats without a gap.
+///
+/// Plays only while the card is open, softly. The ambient audio session
+/// follows the silent switch and never interrupts other audio; it also stays
+/// quiet when other audio is already playing or the person turned it off.
+@MainActor
+final class CelebrationMusic {
+    private static let mutedKey = "net.sukavinagroup.celebration-music-muted"
+    /// Frames skipped at the start: past any MP3 decoder delay.
+    private static let startFrame: AVAudioFramePosition = 4_410
+    private static let level: Float = 0.55
+    /// The last decoded loop (a few MB), kept so reopening a card is instant.
+    private static var cache: (key: String, buffer: AVAudioPCMBuffer)?
+
+    nonisolated static var isMuted: Bool {
+        get { UserDefaults.standard.bool(forKey: mutedKey) }
+        set { UserDefaults.standard.set(newValue, forKey: mutedKey) }
+    }
+
+    private static func resource(_ key: String) -> (name: String, frames: AVAudioFrameCount) {
+        switch key {
+        case "christmas": return ("celebration_christmas", 1_568_000)
+        case "newyear": return ("celebration_newyear", 1_840_695)
+        default: return ("celebration_birthday", 1_323_000)
+        }
+    }
+
+    private let engine = AVAudioEngine()
+    private let node = AVAudioPlayerNode()
+    private var fadeTask: Task<Void, Never>?
+    private var stopped = false
+    private var playing = false
+
+    nonisolated init() {}
+
+    func start(_ key: String) {
+        guard !Self.isMuted, !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
+        Task { @MainActor [weak self] in
+            guard let buffer = await Self.loop(for: key), let self, !self.stopped else { return }
+            self.play(buffer)
+        }
+    }
+
+    private static func loop(for key: String) async -> AVAudioPCMBuffer? {
+        if let cache, cache.key == key { return cache.buffer }
+        let track = Self.resource(key)
+        guard let url = Bundle.main.url(forResource: track.name, withExtension: "mp3") else { return nil }
+        let start = startFrame
+        let buffer = await Task.detached(priority: .userInitiated) { () -> AVAudioPCMBuffer? in
+            guard let file = try? AVAudioFile(forReading: url) else { return nil }
+            let format = file.processingFormat
+            guard format.sampleRate == 44_100,
+                  let all = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)),
+                  (try? file.read(into: all)) != nil,
+                  AVAudioFramePosition(all.frameLength) >= start + AVAudioFramePosition(track.frames),
+                  let loop = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: track.frames),
+                  let source = all.floatChannelData,
+                  let target = loop.floatChannelData
+            else { return nil }
+            loop.frameLength = track.frames
+            for channel in 0..<Int(format.channelCount) {
+                memcpy(target[channel], source[channel] + Int(start), Int(track.frames) * MemoryLayout<Float>.size)
+            }
+            return loop
+        }.value
+        if let buffer { cache = (key, buffer) }
+        return buffer
+    }
+
+    private func play(_ buffer: AVAudioPCMBuffer) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            // Ambient: silent with the ring/silent switch, mixes with other audio.
+            try session.setCategory(.ambient, mode: .default)
+            try session.setActive(true)
+            engine.attach(node)
+            engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
+            node.volume = 0
+            try engine.start()
+        } catch {
+            return
+        }
+        node.scheduleBuffer(buffer, at: nil, options: .loops)
+        node.play()
+        playing = true
+        fade(to: Self.level, seconds: 1.2)
+    }
+
+    private func fade(to target: Float, seconds: Double, then: (() -> Void)? = nil) {
+        fadeTask?.cancel()
+        let from = node.volume
+        fadeTask = Task { @MainActor [node] in
+            let steps = max(1, Int(seconds / 0.05))
+            for step in 1...steps {
+                if Task.isCancelled { return }
+                node.volume = from + (target - from) * Float(step) / Float(steps)
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            then?()
+        }
+    }
+
+    func pause() {
+        guard playing else { return }
+        engine.pause()
+    }
+
+    func resume() {
+        guard playing, !stopped else { return }
+        try? engine.start()
+        node.play()
+    }
+
+    /// A short fade so closing the card does not cut the music with a click.
+    func stop() {
+        stopped = true
+        guard playing else { return }
+        playing = false
+        let engine = engine, node = node
+        fade(to: 0, seconds: 0.3) {
+            node.stop()
+            engine.stop()
         }
     }
 }
