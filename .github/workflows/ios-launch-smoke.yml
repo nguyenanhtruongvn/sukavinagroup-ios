@@ -67,7 +67,7 @@ jobs:
           - ios: '18'
             runner: macos-15
           - ios: '17'
-            runner: macos-15
+            runner: macos-14
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/download-artifact@v4
@@ -78,7 +78,7 @@ jobs:
         id: runtime
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           sw_vers
           xcrun simctl list runtimes
           RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "
@@ -88,6 +88,20 @@ jobs:
           rts.sort(key=lambda r: [int(x) for x in r['version'].split('.')])
           print(rts[-1]['identifier'] if rts else '')
           " "${{ matrix.ios }}")"
+          if [ -z "$RUNTIME" ] && [ "${{ matrix.ios }}" = "17" ]; then
+            # Not preinstalled: fetch iOS 17.5 with an Xcode that supports it.
+            for x in /Applications/Xcode_16*.app /Applications/Xcode_15*.app; do
+              [ -d "$x" ] || continue
+              sudo xcode-select --switch "$x/Contents/Developer"
+              echo "Downloading iOS 17.5 with $x"
+              timeout 2400 sudo xcodebuild -downloadPlatform iOS -buildVersion 17.5 && break
+            done
+            RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "
+          import json, sys
+          rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].startswith('17.')]
+          print(rts[-1]['identifier'] if rts else '')
+          ")"
+          fi
           if [ -z "$RUNTIME" ]; then
             echo "::error::No iOS ${{ matrix.ios }} simulator runtime on ${{ matrix.runner }}."
             exit 1
