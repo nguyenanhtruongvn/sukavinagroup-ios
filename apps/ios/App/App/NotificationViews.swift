@@ -1257,10 +1257,15 @@ struct CelebrationOverlay: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var music = CelebrationMusic()
 
+    // Smoothness: the dimmed background, the effects and the card fade on
+    // their own (no group opacity, which would composite the whole screen
+    // offscreen every frame); the card pops gently from 92 %; the music
+    // starts once the card has opened, with its audio set up off the main
+    // thread.
     var body: some View {
         let accent = Celebration.color(item.key)
         ZStack {
-            Color(red: 0.035, green: 0.043, blue: 0.063).opacity(0.9)
+            Color(red: 0.035, green: 0.043, blue: 0.063).opacity(shown ? 0.9 : 0)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
@@ -1275,16 +1280,17 @@ struct CelebrationOverlay: View {
                 }
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
+                .opacity(shown ? 1 : 0)
             }
             card(accent: accent)
                 .padding(.horizontal, 24)
                 .frame(maxWidth: 440)
-                .scaleEffect(shown || reduceMotion ? 1 : 0.6)
+                .scaleEffect(shown || reduceMotion ? 1 : 0.92)
+                .opacity(shown ? 1 : 0)
         }
-        .opacity(shown ? 1 : 0)
         .onAppear {
             start = Date()
-            withAnimation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.62)) { shown = true }
+            withAnimation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.34, dampingFraction: 0.82)) { shown = true }
             music.start(item.key)
         }
         .onDisappear { music.stop() }
@@ -1307,9 +1313,9 @@ struct CelebrationOverlay: View {
                 Text(Celebration.emoji(item.key))
                     .font(.system(size: 52))
                     .offset(y: bob)
-                    .frame(width: 88, height: 88)
-                    .background(RadialGradient(colors: [accent.opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 44))
             }
+            .frame(width: 88, height: 88)
+            .background(RadialGradient(colors: [accent.opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 44))
             .accessibilityHidden(true)
             Text(item.title)
                 .font(.title2.weight(.heavy))
@@ -1353,7 +1359,8 @@ struct CelebrationOverlay: View {
 }
 
 /// The animated backgrounds, drawn from the time since the card opened.
-/// Each particle comes from a fixed seed, so it moves smoothly frame to frame.
+/// Each particle's random numbers are made once; pieces of one colour are
+/// drawn as a single path, so a frame is a handful of fills, not hundreds.
 enum CelebrationEffects {
     static func draw(_ key: String, t: Float, in context: inout GraphicsContext, size: CGSize) {
         switch key {
@@ -1361,10 +1368,10 @@ enum CelebrationEffects {
             snow(t, &context, size)
         case "newyear":
             fireworks(t, &context, size)
-            confetti(t, &context, size, colors: newYearColors, count: 70)
+            confetti(t, &context, size, colors: newYearColors, field: newYearField)
         default:
             balloons(t, &context, size)
-            confetti(t, &context, size, colors: birthdayColors, count: 110)
+            confetti(t, &context, size, colors: birthdayColors, field: birthdayField)
         }
     }
 
@@ -1387,39 +1394,58 @@ enum CelebrationEffects {
         }
     }
 
-    private static func confetti(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize, colors: [Color], count: Int) {
-        let w = Float(size.width), h = Float(size.height)
-        for i in 0..<count {
-            var r = Seeded(i * 7919 + 13)
-            let speed = h * (0.16 + r.next() * 0.22)
-            let delay = r.next() * 2.5
-            let life = (h * 1.15) / speed
-            let local = t - delay
-            if local < 0 { continue }
-            let phase = local.truncatingRemainder(dividingBy: life)
-            let swaySpeed = 1.2 + r.next() * 1.6
-            let x = r.next() * w + sin(phase * swaySpeed + Float(i)) * 28
-            let y = -40 + phase * speed
-            let pw = 4 + r.next() * 5, ph = 2.5 + r.next() * 3.5
-            let spin = phase * (90 + r.next() * 260) * (i % 2 == 0 ? 1 : -1)
-            let flip = abs(cos(phase * (3 + r.next() * 4)))
-            var piece = context
-            piece.translateBy(x: CGFloat(x), y: CGFloat(y))
-            piece.rotate(by: .degrees(Double(spin)))
-            let rect = CGRect(x: CGFloat(-pw / 2), y: CGFloat(-ph * flip / 2), width: CGFloat(pw), height: CGFloat(max(ph * flip, 0.8)))
-            piece.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(colors[i % colors.count]))
+    /// `count` particles × `per` random numbers, made once.
+    private struct Field {
+        let count: Int
+        let per: Int
+        let values: [Float]
+        init(count: Int, per: Int, seed: Int) {
+            var r = Seeded(seed)
+            self.count = count
+            self.per = per
+            values = (0..<(count * per)).map { _ in r.next() }
         }
+        subscript(i: Int, k: Int) -> Float { values[i * per + k] }
+    }
+
+    private static let birthdayField = Field(count: 80, per: 8, seed: 7_919)
+    private static let newYearField = Field(count: 50, per: 8, seed: 7_919)
+    private static let snowField = Field(count: 110, per: 4, seed: 31_337)
+    private static let balloonField = Field(count: 9, per: 4, seed: 104_729)
+
+    private static func confetti(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize, colors: [Color], field: Field) {
+        let w = Float(size.width), h = Float(size.height)
+        var paths = Array(repeating: Path(), count: colors.count)
+        for i in 0..<field.count {
+            let speed = h * (0.16 + field[i, 0] * 0.22)
+            let local = t - field[i, 1] * 2.5
+            if local < 0 { continue }
+            let life = (h * 1.15) / speed
+            let phase = local.truncatingRemainder(dividingBy: life)
+            let x = field[i, 2] * w + sin(phase * (1.2 + field[i, 3] * 1.6) + Float(i)) * 28
+            let y = -40 + phase * speed
+            let halfW = (4 + field[i, 4] * 5) / 2
+            let halfH = max((2.5 + field[i, 5] * 3.5) * abs(cos(phase * (3 + field[i, 7] * 4))), 0.4) / 2
+            let angle = phase * (1.6 + field[i, 6] * 4.5) * (i % 2 == 0 ? 1 : -1)
+            let c = cos(angle), s = sin(angle)
+            // The rotated strip's four corners.
+            func corner(_ dx: Float, _ dy: Float) -> CGPoint {
+                CGPoint(x: CGFloat(x + dx * c - dy * s), y: CGFloat(y + dx * s + dy * c))
+            }
+            paths[i % colors.count].addLines([corner(-halfW, -halfH), corner(halfW, -halfH), corner(halfW, halfH), corner(-halfW, halfH)])
+            paths[i % colors.count].closeSubpath()
+        }
+        for (index, path) in paths.enumerated() { context.fill(path, with: .color(colors[index])) }
     }
 
     private static func balloons(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
         let w = Float(size.width), h = Float(size.height)
-        for i in 0..<9 {
-            var r = Seeded(i * 104_729 + 7)
-            let radius = 18 + r.next() * 12
-            let speed = h * (0.07 + r.next() * 0.06)
+        for i in 0..<balloonField.count {
+            let radius = 18 + balloonField[i, 0] * 12
+            let speed = h * (0.07 + balloonField[i, 1] * 0.06)
             let life = (h + radius * 6) / speed
-            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
-            let baseX = (Float(i) + 0.5) / 9 * w + (r.next() - 0.5) * 40
+            let phase = (t + balloonField[i, 2] * life).truncatingRemainder(dividingBy: life)
+            let baseX = (Float(i) + 0.5) / 9 * w + (balloonField[i, 3] - 0.5) * 40
             let x = baseX + sin(phase * 0.9 + Float(i)) * 16
             let y = h + radius * 2 - phase * speed
             let color = birthdayColors[i % birthdayColors.count]
@@ -1434,27 +1460,35 @@ enum CelebrationEffects {
 
     private static func snow(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
         let w = Float(size.width), h = Float(size.height)
-        for i in 0..<150 {
-            var r = Seeded(i * 31_337 + 3)
-            let depth = r.next()
+        // Four depth layers, one path each (nearer flakes are bigger and brighter).
+        var layers = Array(repeating: Path(), count: 4)
+        for i in 0..<snowField.count {
+            let depth = snowField[i, 0]
             let radius = 1 + depth * 3
             let speed = h * (0.04 + depth * 0.09)
             let life = (h + 20) / speed
-            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
-            let x = r.next() * w + sin(phase * (0.6 + depth) + Float(i)) * (10 + depth * 18)
+            let phase = (t + snowField[i, 1] * life).truncatingRemainder(dividingBy: life)
+            let x = snowField[i, 2] * w + sin(phase * (0.6 + depth) + Float(i)) * (10 + depth * 18)
             let y = -10 + phase * speed
-            context.fill(Path(ellipseIn: CGRect(x: CGFloat(x - radius), y: CGFloat(y - radius), width: CGFloat(radius * 2), height: CGFloat(radius * 2))), with: .color(.white.opacity(Double(0.35 + depth * 0.55))))
+            layers[min(3, Int(depth * 4))].addEllipse(in: CGRect(x: CGFloat(x - radius), y: CGFloat(y - radius), width: CGFloat(radius * 2), height: CGFloat(radius * 2)))
         }
+        for (layer, path) in layers.enumerated() {
+            context.fill(path, with: .color(.white.opacity(0.4 + Double(layer) * 0.17)))
+        }
+        var stars = Path()
+        var bright = Path()
         for i in 0..<14 {
-            var r = Seeded(i * 271 + 5)
-            let x = r.next() * w, y = r.next() * h * 0.45
-            let twinkle = (sin(t * (1.5 + r.next() * 2) + Float(i)) + 1) / 2
+            let x = snowField[i, 3] * w, y = snowField[i + 14, 3] * h * 0.45
+            let twinkle = (sin(t * (1.5 + snowField[i + 28, 3] * 2) + Float(i)) + 1) / 2
             let s = 3 + twinkle * 4
             var star = Path()
             star.move(to: CGPoint(x: CGFloat(x - s), y: CGFloat(y))); star.addLine(to: CGPoint(x: CGFloat(x + s), y: CGFloat(y)))
             star.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y - s))); star.addLine(to: CGPoint(x: CGFloat(x), y: CGFloat(y + s)))
-            context.stroke(star, with: .color(Color(red: 1, green: 0.88, blue: 0.54).opacity(Double(0.3 + twinkle * 0.6))), lineWidth: 1.3)
+            if twinkle > 0.5 { bright.addPath(star) } else { stars.addPath(star) }
         }
+        let gold = Color(red: 1, green: 0.88, blue: 0.54)
+        context.stroke(stars, with: .color(gold.opacity(0.45)), lineWidth: 1.3)
+        context.stroke(bright, with: .color(gold.opacity(0.9)), lineWidth: 1.3)
     }
 
     private static func fireworks(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
@@ -1476,18 +1510,20 @@ enum CelebrationEffects {
                 let flash = 12 + age * 60
                 context.fill(Path(ellipseIn: CGRect(x: CGFloat(cx - flash), y: CGFloat(cy - flash), width: CGFloat(flash * 2), height: CGFloat(flash * 2))), with: .color(.white.opacity(Double(0.6 * (1 - age / 0.25)))))
             }
-            let sparks = 36
             let dist = reach * (1 - (1 - progress) * (1 - progress))
             let drop = age * age * 20
-            for s in 0..<sparks {
-                let angle = 2 * Float.pi * Float(s) / Float(sparks) + r.next() * 0.08
+            // All tails of a burst in one path, all spark heads in another.
+            var tails = Path()
+            var heads = Path()
+            for s in 0..<36 {
+                let angle = 2 * Float.pi * Float(s) / 36 + r.next() * 0.08
                 let px = cx + cos(angle) * dist, py = cy + sin(angle) * dist + drop
-                var tail = Path()
-                tail.move(to: CGPoint(x: CGFloat(cx + cos(angle) * dist * 0.82), y: CGFloat(cy + sin(angle) * dist * 0.82 + drop)))
-                tail.addLine(to: CGPoint(x: CGFloat(px), y: CGFloat(py)))
-                context.stroke(tail, with: .color(color.opacity(alpha * 0.55)), lineWidth: 1.4)
-                context.fill(Path(ellipseIn: CGRect(x: CGFloat(px - 1.6), y: CGFloat(py - 1.6), width: 3.2, height: 3.2)), with: .color(color.opacity(alpha)))
+                tails.move(to: CGPoint(x: CGFloat(cx + cos(angle) * dist * 0.82), y: CGFloat(cy + sin(angle) * dist * 0.82 + drop)))
+                tails.addLine(to: CGPoint(x: CGFloat(px), y: CGFloat(py)))
+                heads.addEllipse(in: CGRect(x: CGFloat(px - 1.6), y: CGFloat(py - 1.6), width: 3.2, height: 3.2))
             }
+            context.stroke(tails, with: .color(color.opacity(alpha * 0.55)), lineWidth: 1.4)
+            context.fill(heads, with: .color(color.opacity(alpha)))
         }
     }
 }
@@ -1501,6 +1537,7 @@ enum CelebrationEffects {
 /// Plays while the card is open, at the media volume, also with the
 /// ring/silent switch on silent (the person opened the card themselves). It
 /// pauses music the person was listening to and lets it resume on close.
+/// Audio session and engine work runs on its own queue, never the main thread.
 @MainActor
 final class CelebrationMusic {
     /// Frames skipped at the start: past any MP3 decoder delay.
@@ -1519,6 +1556,7 @@ final class CelebrationMusic {
 
     private let engine = AVAudioEngine()
     private let node = AVAudioPlayerNode()
+    private let queue = DispatchQueue(label: "net.sukavinagroup.celebration-music", qos: .userInitiated)
     private var fadeTask: Task<Void, Never>?
     private var stopped = false
     private var playing = false
@@ -1527,6 +1565,8 @@ final class CelebrationMusic {
 
     func start(_ key: String) {
         Task { @MainActor [weak self] in
+            // Let the card finish opening before any audio work.
+            try? await Task.sleep(nanoseconds: 320_000_000)
             guard let buffer = await Self.loop(for: key), let self, !self.stopped else { return }
             self.play(buffer)
         }
@@ -1559,23 +1599,34 @@ final class CelebrationMusic {
     }
 
     private func play(_ buffer: AVAudioPCMBuffer) {
-        let session = AVAudioSession.sharedInstance()
-        do {
-            // Playback: plays whatever the silent switch, and takes over the
-            // sound (other music pauses).
-            try session.setCategory(.playback, mode: .default)
-            try session.setActive(true)
-            engine.attach(node)
-            engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
-            node.volume = 0
-            try engine.start()
-        } catch {
-            return
+        let engine = engine, node = node
+        queue.async { [weak self] in
+            let session = AVAudioSession.sharedInstance()
+            do {
+                // Playback: plays whatever the silent switch, and takes over
+                // the sound (other music pauses).
+                try session.setCategory(.playback, mode: .default)
+                try session.setActive(true)
+                engine.attach(node)
+                engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
+                node.volume = 0
+                try engine.start()
+            } catch {
+                return
+            }
+            node.scheduleBuffer(buffer, at: nil, options: .loops)
+            node.play()
+            Task { @MainActor in
+                guard let self, !self.stopped else {
+                    // Closed while the audio was being set up.
+                    node.stop()
+                    engine.stop()
+                    return
+                }
+                self.playing = true
+                self.fade(to: Self.level, seconds: 1.0)
+            }
         }
-        node.scheduleBuffer(buffer, at: nil, options: .loops)
-        node.play()
-        playing = true
-        fade(to: Self.level, seconds: 1.0)
     }
 
     private func fade(to target: Float, seconds: Double, then: (() -> Void)? = nil) {
@@ -1594,13 +1645,17 @@ final class CelebrationMusic {
 
     func pause() {
         guard playing else { return }
-        engine.pause()
+        let engine = engine
+        queue.async { engine.pause() }
     }
 
     func resume() {
         guard playing, !stopped else { return }
-        try? engine.start()
-        node.play()
+        let engine = engine, node = node
+        queue.async {
+            try? engine.start()
+            node.play()
+        }
     }
 
     /// Stops at once, with a fade too short to hear (avoids a click).
@@ -1608,12 +1663,14 @@ final class CelebrationMusic {
         stopped = true
         guard playing else { return }
         playing = false
-        let engine = engine, node = node
+        let engine = engine, node = node, queue = queue
         fade(to: 0, seconds: 0.08) {
-            node.stop()
-            engine.stop()
-            // Let the music that was paused carry on.
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            queue.async {
+                node.stop()
+                engine.stop()
+                // Let the music that was paused carry on.
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            }
         }
     }
 }
