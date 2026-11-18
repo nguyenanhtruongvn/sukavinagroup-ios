@@ -25,7 +25,7 @@ concurrency:
 jobs:
   shared-logic-tests:
     name: Shared logic unit tests
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
@@ -34,14 +34,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sudo xcode-select --switch /Applications/Xcode_26.6.app/Contents/Developer
+          # App Store uploads need the iOS 27 SDK (Xcode 27+) from April 2027
+          # (ITMS-90725). Use the newest Xcode 27 on the runner; fail otherwise.
+          XCODE_APP="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -n "$XCODE_APP" ]; then sudo xcode-select --switch "$XCODE_APP/Contents/Developer"; fi
+          xcodebuild -version
+          XCODE_MAJOR="$(xcodebuild -version | awk '/^Xcode /{split($2, v, "."); print v[1]}')"
+          test "${XCODE_MAJOR:-0}" -ge 27 || { echo "error: Xcode 27 or later is required (found ${XCODE_MAJOR:-none})." >&2; ls -d /Applications/Xcode*.app >&2 || true; exit 1; }
+          xcodebuild -showsdks | grep -i 'iphoneos' || true
           swift test --package-path apps/ios/App
 
   archive-and-upload:
     name: Archive and upload TestFlight build
     # Do not ship a build whose shared logic tests fail.
     needs: shared-logic-tests
-    runs-on: macos-latest
+    runs-on: xcode-27
     timeout-minutes: 45
 
     env:
@@ -71,6 +78,19 @@ jobs:
       # ============================================================
       # 2. VALIDATE MANUAL VERSION / BUILD INPUTS
       # ============================================================
+      - name: Select Xcode 27
+        shell: bash
+        run: |
+          set -euo pipefail
+          # App Store uploads need the iOS 27 SDK (Xcode 27+) from April 2027
+          # (ITMS-90725). Use the newest Xcode 27 on the runner; fail otherwise.
+          XCODE_APP="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -n "$XCODE_APP" ]; then sudo xcode-select --switch "$XCODE_APP/Contents/Developer"; fi
+          xcodebuild -version
+          XCODE_MAJOR="$(xcodebuild -version | awk '/^Xcode /{split($2, v, "."); print v[1]}')"
+          test "${XCODE_MAJOR:-0}" -ge 27 || { echo "error: Xcode 27 or later is required (found ${XCODE_MAJOR:-none})." >&2; ls -d /Applications/Xcode*.app >&2 || true; exit 1; }
+          xcodebuild -showsdks | grep -i 'iphoneos' || true
+
       - name: Validate version inputs
         shell: bash
         run: |
