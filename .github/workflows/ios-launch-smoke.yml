@@ -1,8 +1,9 @@
 name: iOS launch smoke test
 
-# Builds the app with Xcode 27 (the App Store toolchain) and launches it on
-# iOS simulators of each supported major version, failing if the app does not
-# stay running (for example the iOS 27 "no UIScene lifecycle" launch stop).
+# Builds the app once with Xcode 27 (the App Store toolchain), then launches
+# that same build on iOS simulators of each supported major version, failing
+# if the app crashes or stops (for example the iOS 27 "no UIScene lifecycle"
+# launch stop). Older runtimes come from the runner images that ship them.
 
 on:
   workflow_dispatch:
@@ -21,64 +22,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  launch:
+  build:
     runs-on: xcode-27
-    timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        ios: ['27', '26', '18', '17']
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 27
+      - name: Build for the simulator with Xcode 27
         shell: bash
         run: |
           set -euo pipefail
           XCODE_APP="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1 || true)"
           if [ -n "$XCODE_APP" ]; then sudo xcode-select --switch "$XCODE_APP/Contents/Developer"; fi
           xcodebuild -version
-          xcrun simctl list runtimes
-
-      - name: Make sure an iOS ${{ matrix.ios }} simulator runtime is installed
-        id: runtime
-        shell: bash
-        run: |
-          set -uo pipefail
-          find_runtime() {
-            xcrun simctl list runtimes -j | python3 -c "
-          import json, sys
-          major = sys.argv[1]
-          rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].split('.')[0] == major]
-          rts.sort(key=lambda r: [int(x) for x in r['version'].split('.')])
-          print(rts[-1]['identifier'] if rts else '')
-          " "${{ matrix.ios }}"
-          }
-          RUNTIME="$(find_runtime)"
-          if [ -z "$RUNTIME" ]; then
-            echo "No iOS ${{ matrix.ios }} runtime on the runner; downloading one."
-            case "${{ matrix.ios }}" in
-              17) VERSION=17.5 ;;
-              18) VERSION=18.6 ;;
-              26) VERSION=26.0 ;;
-              *) VERSION="" ;;
-            esac
-            if [ -n "$VERSION" ]; then
-              timeout 2400 xcodebuild -downloadPlatform iOS -buildVersion "$VERSION" || true
-              RUNTIME="$(find_runtime)"
-            fi
-          fi
-          if [ -z "$RUNTIME" ]; then
-            echo "::error::No iOS ${{ matrix.ios }} simulator runtime available."
-            exit 1
-          fi
-          echo "runtime=$RUNTIME" >> "$GITHUB_OUTPUT"
-          echo "Using $RUNTIME"
-
-      - name: Build for the simulator
-        shell: bash
-        run: |
-          set -euo pipefail
           xcodebuild \
             -project apps/ios/App/App.xcodeproj \
             -scheme App \
@@ -89,12 +45,61 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ONLY_ACTIVE_ARCH=NO \
             build | tail -n 20
-          test -d build/Sim/Build/Products/Release-iphonesimulator/App.app
+          cd build/Sim/Build/Products/Release-iphonesimulator
+          ditto -c -k --keepParent App.app "$GITHUB_WORKSPACE/App-sim.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: App-sim
+          path: App-sim.zip
+
+  launch:
+    needs: build
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - ios: '27'
+            runner: xcode-27
+          - ios: '26'
+            runner: macos-26
+          - ios: '18'
+            runner: macos-15
+          - ios: '17'
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: App-sim
+
+      - name: Find an iOS ${{ matrix.ios }} simulator runtime
+        id: runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcrun simctl list runtimes
+          RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "
+          import json, sys
+          major = sys.argv[1]
+          rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].split('.')[0] == major]
+          rts.sort(key=lambda r: [int(x) for x in r['version'].split('.')])
+          print(rts[-1]['identifier'] if rts else '')
+          " "${{ matrix.ios }}")"
+          if [ -z "$RUNTIME" ]; then
+            echo "::error::No iOS ${{ matrix.ios }} simulator runtime on ${{ matrix.runner }}."
+            exit 1
+          fi
+          echo "runtime=$RUNTIME" >> "$GITHUB_OUTPUT"
+          echo "Using $RUNTIME"
 
       - name: Launch on iOS ${{ matrix.ios }} and check it keeps running
         shell: bash
         run: |
           set -euo pipefail
+          ditto -x -k App-sim.zip .
           RUNTIME="${{ steps.runtime.outputs.runtime }}"
           DEVICE_TYPE="$(xcrun simctl list devicetypes -j | python3 -c "
           import json, sys
@@ -105,16 +110,25 @@ jobs:
           UDID="$(xcrun simctl create "Smoke iOS ${{ matrix.ios }}" "$DEVICE_TYPE" "$RUNTIME")"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
-          rm -f ~/Library/Logs/DiagnosticReports/App*.ips || true
-          xcrun simctl install "$UDID" build/Sim/Build/Products/Release-iphonesimulator/App.app
+          mkdir -p ~/Library/Logs/DiagnosticReports
+          BEFORE="$(date +%s)"
+          xcrun simctl install "$UDID" App.app
           LAUNCH="$(xcrun simctl launch "$UDID" net.sukavinagroup.user)"
           echo "$LAUNCH"
           PID="$(echo "$LAUNCH" | awk -F': ' '{print $2}')"
           sleep 20
           xcrun simctl io "$UDID" screenshot "screen-ios${{ matrix.ios }}.png" || true
-          CRASHES="$(ls ~/Library/Logs/DiagnosticReports/App*.ips 2>/dev/null || true)"
-          if [ -n "$CRASHES" ]; then
-            for f in $CRASHES; do echo "== $f"; head -c 6000 "$f"; echo; done
+          # Only this app's crash reports, written after the launch.
+          CRASHED=""
+          for f in ~/Library/Logs/DiagnosticReports/*.ips; do
+            [ -e "$f" ] || continue
+            [ "$(stat -f %m "$f")" -ge "$BEFORE" ] || continue
+            if grep -q 'net.sukavinagroup.user' "$f"; then
+              echo "== $f"; head -c 8000 "$f"; echo
+              CRASHED=1
+            fi
+          done
+          if [ -n "$CRASHED" ]; then
             echo "::error::The app crashed on iOS ${{ matrix.ios }}."
             exit 1
           fi
@@ -122,7 +136,7 @@ jobs:
             echo "::error::The app is not running 20 s after launch on iOS ${{ matrix.ios }}."
             exit 1
           fi
-          echo "iOS ${{ matrix.ios }}: launched and still running after 20 s (pid $PID)."
+          echo "iOS ${{ matrix.ios }} ($RUNTIME): launched and still running after 20 s (pid $PID)."
 
       - name: Keep the screenshot
         if: always()
