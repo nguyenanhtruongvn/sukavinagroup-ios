@@ -587,6 +587,7 @@
 				);
 				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = "$(inherited) $(SUKAVINA_SWIFTUICORE_LDFLAGS_$(XCODE_VERSION_MAJOR))";
+				SUKAVINA_SWIFTUICORE_LDFLAGS_1600 = "-weak_framework SwiftUICore";
 				SUKAVINA_SWIFTUICORE_LDFLAGS_2600 = "-weak_framework SwiftUICore";
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = net.sukavinagroup.user;
@@ -619,6 +620,7 @@
 				);
 				MARKETING_VERSION = 1.0.0;
 				OTHER_LDFLAGS = "$(inherited) $(SUKAVINA_SWIFTUICORE_LDFLAGS_$(XCODE_VERSION_MAJOR))";
+				SUKAVINA_SWIFTUICORE_LDFLAGS_1600 = "-weak_framework SwiftUICore";
 				SUKAVINA_SWIFTUICORE_LDFLAGS_2600 = "-weak_framework SwiftUICore";
 				PRODUCT_BUNDLE_IDENTIFIER = net.sukavinagroup.user;
 				PRODUCT_NAME = "$(TARGET_NAME)";
