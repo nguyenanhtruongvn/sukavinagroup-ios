@@ -56,6 +56,8 @@ struct NotificationsView: View {
     @State private var confirmClear = false
     /// A tapped request that is still missing after a reload.
     @State private var requestNotFound = false
+    /// A tapped birthday / Christmas / New Year greeting: its card and effect.
+    @State private var celebration: CelebrationItem?
     @State private var hiddenArticleIDs = Set<String>()
     @State private var reloadAgain = false
     @State private var reloadAgainWithDashboard = false
@@ -227,6 +229,10 @@ struct NotificationsView: View {
         } message: {
             Text("Tất cả thông báo trong danh sách sẽ bị xóa.")
         }
+        .fullScreenCover(item: $celebration) { item in
+            CelebrationOverlay(item: item) { showCelebration(nil) }
+                .presentationBackground(.clear)
+        }
         .alert("Không mở được đơn", isPresented: $requestNotFound) {
             Button("Đóng", role: .cancel) {}
         } message: {
@@ -298,7 +304,29 @@ struct NotificationsView: View {
         } while reloadAgain
     }
 
+    /// Shows (or closes) the greeting card without the sheet slide: the card
+    /// fades and pops in by itself.
+    private func showCelebration(_ item: CelebrationItem?) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { celebration = item }
+    }
+
     private func open(_ item: RequestNotification) async {
+        if let key = Celebration.key(forNotificationType: item.type) {
+            showCelebration(CelebrationItem(key: key, title: item.title, message: item.message))
+            markReadOptimistically(item)
+            Task {
+                guard let token = session.token else { return }
+                let _: UpdateCount? = try? await APIClient.shared.request(
+                    "me/requests/notifications/\(item.id)/read",
+                    method: "PATCH",
+                    token: token
+                )
+                await reloadNotifications()
+            }
+            return
+        }
         if item.type == "attendance_monthly_report",
            let month = item.requestId,
            month.range(of: "^[0-9]{4}-(0[1-9]|1[0-2])$", options: .regularExpression) != nil {
@@ -435,6 +463,15 @@ struct NotificationsView: View {
             await reloadNotifications()
             item = matchingItem()
         }
+        // A greeting no longer in the inbox (deleted, or older than the
+        // list): show today's words for it instead.
+        if item == nil, allowReload, let key = Celebration.key(forNotificationType: route.type) {
+            notificationRouter.consume(route)
+            guard let token = session.token else { return }
+            let today: CelebrationResponse? = try? await APIClient.shared.request("me/celebration?preview=\(key)", token: token)
+            if let found = today?.items.first(where: { $0.key == key }) { showCelebration(found) }
+            return
+        }
         // Still missing (e.g. a reload already running): the route stays
         // pending and is retried when the list changes.
         guard let item else { return }
@@ -494,6 +531,7 @@ struct NotificationsView: View {
     }
     private func notificationColor(_ item: RequestNotification) -> Color {
         let type = item.type
+        if let key = Celebration.key(forNotificationType: type) { return Celebration.color(key) }
         if type == "meeting_room_booking" { return .teal }
         if type == "meeting_invite" { return .blue }
         if type == "meeting_reminder" { return .orange }
@@ -561,7 +599,14 @@ struct NotificationsView: View {
         let endsAt = request?.to ?? item.endsAt
         let color = notificationColor(item)
         return HStack(alignment: .top, spacing: 14) {
-            Image(systemName: notificationIcon(item))
+            Group {
+                // Greetings show their day: cake, Christmas tree, fireworks.
+                if let key = Celebration.key(forNotificationType: item.type) {
+                    Text(Celebration.emoji(key)).font(.system(size: 22))
+                } else {
+                    Image(systemName: notificationIcon(item))
+                }
+            }
                 .frame(width: 44, height: 44)
                 .background(color.opacity(0.16))
                 .foregroundStyle(color)
@@ -1142,6 +1187,297 @@ private struct ArticleImageView: View {
                 loaded = (url, image)
             } else if !Task.isCancelled {
                 failedURL = url
+            }
+        }
+    }
+}
+
+// MARK: - Greeting card (birthday / Christmas / New Year)
+
+/// One greeting to show on the card: "birthday", "christmas" or "newyear".
+struct CelebrationItem: Decodable, Identifiable, Equatable {
+    let key: String
+    let title: String
+    let message: String
+    var id: String { "\(key)|\(title)|\(message)" }
+}
+
+/// `GET me/celebration?preview=<key>`: today's words for a greeting, used
+/// when a tapped greeting is no longer in the inbox.
+struct CelebrationResponse: Decodable {
+    let items: [CelebrationItem]
+}
+
+enum Celebration {
+    /// The greeting notification types the server sends, and their card.
+    static func key(forNotificationType type: String) -> String? {
+        switch type {
+        case "birthday_greeting": return "birthday"
+        case "christmas_greeting": return "christmas"
+        case "newyear_greeting": return "newyear"
+        default: return nil
+        }
+    }
+
+    static func emoji(_ key: String) -> String {
+        switch key {
+        case "christmas": return "🎄"
+        case "newyear": return "🎆"
+        default: return "🎂"
+        }
+    }
+
+    static func color(_ key: String) -> Color {
+        switch key {
+        case "christmas": return Color(red: 0.18, green: 0.66, blue: 0.40)
+        case "newyear": return Color(red: 0.95, green: 0.66, blue: 0.23)
+        default: return Color(red: 1.0, green: 0.30, blue: 0.43)
+        }
+    }
+
+    static func buttonTitle(_ key: String) -> String {
+        switch key {
+        case "christmas": return "Giáng sinh an lành!"
+        case "newyear": return "An khang thịnh vượng!"
+        default: return "Sinh nhật vui vẻ!"
+        }
+    }
+}
+
+/// Full-screen greeting opened by tapping its notification: an animated
+/// background (balloons and confetti for a birthday, snow for Christmas,
+/// fireworks for New Year) under a card with the message. A tap outside the
+/// card or on its button closes it. Still when Reduce Motion is on.
+struct CelebrationOverlay: View {
+    let item: CelebrationItem
+    let onDismiss: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var start = Date()
+    @State private var shown = false
+
+    var body: some View {
+        let accent = Celebration.color(item.key)
+        ZStack {
+            Color(red: 0.035, green: 0.043, blue: 0.063).opacity(0.9)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture(perform: close)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel("Đóng")
+            if !reduceMotion {
+                TimelineView(.animation) { timeline in
+                    let t = Float(timeline.date.timeIntervalSince(start))
+                    Canvas { context, size in
+                        CelebrationEffects.draw(item.key, t: t, in: &context, size: size)
+                    }
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+            }
+            card(accent: accent)
+                .padding(.horizontal, 24)
+                .frame(maxWidth: 440)
+                .scaleEffect(shown || reduceMotion ? 1 : 0.6)
+        }
+        .opacity(shown ? 1 : 0)
+        .onAppear {
+            start = Date()
+            withAnimation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.62)) { shown = true }
+        }
+    }
+
+    private func close() {
+        onDismiss()
+    }
+
+    private func card(accent: Color) -> some View {
+        let lines = item.message.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        return VStack(spacing: 14) {
+            TimelineView(.animation(paused: reduceMotion)) { timeline in
+                let bob = reduceMotion ? 0 : sin(timeline.date.timeIntervalSince(start) * 2.4) * 4
+                Text(Celebration.emoji(item.key))
+                    .font(.system(size: 52))
+                    .offset(y: bob)
+                    .frame(width: 88, height: 88)
+                    .background(RadialGradient(colors: [accent.opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 44))
+            }
+            .accessibilityHidden(true)
+            Text(item.title)
+                .font(.title2.weight(.heavy))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.white)
+                .accessibilityAddTraits(.isHeader)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 10) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        Text(line)
+                            .font(index == 0 ? .body.weight(.medium) : .subheadline)
+                            .foregroundStyle(index == 0 ? Color(white: 0.92) : Color(white: 0.78))
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .frame(maxHeight: 260)
+            .fixedSize(horizontal: false, vertical: true)
+            Button(action: close) {
+                Text(Celebration.buttonTitle(item.key))
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .background(AppTheme.red, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 6)
+        }
+        .padding(.horizontal, 22)
+        .padding(.vertical, 24)
+        .background(
+            LinearGradient(colors: [Color(red: 0.165, green: 0.173, blue: 0.212), Color(red: 0.106, green: 0.11, blue: 0.137)], startPoint: .top, endPoint: .bottom),
+            in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+        )
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(accent.opacity(0.45), lineWidth: 1))
+        // Taps on the card do not close it.
+        .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .onTapGesture {}
+    }
+}
+
+/// The animated backgrounds, drawn from the time since the card opened.
+/// Each particle comes from a fixed seed, so it moves smoothly frame to frame.
+enum CelebrationEffects {
+    static func draw(_ key: String, t: Float, in context: inout GraphicsContext, size: CGSize) {
+        switch key {
+        case "christmas":
+            snow(t, &context, size)
+        case "newyear":
+            fireworks(t, &context, size)
+            confetti(t, &context, size, colors: newYearColors, count: 70)
+        default:
+            balloons(t, &context, size)
+            confetti(t, &context, size, colors: birthdayColors, count: 110)
+        }
+    }
+
+    private static let birthdayColors: [Color] = [
+        Color(red: 1, green: 0.30, blue: 0.43), Color(red: 1, green: 0.76, blue: 0.27), Color(red: 0.30, green: 0.79, blue: 0.94),
+        Color(red: 0.50, green: 0.93, blue: 0.60), Color(red: 0.72, green: 0.58, blue: 0.96), Color(red: 1, green: 0.56, blue: 0.67),
+    ]
+    private static let newYearColors: [Color] = [
+        Color(red: 1, green: 0.82, blue: 0.40), Color(red: 1, green: 0.91, blue: 0.64), Color(red: 0.91, green: 0.12, blue: 0.16),
+        .white, Color(red: 0.96, green: 0.64, blue: 0.35),
+    ]
+
+    /// Small deterministic random numbers (same sequence for the same seed).
+    private struct Seeded {
+        private var state: UInt64
+        init(_ seed: Int) { state = UInt64(truncatingIfNeeded: seed &* 2_654_435_761 &+ 1_013_904_223) | 1 }
+        mutating func next() -> Float {
+            state ^= state << 13; state ^= state >> 7; state ^= state << 17
+            return Float(state % 1_000_000) / 1_000_000
+        }
+    }
+
+    private static func confetti(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize, colors: [Color], count: Int) {
+        let w = Float(size.width), h = Float(size.height)
+        for i in 0..<count {
+            var r = Seeded(i * 7919 + 13)
+            let speed = h * (0.16 + r.next() * 0.22)
+            let delay = r.next() * 2.5
+            let life = (h * 1.15) / speed
+            let local = t - delay
+            if local < 0 { continue }
+            let phase = local.truncatingRemainder(dividingBy: life)
+            let swaySpeed = 1.2 + r.next() * 1.6
+            let x = r.next() * w + sin(phase * swaySpeed + Float(i)) * 28
+            let y = -40 + phase * speed
+            let pw = 4 + r.next() * 5, ph = 2.5 + r.next() * 3.5
+            let spin = phase * (90 + r.next() * 260) * (i % 2 == 0 ? 1 : -1)
+            let flip = abs(cos(phase * (3 + r.next() * 4)))
+            var piece = context
+            piece.translateBy(x: CGFloat(x), y: CGFloat(y))
+            piece.rotate(by: .degrees(Double(spin)))
+            let rect = CGRect(x: CGFloat(-pw / 2), y: CGFloat(-ph * flip / 2), width: CGFloat(pw), height: CGFloat(max(ph * flip, 0.8)))
+            piece.fill(Path(roundedRect: rect, cornerRadius: 1), with: .color(colors[i % colors.count]))
+        }
+    }
+
+    private static func balloons(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        let w = Float(size.width), h = Float(size.height)
+        for i in 0..<9 {
+            var r = Seeded(i * 104_729 + 7)
+            let radius = 18 + r.next() * 12
+            let speed = h * (0.07 + r.next() * 0.06)
+            let life = (h + radius * 6) / speed
+            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
+            let baseX = (Float(i) + 0.5) / 9 * w + (r.next() - 0.5) * 40
+            let x = baseX + sin(phase * 0.9 + Float(i)) * 16
+            let y = h + radius * 2 - phase * speed
+            let color = birthdayColors[i % birthdayColors.count]
+            var string = Path()
+            string.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y + radius * 1.15)))
+            string.addLine(to: CGPoint(x: CGFloat(x + sin(phase * 2) * 6), y: CGFloat(y + radius * 3.2)))
+            context.stroke(string, with: .color(.white.opacity(0.35)), lineWidth: 1)
+            context.fill(Path(ellipseIn: CGRect(x: CGFloat(x - radius), y: CGFloat(y - radius * 1.2), width: CGFloat(radius * 2), height: CGFloat(radius * 2.4))), with: .color(color.opacity(0.9)))
+            context.fill(Path(ellipseIn: CGRect(x: CGFloat(x - radius * 0.55), y: CGFloat(y - radius * 0.85), width: CGFloat(radius * 0.5), height: CGFloat(radius * 0.7))), with: .color(.white.opacity(0.35)))
+        }
+    }
+
+    private static func snow(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        let w = Float(size.width), h = Float(size.height)
+        for i in 0..<150 {
+            var r = Seeded(i * 31_337 + 3)
+            let depth = r.next()
+            let radius = 1 + depth * 3
+            let speed = h * (0.04 + depth * 0.09)
+            let life = (h + 20) / speed
+            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
+            let x = r.next() * w + sin(phase * (0.6 + depth) + Float(i)) * (10 + depth * 18)
+            let y = -10 + phase * speed
+            context.fill(Path(ellipseIn: CGRect(x: CGFloat(x - radius), y: CGFloat(y - radius), width: CGFloat(radius * 2), height: CGFloat(radius * 2))), with: .color(.white.opacity(Double(0.35 + depth * 0.55))))
+        }
+        for i in 0..<14 {
+            var r = Seeded(i * 271 + 5)
+            let x = r.next() * w, y = r.next() * h * 0.45
+            let twinkle = (sin(t * (1.5 + r.next() * 2) + Float(i)) + 1) / 2
+            let s = 3 + twinkle * 4
+            var star = Path()
+            star.move(to: CGPoint(x: CGFloat(x - s), y: CGFloat(y))); star.addLine(to: CGPoint(x: CGFloat(x + s), y: CGFloat(y)))
+            star.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y - s))); star.addLine(to: CGPoint(x: CGFloat(x), y: CGFloat(y + s)))
+            context.stroke(star, with: .color(Color(red: 1, green: 0.88, blue: 0.54).opacity(Double(0.3 + twinkle * 0.6))), lineWidth: 1.3)
+        }
+    }
+
+    private static func fireworks(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        let w = Float(size.width), h = Float(size.height)
+        let every: Float = 0.75, burstLife: Float = 1.9
+        let newest = Int(t / every)
+        for n in max(0, newest - 3)...max(0, newest) {
+            let age = t - Float(n) * every
+            if age < 0 || age > burstLife { continue }
+            var r = Seeded(n * 6151 + 11)
+            let cx = w * (0.15 + r.next() * 0.7)
+            let cy = h * (0.12 + r.next() * 0.35)
+            let base = newYearColors[n % newYearColors.count]
+            let color = base == .white ? Color(red: 0.5, green: 0.86, blue: 1) : base
+            let progress = age / burstLife
+            let reach = min(w, h) * (0.16 + r.next() * 0.08)
+            let alpha = Double(max(0, 1 - progress))
+            if age < 0.25 {
+                let flash = 12 + age * 60
+                context.fill(Path(ellipseIn: CGRect(x: CGFloat(cx - flash), y: CGFloat(cy - flash), width: CGFloat(flash * 2), height: CGFloat(flash * 2))), with: .color(.white.opacity(Double(0.6 * (1 - age / 0.25)))))
+            }
+            let sparks = 36
+            let dist = reach * (1 - (1 - progress) * (1 - progress))
+            let drop = age * age * 20
+            for s in 0..<sparks {
+                let angle = 2 * Float.pi * Float(s) / Float(sparks) + r.next() * 0.08
+                let px = cx + cos(angle) * dist, py = cy + sin(angle) * dist + drop
+                var tail = Path()
+                tail.move(to: CGPoint(x: CGFloat(cx + cos(angle) * dist * 0.82), y: CGFloat(cy + sin(angle) * dist * 0.82 + drop)))
+                tail.addLine(to: CGPoint(x: CGFloat(px), y: CGFloat(py)))
+                context.stroke(tail, with: .color(color.opacity(alpha * 0.55)), lineWidth: 1.4)
+                context.fill(Path(ellipseIn: CGRect(x: CGFloat(px - 1.6), y: CGFloat(py - 1.6), width: 3.2, height: 3.2)), with: .color(color.opacity(alpha)))
             }
         }
     }
