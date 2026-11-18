@@ -85,17 +85,22 @@ jobs:
           import json, sys
           major = sys.argv[1]
           rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].split('.')[0] == major]
-          rts.sort(key=lambda r: [int(x) for x in r['version'].split('.')])
+          # Plain runtimes first (not device-specific ones such as iOS-27-2-iPhone19-4).
+          rts.sort(key=lambda r: ('iPhone' not in r['identifier'].split('SimRuntime.')[-1], [int(x) for x in r['version'].split('.')]))
           print(rts[-1]['identifier'] if rts else '')
           " "${{ matrix.ios }}")"
           if [ -z "$RUNTIME" ] && [ "${{ matrix.ios }}" = "17" ]; then
-            # Not preinstalled: fetch iOS 17.5 with an Xcode that supports it.
-            for x in /Applications/Xcode_16*.app /Applications/Xcode_15*.app; do
-              [ -d "$x" ] || continue
-              sudo xcode-select --switch "$x/Contents/Developer"
-              echo "Downloading iOS 17.5 with $x"
-              timeout 2400 sudo xcodebuild -downloadPlatform iOS -buildVersion 17.5 && break
-            done
+            # Not preinstalled: fetch iOS 17.5 (xcodes ships on the runner image).
+            X16="$(ls -d /Applications/Xcode_16.4*.app 2>/dev/null | head -n 1)"
+            [ -n "$X16" ] && sudo xcode-select --switch "$X16/Contents/Developer"
+            xcodebuild -version || true
+            if command -v xcodes >/dev/null; then
+              timeout 2400 sudo xcodes runtimes install "iOS 17.5" 2>&1 | tail -n 30 || true
+            fi
+            if ! xcrun simctl list runtimes | grep -q "iOS 17"; then
+              timeout 2400 sudo xcodebuild -downloadPlatform iOS -buildVersion 17.5 2>&1 | tail -n 30 || true
+            fi
+            xcrun simctl list runtimes
             RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "
           import json, sys
           rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].startswith('17.')]
