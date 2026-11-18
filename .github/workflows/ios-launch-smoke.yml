@@ -55,7 +55,8 @@ jobs:
 
   launch:
     needs: build
-    timeout-minutes: 30
+    # iOS 17 has to download its simulator runtime first.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
