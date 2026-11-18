@@ -1256,7 +1256,6 @@ struct CelebrationOverlay: View {
     @State private var shown = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var music = CelebrationMusic()
-    @State private var muted = CelebrationMusic.isMuted
 
     var body: some View {
         let accent = Celebration.color(item.key)
@@ -1298,18 +1297,6 @@ struct CelebrationOverlay: View {
     private func close() {
         music.stop()
         onDismiss()
-    }
-
-    /// Music on/off, remembered for next time.
-    private func toggleMusic() {
-        muted.toggle()
-        CelebrationMusic.isMuted = muted
-        if muted {
-            music.stop()
-        } else {
-            music = CelebrationMusic()
-            music.start(item.key)
-        }
     }
 
     private func card(accent: Color) -> some View {
@@ -1362,18 +1349,6 @@ struct CelebrationOverlay: View {
         // Taps on the card do not close it.
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .onTapGesture {}
-        .overlay(alignment: .topTrailing) {
-            Button(action: toggleMusic) {
-                Image(systemName: muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color(white: 0.78))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(muted ? "Bật nhạc" : "Tắt nhạc")
-            .padding(6)
-        }
     }
 }
 
@@ -1523,22 +1498,16 @@ enum CelebrationEffects {
 /// window of exactly one loop taken just after the decoder's start-up delay
 /// repeats without a gap.
 ///
-/// Plays only while the card is open, softly. The ambient audio session
-/// follows the silent switch and never interrupts other audio; it also stays
-/// quiet when other audio is already playing or the person turned it off.
+/// Plays while the card is open. The solo-ambient audio session stays silent
+/// with the ring/silent switch; otherwise it pauses music the person was
+/// listening to, and lets that music resume when the card closes.
 @MainActor
 final class CelebrationMusic {
-    private static let mutedKey = "net.sukavinagroup.celebration-music-muted"
     /// Frames skipped at the start: past any MP3 decoder delay.
     private static let startFrame: AVAudioFramePosition = 4_410
     private static let level: Float = 0.55
     /// The last decoded loop (a few MB), kept so reopening a card is instant.
     private static var cache: (key: String, buffer: AVAudioPCMBuffer)?
-
-    nonisolated static var isMuted: Bool {
-        get { UserDefaults.standard.bool(forKey: mutedKey) }
-        set { UserDefaults.standard.set(newValue, forKey: mutedKey) }
-    }
 
     private static func resource(_ key: String) -> (name: String, frames: AVAudioFrameCount) {
         switch key {
@@ -1557,7 +1526,6 @@ final class CelebrationMusic {
     nonisolated init() {}
 
     func start(_ key: String) {
-        guard !Self.isMuted, !AVAudioSession.sharedInstance().isOtherAudioPlaying else { return }
         Task { @MainActor [weak self] in
             guard let buffer = await Self.loop(for: key), let self, !self.stopped else { return }
             self.play(buffer)
@@ -1593,8 +1561,9 @@ final class CelebrationMusic {
     private func play(_ buffer: AVAudioPCMBuffer) {
         let session = AVAudioSession.sharedInstance()
         do {
-            // Ambient: silent with the ring/silent switch, mixes with other audio.
-            try session.setCategory(.ambient, mode: .default)
+            // Solo ambient: silent with the ring/silent switch; otherwise it
+            // takes over the sound, pausing other music.
+            try session.setCategory(.soloAmbient, mode: .default)
             try session.setActive(true)
             engine.attach(node)
             engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
@@ -1643,6 +1612,8 @@ final class CelebrationMusic {
         fade(to: 0, seconds: 0.3) {
             node.stop()
             engine.stop()
+            // Let the music that was paused carry on.
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
     }
 }
