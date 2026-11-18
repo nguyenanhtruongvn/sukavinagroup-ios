@@ -121,12 +121,14 @@ jobs:
           set -euo pipefail
           ditto -x -k App-sim.zip .
           RUNTIME="${{ steps.runtime.outputs.runtime }}"
-          DEVICE_TYPE="$(xcrun simctl list devicetypes -j | python3 -c "
+          # An iPhone model this runtime supports (an iPhone 16 cannot run iOS 17).
+          DEVICE_TYPE="$(xcrun simctl list runtimes -j | python3 -c "
           import json, sys
-          names = [d['identifier'] for d in json.load(sys.stdin)['devicetypes'] if d['name'].startswith('iPhone')]
-          preferred = [n for n in names if 'iPhone-15' in n or 'iPhone-16' in n]
-          print((preferred or names)[0])
-          ")"
+          rt = [r for r in json.load(sys.stdin)['runtimes'] if r['identifier'] == sys.argv[1]][0]
+          phones = [d['identifier'] for d in rt.get('supportedDeviceTypes', []) if d['name'].startswith('iPhone')]
+          print(phones[-1])
+          " "$RUNTIME")"
+          echo "Device type: $DEVICE_TYPE"
           UDID="$(xcrun simctl create "Smoke iOS ${{ matrix.ios }}" "$DEVICE_TYPE" "$RUNTIME")"
           xcrun simctl boot "$UDID"
           xcrun simctl bootstatus "$UDID" -b
