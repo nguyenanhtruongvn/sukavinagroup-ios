@@ -1498,9 +1498,9 @@ enum CelebrationEffects {
 /// window of exactly one loop taken just after the decoder's start-up delay
 /// repeats without a gap.
 ///
-/// Plays while the card is open. The solo-ambient audio session stays silent
-/// with the ring/silent switch; otherwise it pauses music the person was
-/// listening to, and lets that music resume when the card closes.
+/// Plays while the card is open, at the media volume, also with the
+/// ring/silent switch on silent (the person opened the card themselves). It
+/// pauses music the person was listening to and lets it resume on close.
 @MainActor
 final class CelebrationMusic {
     /// Frames skipped at the start: past any MP3 decoder delay.
@@ -1561,9 +1561,9 @@ final class CelebrationMusic {
     private func play(_ buffer: AVAudioPCMBuffer) {
         let session = AVAudioSession.sharedInstance()
         do {
-            // Solo ambient: silent with the ring/silent switch; otherwise it
-            // takes over the sound, pausing other music.
-            try session.setCategory(.soloAmbient, mode: .default)
+            // Playback: plays whatever the silent switch, and takes over the
+            // sound (other music pauses).
+            try session.setCategory(.playback, mode: .default)
             try session.setActive(true)
             engine.attach(node)
             engine.connect(node, to: engine.mainMixerNode, format: buffer.format)
@@ -1575,7 +1575,7 @@ final class CelebrationMusic {
         node.scheduleBuffer(buffer, at: nil, options: .loops)
         node.play()
         playing = true
-        fade(to: Self.level, seconds: 1.2)
+        fade(to: Self.level, seconds: 1.0)
     }
 
     private func fade(to target: Float, seconds: Double, then: (() -> Void)? = nil) {
@@ -1603,13 +1603,13 @@ final class CelebrationMusic {
         node.play()
     }
 
-    /// A short fade so closing the card does not cut the music with a click.
+    /// Stops at once, with a fade too short to hear (avoids a click).
     func stop() {
         stopped = true
         guard playing else { return }
         playing = false
         let engine = engine, node = node
-        fade(to: 0, seconds: 0.3) {
+        fade(to: 0, seconds: 0.08) {
             node.stop()
             engine.stop()
             // Let the music that was paused carry on.
