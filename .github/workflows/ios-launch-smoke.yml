@@ -67,7 +67,7 @@ jobs:
           - ios: '18'
             runner: macos-15
           - ios: '17'
-            runner: macos-14
+            runner: macos-15
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/download-artifact@v4
