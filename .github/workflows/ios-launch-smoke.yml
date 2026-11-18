@@ -96,10 +96,10 @@ jobs:
             [ -n "$X16" ] && sudo xcode-select --switch "$X16/Contents/Developer"
             xcodebuild -version || true
             if command -v xcodes >/dev/null; then
-              timeout 2400 sudo xcodes runtimes install "iOS 17.5" 2>&1 | tail -n 30 || true
+              sudo xcodes runtimes install "iOS 17.5" 2>&1 | tail -n 30 || true
             fi
             if ! xcrun simctl list runtimes | grep -q "iOS 17"; then
-              timeout 2400 sudo xcodebuild -downloadPlatform iOS -buildVersion 17.5 2>&1 | tail -n 30 || true
+              sudo xcodebuild -downloadPlatform iOS -buildVersion 17.5 2>&1 | tail -n 30 || true
             fi
             xcrun simctl list runtimes
             RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "
