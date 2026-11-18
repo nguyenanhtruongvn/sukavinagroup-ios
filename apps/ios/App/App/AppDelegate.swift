@@ -114,6 +114,16 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
     private let notificationRouter = APNsNotificationRouter()
     private var appContainer: NativeAppContainerViewController?
 
+    /// The one app screen, made the first time a window scene connects
+    /// (UIScene lifecycle: required when built with the iOS 27 SDK, where an
+    /// app that still makes its window here is stopped at launch).
+    func makeAppContainer() -> UIViewController {
+        if let appContainer { return appContainer }
+        let container = NativeAppContainerViewController(notificationRouter: notificationRouter)
+        appContainer = container
+        return container
+    }
+
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -161,12 +171,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
         UITabBar.appearance().isTranslucent = true
         UNUserNotificationCenter.current().delegate = self
-        let window = UIWindow(frame: UIScreen.main.bounds)
-        let appContainer = NativeAppContainerViewController(notificationRouter: notificationRouter)
-        window.rootViewController = appContainer
-        window.makeKeyAndVisible()
-        self.window = window
-        self.appContainer = appContainer
+        // The window is made by SceneDelegate when the scene connects.
 
         // Start ActivityKit observers as early as possible. A push-to-start
         // event may wake the process in the background without ever calling
@@ -178,6 +183,12 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         }
 
         return true
+    }
+
+    /// Called by SceneDelegate when the scene becomes active (with scenes,
+    /// UIKit no longer calls applicationDidBecomeActive).
+    func sceneBecameActive() {
+        applicationDidBecomeActive(UIApplication.shared)
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
@@ -655,5 +666,30 @@ private final class NativeAppContainerViewController: UIViewController {
         })
         errorAlert = alert
         presenter.present(alert, animated: true)
+    }
+}
+
+/// UIScene lifecycle (one window). It only hosts the screen the app
+/// delegate owns and forwards "became active"; everything else stays in
+/// AppDelegate, so iOS 17 to 27 behave the same.
+final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        guard let windowScene = scene as? UIWindowScene,
+              let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+        let window = UIWindow(windowScene: windowScene)
+        window.rootViewController = appDelegate.makeAppContainer()
+        window.makeKeyAndVisible()
+        self.window = window
+        appDelegate.window = window
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        (UIApplication.shared.delegate as? AppDelegate)?.sceneBecameActive()
     }
 }
