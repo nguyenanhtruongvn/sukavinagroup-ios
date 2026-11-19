@@ -187,6 +187,20 @@ jobs:
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "Using $RUNTIME on $DEVICE_TYPE ($UDID)"
 
+      - name: Check that the test runner installs on iOS ${{ matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+        shell: bash
+        run: |
+          set +e
+          PRODUCTS="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator"
+          for app in "$PRODUCTS/App.app" "$PRODUCTS/AppUITests-Runner.app"; do
+            echo "== $(basename "$app"): MinimumOSVersion $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist" 2>/dev/null), built with $(/usr/libexec/PlistBuddy -c 'Print :DTXcode' "$app/Info.plist" 2>/dev/null)"
+            lipo -info "$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" 2>&1 | tail -n 1
+            xcrun simctl install "${{ steps.sim.outputs.udid }}" "$app" 2>&1 | tail -n 5
+            echo "install exit: $?"
+          done
+          xcrun simctl listapps "${{ steps.sim.outputs.udid }}" 2>/dev/null | grep -E "CFBundleIdentifier = \"net.sukavinagroup" || true
+
       - name: Walk every screen on iOS ${{ matrix.ios }}
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
         env:
