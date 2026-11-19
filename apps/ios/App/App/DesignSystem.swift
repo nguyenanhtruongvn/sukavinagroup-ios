@@ -598,6 +598,26 @@ extension View {
         }
     }
 
+    /// Round bordered button (iOS 17); iOS 16 gets the closest, a 22 pt rounded rectangle.
+    @ViewBuilder
+    func circleButtonShape() -> some View {
+        if #available(iOS 17.0, *) {
+            buttonBorderShape(.circle)
+        } else {
+            buttonBorderShape(.roundedRectangle(radius: 22))
+        }
+    }
+
+    /// Scroll the content before resizing the sheet (iOS 16.4+).
+    @ViewBuilder
+    func presentationScrollsFirst() -> some View {
+        if #available(iOS 16.4, *) {
+            presentationContentInteraction(.scrolls)
+        } else {
+            self
+        }
+    }
+
     /// `presentationBackground(_:)` (iOS 16.4+); earlier keeps the system background.
     @ViewBuilder
     func presentationBackgroundIfAvailable<S: ShapeStyle>(_ style: S) -> some View {

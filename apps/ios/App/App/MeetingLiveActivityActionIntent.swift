@@ -6,6 +6,7 @@ import Security
 /// Runs in the app process when a Lock Screen Live Activity control is tapped.
 /// It intentionally uses the existing API routes, so older mobile clients and
 /// the server contract remain unchanged.
+@available(iOS 17.0, *)
 struct EndMeetingLiveActivityIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Kết thúc cuộc họp"
     static var openAppWhenRun = false
@@ -43,6 +44,7 @@ struct EndMeetingLiveActivityIntent: LiveActivityIntent {
     }
 }
 
+@available(iOS 17.0, *)
 struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Gia hạn cuộc họp"
     static var openAppWhenRun = false
@@ -89,6 +91,7 @@ struct ExtendMeetingLiveActivityIntent: LiveActivityIntent {
 
 /// First tap on "Kết thúc": ask for confirmation in the activity itself.
 /// Ending is irreversible and the button sits next to the extension controls.
+@available(iOS 17.0, *)
 struct RequestEndMeetingConfirmationIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Xác nhận kết thúc cuộc họp"
     static var openAppWhenRun = false
@@ -105,6 +108,7 @@ struct RequestEndMeetingConfirmationIntent: LiveActivityIntent {
 }
 
 /// "Hủy" on the end confirmation: back to the normal controls.
+@available(iOS 17.0, *)
 struct CancelEndMeetingConfirmationIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Tiếp tục cuộc họp"
     static var openAppWhenRun = false
@@ -120,6 +124,7 @@ struct CancelEndMeetingConfirmationIntent: LiveActivityIntent {
     }
 }
 
+@available(iOS 17.0, *)
 struct StartMeetingExtensionIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Chọn thời gian gia hạn"
     static var openAppWhenRun = false
@@ -135,6 +140,7 @@ struct StartMeetingExtensionIntent: LiveActivityIntent {
     }
 }
 
+@available(iOS 17.0, *)
 struct AdjustMeetingExtensionIntent: LiveActivityIntent {
     static var title: LocalizedStringResource = "Điều chỉnh gia hạn"
     static var openAppWhenRun = false
@@ -158,6 +164,7 @@ struct AdjustMeetingExtensionIntent: LiveActivityIntent {
     }
 }
 
+@available(iOS 17.0, *)
 private enum MeetingLiveActivityAction {
     enum Action: Equatable { case end, extend(minutes: Int) }
 
@@ -467,6 +474,7 @@ enum MeetingLiveActivityExpiry {
     private static let lock = NSLock()
 
     static func schedule(bookingID: String, endsAt: Date) {
+        guard #available(iOS 17.0, *) else { return }
         let delay = max(0, endsAt.timeIntervalSinceNow)
         let task = Task {
             if delay > 0 {
@@ -485,9 +493,11 @@ enum MeetingLiveActivityExpiry {
     }
 
     static func removeExpiredActivities() {
+        guard #available(iOS 17.0, *) else { return }
         Task { await endIfExpired() }
     }
 
+    @available(iOS 17.0, *)
     private static func endIfExpired(bookingID: String? = nil) async {
         let now = Date()
         for activity in Activity<MeetingLiveActivityAttributes>.activities {

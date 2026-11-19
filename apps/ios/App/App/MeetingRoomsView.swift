@@ -651,7 +651,7 @@ struct MeetingRoomScheduleSheet: View {
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
+                .circleButtonShape()
                 .tint(.green)
                 .accessibilityLabel("Đặt phòng \(room.name)")
                 .padding(22)

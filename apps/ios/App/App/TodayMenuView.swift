@@ -434,7 +434,7 @@ struct TodayMenuView: View {
             }
         }
         .fittedMealSheetSizing(fallbackHeight: mealSheetHeight)
-        .presentationContentInteraction(.scrolls)
+        .presentationScrollsFirst()
         .presentationDragIndicator(.visible)
         .attachedMealSheetCorners()
     }
@@ -615,8 +615,10 @@ extension View {
     func attachedMealSheetCorners() -> some View {
         if #available(iOS 26.0, *) {
             self
-        } else {
+        } else if #available(iOS 16.4, *) {
             presentationCornerRadius(28)
+        } else {
+            self
         }
     }
 

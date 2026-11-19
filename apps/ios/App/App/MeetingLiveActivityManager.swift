@@ -7,6 +7,8 @@ enum MeetingLiveActivityManager {
     /// background push can wait for it before reporting to iOS.
     @discardableResult
     static func start(from userInfo: [AnyHashable: Any]) -> Task<Void, Never>? {
+        // Live Activities are shown by the iOS 17 widget extension.
+        guard #available(iOS 17.0, *) else { return nil }
         guard userInfo["type"] as? String == "meeting_ending_soon",
               userInfo["is_owner"] as? String == "true",
               let bookingID = userInfo["booking_id"] as? String,
@@ -63,6 +65,7 @@ enum MeetingLiveActivityManager {
     }
 
     static func update(bookingID: String, endsAt: Date) {
+        guard #available(iOS 17.0, *) else { return }
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
                 let current = activity.content.state
@@ -83,6 +86,7 @@ enum MeetingLiveActivityManager {
     }
 
     static func end(bookingID: String) {
+        guard #available(iOS 17.0, *) else { return }
         Task {
             for activity in Activity<MeetingLiveActivityAttributes>.activities where activity.attributes.bookingID == bookingID {
                 await activity.end(nil, dismissalPolicy: .immediate)
@@ -91,6 +95,7 @@ enum MeetingLiveActivityManager {
     }
 
     static func restorePushTokenObservers() {
+        guard #available(iOS 17.0, *) else { return }
         Task {
             await removeAllDuplicateActivities()
         }
@@ -119,6 +124,7 @@ enum MeetingLiveActivityManager {
         }
     }
 
+    @available(iOS 17.0, *)
     private static func removeAllDuplicateActivities() async {
         let activities = Activity<MeetingLiveActivityAttributes>.activities
         let grouped = Dictionary(grouping: activities) { $0.attributes.bookingID }
@@ -128,6 +134,7 @@ enum MeetingLiveActivityManager {
         }
     }
 
+    @available(iOS 17.0, *)
     private static func removeDuplicateActivities(
         for bookingID: String,
         keeping keepID: String? = nil
@@ -231,6 +238,7 @@ enum LiveActivityTokenLedger {
 /// ActivityKit tokens are distinct from ordinary APNs device tokens and are
 /// scoped to one Live Activity.  The stream can provide a rotated token, so it
 /// remains observed for the lifetime of each active activity.
+@available(iOS 17.0, *)
 private enum MeetingLiveActivityPushRegistration {
     private static let baseURL = SukavinaServer.api
     private static var observedActivityIDs = Set<String>()

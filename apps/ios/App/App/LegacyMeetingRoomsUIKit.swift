@@ -1113,16 +1113,26 @@ private final class LegacyMeetingTimelineView: UIView {
         addSubview(nowLabel)
         // Light / dark switch: the pills and connectors are redrawn in the
         // new appearance's colours.
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: LegacyMeetingTimelineView, _: UITraitCollection) in
-            view.renderLabels()
-        }
-        // A new text size changes the hour labels' height, so their middles
-        // are placed on the lines again.
-        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: LegacyMeetingTimelineView, _: UITraitCollection) in
-            view.setNeedsLayout()
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: LegacyMeetingTimelineView, _: UITraitCollection) in
+                view.renderLabels()
+            }
+            // A new text size changes the hour labels' height, so their middles
+            // are placed on the lines again.
+            registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (view: LegacyMeetingTimelineView, _: UITraitCollection) in
+                view.setNeedsLayout()
+            }
         }
     }
     required init?(coder: NSCoder) { nil }
+
+    // iOS 16 has no registerForTraitChanges: the same two reactions here.
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if #available(iOS 17.0, *) { return }
+        if traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle { renderLabels() }
+        if traitCollection.preferredContentSizeCategory != previousTraitCollection?.preferredContentSizeCategory { setNeedsLayout() }
+    }
 
     private static func hourLine(y: CGFloat, autoresizing: UIView.AutoresizingMask) -> UIView {
         let line = UIView()
@@ -2095,8 +2105,10 @@ private final class LegacyMeetingBookingController: UIViewController, UITextFiel
             view.layer.borderColor = UIColor.separator.resolvedColor(with: view.traitCollection).cgColor
         }
         outline(row)
-        row.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: UIView, _: UITraitCollection) in
-            outline(view)
+        if #available(iOS 17.0, *) {
+            row.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (view: UIView, _: UITraitCollection) in
+                outline(view)
+            }
         }
         dayTileControl.translatesAutoresizingMaskIntoConstraints = false
         row.addSubview(dayTileControl)
@@ -2960,6 +2972,12 @@ private final class LegacyMyMeetingsController: UIViewController {
     }
 
     private func emptyState() -> UIView {
+        guard #available(iOS 17.0, *) else {
+            return LegacyEmptyState.make(
+                systemImage: "calendar.badge.exclamationmark",
+                text: showsUpcoming ? "Chưa có lịch sắp tới" : "Chưa có lịch đã qua"
+            )
+        }
         var configuration = UIContentUnavailableConfiguration.empty()
         configuration.image = UIImage(systemName: "calendar.badge.exclamationmark")
         configuration.text = showsUpcoming ? "Chưa có lịch sắp tới" : "Chưa có lịch đã qua"
@@ -2974,12 +2992,23 @@ private final class LegacyMyMeetingsController: UIViewController {
 
     private func open(_ meeting: MeetingBooking) {
         guard let room = session.meetingRooms.first(where: { $0.id == meeting.roomId }) else {
-            var configuration = UIContentUnavailableConfiguration.empty()
-            configuration.image = UIImage(systemName: "building.2.crop.circle")
-            configuration.text = "Không tìm thấy thông tin phòng"
             let missing = UIViewController()
             missing.view.backgroundColor = .systemGroupedBackground
-            missing.contentUnavailableConfiguration = configuration
+            if #available(iOS 17.0, *) {
+                var configuration = UIContentUnavailableConfiguration.empty()
+                configuration.image = UIImage(systemName: "building.2.crop.circle")
+                configuration.text = "Không tìm thấy thông tin phòng"
+                missing.contentUnavailableConfiguration = configuration
+            } else {
+                let empty = LegacyEmptyState.make(systemImage: "building.2.crop.circle", text: "Không tìm thấy thông tin phòng")
+                empty.translatesAutoresizingMaskIntoConstraints = false
+                missing.view.addSubview(empty)
+                NSLayoutConstraint.activate([
+                    empty.centerXAnchor.constraint(equalTo: missing.view.centerXAnchor),
+                    empty.centerYAnchor.constraint(equalTo: missing.view.centerYAnchor),
+                    empty.leadingAnchor.constraint(greaterThanOrEqualTo: missing.view.leadingAnchor, constant: 24),
+                ])
+            }
             LegacyMeetingUI.presentSheet(missing, from: self)
             return
         }
@@ -3143,5 +3172,31 @@ private final class LegacySheetNavigationController: UINavigationController {
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         if isBeingDismissed || presentingViewController == nil { onDismiss?(); onDismiss = nil }
+    }
+}
+
+/// iOS 16 stand-in for UIContentUnavailableView: a symbol over a line of text.
+enum LegacyEmptyState {
+    static func make(systemImage: String, text: String) -> UIView {
+        let image = UIImageView(image: UIImage(systemName: systemImage))
+        image.tintColor = .secondaryLabel
+        image.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 40)
+        let label = UILabel()
+        label.text = text
+        label.font = .preferredFont(forTextStyle: .headline)
+        label.textColor = .secondaryLabel
+        label.numberOfLines = 0
+        label.textAlignment = .center
+        let stack = UIStackView(arrangedSubviews: [image, label])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 10
+        stack.backgroundColor = .systemBackground
+        stack.layer.cornerRadius = 22
+        stack.layer.cornerCurve = .continuous
+        stack.isLayoutMarginsRelativeArrangement = true
+        stack.layoutMargins = UIEdgeInsets(top: 32, left: 20, bottom: 32, right: 20)
+        stack.heightAnchor.constraint(greaterThanOrEqualToConstant: 250).isActive = true
+        return stack
     }
 }

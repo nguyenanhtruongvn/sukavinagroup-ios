@@ -136,7 +136,7 @@ private struct RequestRecipientsPickerSheet: View {
             }
         }
         .fittedMealSheetSizing(fallbackHeight: sheetHeight)
-        .presentationContentInteraction(.scrolls)
+        .presentationScrollsFirst()
         .presentationDragIndicator(.visible)
         .attachedMealSheetCorners()
         .task {
@@ -939,7 +939,7 @@ struct RequestsView: View {
                 .frame(width: 44, height: 44)
         }
         .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.circle)
+        .circleButtonShape()
         .tint(AppTheme.red)
         .accessibilityLabel("Tạo đơn mới")
     }
