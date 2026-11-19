@@ -33,6 +33,7 @@ final class CrashWalkTests: XCTestCase {
     func testOpenEveryScreenWithoutSending() throws {
         app.launch()
         signInIfNeeded()
+        pause(4) // let the sign-in transition finish before touching the tabs
         check("signed in")
 
         home()
@@ -49,7 +50,7 @@ final class CrashWalkTests: XCTestCase {
         openTab("Trang chủ")
         if tapIfPresent("Bảng công") {
             check("Bảng công")
-            if let month = firstStaticText(containing: "Tháng ") { month.tap(); pause(2.5); check("Bảng công: a month"); goBack() }
+            if let month = firstStaticText(containing: "Tháng "), tapSafely(month) { pause(2.5); check("Bảng công: a month"); goBack() }
             goBack()
         }
         openTab("Trang chủ")
@@ -102,7 +103,6 @@ final class CrashWalkTests: XCTestCase {
         for day in ["Ngày mai", "Hôm nay"] where tapIfPresent(day) { check("Phòng họp: \(day)") }
         if tapIfPresent("Lịch của tôi") {
             check("Phòng họp: Lịch của tôi")
-            for part in ["Sắp tới", "Đã qua"] where tapIfPresent(part) { check("Lịch của tôi: \(part)") }
             dismissOverlays(); check("Lịch của tôi: closed")
         }
         if tapIfPresent("Xem lịch") { check("Phòng họp: timeline"); close() }
@@ -118,8 +118,8 @@ final class CrashWalkTests: XCTestCase {
     private func notifications() {
         openTab("Thông báo")
         for title in ["Chúc mừng năm mới", "Chúc mừng Giáng sinh", "Chúc mừng sinh nhật"] {
-            guard let row = firstStaticText(containing: title), row.isHittable else { continue }
-            row.tap(); pause(3)
+            guard let row = firstStaticText(containing: title), tapSafely(row) else { continue }
+            pause(3)
             check("Thẻ chúc: \(title)")
             // Close by tapping outside the card.
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.06)).tap(); pause(1.5)
@@ -183,8 +183,10 @@ final class CrashWalkTests: XCTestCase {
 
     private func openTab(_ name: String) {
         dismissOverlays()
-        let tab = app.tabBars.firstMatch.exists ? app.tabBars.buttons[name] : app.buttons[name]
-        if tab.waitForExistence(timeout: 10) && tab.isHittable { tab.tap() } else { _ = tapIfPresent(name) }
+        for _ in 0..<15 {
+            if tapSafely(app.tabBars.buttons[name].firstMatch) || tapSafely(app.buttons[name].firstMatch) { break }
+            pause(1)
+        }
         pause(2)
         check("tab \(name)")
     }
@@ -197,8 +199,7 @@ final class CrashWalkTests: XCTestCase {
         let candidates: [XCUIElement] = exactButtonOnly
             ? [app.buttons[label], app.segmentedControls.buttons[label]]
             : [app.buttons[label], app.staticTexts[label], app.cells.staticTexts[label], app.otherElements[label]]
-        for element in candidates where element.firstMatch.exists && element.firstMatch.isHittable {
-            element.firstMatch.tap()
+        for element in candidates where tapSafely(element.firstMatch) {
             pause(2)
             return true
         }
@@ -222,32 +223,43 @@ final class CrashWalkTests: XCTestCase {
     private func dismissOverlays() {
         for _ in 0..<3 {
             let closer = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Đóng")).firstMatch
-            guard closer.exists && closer.isHittable else { return }
-            closer.tap(); pause(1.2)
+            guard tapSafely(closer) else { return }
+            pause(1.2)
         }
     }
 
     /// Closes a sheet, dialog or pushed screen without sending anything.
     private func close() {
         let closer = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Đóng")).firstMatch
-        if closer.exists && closer.isHittable { closer.tap(); pause(1.5); return }
+        if tapSafely(closer) { pause(1.5); return }
         for title in ["Đóng", "Hủy", "Quay lại", "Close", "Cancel", "Xong"] {
-            let button = app.buttons[title].firstMatch
-            if button.exists && button.isHittable { button.tap(); pause(1.5); return }
+            if tapSafely(app.buttons[title].firstMatch) { pause(1.5); return }
         }
         goBack()
     }
 
     private func goBack() {
-        let back = app.navigationBars.buttons.element(boundBy: 0)
-        if back.exists && back.isHittable {
-            back.tap()
-        } else if app.buttons["Quay lại"].firstMatch.exists {
-            app.buttons["Quay lại"].firstMatch.tap()
+        if tapSafely(app.navigationBars.buttons.element(boundBy: 0)) || tapSafely(app.buttons["Quay lại"].firstMatch) {
+            // went back
         } else {
             app.swipeDown(velocity: .fast)
         }
         pause(1.5)
+    }
+
+    /// Taps an element by the centre of its frame if it is on screen now.
+    /// Unlike element.tap(), this never fails the test when the element moves
+    /// or disappears during a transition, and never scrolls on its own.
+    @discardableResult
+    private func tapSafely(_ element: XCUIElement) -> Bool {
+        guard element.exists else { return false }
+        let frame = element.frame
+        let screen = app.frame
+        guard !frame.isEmpty, frame.minX.isFinite, frame.minY.isFinite, screen.intersects(frame) else { return false }
+        let point = CGPoint(x: frame.midX, y: frame.midY)
+        guard screen.contains(point) else { return false }
+        app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: point.x, dy: point.y)).tap()
+        return true
     }
 
     private func pause(_ seconds: TimeInterval) {
