@@ -1,0 +1,227 @@
+name: iOS UI crash walk
+
+# Signs in with the test account (repository secrets
+# SUKAVINA_TEST_EMPLOYEE_CODE and SUKAVINA_TEST_PASSWORD), then opens every
+# screen, sheet, form and picker of the app on iOS 27, 26, 18 and 17
+# simulators and fails if the app stops running. Read-only: it never taps a
+# control that sends or changes data (see AppUITests/CrashWalkTests.swift).
+#
+# The app under test is always the Xcode 27 build (the binary people get).
+# Xcode 27's UI testing cannot read iOS 17/18 simulators, so there the test
+# runner comes from an older Xcode and drives that same Xcode 27 app.
+#
+# This repository is public: screenshots and result bundles (they show the
+# test account's data) are not uploaded; the log names each step only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Run only this iOS major version (27, 26, 18 or 17); empty runs all'
+        required: false
+        default: ''
+  push:
+    branches:
+      - 'fix/**'
+    paths:
+      - 'apps/ios/**'
+      - '.github/workflows/ios-ui-crash-walk.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-ui-crash-walk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  app:
+    name: Xcode 27 simulator app
+    runs-on: xcode-27
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build the app with Xcode 27 for the simulator
+        shell: bash
+        run: |
+          set +e
+          XCODE_APP="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1)"
+          [ -n "$XCODE_APP" ] && sudo xcode-select --switch "$XCODE_APP/Contents/Developer"
+          xcodebuild -version
+          xcodebuild build \
+            -project apps/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            > "$RUNNER_TEMP/build.log" 2>&1
+          STATUS=$?
+          grep -E "error:|BUILD (SUCCEEDED|FAILED)" "$RUNNER_TEMP/build.log" | tail -n 40
+          [ $STATUS -eq 0 ] || exit $STATUS
+          cd "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator"
+          ditto -c -k --keepParent App.app "$GITHUB_WORKSPACE/App-xcode27-sim.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: App-xcode27-sim
+          path: App-xcode27-sim.zip
+          retention-days: 1
+
+  walk:
+    needs: app
+    runs-on: ${{ matrix.runner }}
+    # iOS 17 downloads a 7 GB simulator first.
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      # One at a time: signing the same test account in on several devices
+      # at once signs the earlier ones out.
+      max-parallel: 1
+      matrix:
+        include:
+          - ios: '27'
+            runner: xcode-27
+            xcode: '27'
+          - ios: '26'
+            runner: macos-26
+            xcode: '26'
+          - ios: '18'
+            runner: macos-15
+            xcode: '16.4'
+          - ios: '17'
+            runner: macos-15
+            xcode: '16.4'
+    steps:
+      - uses: actions/checkout@v6
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+
+      - uses: actions/download-artifact@v4
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+        with:
+          name: App-xcode27-sim
+
+      - name: Select Xcode ${{ matrix.xcode }} (test runner)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          XCODE_APP="$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -n "$XCODE_APP" ]; then sudo xcode-select --switch "$XCODE_APP/Contents/Developer"; fi
+          xcodebuild -version
+
+      - name: Build the UI tests, then put in the Xcode 27 app
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+        shell: bash
+        run: |
+          set +e
+          xcodebuild build-for-testing \
+            -project apps/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            > "$RUNNER_TEMP/build.log" 2>&1
+          STATUS=$?
+          grep -E "error:|TEST BUILD" "$RUNNER_TEMP/build.log" | tail -n 40
+          [ $STATUS -eq 0 ] || exit $STATUS
+          PRODUCTS="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator"
+          rm -rf "$PRODUCTS/App.app"
+          ditto -x -k App-xcode27-sim.zip "$PRODUCTS"
+          echo "App under test built with Xcode: $(/usr/libexec/PlistBuddy -c 'Print :DTXcode' "$PRODUCTS/App.app/Info.plist" 2>/dev/null)"
+
+      - name: Check the test account secrets
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+        env:
+          CODE: ${{ secrets.SUKAVINA_TEST_EMPLOYEE_CODE }}
+          PASSWORD: ${{ secrets.SUKAVINA_TEST_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -z "$CODE" ] || [ -z "$PASSWORD" ]; then
+            echo "::error::Add the repository secrets SUKAVINA_TEST_EMPLOYEE_CODE and SUKAVINA_TEST_PASSWORD (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - name: iOS ${{ matrix.ios }} simulator
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+        id: sim
+        shell: bash
+        run: |
+          set +e
+          find_runtime() {
+            xcrun simctl list runtimes -j | python3 -c "
+          import json, sys
+          major = sys.argv[1]
+          rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].split('.')[0] == major]
+          rts.sort(key=lambda r: ('iPhone' not in r['identifier'].split('SimRuntime.')[-1], [int(x) for x in r['version'].split('.')]))
+          print(rts[-1]['identifier'] if rts else '')
+          " "${{ matrix.ios }}"
+          }
+          RUNTIME="$(find_runtime)"
+          if [ -z "$RUNTIME" ]; then
+            case "${{ matrix.ios }}" in 17) V=17.5 ;; 18) V=18.6 ;; 26) V=26.0 ;; *) V="" ;; esac
+            echo "Downloading the iOS $V simulator runtime"
+            if [ -n "$V" ]; then sudo xcodebuild -downloadPlatform iOS -buildVersion "$V" 2>&1 | grep -vE "%|Preparing" | tail -n 5; fi
+            if [ -z "$(find_runtime)" ]; then
+              command -v xcodes >/dev/null || brew install xcodesorg/made/xcodes >/dev/null 2>&1
+              sudo xcodes runtimes install "iOS $V" 2>&1 | grep -v "%" | tail -n 10
+            fi
+            RUNTIME="$(find_runtime)"
+          fi
+          if [ -z "$RUNTIME" ]; then
+            echo "::error::No iOS ${{ matrix.ios }} simulator runtime."
+            exit 1
+          fi
+          DEVICE_TYPE="$(xcrun simctl list runtimes -j | python3 -c "
+          import json, sys
+          rt = [r for r in json.load(sys.stdin)['runtimes'] if r['identifier'] == sys.argv[1]][0]
+          phones = [d['identifier'] for d in rt.get('supportedDeviceTypes', []) if d['name'].startswith('iPhone')]
+          print(phones[-1])
+          " "$RUNTIME")"
+          UDID="$(xcrun simctl create "Walk iOS ${{ matrix.ios }}" "$DEVICE_TYPE" "$RUNTIME")"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "Using $RUNTIME on $DEVICE_TYPE ($UDID)"
+
+      - name: Walk every screen on iOS ${{ matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
+        env:
+          TEST_RUNNER_SUKAVINA_TEST_EMPLOYEE_CODE: ${{ secrets.SUKAVINA_TEST_EMPLOYEE_CODE }}
+          TEST_RUNNER_SUKAVINA_TEST_PASSWORD: ${{ secrets.SUKAVINA_TEST_PASSWORD }}
+        shell: bash
+        run: |
+          set +e
+          xcodebuild test-without-building \
+            -project apps/ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
+            -resultBundlePath "$RUNNER_TEMP/walk.xcresult" \
+            -retry-tests-on-failure -test-iterations 2 \
+            > "$RUNNER_TEMP/test.log" 2>&1
+          STATUS=$?
+          echo "xcodebuild exit status: $STATUS"
+          grep -E "WALK:|Test Case|error:|TEST EXECUTE|TEST SUCCEEDED|TEST FAILED" "$RUNNER_TEMP/test.log" | tail -n 160
+          if [ $STATUS -ne 0 ] && ! grep -q "Test Case" "$RUNNER_TEMP/test.log"; then
+            echo "---- xcodebuild output (tail) ----"
+            tail -n 60 "$RUNNER_TEMP/test.log"
+          fi
+          # The app's crash reports: exception and crashed-thread frames only.
+          for f in ~/Library/Logs/DiagnosticReports/App[-_]*.ips; do
+            [ -e "$f" ] || continue
+            echo "==== $(basename "$f")"
+            python3 - "$f" <<'PY'
+          import json, sys
+          text = open(sys.argv[1]).read()
+          body = json.loads(text.split(chr(10), 1)[1])
+          print('exception:', body.get('exception'))
+          print('termination:', body.get('termination', {}).get('indicator'))
+          images = body.get('usedImages', [])
+          thread = next((t for t in body.get('threads', []) if t.get('triggered')), None)
+          if thread:
+              for frame in thread.get('frames', [])[:30]:
+                  image = images[frame.get('imageIndex', 0)].get('name', '?') if images else '?'
+                  print('  ', image, frame.get('symbol', ''), '+', frame.get('symbolLocation', ''))
+          PY
+          done
+          exit $STATUS
