@@ -120,7 +120,7 @@ struct ProfileView: View {
                         .labelsHidden()
                         .tint(AppTheme.red)
                         .onAppear { biometricsSwitch = account.biometricsEnabled }
-                        .onChange(of: account.biometricsEnabled) { _, enabled in biometricsSwitch = enabled }
+                        .onValueChange(of: account.biometricsEnabled) { _, enabled in biometricsSwitch = enabled }
                     }
                     .padding(18)
                     .background(AppTheme.card)
@@ -464,7 +464,7 @@ struct PasswordChangeView: View {
                         VStack(spacing: 14) {
                             if isDemoAccount {
                                 NativeSecureField(title: "Mật khẩu hiện tại", text: $currentPassword)
-                                    .onChange(of: currentPassword) { _, _ in session.clearPasswordChangeError() }
+                                    .onValueChange(of: currentPassword) { _, _ in session.clearPasswordChangeError() }
                                 if attemptedSubmit && currentPassword.isEmpty {
                                     validationMessage("Vui lòng nhập mật khẩu hiện tại.")
                                 }
@@ -474,7 +474,7 @@ struct PasswordChangeView: View {
                                 }
                             } else {
                                 NativeField(title: "Mã OTP gồm 6 số", text: $code, icon: "number", keyboard: .numberPad, textContentType: .oneTimeCode)
-                                    .onChange(of: code) { _, value in
+                                    .onValueChange(of: code) { _, value in
                                         code = String(value.filter(\.isNumber).prefix(6))
                                         session.clearPasswordChangeError()
                                     }
@@ -483,7 +483,7 @@ struct PasswordChangeView: View {
                                 }
                             }
                             NativeSecureField(title: "Mật khẩu mới, ít nhất 6 ký tự gồm chữ và số", text: $newPassword)
-                                .onChange(of: newPassword) { _, _ in session.clearPasswordChangeError() }
+                                .onValueChange(of: newPassword) { _, _ in session.clearPasswordChangeError() }
                             if let reusedPasswordError {
                                 Label(reusedPasswordError, systemImage: "exclamationmark.circle.fill")
                                     .font(.caption).foregroundColor(AppTheme.redText).frame(maxWidth: .infinity, alignment: .leading)

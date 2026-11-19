@@ -29,10 +29,10 @@ struct EmployeePortalView: View {
     var body: some View {
         systemPortalTabs
             .accentColor(AppTheme.red)
-            .onChange(of: selectedTab) { _, tab in
+            .onValueChange(of: selectedTab) { _, tab in
                 if tab == 3 { session.clearNotificationBadge() }
             }
-            .onChange(of: notificationRouter.pendingRoute) { _, route in
+            .onValueChange(of: notificationRouter.pendingRoute) { _, route in
                 if route != nil { selectedTab = 3 }
             }
             // A tap that launched the app (or arrived while signed out) set
@@ -592,7 +592,7 @@ struct DashboardView: View {
                 showAiAssistantLaunchLabel = false
             }
         }
-        .onChange(of: home.aiAssistantEnabled) { _, enabled in
+        .onValueChange(of: home.aiAssistantEnabled) { _, enabled in
             if !enabled { showAiAssistant = false }
         }
     }

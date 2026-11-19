@@ -304,7 +304,7 @@ struct MeetingControlCard: View {
                             .foregroundStyle(AppTheme.text(.green))
                     }
                     .disabled(isSubmitting)
-                    .onChange(of: extensionMinutes) { _, _ in actionError = nil }
+                    .onValueChange(of: extensionMinutes) { _, _ in actionError = nil }
 
                     Button {
                         Task { await submit("extend") }
@@ -489,7 +489,7 @@ struct MyMeetingsSheet: View {
                 if let room = meetingStore.rooms.first(where: { $0.id == meeting.roomId }) {
                     MeetingBookingDetailSheet(booking: meeting, room: room)
                 } else {
-                    ContentUnavailableView("Không tìm thấy thông tin phòng", systemImage: "building.2.crop.circle")
+                    UnavailableContent("Không tìm thấy thông tin phòng", systemImage: "building.2.crop.circle")
                 }
             }
         }
@@ -534,7 +534,7 @@ struct MyMeetingsSheet: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
+        UnavailableContent {
             Label(showsUpcoming ? "Chưa có lịch sắp tới" : "Chưa có lịch đã qua", systemImage: "calendar.badge.exclamationmark")
         }
         .frame(maxWidth: .infinity, minHeight: 250)

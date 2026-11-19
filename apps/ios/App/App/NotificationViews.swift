@@ -92,7 +92,7 @@ struct NotificationsView: View {
                         articleNotificationRow(item, isUnread: inbox.unreadArticleIDs.contains(item.id))
                     }
                     if items.isEmpty && inboxRequestNotifications.isEmpty {
-                        ContentUnavailableView("Chưa có thông báo", systemImage: "bell.slash")
+                        UnavailableContent("Chưa có thông báo", systemImage: "bell.slash")
                             .foregroundStyle(readableNotificationText)
                             .listRowBackground(notificationPageBackground)
                             .listRowSeparator(.hidden)
@@ -105,7 +105,7 @@ struct NotificationsView: View {
                         .accessibilityHidden(true)
             }
             .listStyle(.plain)
-            .contentMargins(.top, 4, for: .scrollContent)
+            .scrollContentMargin(.top, 4)
             // Title, unread count and "Xóa tất cả" stay put; only the
             // notifications scroll.
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -142,19 +142,19 @@ struct NotificationsView: View {
                     // .task runs on every appearance, so no separate onAppear.
                     await openPendingAPNsRouteIfNeeded()
                 }
-                .onChange(of: revisions.attendance) { _, _ in Task { await reloadNotifications() } }
+                .onValueChange(of: revisions.attendance) { _, _ in Task { await reloadNotifications() } }
                 // Request, meeting and inbox events (a decision, an invitation,
                 // a read on another device) are fetched once by SessionStore,
                 // for the badge; this list mirrors that result instead of
                 // requesting the same notifications a second time.
-                .onChange(of: inbox.requestNotifications) { _, values in
+                .onValueChange(of: inbox.requestNotifications) { _, values in
                     if requestNotifications != values { requestNotifications = values }
                     // A pending tap whose notification only arrived now.
                     if notificationRouter.pendingRoute != nil {
                         Task { await openPendingAPNsRouteIfNeeded(allowReload: false) }
                     }
                 }
-                .onChange(of: notificationRouter.pendingRoute) { _, _ in
+                .onValueChange(of: notificationRouter.pendingRoute) { _, _ in
                     Task { await openPendingAPNsRouteIfNeeded() }
                 }
                 .sheet(item: $reviewing) { request in RequestDecisionView(request: request) { approved, note in await requestStore.decide(token: session.token, id: request.id, approved: approved, note: note) } }
@@ -231,7 +231,7 @@ struct NotificationsView: View {
         }
         .fullScreenCover(item: $celebration) { item in
             CelebrationOverlay(item: item) { showCelebration(nil) }
-                .presentationBackground(.clear)
+                .presentationBackgroundIfAvailable(.clear)
         }
         .alert("Không mở được đơn", isPresented: $requestNotFound) {
             Button("Đóng", role: .cancel) {}
@@ -1295,7 +1295,7 @@ struct CelebrationOverlay: View {
         }
         .onDisappear { music.stop() }
         // Quiet while the app is in the background.
-        .onChange(of: scenePhase) { _, phase in
+        .onValueChange(of: scenePhase) { _, phase in
             if phase == .active { music.resume() } else if phase == .background { music.pause() }
         }
     }

@@ -568,3 +568,146 @@ final class DatePopoverController: UIViewController, UIPopoverPresentationContro
         .none
     }
 }
+
+// MARK: - iOS 16 compatibility
+// The app runs on iOS 16. These wrappers use the iOS 17 SwiftUI API when it
+// exists and an equivalent on iOS 16, so call sites stay one line.
+
+extension View {
+    /// `onChange(of:initial:)` with the old and new value, also on iOS 16.
+    @ViewBuilder
+    func onValueChange<V: Equatable>(
+        of value: V,
+        initial: Bool = false,
+        _ action: @escaping (_ oldValue: V, _ newValue: V) -> Void
+    ) -> some View {
+        if #available(iOS 17.0, *) {
+            onChange(of: value, initial: initial) { oldValue, newValue in action(oldValue, newValue) }
+        } else {
+            modifier(LegacyValueChangeModifier(value: value, initial: initial, action: action))
+        }
+    }
+
+    /// `contentMargins(_:_:for: .scrollContent)`; iOS 16 keeps its default margins.
+    @ViewBuilder
+    func scrollContentMargin(_ edges: Edge.Set, _ length: CGFloat) -> some View {
+        if #available(iOS 17.0, *) {
+            contentMargins(edges, length, for: .scrollContent)
+        } else {
+            self
+        }
+    }
+
+    /// Round bordered button (iOS 17); iOS 16 gets the closest, a 22 pt rounded rectangle.
+    @ViewBuilder
+    func circleButtonShape() -> some View {
+        if #available(iOS 17.0, *) {
+            buttonBorderShape(.circle)
+        } else {
+            buttonBorderShape(.roundedRectangle(radius: 22))
+        }
+    }
+
+    /// Scroll the content before resizing the sheet (iOS 16.4+).
+    @ViewBuilder
+    func presentationScrollsFirst() -> some View {
+        if #available(iOS 16.4, *) {
+            presentationContentInteraction(.scrolls)
+        } else {
+            self
+        }
+    }
+
+    /// `presentationBackground(_:)` (iOS 16.4+); earlier keeps the system background.
+    @ViewBuilder
+    func presentationBackgroundIfAvailable<S: ShapeStyle>(_ style: S) -> some View {
+        if #available(iOS 16.4, *) {
+            presentationBackground(style)
+        } else {
+            self
+        }
+    }
+}
+
+/// iOS 16: remembers the previous value for `onValueChange`.
+private struct LegacyValueChangeModifier<V: Equatable>: ViewModifier {
+    let value: V
+    let initial: Bool
+    let action: (V, V) -> Void
+    @State private var previous: V?
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear {
+                guard previous == nil else { return }
+                previous = value
+                if initial { action(value, value) }
+            }
+            .onChange(of: value) { newValue in
+                action(previous ?? newValue, newValue)
+                previous = newValue
+            }
+    }
+}
+
+/// `ContentUnavailableView` on iOS 17+, a matching empty state on iOS 16.
+struct UnavailableContent<LabelContent: View, Description: View, Actions: View>: View {
+    private let label: LabelContent
+    private let description: Description
+    private let actions: Actions
+
+    init(
+        @ViewBuilder label: () -> LabelContent,
+        @ViewBuilder description: () -> Description,
+        @ViewBuilder actions: () -> Actions
+    ) {
+        self.label = label()
+        self.description = description()
+        self.actions = actions()
+    }
+
+    var body: some View {
+        if #available(iOS 17.0, *) {
+            ContentUnavailableView(label: { label }, description: { description }, actions: { actions })
+        } else {
+            VStack(spacing: 10) {
+                label
+                    .labelStyle(UnavailableLabelStyle())
+                description
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                actions
+                    .padding(.top, 6)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+extension UnavailableContent where Description == EmptyView, Actions == EmptyView {
+    init(@ViewBuilder label: () -> LabelContent) {
+        self.init(label: label, description: { EmptyView() }, actions: { EmptyView() })
+    }
+}
+
+extension UnavailableContent where LabelContent == Label<Text, Image>, Description == Text?, Actions == EmptyView {
+    init(_ title: String, systemImage: String, description: Text? = nil) {
+        self.init(label: { Label(title, systemImage: systemImage) }, description: { description }, actions: { EmptyView() })
+    }
+}
+
+/// Big symbol over a bold title, like ContentUnavailableView.
+private struct UnavailableLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: 10) {
+            configuration.icon
+                .font(.system(size: 44))
+                .foregroundStyle(.secondary)
+            configuration.title
+                .font(.title3.bold())
+                .multilineTextAlignment(.center)
+        }
+    }
+}

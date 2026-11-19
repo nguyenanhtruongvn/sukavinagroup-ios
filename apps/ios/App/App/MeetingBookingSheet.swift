@@ -134,7 +134,7 @@ struct MeetingBookingSheet: View {
                     }
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: focusedInviteeField) { _, field in
+                    .onValueChange(of: focusedInviteeField) { _, field in
                         guard field != nil else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
@@ -142,19 +142,19 @@ struct MeetingBookingSheet: View {
                     // pushes it down, so follow it. Removing someone (the x in
                     // "Đã chọn") only shrinks that list: the user is working
                     // there, and jumping back to the search field was jarring.
-                    .onChange(of: selected) { old, new in
+                    .onValueChange(of: selected) { old, new in
                         guard new.count > old.count else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
-                    .onChange(of: selectedDepartments) { old, new in
+                    .onValueChange(of: selectedDepartments) { old, new in
                         guard new.count > old.count else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
-                    .onChange(of: query) { _, _ in
+                    .onValueChange(of: query) { _, _ in
                         guard focusedInviteeField == .people else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
-                    .onChange(of: departmentQuery) { _, _ in
+                    .onValueChange(of: departmentQuery) { _, _ in
                         guard focusedInviteeField == .departments else { return }
                         keepFocusedInviteeFieldVisible(using: proxy)
                     }
@@ -203,7 +203,7 @@ struct MeetingBookingSheet: View {
                 inviteesError = await session.refreshMeetingInvitees()
                 departmentsCache = Self.departmentList(meetingStore.invitees)
             }
-            .onChange(of: meetingStore.invitees.count) { _, _ in
+            .onValueChange(of: meetingStore.invitees.count) { _, _ in
                 departmentsCache = Self.departmentList(meetingStore.invitees)
             }
             // Apple's alert, which stays until it is read and dismissed
