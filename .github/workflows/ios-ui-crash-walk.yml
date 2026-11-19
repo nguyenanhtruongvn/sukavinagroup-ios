@@ -94,7 +94,7 @@ jobs:
             xcode: '16.4'
           - ios: '16'
             runner: macos-15
-            xcode: '16.4'
+            xcode: '16.0'
     steps:
       - uses: actions/checkout@v6
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
@@ -231,7 +231,7 @@ jobs:
               | python3 -c "import json,sys; d=json.load(sys.stdin); [print('issue:', i.get('message',{}).get('_value','')) for k in ('errorSummaries','testFailureSummaries') for i in d.get('issues',{}).get(k,{}).get('_values',[])]" || true
           fi
           # The app's crash reports: exception and crashed-thread frames only.
-          for f in ~/Library/Logs/DiagnosticReports/App[-_]*.ips; do
+          for f in ~/Library/Logs/DiagnosticReports/App[-_]*.ips ~/Library/Logs/DiagnosticReports/AppUITests-Runner*.ips; do
             [ -e "$f" ] || continue
             echo "==== $(basename "$f")"
             python3 - "$f" <<'PY'
