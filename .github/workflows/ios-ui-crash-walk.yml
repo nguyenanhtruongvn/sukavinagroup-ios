@@ -1,4 +1,4 @@
-name: iOS UI crash walk
+name: Test ios 17, 18, 26, 27
 
 # Signs in with the test account (repository secrets
 # SUKAVINA_TEST_EMPLOYEE_CODE and SUKAVINA_TEST_PASSWORD), then opens every
@@ -19,17 +19,23 @@ name: iOS UI crash walk
 on:
   workflow_dispatch:
     inputs:
-      only:
-        description: 'iOS version to test'
-        type: choice
-        required: true
-        default: 'all'
-        options:
-          - all
-          - '27'
-          - '26'
-          - '18'
-          - '17'
+      # Tick the iOS versions to test (GitHub has no multi-select list).
+      ios27:
+        description: 'iOS 27'
+        type: boolean
+        default: true
+      ios26:
+        description: 'iOS 26'
+        type: boolean
+        default: true
+      ios18:
+        description: 'iOS 18'
+        type: boolean
+        default: true
+      ios17:
+        description: 'iOS 17'
+        type: boolean
+        default: true
   push:
     branches:
       - 'fix/**'
@@ -104,15 +110,15 @@ jobs:
             xcode: '16.4'
     steps:
       - uses: actions/checkout@v6
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == '' || inputs.only == matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (matrix.ios == '27' && inputs.ios27) || (matrix.ios == '26' && inputs.ios26) || (matrix.ios == '18' && inputs.ios18) || (matrix.ios == '17' && inputs.ios17) }}
 
       - uses: actions/download-artifact@v4
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == '' || inputs.only == matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (matrix.ios == '27' && inputs.ios27) || (matrix.ios == '26' && inputs.ios26) || (matrix.ios == '18' && inputs.ios18) || (matrix.ios == '17' && inputs.ios17) }}
         with:
           name: App-xcode27-sim
 
       - name: Select Xcode ${{ matrix.xcode }} (test runner)
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == '' || inputs.only == matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (matrix.ios == '27' && inputs.ios27) || (matrix.ios == '26' && inputs.ios26) || (matrix.ios == '18' && inputs.ios18) || (matrix.ios == '17' && inputs.ios17) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -121,7 +127,7 @@ jobs:
           xcodebuild -version
 
       - name: Build the UI tests, then put in the Xcode 27 app
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == '' || inputs.only == matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (matrix.ios == '27' && inputs.ios27) || (matrix.ios == '26' && inputs.ios26) || (matrix.ios == '18' && inputs.ios18) || (matrix.ios == '17' && inputs.ios17) }}
         shell: bash
         run: |
           set +e
@@ -141,7 +147,7 @@ jobs:
           echo "App under test built with Xcode: $(/usr/libexec/PlistBuddy -c 'Print :DTXcode' "$PRODUCTS/App.app/Info.plist" 2>/dev/null)"
 
       - name: Check the test account secrets
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == '' || inputs.only == matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (matrix.ios == '27' && inputs.ios27) || (matrix.ios == '26' && inputs.ios26) || (matrix.ios == '18' && inputs.ios18) || (matrix.ios == '17' && inputs.ios17) }}
         env:
           CODE: ${{ secrets.SUKAVINA_TEST_EMPLOYEE_CODE }}
           PASSWORD: ${{ secrets.SUKAVINA_TEST_PASSWORD }}
@@ -153,7 +159,7 @@ jobs:
           fi
 
       - name: iOS ${{ matrix.ios }} simulator
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == '' || inputs.only == matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (matrix.ios == '27' && inputs.ios27) || (matrix.ios == '26' && inputs.ios26) || (matrix.ios == '18' && inputs.ios18) || (matrix.ios == '17' && inputs.ios17) }}
         id: sim
         shell: bash
         run: |
@@ -195,7 +201,7 @@ jobs:
           echo "Using $RUNTIME on $DEVICE_TYPE ($UDID)"
 
       - name: Walk every screen on iOS ${{ matrix.ios }}
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == '' || inputs.only == matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || (matrix.ios == '27' && inputs.ios27) || (matrix.ios == '26' && inputs.ios26) || (matrix.ios == '18' && inputs.ios18) || (matrix.ios == '17' && inputs.ios17) }}
         env:
           TEST_RUNNER_SUKAVINA_TEST_EMPLOYEE_CODE: ${{ secrets.SUKAVINA_TEST_EMPLOYEE_CODE }}
           TEST_RUNNER_SUKAVINA_TEST_PASSWORD: ${{ secrets.SUKAVINA_TEST_PASSWORD }}
