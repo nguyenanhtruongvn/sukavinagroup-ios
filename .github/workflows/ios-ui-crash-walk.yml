@@ -2,12 +2,12 @@ name: iOS UI crash walk
 
 # Signs in with the test account (repository secrets
 # SUKAVINA_TEST_EMPLOYEE_CODE and SUKAVINA_TEST_PASSWORD), then opens every
-# screen, sheet, form and picker of the app on iOS 27, 26, 18 and 17
+# screen, sheet, form and picker of the app on iOS 27, 26, 18, 17 and 16
 # simulators and fails if the app stops running. Read-only: it never taps a
 # control that sends or changes data (see AppUITests/CrashWalkTests.swift).
 #
 # The app under test is always the Xcode 27 build (the binary people get).
-# Xcode 27's UI testing cannot read iOS 17/18 simulators, so there the test
+# Xcode 27's UI testing cannot read iOS 16-18 simulators, so there the test
 # runner comes from an older Xcode and drives that same Xcode 27 app.
 #
 # This repository is public: screenshots and result bundles (they show the
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'Run only this iOS major version (27, 26, 18 or 17); empty runs all'
+        description: 'Run only this iOS major version (27, 26, 18, 17 or 16); empty runs all'
         required: false
         default: ''
   push:
@@ -92,6 +92,9 @@ jobs:
           - ios: '17'
             runner: macos-15
             xcode: '16.4'
+          - ios: '16'
+            runner: macos-15
+            xcode: '16.4'
     steps:
       - uses: actions/checkout@v6
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
@@ -159,7 +162,7 @@ jobs:
           }
           RUNTIME="$(find_runtime)"
           if [ -z "$RUNTIME" ]; then
-            case "${{ matrix.ios }}" in 17) V=17.5 ;; 18) V=18.6 ;; 26) V=26.0 ;; *) V="" ;; esac
+            case "${{ matrix.ios }}" in 16) V=16.4 ;; 17) V=17.5 ;; 18) V=18.6 ;; 26) V=26.0 ;; *) V="" ;; esac
             echo "Downloading the iOS $V simulator runtime"
             if [ -n "$V" ]; then sudo xcodebuild -downloadPlatform iOS -buildVersion "$V" 2>&1 | grep -vE "%|Preparing" | tail -n 5; fi
             if [ -z "$(find_runtime)" ]; then

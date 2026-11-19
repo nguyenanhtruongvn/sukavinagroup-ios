@@ -57,7 +57,7 @@ Main Xcode targets:
 - `App`
 - `AttendanceWidget`
 
-Current deployment target is iOS 17.0.
+Current deployment target is iOS 16.0 for the app (the AttendanceWidget extension, which also shows the meeting Live Activity, stays iOS 17.0; on iOS 16 the app runs without widget and Live Activity). iOS 17-only SwiftUI/UIKit APIs go through the wrappers at the end of `DesignSystem.swift` (`onValueChange`, `UnavailableContent`, `scrollContentMargin`, `circleButtonShape`, `presentationScrollsFirst`, `presentationBackgroundIfAvailable`) or an `if #available` with an iOS 16 fallback.
 
 ## Architectural overview
 

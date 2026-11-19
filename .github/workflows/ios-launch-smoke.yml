@@ -69,6 +69,8 @@ jobs:
             runner: macos-15
           - ios: '17'
             runner: macos-15
+          - ios: '16'
+            runner: macos-15
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/download-artifact@v4
@@ -90,23 +92,24 @@ jobs:
           rts.sort(key=lambda r: ('iPhone' not in r['identifier'].split('SimRuntime.')[-1], [int(x) for x in r['version'].split('.')]))
           print(rts[-1]['identifier'] if rts else '')
           " "${{ matrix.ios }}")"
-          if [ -z "$RUNTIME" ] && [ "${{ matrix.ios }}" = "17" ]; then
-            # Not preinstalled: fetch iOS 17.5 (xcodes ships on the runner image).
+          if [ -z "$RUNTIME" ]; then
+            # Not preinstalled: download it with Xcode 16.4 (or xcodes).
+            case "${{ matrix.ios }}" in 16) V=16.4 ;; 17) V=17.5 ;; *) V="" ;; esac
             X16="$(ls -d /Applications/Xcode_16.4*.app 2>/dev/null | head -n 1)"
             [ -n "$X16" ] && sudo xcode-select --switch "$X16/Contents/Developer"
-            xcodebuild -version || true
-            if command -v xcodes >/dev/null; then
-              sudo xcodes runtimes install "iOS 17.5" 2>&1 | tail -n 30 || true
+            if [ -n "$V" ]; then
+              sudo xcodebuild -downloadPlatform iOS -buildVersion "$V" 2>&1 | grep -vE "%|Preparing" | tail -n 5 || true
+              if ! xcrun simctl list runtimes | grep -q "iOS ${{ matrix.ios }}\."; then
+                command -v xcodes >/dev/null || brew install xcodesorg/made/xcodes >/dev/null 2>&1
+                sudo xcodes runtimes install "iOS $V" 2>&1 | grep -v "%" | tail -n 10 || true
+              fi
             fi
-            if ! xcrun simctl list runtimes | grep -q "iOS 17"; then
-              sudo xcodebuild -downloadPlatform iOS -buildVersion 17.5 2>&1 | tail -n 30 || true
-            fi
-            xcrun simctl list runtimes
             RUNTIME="$(xcrun simctl list runtimes -j | python3 -c "
           import json, sys
-          rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].startswith('17.')]
+          major = sys.argv[1]
+          rts = [r for r in json.load(sys.stdin)['runtimes'] if r.get('platform') == 'iOS' and r.get('isAvailable') and r['version'].split('.')[0] == major]
           print(rts[-1]['identifier'] if rts else '')
-          ")"
+          " "${{ matrix.ios }}")"
           fi
           if [ -z "$RUNTIME" ]; then
             echo "::error::No iOS ${{ matrix.ios }} simulator runtime on ${{ matrix.runner }}."
