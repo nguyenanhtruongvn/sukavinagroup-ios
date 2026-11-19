@@ -46,7 +46,7 @@ struct AttendanceStatementListView: View {
                         .tint(AppTheme.red)
                         .frame(maxWidth: .infinity, minHeight: 220)
                 } else if displayedReports.isEmpty {
-                    ContentUnavailableView(
+                    UnavailableContent(
                         "Chưa có bảng công",
                         systemImage: "calendar.badge.clock",
                         description: Text("Bảng công đã phát hành sẽ hiển thị tại đây.")

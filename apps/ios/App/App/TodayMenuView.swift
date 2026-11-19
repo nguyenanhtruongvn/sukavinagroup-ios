@@ -248,7 +248,7 @@ struct TodayMenuView: View {
                     }
                 }
             }
-            .onChange(of: scenePhase) { _, phase in
+            .onValueChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 // Back from the background: statuses may have changed meanwhile.
                 // Without anything pending the 90 s freshness window decides.

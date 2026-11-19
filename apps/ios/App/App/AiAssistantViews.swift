@@ -315,13 +315,13 @@ struct AiAssistantChatView: View {
                 }
                 .background(AppTheme.ink)
                 .scrollDismissesKeyboard(.never)
-                .onChange(of: messages.count) { _, _ in
+                .onValueChange(of: messages.count) { _, _ in
                     scrollToLatest(using: proxy)
                 }
-                .onChange(of: isSending) { _, _ in
+                .onValueChange(of: isSending) { _, _ in
                     scrollToLatest(using: proxy)
                 }
-                .onChange(of: scrollToLatestRequest) { _, _ in
+                .onValueChange(of: scrollToLatestRequest) { _, _ in
                     scrollToLatest(using: proxy)
                 }
                 // The visible chat height changes while the keyboard moves.
@@ -334,7 +334,7 @@ struct AiAssistantChatView: View {
             }
 
             inputBar
-                .onChange(of: inputHeight) { _, _ in
+                .onValueChange(of: inputHeight) { _, _ in
                     guard isInputFocused else { return }
                     requestScrollToLatest()
                 }

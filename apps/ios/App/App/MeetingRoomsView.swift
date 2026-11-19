@@ -122,7 +122,7 @@ struct MeetingRoomsView: View {
                         Group {
                         if meetingStore.rooms.isEmpty {
                             if let scheduleError = meetingStore.scheduleError {
-                                ContentUnavailableView {
+                                UnavailableContent {
                                     Label("Không tải được phòng họp", systemImage: "wifi.exclamationmark")
                                 } description: {
                                     Text(scheduleError)
@@ -137,7 +137,7 @@ struct MeetingRoomsView: View {
                                     .frame(maxWidth: .infinity)
                                     .padding(.top, 60)
                             } else {
-                                ContentUnavailableView(
+                                UnavailableContent(
                                     "Chưa có phòng họp",
                                     systemImage: "building.2",
                                     description: Text("Quản trị viên cần cấu hình phòng trước khi nhân viên có thể đặt lịch.")
@@ -186,8 +186,8 @@ struct MeetingRoomsView: View {
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
                     .scrollIndicators(.hidden)
-                    .contentMargins(.top, 6, for: .scrollContent)
-                    .contentMargins(.bottom, 8, for: .scrollContent)
+                    .scrollContentMargin(.top, 6)
+                    .scrollContentMargin(.bottom, 8)
                 }
                 // Title and day buttons stay put; only the rooms scroll.
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -206,7 +206,7 @@ struct MeetingRoomsView: View {
                 guard isActive else { return }
                 await session.refreshMeetingSchedule(date: day)
             }
-            .onChange(of: day) { _, date in
+            .onValueChange(of: day) { _, date in
                 Task { await session.refreshMeetingSchedule(date: date) }
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSCalendarDayChanged)) { _ in
@@ -215,7 +215,7 @@ struct MeetingRoomsView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
                 refreshForCalendarChange()
             }
-            .onChange(of: scenePhase) { _, phase in
+            .onValueChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 refreshForCalendarChange()
             }
@@ -613,7 +613,7 @@ struct MeetingRoomScheduleSheet: View {
                         }
                         .padding(.horizontal)
                         .padding(.bottom, 12)
-                        .onChange(of: selectedDay) { _, value in
+                        .onValueChange(of: selectedDay) { _, value in
                             Task { await session.refreshMeetingSchedule(date: value) }
                         }
                         // Type erase the heavy timeline separately from the

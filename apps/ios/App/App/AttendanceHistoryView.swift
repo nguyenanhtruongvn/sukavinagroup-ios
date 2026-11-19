@@ -89,7 +89,7 @@ struct ModernAttendanceHistoryView: View {
         .navigationTitle("Lịch chấm công")
         .navigationBarTitleDisplayMode(.inline)
         .adaptivePortalTabBarBackground()
-        .onChange(of: monthIndex) { _, newIndex in
+        .onValueChange(of: monthIndex) { _, newIndex in
             guard options.indices.contains(newIndex) else { return }
             selectedMonth = options[newIndex]
             UISelectionFeedbackGenerator().selectionChanged()
@@ -99,7 +99,7 @@ struct ModernAttendanceHistoryView: View {
                 Task { await preloadMonth(options[newIndex]) }
             }
         }
-        .onChange(of: releasedMonths) { _, _ in
+        .onValueChange(of: releasedMonths) { _, _ in
             // Adding months after a report refresh must not move the reader away
             // from the month that was opened through its notification.
             guard releasedStatementMonths != nil,
@@ -164,7 +164,7 @@ struct ModernAttendanceHistoryView: View {
                         preloadedMonthlyDetails(data)
                     }
                 } else if let message = errors[month] {
-                    ContentUnavailableView {
+                    UnavailableContent {
                         Label("Không tải được bảng công", systemImage: "wifi.exclamationmark")
                     } description: {
                         Text(message)

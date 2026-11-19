@@ -178,7 +178,7 @@ struct PairedNameGrid<Item: Identifiable, Tile: View>: View {
             GeometryReader { proxy in
                 Color.clear
                     .onAppear { width = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, newWidth in width = newWidth }
+                    .onValueChange(of: proxy.size.width) { _, newWidth in width = newWidth }
             }
         }
     }
@@ -894,7 +894,7 @@ struct RequestsView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                .onChange(of: filterIndex) { _, newIndex in
+                .onValueChange(of: filterIndex) { _, newIndex in
                     guard filterOptions.indices.contains(newIndex) else { return }
                     withAnimation(.easeInOut(duration: 0.24)) {
                         proxy.scrollTo(filterID(filterOptions[newIndex]), anchor: .center)
@@ -908,12 +908,12 @@ struct RequestsView: View {
                 .ignoresSafeArea(.container, edges: .bottom)
         }
         .padding(.top, 8)
-        .onChange(of: filterIndex) { _, newIndex in
+        .onValueChange(of: filterIndex) { _, newIndex in
             guard filterOptions.indices.contains(newIndex) else { return }
             filter = filterOptions[newIndex]
             UISelectionFeedbackGenerator().selectionChanged()
         }
-        .onChange(of: initialFilter, initial: true) { _, value in
+        .onValueChange(of: initialFilter, initial: true) { _, value in
             selectFilter(value, animated: false)
         }
     }
@@ -979,7 +979,7 @@ struct RequestsView: View {
             // "No requests" only once the lists are known; before that show
             // loading, or the failure with a retry.
             if requests.isEmpty, let loadError = store.loadError {
-                ContentUnavailableView {
+                UnavailableContent {
                     Label("Không tải được danh sách đơn", systemImage: "wifi.exclamationmark")
                 } description: {
                     Text(loadError)
@@ -994,7 +994,7 @@ struct RequestsView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 90)
             } else if requests.isEmpty {
-                ContentUnavailableView(
+                UnavailableContent(
                     "Chưa có đơn",
                     systemImage: "doc.text"
                 )
@@ -2928,11 +2928,11 @@ struct RequestComposer: View {
                 }
                 .scrollIndicators(.hidden)
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: focusedInput) { _, field in
+                .onValueChange(of: focusedInput) { _, field in
                     guard field != nil else { return }
                     keepActiveInputVisible(using: proxy)
                 }
-                .onChange(of: reasonFocused) { _, focused in
+                .onValueChange(of: reasonFocused) { _, focused in
                     guard focused else { return }
                     keepActiveInputVisible(using: proxy)
                 }
@@ -2957,10 +2957,10 @@ struct RequestComposer: View {
                 await requestStore.loadManagedEmployees(session.token, employeeCode: session.profile?.employeeCode)
                 initializeRecipientsIfNeeded()
             }
-            .onChange(of: directory.loaded) { _, loaded in
+            .onValueChange(of: directory.loaded) { _, loaded in
                 if loaded { initializeRecipientsIfNeeded() }
             }
-            .onChange(of: kind) { _, nextKind in
+            .onValueChange(of: kind) { _, nextKind in
                 if nextKind == .leave {
                     applyInitialLeaveSchedule()
                 } else {
@@ -3083,13 +3083,13 @@ struct RequestComposer: View {
                 .padding(.top, 6)
                 .padding(.bottom, 8)
             }
-            .onChange(of: from) { oldValue, newValue in
+            .onValueChange(of: from) { oldValue, newValue in
                 guard kind != .overtime else { return }
                 if to < newValue {
                     to = newValue.addingTimeInterval(max(to.timeIntervalSince(oldValue), 60 * 60))
                 }
             }
-            .onChange(of: kind) { _, newKind in
+            .onValueChange(of: kind) { _, newKind in
                 // Xin nghỉ is set by applyInitialLeaveSchedule (once per switch).
                 guard newKind != .leave else { return }
                 applyKindDefaults(newKind, now: Date())
