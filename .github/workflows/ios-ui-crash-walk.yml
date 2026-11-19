@@ -179,9 +179,11 @@ jobs:
           import json, sys
           rt = [r for r in json.load(sys.stdin)['runtimes'] if r['identifier'] == sys.argv[1]][0]
           phones = [d['identifier'] for d in rt.get('supportedDeviceTypes', []) if d['name'].startswith('iPhone')]
-          print(phones[-1])
+          preferred = [x for x in phones if any(m in x for m in ('iPhone-14', 'iPhone-13', 'iPhone-15', 'iPhone-11'))]
+          print((preferred or phones)[-1])
           " "$RUNTIME")"
           UDID="$(xcrun simctl create "Walk iOS ${{ matrix.ios }}" "$DEVICE_TYPE" "$RUNTIME")"
+          xcrun simctl boot "$UDID" && xcrun simctl bootstatus "$UDID" -b > /dev/null
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "Using $RUNTIME on $DEVICE_TYPE ($UDID)"
 
@@ -207,7 +209,12 @@ jobs:
           grep -E "WALK:|Test Case|error:|TEST EXECUTE|TEST SUCCEEDED|TEST FAILED" "$RUNNER_TEMP/test.log" | tail -n 160
           if [ $STATUS -ne 0 ] && ! grep -q "Test Case" "$RUNNER_TEMP/test.log"; then
             echo "---- xcodebuild output (tail) ----"
-            tail -n 60 "$RUNNER_TEMP/test.log"
+            tail -n 40 "$RUNNER_TEMP/test.log"
+            echo "---- result summary ----"
+            xcrun xcresulttool get test-results summary --path "$RUNNER_TEMP/walk.xcresult" 2>&1 | head -c 4000
+            echo
+            xcrun xcresulttool get --legacy --format json --path "$RUNNER_TEMP/walk.xcresult" 2>/dev/null \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); [print('issue:', i.get('message',{}).get('_value','')) for k in ('errorSummaries','testFailureSummaries') for i in d.get('issues',{}).get(k,{}).get('_values',[])]" || true
           fi
           # The app's crash reports: exception and crashed-thread frames only.
           for f in ~/Library/Logs/DiagnosticReports/App[-_]*.ips; do
