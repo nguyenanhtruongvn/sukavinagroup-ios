@@ -188,6 +188,12 @@ final class CrashWalkTests: XCTestCase {
             pause(2)
             return true
         }
+        // Not found: name what is on screen (short button labels only, no
+        // digits, so no personal data reaches the public CI log).
+        let visible = app.buttons.allElementsBoundByIndex.prefix(60)
+            .map(\.label)
+            .filter { !$0.isEmpty && $0.count <= 28 && $0.rangeOfCharacter(from: .decimalDigits) == nil }
+        print("WALK: not found '\(label)'; buttons: \(Array(Set(visible)).sorted().joined(separator: ", "))")
         return false
     }
 
@@ -225,6 +231,7 @@ final class CrashWalkTests: XCTestCase {
 
     private func check(_ name: String) {
         step += 1
+        print("WALK: step \(step) \(name)")
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = String(format: "%02d %@", step, name)
         shot.lifetime = .keepAlways

@@ -27,20 +27,34 @@ concurrency:
 
 jobs:
   walk:
-    runs-on: xcode-27
+    # iOS 27 with the App Store toolchain; older iOS on runners that ship (or
+    # can still download) those simulators, with that runner's Xcode.
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        ios: ['27', '26', '18', '17']
+        include:
+          - ios: '27'
+            runner: xcode-27
+            xcode: '27'
+          - ios: '26'
+            runner: macos-26
+            xcode: '26'
+          - ios: '18'
+            runner: macos-15
+            xcode: '16.4'
+          - ios: '17'
+            runner: macos-15
+            xcode: '16.4'
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 27
+      - name: Select Xcode ${{ matrix.xcode }}
         shell: bash
         run: |
           set -euo pipefail
-          XCODE_APP="$(ls -d /Applications/Xcode_27*.app 2>/dev/null | sort -V | tail -n 1 || true)"
+          XCODE_APP="$(ls -d /Applications/Xcode_${{ matrix.xcode }}*.app 2>/dev/null | sort -V | tail -n 1 || true)"
           if [ -n "$XCODE_APP" ]; then sudo xcode-select --switch "$XCODE_APP/Contents/Developer"; fi
           xcodebuild -version
 
@@ -75,6 +89,7 @@ jobs:
         id: sim
         shell: bash
         run: |
+          set +e
           set -uo pipefail
           find_runtime() {
             xcrun simctl list runtimes -j | python3 -c "
@@ -113,6 +128,7 @@ jobs:
           TEST_RUNNER_SUKAVINA_TEST_PASSWORD: ${{ secrets.SUKAVINA_TEST_PASSWORD }}
         shell: bash
         run: |
+          set +e
           xcodebuild test-without-building \
             -project apps/ios/App/App.xcodeproj \
             -scheme App \
@@ -123,7 +139,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             > "$RUNNER_TEMP/test.log" 2>&1
           STATUS=$?
-          grep -E "Test Case|error:|XCTAssert|TEST EXECUTE|TEST SUCCEEDED|TEST FAILED" "$RUNNER_TEMP/test.log" | tail -n 60 || true
+          grep -E "WALK:|Test Case|error:|XCTAssert|TEST EXECUTE|TEST SUCCEEDED|TEST FAILED" "$RUNNER_TEMP/test.log" | tail -n 150 || true
+          if [ $STATUS -ne 0 ] && ! grep -q "Test Case" "$RUNNER_TEMP/test.log"; then
+            echo "---- xcodebuild output (tail) ----"
+            tail -n 60 "$RUNNER_TEMP/test.log"
+          fi
           # Step names only (no screenshots: the repository is public).
           xcrun xcresulttool get test-results activities --path "$RUNNER_TEMP/walk.xcresult" \
             --test-id "CrashWalkTests/testOpenEveryScreenWithoutSending()" 2>/dev/null | python3 -c "
