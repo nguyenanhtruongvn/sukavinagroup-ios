@@ -274,5 +274,10 @@ final class CrashWalkTests: XCTestCase {
         shot.lifetime = .keepAlways
         add(shot)
         XCTAssertEqual(app.state, .runningForeground, "App is not running after step \(step): \(name)")
+        // Signed out mid-walk (e.g. the same account signed in elsewhere):
+        // later steps would only see the sign-in form, so stop here.
+        if step > 1 && app.textFields["MSNV"].exists {
+            XCTFail("Signed out during the walk at step \(step): \(name). Is the test account used on another device at the same time?")
+        }
     }
 }
