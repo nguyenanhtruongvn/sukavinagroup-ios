@@ -94,7 +94,7 @@ jobs:
             xcode: '16.4'
           - ios: '16'
             runner: macos-15
-            xcode: '16.0'
+            xcode: '16.4'
     steps:
       - uses: actions/checkout@v6
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
@@ -200,6 +200,10 @@ jobs:
             echo "install exit: $?"
           done
           xcrun simctl listapps "${{ steps.sim.outputs.udid }}" 2>/dev/null | grep -E "CFBundleIdentifier = \"net.sukavinagroup" || true
+          # Launch the installed runner once by hand and show what the system says.
+          xcrun simctl launch --console-pty "${{ steps.sim.outputs.udid }}" net.sukavinagroup.user.AppUITests.xctrunner 2>&1 | head -n 30 &
+          sleep 15; kill %1 2>/dev/null
+          ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | tail -n 10
 
       - name: Walk every screen on iOS ${{ matrix.ios }}
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
