@@ -30,7 +30,8 @@ jobs:
     # iOS 27 with the App Store toolchain; older iOS on runners that ship (or
     # can still download) those simulators, with that runner's Xcode.
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    # iOS 17 downloads a 7 GB simulator first.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:

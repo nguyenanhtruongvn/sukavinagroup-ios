@@ -99,7 +99,12 @@ final class CrashWalkTests: XCTestCase {
 
     private func meetings() {
         openTab("Phòng họp")
-        for day in ["Ngày mai", "Lịch của tôi", "Hôm nay"] where tapIfPresent(day) { check("Phòng họp: \(day)") }
+        for day in ["Ngày mai", "Hôm nay"] where tapIfPresent(day) { check("Phòng họp: \(day)") }
+        if tapIfPresent("Lịch của tôi") {
+            check("Phòng họp: Lịch của tôi")
+            for part in ["Sắp tới", "Đã qua"] where tapIfPresent(part) { check("Lịch của tôi: \(part)") }
+            dismissOverlays(); check("Lịch của tôi: closed")
+        }
         if tapIfPresent("Xem lịch") { check("Phòng họp: timeline"); close() }
         if tapIfPresent("Đặt phòng") {
             check("Đặt phòng: form")
@@ -149,7 +154,15 @@ final class CrashWalkTests: XCTestCase {
 
     private func signInIfNeeded() {
         let code = app.textFields["MSNV"]
-        guard code.waitForExistence(timeout: 15) else { return } // already signed in
+        let tabs = app.tabBars.firstMatch
+        // The first launch on a fresh simulator can take a while: wait for
+        // either the sign-in form or the signed-in tabs.
+        let deadline = Date().addingTimeInterval(90)
+        while Date() < deadline && !code.exists && !tabs.exists { pause(1) }
+        guard code.exists else {
+            XCTAssertTrue(tabs.exists, "Neither the sign-in form nor the tabs appeared within 90 s.")
+            return
+        }
         let env = ProcessInfo.processInfo.environment
         guard let employee = env["SUKAVINA_TEST_EMPLOYEE_CODE"], !employee.isEmpty,
               let password = env["SUKAVINA_TEST_PASSWORD"], !password.isEmpty else {
@@ -169,8 +182,9 @@ final class CrashWalkTests: XCTestCase {
     }
 
     private func openTab(_ name: String) {
-        let tab = app.tabBars.buttons[name]
-        if tab.waitForExistence(timeout: 5) { tab.tap() } else { _ = tapIfPresent(name) }
+        dismissOverlays()
+        let tab = app.tabBars.firstMatch.exists ? app.tabBars.buttons[name] : app.buttons[name]
+        if tab.waitForExistence(timeout: 10) && tab.isHittable { tab.tap() } else { _ = tapIfPresent(name) }
         pause(2)
         check("tab \(name)")
     }
@@ -204,8 +218,19 @@ final class CrashWalkTests: XCTestCase {
         return direct.exists ? direct : nil
     }
 
+    /// Closes sheets such as "Lịch của tôi" that would cover the tabs.
+    private func dismissOverlays() {
+        for _ in 0..<3 {
+            let closer = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Đóng")).firstMatch
+            guard closer.exists && closer.isHittable else { return }
+            closer.tap(); pause(1.2)
+        }
+    }
+
     /// Closes a sheet, dialog or pushed screen without sending anything.
     private func close() {
+        let closer = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Đóng")).firstMatch
+        if closer.exists && closer.isHittable { closer.tap(); pause(1.5); return }
         for title in ["Đóng", "Hủy", "Quay lại", "Close", "Cancel", "Xong"] {
             let button = app.buttons[title].firstMatch
             if button.exists && button.isHittable { button.tap(); pause(1.5); return }
