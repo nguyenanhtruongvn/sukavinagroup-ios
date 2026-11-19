@@ -182,8 +182,7 @@ jobs:
             python3 - "$f" <<'PY'
           import json, sys
           text = open(sys.argv[1]).read()
-          body = json.loads(text.split('
-', 1)[1])
+          body = json.loads(text.split(chr(10), 1)[1])
           print('exception:', body.get('exception'))
           print('termination:', body.get('termination', {}).get('indicator'))
           for key in ('asi', 'lastExceptionBacktrace'):
