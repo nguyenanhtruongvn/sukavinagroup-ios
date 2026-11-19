@@ -55,20 +55,13 @@ jobs:
 
   launch:
     needs: build
-    # iOS 17 has to download its simulator runtime first.
+    # iOS 16 has to download its simulator runtime first. iOS 17-27 are
+    # covered by "Test ios 17, 18, 26, 27" (ios-ui-crash-walk.yml).
     timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         include:
-          - ios: '27'
-            runner: xcode-27
-          - ios: '26'
-            runner: macos-26
-          - ios: '18'
-            runner: macos-15
-          - ios: '17'
-            runner: macos-15
           - ios: '16'
             runner: macos-15
     runs-on: ${{ matrix.runner }}
