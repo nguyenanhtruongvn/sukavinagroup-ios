@@ -1,4 +1,4 @@
-name: iOS launch smoke test
+name: Test ios 16
 
 # Builds the app once with Xcode 27 (the App Store toolchain), then launches
 # that same build on iOS simulators of each supported major version, failing
