@@ -69,7 +69,9 @@ jobs:
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/dd" \
-            CODE_SIGNING_ALLOWED=NO \
+            # Ad-hoc "Sign to Run Locally": entitlements (Keychain sharing) are
+            # needed for the app to keep its session on iOS 17-26 simulators.
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=             CODE_SIGNING_REQUIRED=NO \
             > "$RUNNER_TEMP/build.log" 2>&1
           STATUS=$?
           grep -E "error:|TEST BUILD" "$RUNNER_TEMP/build.log" | tail -n 40 || true
@@ -137,7 +139,9 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/dd" \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -resultBundlePath "$RUNNER_TEMP/walk.xcresult" \
-            CODE_SIGNING_ALLOWED=NO \
+            # Ad-hoc "Sign to Run Locally": entitlements (Keychain sharing) are
+            # needed for the app to keep its session on iOS 17-26 simulators.
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= PROVISIONING_PROFILE_SPECIFIER=             CODE_SIGNING_REQUIRED=NO \
             > "$RUNNER_TEMP/test.log" 2>&1
           STATUS=$?
           grep -E "WALK:|Test Case|error:|XCTAssert|TEST EXECUTE|TEST SUCCEEDED|TEST FAILED" "$RUNNER_TEMP/test.log" | tail -n 150 || true
