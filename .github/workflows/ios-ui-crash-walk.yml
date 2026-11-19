@@ -2,12 +2,15 @@ name: iOS UI crash walk
 
 # Signs in with the test account (repository secrets
 # SUKAVINA_TEST_EMPLOYEE_CODE and SUKAVINA_TEST_PASSWORD), then opens every
-# screen, sheet, form and picker of the app on iOS 27, 26, 18, 17 and 16
+# screen, sheet, form and picker of the app on iOS 27, 26, 18 and 17
 # simulators and fails if the app stops running. Read-only: it never taps a
 # control that sends or changes data (see AppUITests/CrashWalkTests.swift).
 #
 # The app under test is always the Xcode 27 build (the binary people get).
-# Xcode 27's UI testing cannot read iOS 16-18 simulators, so there the test
+# iOS 16 is covered by the launch smoke test only: on GitHub's runners no
+# available Xcode can run UI tests on an iOS 16 simulator (the test runner
+# starts but never begins). Xcode 27's UI testing cannot read iOS 17/18
+# simulators, so there the test
 # runner comes from an older Xcode and drives that same Xcode 27 app.
 #
 # This repository is public: screenshots and result bundles (they show the
@@ -17,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'Run only this iOS major version (27, 26, 18, 17 or 16); empty runs all'
+        description: 'Run only this iOS major version (27, 26, 18 or 17); empty runs all'
         required: false
         default: ''
   push:
@@ -90,9 +93,6 @@ jobs:
             runner: macos-15
             xcode: '16.4'
           - ios: '17'
-            runner: macos-15
-            xcode: '16.4'
-          - ios: '16'
             runner: macos-15
             xcode: '16.4'
     steps:
@@ -186,24 +186,6 @@ jobs:
           xcrun simctl boot "$UDID" && xcrun simctl bootstatus "$UDID" -b > /dev/null
           echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "Using $RUNTIME on $DEVICE_TYPE ($UDID)"
-
-      - name: Check that the test runner installs on iOS ${{ matrix.ios }}
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
-        shell: bash
-        run: |
-          set +e
-          PRODUCTS="$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator"
-          for app in "$PRODUCTS/App.app" "$PRODUCTS/AppUITests-Runner.app"; do
-            echo "== $(basename "$app"): MinimumOSVersion $(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$app/Info.plist" 2>/dev/null), built with $(/usr/libexec/PlistBuddy -c 'Print :DTXcode' "$app/Info.plist" 2>/dev/null)"
-            lipo -info "$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")" 2>&1 | tail -n 1
-            xcrun simctl install "${{ steps.sim.outputs.udid }}" "$app" 2>&1 | tail -n 5
-            echo "install exit: $?"
-          done
-          xcrun simctl listapps "${{ steps.sim.outputs.udid }}" 2>/dev/null | grep -E "CFBundleIdentifier = \"net.sukavinagroup" || true
-          # Launch the installed runner once by hand and show what the system says.
-          xcrun simctl launch --console-pty "${{ steps.sim.outputs.udid }}" net.sukavinagroup.user.AppUITests.xctrunner 2>&1 | head -n 30 &
-          sleep 15; kill %1 2>/dev/null
-          ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | tail -n 10
 
       - name: Walk every screen on iOS ${{ matrix.ios }}
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
