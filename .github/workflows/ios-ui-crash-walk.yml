@@ -11,6 +11,11 @@ name: iOS UI crash walk
 
 on:
   workflow_dispatch:
+    inputs:
+      only:
+        description: 'Run only this iOS major version (27, 26, 18 or 17); empty runs all'
+        required: false
+        default: ''
   push:
     branches:
       - 'fix/**'
@@ -52,6 +57,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Select Xcode ${{ matrix.xcode }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
         shell: bash
         run: |
           set -euo pipefail
@@ -60,6 +66,7 @@ jobs:
           xcodebuild -version
 
       - name: Build the app and the UI tests (no account needed)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
         shell: bash
         run: |
           set -o pipefail
@@ -78,6 +85,7 @@ jobs:
           exit $STATUS
 
       - name: Check the test account secrets
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
         env:
           CODE: ${{ secrets.SUKAVINA_TEST_EMPLOYEE_CODE }}
           PASSWORD: ${{ secrets.SUKAVINA_TEST_PASSWORD }}
@@ -89,6 +97,7 @@ jobs:
           fi
 
       - name: iOS ${{ matrix.ios }} simulator
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
         id: sim
         shell: bash
         run: |
@@ -126,6 +135,7 @@ jobs:
           echo "Using $RUNTIME on $DEVICE_TYPE ($UDID)"
 
       - name: Walk every screen on iOS ${{ matrix.ios }}
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.only == '' || inputs.only == matrix.ios }}
         env:
           TEST_RUNNER_SUKAVINA_TEST_EMPLOYEE_CODE: ${{ secrets.SUKAVINA_TEST_EMPLOYEE_CODE }}
           TEST_RUNNER_SUKAVINA_TEST_PASSWORD: ${{ secrets.SUKAVINA_TEST_PASSWORD }}
@@ -165,5 +175,26 @@ jobs:
           for run in data.get('testRuns', []):
               walk(run.get('activities', []))
           " || true
-          ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -E "^App[-_]" || true
+          # The app's crash reports: exception and crashed-thread frames only.
+          for f in ~/Library/Logs/DiagnosticReports/App[-_]*.ips; do
+            [ -e "$f" ] || continue
+            echo "==== $(basename "$f")"
+            python3 - "$f" <<'PY'
+          import json, sys
+          text = open(sys.argv[1]).read()
+          body = json.loads(text.split('
+', 1)[1])
+          print('exception:', body.get('exception'))
+          print('termination:', body.get('termination', {}).get('indicator'))
+          for key in ('asi', 'lastExceptionBacktrace'):
+              if key in body:
+                  print(key + ':', json.dumps(body[key])[:1500])
+          images = body.get('usedImages', [])
+          thread = next((t for t in body.get('threads', []) if t.get('triggered')), None)
+          if thread:
+              for frame in thread.get('frames', [])[:40]:
+                  image = images[frame.get('imageIndex', 0)].get('name', '?') if images else '?'
+                  print('  ', image, frame.get('symbol', ''), '+', frame.get('symbolLocation', ''))
+          PY
+          done
           exit $STATUS
