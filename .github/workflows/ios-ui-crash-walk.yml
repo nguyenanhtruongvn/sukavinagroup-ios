@@ -209,9 +209,8 @@ jobs:
     timeout-minutes: 150
     strategy:
       fail-fast: false
-      # One at a time: signing the same test account in on several devices
-      # at once signs the earlier ones out.
-      max-parallel: 1
+      # All versions at once: the server keeps one session per device, so the
+      # test account can be signed in on every simulator together.
       matrix:
         include:
           - ios: '27'
