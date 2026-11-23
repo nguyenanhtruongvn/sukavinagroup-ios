@@ -22,6 +22,8 @@ protocol RequestRecipient {
     var fullName: String { get }
     var isSelf: Bool { get }
     var employeeCode: String { get }
+    /// "Chức danh" from the employee record (servers from 2026-11-23).
+    var jobTitle: String? { get }
     /// Who heads this person's team below the manager (the server's
     /// management chain); nil from servers before 2026-11-23.
     var teamLeadId: String? { get }
@@ -33,6 +35,7 @@ protocol RequestRecipient {
 
 extension RequestRecipient {
     var employeeCode: String { "" }
+    var jobTitle: String? { nil }
     var teamLeadId: String? { nil }
     var teamLevel: Int? { nil }
     var teamOrder: Int? { nil }
@@ -447,12 +450,32 @@ enum RequestFormRules {
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "vi_VN"))
     }
 
-    /// "Tổ Nguyễn Phú Hữu" under a search result, for someone who is not the
-    /// head of their team.
+    /// "Nhóm Nguyễn Phú Hữu" under a search result, for someone who is not
+    /// the head of their group.
     static func teamCaption<Person: RequestRecipient>(of person: Person, in people: [Person]) -> String? {
         guard let lead = person.teamLeadId, lead != person.id,
               let name = people.first(where: { $0.id == lead })?.fullName else { return nil }
-        return "Tổ \(name)"
+        return "Nhóm \(name)"
+    }
+
+    /// The person's own job title ("Chức danh"), never a guessed role.
+    static func jobTitle<Person: RequestRecipient>(_ person: Person) -> String? {
+        guard let title = person.jobTitle?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty else { return nil }
+        return title
+    }
+
+    /// Under a person: their job title, and when searching, their group.
+    static func personCaption<Person: RequestRecipient>(_ person: Person, in people: [Person], searching: Bool) -> String? {
+        let parts = [jobTitle(person), searching ? teamCaption(of: person, in: people) : nil].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// Under a group's head: their job title and how many people.
+    static func teamSubtitle<Person: RequestRecipient>(_ team: RecipientTeam<Person>, picked: Int, state: TeamSelection) -> String {
+        let count = picked > 0 && state != .all
+            ? "\(team.everyone.count) người · đã chọn \(picked)"
+            : "\(team.everyone.count) người"
+        return [jobTitle(team.lead), count].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// Tapping a direct report: the first one replaces the default "Tôi",

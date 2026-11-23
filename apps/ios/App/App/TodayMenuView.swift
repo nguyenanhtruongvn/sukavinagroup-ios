@@ -66,6 +66,7 @@ struct TodayMenuView: View {
                 selection: meal.selection,
                 orderedByEmployeeId: meal.orderedByEmployeeId,
                 receivedAt: meal.receivedAt,
+                jobTitle: member.jobTitle ?? meal.jobTitle,
                 teamLeadId: member.teamLeadId ?? meal.teamLeadId,
                 teamLevel: member.teamLevel ?? meal.teamLevel,
                 teamOrder: member.teamOrder ?? meal.teamOrder
