@@ -415,7 +415,7 @@ struct TodayMenu: Codable {
     let managedEmployees: [ManagedMealEmployee]?
 }
 
-struct ManagedMealEmployee: Codable, Identifiable {
+struct ManagedMealEmployee: Codable, Identifiable, RequestRecipient {
     let id: String
     let employeeCode: String
     let fullName: String
@@ -423,6 +423,12 @@ struct ManagedMealEmployee: Codable, Identifiable {
     let selection: String?
     let orderedByEmployeeId: String?
     let receivedAt: String?
+    // The management chain, for the picker by team (servers from
+    // 2026-11-23); absent from older servers and caches.
+    var teamLeadId: String? = nil
+    var teamLevel: Int? = nil
+    var teamOrder: Int? = nil
+    var isSelf: Bool { false }
 }
 
 struct MealAvailability: Codable {

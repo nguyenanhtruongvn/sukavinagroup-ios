@@ -102,7 +102,24 @@ private struct RequestRecipientsPickerSheet: View {
                             selectedIDs = allSelected ? [] : allIDs
                         }
                     }
-                    if !employees.isEmpty {
+                    if let teams = RequestFormRules.recipientTeams(store.managedEmployees) {
+                        Text("TẠO ĐƠN CÙNG NHÂN VIÊN")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(AppTheme.muted)
+                            .kerning(0.8)
+                        TeamRecipientList(
+                            teams: teams, people: employees, selected: selectedIDs,
+                            toggle: { toggleManagedEmployee($0.id) },
+                            toggleTeam: { ids in
+                                let result = RequestFormRules.toggleTeam(
+                                    ids, employees: store.managedEmployees, selected: selectedIDs,
+                                    hasChosenManagedEmployee: hasChosenManagedEmployee
+                                )
+                                selectedIDs = result.selected
+                                hasChosenManagedEmployee = result.hasChosenManagedEmployee
+                            }
+                        )
+                    } else if !employees.isEmpty {
                         Text("TẠO ĐƠN CÙNG NHÂN VIÊN")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.muted)
@@ -217,6 +234,176 @@ private struct RequestRecipientChoiceTile: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// The picker by team, for a manager with many people below them
+/// (`RequestFormRules.recipientTeams`): a search field, then one row per team
+/// with a tick for the whole team; a team opens to list its people, indented
+/// by level. Searching lists the matching people with their team. Shared by
+/// the request picker and the meal-order sheet.
+struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Person.ID == String {
+    let teams: [RecipientTeam<Person>]
+    /// Everyone listed, without the user.
+    let people: [Person]
+    let selected: Set<String>
+    /// The meal sheet greys out people who already have a meal.
+    let isEnabled: (Person) -> Bool
+    let disabledNote: String?
+    let toggle: (Person) -> Void
+    let toggleTeam: ([String]) -> Void
+    @State private var query = ""
+    @State private var expanded: Set<String> = []
+
+    // Explicit: the meal sheet (another file) creates it too, and private
+    // state would make the synthesized initializer file-private.
+    init(
+        teams: [RecipientTeam<Person>],
+        people: [Person],
+        selected: Set<String>,
+        isEnabled: @escaping (Person) -> Bool = { _ in true },
+        disabledNote: String? = nil,
+        toggle: @escaping (Person) -> Void,
+        toggleTeam: @escaping ([String]) -> Void
+    ) {
+        self.teams = teams
+        self.people = people
+        self.selected = selected
+        self.isEnabled = isEnabled
+        self.disabledNote = disabledNote
+        self.toggle = toggle
+        self.toggleTeam = toggleTeam
+    }
+
+    var body: some View {
+        let chosen = people.filter { selected.contains($0.id) }.count
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(AppTheme.muted)
+                TextField("Tìm tên hoặc mã nhân viên", text: $query)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                if !query.isEmpty {
+                    Button { query = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(AppTheme.muted)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Xóa tìm kiếm")
+                }
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 44)
+            .background(AppTheme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            Text(chosen == 0 ? "\(people.count) người · \(teams.count) tổ" : "Đã chọn \(chosen)/\(people.count) người")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(chosen == 0 ? AppTheme.muted : Color.green)
+            if RequestFormRules.searchKey(query).isEmpty {
+                ForEach(teams, id: \.lead.id) { team in teamView(team) }
+            } else {
+                let found = RequestFormRules.searchRecipients(people, query: query)
+                if found.isEmpty {
+                    Text("Không tìm thấy nhân viên phù hợp.").font(.footnote).foregroundStyle(AppTheme.muted)
+                }
+                ForEach(found) { person in
+                    personRow(person, depth: 0, caption: RequestFormRules.teamCaption(of: person, in: people))
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private func teamView(_ team: RecipientTeam<Person>) -> some View {
+        if team.members.isEmpty {
+            personRow(team.lead, depth: 0, caption: nil)
+        } else {
+            let everyone = team.everyone
+            let ids = everyone.filter(isEnabled).map(\.id)
+            let state = RequestFormRules.teamSelection(ids, selected: selected)
+            let picked = everyone.filter { selected.contains($0.id) }.count
+            let open = expanded.contains(team.lead.id)
+            VStack(spacing: 6) {
+                HStack(spacing: 0) {
+                    Button { toggleTeam(ids) } label: {
+                        tick(state, enabled: !ids.isEmpty).frame(width: 46, height: 52)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(ids.isEmpty)
+                    .accessibilityLabel("Chọn cả tổ \(team.lead.fullName)")
+                    Button {
+                        if open { expanded.remove(team.lead.id) } else { expanded.insert(team.lead.id) }
+                    } label: {
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Tổ \(team.lead.fullName)")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.primary)
+                                    .lineLimit(2)
+                                Text(picked > 0 && state != .all
+                                     ? "\(everyone.count) người · đã chọn \(picked)"
+                                     : "\(everyone.count) người")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.muted)
+                            }
+                            Spacer(minLength: 0)
+                            Image(systemName: open ? "chevron.up" : "chevron.down")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(AppTheme.muted)
+                        }
+                        .padding(.trailing, 12)
+                        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .background(state == .none ? AppTheme.card : Color.green.opacity(0.12))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(state == .none ? Color.primary.opacity(0.10) : Color.green.opacity(0.55), lineWidth: 1)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                if open {
+                    personRow(team.lead, depth: 1, caption: "Tổ trưởng")
+                    ForEach(Array(team.members.enumerated()), id: \.offset) { _, member in
+                        personRow(member.person, depth: member.depth + 1, caption: nil)
+                    }
+                }
+            }
+        }
+    }
+
+    private func personRow(_ person: Person, depth: Int, caption: String?) -> some View {
+        let enabled = isEnabled(person)
+        let on = selected.contains(person.id)
+        let note = enabled ? caption : (disabledNote ?? caption)
+        return Button { toggle(person) } label: {
+            HStack(spacing: 10) {
+                tick(on ? .all : .none, enabled: enabled)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(person.fullName.isEmpty ? person.employeeCode : person.fullName)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(enabled ? Color.primary : AppTheme.muted)
+                        .lineLimit(2)
+                    if let note {
+                        Text(note).font(.caption).foregroundStyle(AppTheme.muted)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, 12 + CGFloat(min(depth, 4)) * 14)
+            .padding(.trailing, 12)
+            .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+            .background(on ? Color.green.opacity(0.16) : (enabled ? AppTheme.card : AppTheme.card.opacity(0.45)))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func tick(_ state: TeamSelection, enabled: Bool) -> some View {
+        Image(systemName: state == .all ? "checkmark.circle.fill" : state == .some ? "minus.circle.fill" : "circle")
+            .font(.title3)
+            .foregroundStyle(state == .none ? AppTheme.muted.opacity(enabled ? 1 : 0.4) : Color.green)
     }
 }
 
@@ -351,6 +538,11 @@ struct ManagedRequestEmployee: Codable, Identifiable, Equatable, RequestRecipien
     let fullName: String
     let department: String
     let isSelf: Bool
+    // The management chain, for the picker by team (servers from
+    // 2026-11-23); absent from older servers and caches.
+    var teamLeadId: String? = nil
+    var teamLevel: Int? = nil
+    var teamOrder: Int? = nil
 }
 private struct BatchCreatedRequests: Codable { let requests: [EmployeeRequest] }
 struct RequestDecisionBody: Encodable { let status: String; let note: String? }
@@ -566,7 +758,10 @@ final class EmployeeRequestStore: ObservableObject {
                     employeeCode: $0.employeeCode,
                     fullName: $0.fullName,
                     department: $0.department,
-                    isSelf: false
+                    isSelf: false,
+                    teamLeadId: $0.teamLeadId,
+                    teamLevel: $0.teamLevel,
+                    teamOrder: $0.teamOrder
                 )
             }
         guard !managedEmployeesLoaded || managedEmployees != directory else { return }
@@ -2187,6 +2382,12 @@ private final class LegacyRequestRecipientsController: UIViewController {
     private let completion: (Set<String>, Bool) -> Void
     private let scroll = UIScrollView()
     private let content = UIStackView()
+    /// The picker by team (many people, new server): kept across renders so
+    /// typing never loses focus.
+    private lazy var teams = RequestFormRules.recipientTeams(employees)
+    private let searchField = UITextField()
+    private var query = ""
+    private var expanded: Set<String> = []
 
     init(
         employees: [ManagedRequestEmployee],
@@ -2220,7 +2421,8 @@ private final class LegacyRequestRecipientsController: UIViewController {
     }
 
     private func render() {
-        content.arrangedSubviews.forEach { content.removeArrangedSubview($0); $0.removeFromSuperview() }
+        // The search field stays (removing it would end typing).
+        content.arrangedSubviews.filter { $0 !== searchField }.forEach { content.removeArrangedSubview($0); $0.removeFromSuperview() }
         let selfPerson = employees.first(where: \.isSelf)
         let allIDs = Set(employees.map(\.id))
         let firstRow = UIStackView(); firstRow.axis = .horizontal; firstRow.spacing = 8; firstRow.distribution = .fillEqually
@@ -2232,9 +2434,13 @@ private final class LegacyRequestRecipientsController: UIViewController {
             self.render()
         })
         if selfPerson == nil { firstRow.addArrangedSubview(UIView()) }
-        content.addArrangedSubview(firstRow)
+        content.insertArrangedSubview(firstRow, at: 0)
         let directReports = employees.filter { !$0.isSelf }
         guard !directReports.isEmpty else { return }
+        if let teams {
+            renderTeams(teams, people: directReports)
+            return
+        }
         let title = UILabel(); title.text = "TẠO ĐƠN CÙNG NHÂN VIÊN"; title.font = UIFont.preferredFont(forTextStyle: .caption1).requestWeight(.bold); title.textColor = .secondaryLabel
         content.addArrangedSubview(title)
         // Two-line names share rows (both tiles of a row are as tall: the
@@ -2254,6 +2460,125 @@ private final class LegacyRequestRecipientsController: UIViewController {
             if people.count == 1 { row.addArrangedSubview(UIView()) }
             content.addArrangedSubview(row)
         }
+    }
+
+    // MARK: By team (same rules as the SwiftUI `TeamRecipientList`)
+
+    private func renderTeams(_ teams: [RecipientTeam<ManagedRequestEmployee>], people: [ManagedRequestEmployee]) {
+        if searchField.superview == nil {
+            searchField.placeholder = "Tìm tên hoặc mã nhân viên"
+            searchField.borderStyle = .roundedRect
+            searchField.clearButtonMode = .whileEditing
+            searchField.autocorrectionType = .no
+            searchField.autocapitalizationType = .none
+            searchField.font = UIFont.preferredFont(forTextStyle: .body)
+            searchField.adjustsFontForContentSizeCategory = true
+            searchField.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+            searchField.addTarget(self, action: #selector(searchChanged), for: .editingChanged)
+            content.insertArrangedSubview(searchField, at: 1)
+        }
+        let chosen = people.filter { selectedIDs.contains($0.id) }.count
+        let count = UILabel()
+        count.text = chosen == 0 ? "\(people.count) người · \(teams.count) tổ" : "Đã chọn \(chosen)/\(people.count) người"
+        count.font = UIFont.preferredFont(forTextStyle: .footnote).requestWeight(.semibold)
+        count.textColor = chosen == 0 ? .secondaryLabel : .systemGreen
+        content.addArrangedSubview(count)
+        if !RequestFormRules.searchKey(query).isEmpty {
+            let found = RequestFormRules.searchRecipients(people, query: query)
+            if found.isEmpty {
+                let none = UILabel(); none.text = "Không tìm thấy nhân viên phù hợp."
+                none.font = UIFont.preferredFont(forTextStyle: .footnote); none.textColor = .secondaryLabel
+                content.addArrangedSubview(none)
+            }
+            for person in found {
+                content.addArrangedSubview(personRow(person, depth: 0, caption: RequestFormRules.teamCaption(of: person, in: people)))
+            }
+            return
+        }
+        for team in teams {
+            guard !team.members.isEmpty else {
+                content.addArrangedSubview(personRow(team.lead, depth: 0, caption: nil))
+                continue
+            }
+            let everyone = team.everyone
+            let ids = everyone.map(\.id)
+            let state = RequestFormRules.teamSelection(ids, selected: selectedIDs)
+            let picked = everyone.filter { selectedIDs.contains($0.id) }.count
+            let open = expanded.contains(team.lead.id)
+            var config = UIButton.Configuration.plain()
+            config.title = "Tổ \(team.lead.fullName)"
+            config.subtitle = picked > 0 && state != .all ? "\(everyone.count) người · đã chọn \(picked)" : "\(everyone.count) người"
+            config.image = UIImage(systemName: open ? "chevron.up" : "chevron.down")
+            config.imagePlacement = .trailing
+            config.imagePadding = 8
+            config.titleAlignment = .leading
+            config.baseForegroundColor = .label
+            config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 4, bottom: 10, trailing: 12)
+            let header = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in
+                guard let self else { return }
+                if open { self.expanded.remove(team.lead.id) } else { self.expanded.insert(team.lead.id) }
+                self.render()
+            })
+            header.contentHorizontalAlignment = .leading
+            let tickButton = UIButton(type: .system)
+            tickButton.setImage(tickImage(state), for: .normal)
+            tickButton.tintColor = state == .none ? .secondaryLabel : .systemGreen
+            tickButton.accessibilityLabel = "Chọn cả tổ \(team.lead.fullName)"
+            tickButton.widthAnchor.constraint(equalToConstant: 46).isActive = true
+            tickButton.addAction(UIAction { [weak self] _ in
+                guard let self else { return }
+                let result = RequestFormRules.toggleTeam(
+                    ids, employees: self.employees, selected: self.selectedIDs,
+                    hasChosenManagedEmployee: self.hasChosenManagedEmployee
+                )
+                self.selectedIDs = result.selected
+                self.hasChosenManagedEmployee = result.hasChosenManagedEmployee
+                self.render()
+            }, for: .primaryActionTriggered)
+            let row = UIStackView(arrangedSubviews: [tickButton, header])
+            row.axis = .horizontal
+            row.backgroundColor = state == .none ? .secondarySystemGroupedBackground : UIColor.systemGreen.withAlphaComponent(0.12)
+            row.layer.cornerRadius = 12
+            row.layer.borderWidth = 1
+            row.layer.borderColor = (state == .none ? UIColor.separator.withAlphaComponent(0.25) : UIColor.systemGreen.withAlphaComponent(0.55)).cgColor
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 52).isActive = true
+            content.addArrangedSubview(row)
+            if open {
+                content.addArrangedSubview(personRow(team.lead, depth: 1, caption: "Tổ trưởng"))
+                for member in team.members {
+                    content.addArrangedSubview(personRow(member.person, depth: member.depth + 1, caption: nil))
+                }
+            }
+        }
+    }
+
+    private func personRow(_ person: ManagedRequestEmployee, depth: Int, caption: String?) -> UIButton {
+        let on = selectedIDs.contains(person.id)
+        var config = UIButton.Configuration.plain()
+        config.title = person.fullName.isEmpty ? person.employeeCode : person.fullName
+        config.subtitle = caption
+        config.image = tickImage(on ? .all : .none)
+        config.imagePadding = 10
+        config.titleAlignment = .leading
+        config.baseForegroundColor = .label
+        config.background.backgroundColor = on ? UIColor.systemGreen.withAlphaComponent(0.16) : .secondarySystemGroupedBackground
+        config.background.cornerRadius = 12
+        config.contentInsets = NSDirectionalEdgeInsets(top: 10, leading: 12 + CGFloat(min(depth, 4)) * 14, bottom: 10, trailing: 12)
+        let button = UIButton(configuration: config, primaryAction: UIAction { [weak self] _ in self?.toggleManagedEmployee(person.id) })
+        button.contentHorizontalAlignment = .leading
+        button.tintColor = on ? .systemGreen : .secondaryLabel
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 46).isActive = true
+        return button
+    }
+
+    private func tickImage(_ state: TeamSelection) -> UIImage? {
+        UIImage(systemName: state == .all ? "checkmark.circle.fill" : state == .some ? "minus.circle.fill" : "circle",
+                withConfiguration: UIImage.SymbolConfiguration(textStyle: .title3))
+    }
+
+    @objc private func searchChanged() {
+        query = searchField.text ?? ""
+        render()
     }
 
     private func tile(_ title: String, selected: Bool, action: @escaping () -> Void) -> UIButton {
