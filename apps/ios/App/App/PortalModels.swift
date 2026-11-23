@@ -425,6 +425,7 @@ struct ManagedMealEmployee: Codable, Identifiable, RequestRecipient {
     let receivedAt: String?
     // The management chain, for the picker by team (servers from
     // 2026-11-23); absent from older servers and caches.
+    var jobTitle: String? = nil
     var teamLeadId: String? = nil
     var teamLevel: Int? = nil
     var teamOrder: Int? = nil

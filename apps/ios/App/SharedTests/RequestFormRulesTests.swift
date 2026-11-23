@@ -12,6 +12,7 @@ private struct TeamPerson: RequestRecipient {
     let fullName: String
     var isSelf = false
     var employeeCode = ""
+    var jobTitle: String?
     var teamLeadId: String?
     var teamLevel: Int?
     var teamOrder: Int?
@@ -326,7 +327,19 @@ final class RequestFormRulesTests: XCTestCase {
         XCTAssertEqual(RequestFormRules.searchRecipients(people, query: "DAO van").map(\.id), ["thin"])
         XCTAssertEqual(RequestFormRules.searchRecipients(people, query: "01465").map(\.id), ["luan"])
         XCTAssertEqual(RequestFormRules.searchRecipients(people, query: "  ").count, people.count)
-        XCTAssertEqual(RequestFormRules.teamCaption(of: people[3], in: people), "Tổ Phạm Thanh Dắn")
+        XCTAssertEqual(RequestFormRules.teamCaption(of: people[3], in: people), "Nhóm Phạm Thanh Dắn")
         XCTAssertNil(RequestFormRules.teamCaption(of: people[1], in: people))
+    }
+
+    func testCaptionsShowTheRealJobTitle() throws {
+        var people = teamPeople()
+        people[1].jobTitle = "Quản đốc"
+        people[3].jobTitle = " Công nhân "
+        XCTAssertEqual(RequestFormRules.personCaption(people[1], in: people, searching: false), "Quản đốc")
+        XCTAssertEqual(RequestFormRules.personCaption(people[3], in: people, searching: true), "Công nhân · Nhóm Phạm Thanh Dắn")
+        XCTAssertNil(RequestFormRules.personCaption(people[2], in: people, searching: false))
+        let team = try XCTUnwrap(RequestFormRules.recipientTeams(people)?.first)
+        XCTAssertEqual(RequestFormRules.teamSubtitle(team, picked: 0, state: .none), "Quản đốc · 3 người")
+        XCTAssertEqual(RequestFormRules.teamSubtitle(team, picked: 1, state: .some), "Quản đốc · 3 người · đã chọn 1")
     }
 }

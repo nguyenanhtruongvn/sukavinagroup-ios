@@ -295,7 +295,7 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
             .frame(minHeight: 44)
             .background(AppTheme.card)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            Text(chosen == 0 ? "\(people.count) người · \(teams.count) tổ" : "Đã chọn \(chosen)/\(people.count) người")
+            Text(chosen == 0 ? "\(people.count) người · \(teams.count) nhóm" : "Đã chọn \(chosen)/\(people.count) người")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(chosen == 0 ? AppTheme.muted : Color.green)
             if RequestFormRules.searchKey(query).isEmpty {
@@ -306,7 +306,7 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
                     Text("Không tìm thấy nhân viên phù hợp.").font(.footnote).foregroundStyle(AppTheme.muted)
                 }
                 ForEach(found) { person in
-                    personRow(person, depth: 0, caption: RequestFormRules.teamCaption(of: person, in: people))
+                    personRow(person, depth: 0, caption: RequestFormRules.personCaption(person, in: people, searching: true))
                 }
             }
         }
@@ -314,7 +314,7 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
 
     @ViewBuilder private func teamView(_ team: RecipientTeam<Person>) -> some View {
         if team.members.isEmpty {
-            personRow(team.lead, depth: 0, caption: nil)
+            personRow(team.lead, depth: 0, caption: RequestFormRules.jobTitle(team.lead))
         } else {
             let everyone = team.everyone
             let ids = everyone.filter(isEnabled).map(\.id)
@@ -328,19 +328,17 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
                     }
                     .buttonStyle(.plain)
                     .disabled(ids.isEmpty)
-                    .accessibilityLabel("Chọn cả tổ \(team.lead.fullName)")
+                    .accessibilityLabel("Chọn cả nhóm \(team.lead.fullName)")
                     Button {
                         if open { expanded.remove(team.lead.id) } else { expanded.insert(team.lead.id) }
                     } label: {
                         HStack(spacing: 8) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text("Tổ \(team.lead.fullName)")
+                                Text(team.lead.fullName)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(Color.primary)
                                     .lineLimit(2)
-                                Text(picked > 0 && state != .all
-                                     ? "\(everyone.count) người · đã chọn \(picked)"
-                                     : "\(everyone.count) người")
+                                Text(RequestFormRules.teamSubtitle(team, picked: picked, state: state))
                                     .font(.caption)
                                     .foregroundStyle(AppTheme.muted)
                             }
@@ -354,6 +352,7 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("team-header")
                 }
                 .background(state == .none ? AppTheme.card : Color.green.opacity(0.12))
                 .overlay {
@@ -362,9 +361,9 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 if open {
-                    personRow(team.lead, depth: 1, caption: "Tổ trưởng")
+                    personRow(team.lead, depth: 1, caption: RequestFormRules.jobTitle(team.lead))
                     ForEach(Array(team.members.enumerated()), id: \.offset) { _, member in
-                        personRow(member.person, depth: member.depth + 1, caption: nil)
+                        personRow(member.person, depth: member.depth + 1, caption: RequestFormRules.jobTitle(member.person))
                     }
                 }
             }
@@ -540,6 +539,7 @@ struct ManagedRequestEmployee: Codable, Identifiable, Equatable, RequestRecipien
     let isSelf: Bool
     // The management chain, for the picker by team (servers from
     // 2026-11-23); absent from older servers and caches.
+    var jobTitle: String? = nil
     var teamLeadId: String? = nil
     var teamLevel: Int? = nil
     var teamOrder: Int? = nil
@@ -759,6 +759,7 @@ final class EmployeeRequestStore: ObservableObject {
                     fullName: $0.fullName,
                     department: $0.department,
                     isSelf: false,
+                    jobTitle: $0.jobTitle,
                     teamLeadId: $0.teamLeadId,
                     teamLevel: $0.teamLevel,
                     teamOrder: $0.teamOrder
@@ -2479,7 +2480,7 @@ private final class LegacyRequestRecipientsController: UIViewController {
         }
         let chosen = people.filter { selectedIDs.contains($0.id) }.count
         let count = UILabel()
-        count.text = chosen == 0 ? "\(people.count) người · \(teams.count) tổ" : "Đã chọn \(chosen)/\(people.count) người"
+        count.text = chosen == 0 ? "\(people.count) người · \(teams.count) nhóm" : "Đã chọn \(chosen)/\(people.count) người"
         count.font = UIFont.preferredFont(forTextStyle: .footnote).requestWeight(.semibold)
         count.textColor = chosen == 0 ? .secondaryLabel : .systemGreen
         content.addArrangedSubview(count)
@@ -2491,13 +2492,13 @@ private final class LegacyRequestRecipientsController: UIViewController {
                 content.addArrangedSubview(none)
             }
             for person in found {
-                content.addArrangedSubview(personRow(person, depth: 0, caption: RequestFormRules.teamCaption(of: person, in: people)))
+                content.addArrangedSubview(personRow(person, depth: 0, caption: RequestFormRules.personCaption(person, in: people, searching: true)))
             }
             return
         }
         for team in teams {
             guard !team.members.isEmpty else {
-                content.addArrangedSubview(personRow(team.lead, depth: 0, caption: nil))
+                content.addArrangedSubview(personRow(team.lead, depth: 0, caption: RequestFormRules.jobTitle(team.lead)))
                 continue
             }
             let everyone = team.everyone
@@ -2506,8 +2507,8 @@ private final class LegacyRequestRecipientsController: UIViewController {
             let picked = everyone.filter { selectedIDs.contains($0.id) }.count
             let open = expanded.contains(team.lead.id)
             var config = UIButton.Configuration.plain()
-            config.title = "Tổ \(team.lead.fullName)"
-            config.subtitle = picked > 0 && state != .all ? "\(everyone.count) người · đã chọn \(picked)" : "\(everyone.count) người"
+            config.title = team.lead.fullName
+            config.subtitle = RequestFormRules.teamSubtitle(team, picked: picked, state: state)
             config.image = UIImage(systemName: open ? "chevron.up" : "chevron.down")
             config.imagePlacement = .trailing
             config.imagePadding = 8
@@ -2520,10 +2521,11 @@ private final class LegacyRequestRecipientsController: UIViewController {
                 self.render()
             })
             header.contentHorizontalAlignment = .leading
+            header.accessibilityIdentifier = "team-header"
             let tickButton = UIButton(type: .system)
             tickButton.setImage(tickImage(state), for: .normal)
             tickButton.tintColor = state == .none ? .secondaryLabel : .systemGreen
-            tickButton.accessibilityLabel = "Chọn cả tổ \(team.lead.fullName)"
+            tickButton.accessibilityLabel = "Chọn cả nhóm \(team.lead.fullName)"
             tickButton.widthAnchor.constraint(equalToConstant: 46).isActive = true
             tickButton.addAction(UIAction { [weak self] _ in
                 guard let self else { return }
@@ -2544,9 +2546,9 @@ private final class LegacyRequestRecipientsController: UIViewController {
             row.heightAnchor.constraint(greaterThanOrEqualToConstant: 52).isActive = true
             content.addArrangedSubview(row)
             if open {
-                content.addArrangedSubview(personRow(team.lead, depth: 1, caption: "Tổ trưởng"))
+                content.addArrangedSubview(personRow(team.lead, depth: 1, caption: RequestFormRules.jobTitle(team.lead)))
                 for member in team.members {
-                    content.addArrangedSubview(personRow(member.person, depth: member.depth + 1, caption: nil))
+                    content.addArrangedSubview(personRow(member.person, depth: member.depth + 1, caption: RequestFormRules.jobTitle(member.person)))
                 }
             }
         }

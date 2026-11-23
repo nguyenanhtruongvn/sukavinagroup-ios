@@ -95,7 +95,7 @@ final class CrashWalkTests: XCTestCase {
                 check("Tạo đơn cho: picker")
                 // Picker by team (many people): search, open a team; nothing chosen or sent.
                 if tapSafely(app.textFields["Tìm tên hoặc mã nhân viên"].firstMatch) { pause(1); check("Tạo đơn cho: search") }
-                if let team = firstStaticText(containing: "Tổ "), tapSafely(team) { pause(1); check("Tạo đơn cho: team opened") }
+                if tapSafely(app.buttons["team-header"].firstMatch) { pause(1); check("Tạo đơn cho: team opened") }
                 close()
             }
             app.swipeUp(); check("Tạo đơn mới: scroll")
