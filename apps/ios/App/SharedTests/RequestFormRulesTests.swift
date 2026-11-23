@@ -236,12 +236,16 @@ final class RequestFormRulesTests: XCTestCase {
         XCTAssertEqual(paired, ["ac", "BD", "ef", "G"])
         XCTAssertEqual(RequestFormRules.pairedRows(Array("abcD")) { $0.isUppercase }.map { String($0) }, ["ab", "cD"])
 
-        // A request for others is one request, approved by the user's manager.
+        // Reports are approved at once; only the user's own request waits.
         XCTAssertNil(RequestFormRules.groupRoutingNote(employees: people, selected: ["me"], loaded: true))
         XCTAssertNil(RequestFormRules.groupRoutingNote(employees: people, selected: ["a"], loaded: false))
         XCTAssertEqual(
             RequestFormRules.groupRoutingNote(employees: people, selected: ["me", "a", "b"], loaded: true),
-            "Gửi 1 đơn chung cho 3 người · quản lý cấp trên của bạn sẽ duyệt."
+            "Đơn của 2 nhân viên được duyệt ngay · đơn của bạn gửi quản lý cấp trên duyệt."
+        )
+        XCTAssertEqual(
+            RequestFormRules.groupRoutingNote(employees: people, selected: ["a"], loaded: true),
+            "Đơn của 1 nhân viên được duyệt ngay và báo cho quản lý cấp trên của bạn."
         )
     }
 }
