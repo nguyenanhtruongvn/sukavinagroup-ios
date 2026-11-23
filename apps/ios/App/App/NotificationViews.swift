@@ -522,6 +522,8 @@ struct NotificationsView: View {
         if type == "attendance_check_in" { return "arrow.right.to.line.circle.fill" }
         if type == "attendance_check_out" { return "arrow.left.to.line.circle.fill" }
         if type == "attendance_monthly_report" { return "calendar.badge.checkmark" }
+        // "Nhận thông báo đặt món": an order or a cancellation.
+        if type == "meal_ordered" || type == "meal_cancelled" { return "fork.knife" }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.icon }
         if type == "request_pending" { return "clock.badge.exclamationmark.fill" }
         if type.contains("rejected") { return "xmark.circle.fill" }
@@ -538,6 +540,8 @@ struct NotificationsView: View {
         if type == "attendance_check_in" { return .green }
         if type == "attendance_check_out" { return .blue }
         if type == "attendance_monthly_report" { return .green }
+        if type == "meal_ordered" { return .orange }
+        if type == "meal_cancelled" { return .gray }
         if type == "request_pending", let request = linkedRequest(item) { return request.kind.color }
         if type == "request_pending" { return .orange }
         if type.contains("rejected") { return AppTheme.red }
