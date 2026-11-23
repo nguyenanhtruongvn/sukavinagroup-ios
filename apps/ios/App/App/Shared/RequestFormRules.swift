@@ -407,6 +407,16 @@ enum RequestFormRules {
 
     // MARK: Picker by team
 
+    /// The pickers show everyone as the grid of names, as the meal order
+    /// always did (the user's choice, 2026-11-23). The picker by team stays
+    /// here, tested, and comes back by setting this to true.
+    static let pickersGroupByTeam = false
+
+    /// The teams a picker shows, or nil for the grid of names.
+    static func pickerTeams<Person: RequestRecipient>(_ people: [Person]) -> [RecipientTeam<Person>]? {
+        pickersGroupByTeam ? recipientTeams(people) : nil
+    }
+
     /// Above this many people the pickers group them by team; fewer stay a
     /// plain grid of names.
     static let teamPickerThreshold = 12
