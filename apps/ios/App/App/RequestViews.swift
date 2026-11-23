@@ -102,7 +102,7 @@ private struct RequestRecipientsPickerSheet: View {
                             selectedIDs = allSelected ? [] : allIDs
                         }
                     }
-                    if let teams = RequestFormRules.recipientTeams(store.managedEmployees) {
+                    if let teams = RequestFormRules.pickerTeams(store.managedEmployees) {
                         Text("TẠO ĐƠN CÙNG NHÂN VIÊN")
                             .font(.caption.weight(.bold))
                             .foregroundStyle(AppTheme.muted)
@@ -2433,7 +2433,7 @@ private final class LegacyRequestRecipientsController: UIViewController {
     private let content = UIStackView()
     /// The picker by team (many people, new server): kept across renders so
     /// typing never loses focus.
-    private lazy var teams = RequestFormRules.recipientTeams(employees)
+    private lazy var teams = RequestFormRules.pickerTeams(employees)
     private let searchField = UITextField()
     /// Search and count stay above the scrolling list.
     private let header = UIStackView()

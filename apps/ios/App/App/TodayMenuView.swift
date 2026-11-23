@@ -352,7 +352,7 @@ struct TodayMenuView: View {
                     Text("ĐẶT CÙNG NHÂN VIÊN")
                         .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    if let teams = RequestFormRules.recipientTeams(allEmployees) {
+                    if let teams = RequestFormRules.pickerTeams(allEmployees) {
                         TeamRecipientList(
                             teams: teams, people: allEmployees, selected: selectedManagedEmployeeIds,
                             isEnabled: { $0.selection == nil }, disabledNote: "Đã đặt món",
