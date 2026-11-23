@@ -7,6 +7,16 @@ private struct Employee: RequestRecipient {
     let isSelf: Bool
 }
 
+private struct TeamPerson: RequestRecipient {
+    let id: String
+    let fullName: String
+    var isSelf = false
+    var employeeCode = ""
+    var teamLeadId: String?
+    var teamLevel: Int?
+    var teamOrder: Int?
+}
+
 final class RequestFormRulesTests: XCTestCase {
     private let calendar = VietnamTime.calendar
 
@@ -217,6 +227,9 @@ final class RequestFormRulesTests: XCTestCase {
         XCTAssertEqual(RequestFormRules.recipientSummary(employees: people, selected: [], loaded: true, initialized: true), "Chưa chọn người")
         XCTAssertEqual(RequestFormRules.recipientSummary(employees: people, selected: ["me", "a", "b"], loaded: true, initialized: true), "Tất cả")
         XCTAssertEqual(RequestFormRules.recipientSummary(employees: people, selected: ["me", "a"], loaded: true, initialized: true), "Tôi, An")
+        let team = teamPeople()
+        XCTAssertEqual(RequestFormRules.recipientSummary(employees: team, selected: ["me", "dan", "luan", "thin"], loaded: true, initialized: true), "Tôi và 3 người")
+        XCTAssertEqual(RequestFormRules.recipientSummary(employees: team, selected: ["dan", "luan", "thin", "quan"], loaded: true, initialized: true), "4 người")
 
         let first = RequestFormRules.toggle("a", employees: people, selected: ["me"], hasChosenManagedEmployee: false)
         XCTAssertEqual(first.selected, ["a"])
@@ -247,5 +260,73 @@ final class RequestFormRulesTests: XCTestCase {
             RequestFormRules.groupRoutingNote(employees: people, selected: ["a"], loaded: true),
             "Đơn của 1 nhân viên được duyệt ngay và báo cho quản lý cấp trên của bạn."
         )
+    }
+
+    // MARK: Picker by team
+
+    /// Me, then two teams (Dắn above Luân above Thìn; Quân alone) and
+    /// filler people heading their own teams, past the threshold.
+    private func teamPeople() -> [TeamPerson] {
+        var people = [
+            TeamPerson(id: "me", fullName: "Hữu", isSelf: true),
+            TeamPerson(id: "dan", fullName: "Phạm Thanh Dắn", employeeCode: "00007", teamLeadId: "dan", teamLevel: 1, teamOrder: 0),
+            TeamPerson(id: "thin", fullName: "Đào Văn Thìn", employeeCode: "01307", teamLeadId: "dan", teamLevel: 3, teamOrder: 2),
+            TeamPerson(id: "luan", fullName: "Trần Minh Luân", employeeCode: "01465", teamLeadId: "dan", teamLevel: 2, teamOrder: 1),
+            TeamPerson(id: "quan", fullName: "Trần Minh Quân", employeeCode: "00005", teamLeadId: "quan", teamLevel: 1, teamOrder: 3),
+        ]
+        for index in 0..<10 {
+            people.append(TeamPerson(id: "p\(index)", fullName: "Người \(index)", teamLeadId: "p\(index)", teamLevel: 1, teamOrder: 10 + index))
+        }
+        return people
+    }
+
+    func testTeamsGroupInChainOrderWithDepth() throws {
+        let teams = try XCTUnwrap(RequestFormRules.recipientTeams(teamPeople()))
+        XCTAssertEqual(teams.map(\.lead.id).prefix(2), ["dan", "quan"])
+        XCTAssertEqual(teams[0].members.map(\.person.id), ["luan", "thin"])
+        XCTAssertEqual(teams[0].members.map(\.depth), [1, 2])
+        XCTAssertEqual(teams[0].everyone.map(\.id), ["dan", "luan", "thin"])
+        XCTAssertTrue(teams[1].members.isEmpty)
+        XCTAssertFalse(teams.contains { $0.lead.isSelf })
+    }
+
+    func testTeamsOnlyForManyPeopleFromANewServer() {
+        let people = teamPeople()
+        XCTAssertNil(RequestFormRules.recipientTeams(Array(people.prefix(5))))
+        let old = people.map { TeamPerson(id: $0.id, fullName: $0.fullName, isSelf: $0.isSelf) }
+        XCTAssertNil(RequestFormRules.recipientTeams(old))
+    }
+
+    func testPersonWhoseLeadIsMissingHeadsATeam() throws {
+        var people = teamPeople()
+        people.removeAll { $0.id == "dan" }
+        let teams = try XCTUnwrap(RequestFormRules.recipientTeams(people))
+        XCTAssertTrue(teams.contains { $0.lead.id == "luan" })
+        XCTAssertTrue(teams.contains { $0.lead.id == "thin" })
+    }
+
+    func testTeamTickChoosesWholeTeamThenNobody() {
+        let people = teamPeople()
+        let team = ["dan", "luan", "thin"]
+        // The first team replaces the default "Tôi".
+        var result = RequestFormRules.toggleTeam(team, employees: people, selected: ["me"], hasChosenManagedEmployee: false)
+        XCTAssertEqual(result.selected, Set(team))
+        XCTAssertEqual(RequestFormRules.teamSelection(team, selected: result.selected), .all)
+        result = RequestFormRules.toggleTeam(["quan"], employees: people, selected: result.selected, hasChosenManagedEmployee: true)
+        XCTAssertEqual(result.selected, Set(team + ["quan"]))
+        result = RequestFormRules.toggleTeam(team, employees: people, selected: result.selected, hasChosenManagedEmployee: true)
+        XCTAssertEqual(result.selected, ["quan"])
+        XCTAssertEqual(RequestFormRules.teamSelection(team, selected: ["luan"]), .some)
+        XCTAssertEqual(RequestFormRules.teamSelection(team, selected: []), .none)
+    }
+
+    func testSearchIgnoresAccentsAndFindsCodes() {
+        let people = teamPeople()
+        XCTAssertEqual(RequestFormRules.searchRecipients(people, query: "dan").map(\.id), ["dan"])
+        XCTAssertEqual(RequestFormRules.searchRecipients(people, query: "DAO van").map(\.id), ["thin"])
+        XCTAssertEqual(RequestFormRules.searchRecipients(people, query: "01465").map(\.id), ["luan"])
+        XCTAssertEqual(RequestFormRules.searchRecipients(people, query: "  ").count, people.count)
+        XCTAssertEqual(RequestFormRules.teamCaption(of: people[3], in: people), "Tổ Phạm Thanh Dắn")
+        XCTAssertNil(RequestFormRules.teamCaption(of: people[1], in: people))
     }
 }

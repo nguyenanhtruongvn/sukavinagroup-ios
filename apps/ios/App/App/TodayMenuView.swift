@@ -65,7 +65,10 @@ struct TodayMenuView: View {
                 department: member.department,
                 selection: meal.selection,
                 orderedByEmployeeId: meal.orderedByEmployeeId,
-                receivedAt: meal.receivedAt
+                receivedAt: meal.receivedAt,
+                teamLeadId: member.teamLeadId ?? meal.teamLeadId,
+                teamLevel: member.teamLevel ?? meal.teamLevel,
+                teamOrder: member.teamOrder ?? meal.teamOrder
             )
         }
         let orderedIDs = Set(ordered.map(\.id))
@@ -348,6 +351,26 @@ struct TodayMenuView: View {
                     Text("ĐẶT CÙNG NHÂN VIÊN")
                         .font(.caption.bold()).tracking(1.2).foregroundColor(AppTheme.muted)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    if let teams = RequestFormRules.recipientTeams(allEmployees) {
+                        TeamRecipientList(
+                            teams: teams, people: allEmployees, selected: selectedManagedEmployeeIds,
+                            isEnabled: { $0.selection == nil }, disabledNote: "Đã đặt món",
+                            toggle: { employee in
+                                if selectedManagedEmployeeIds.contains(employee.id) {
+                                    selectedManagedEmployeeIds.remove(employee.id)
+                                } else {
+                                    selectedManagedEmployeeIds.insert(employee.id)
+                                }
+                            },
+                            toggleTeam: { ids in
+                                if Set(ids).isSubset(of: selectedManagedEmployeeIds) {
+                                    selectedManagedEmployeeIds.subtract(ids)
+                                } else {
+                                    selectedManagedEmployeeIds.formUnion(ids)
+                                }
+                            }
+                        )
+                    } else {
                     PairedNameGrid(items: allEmployees, name: { $0.fullName.isEmpty ? $0.employeeCode : $0.fullName }) { employee in
                             let canSelect = employee.selection == nil
                             let selected = selectedManagedEmployeeIds.contains(employee.id)
@@ -380,6 +403,7 @@ struct TodayMenuView: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(!canSelect)
+                    }
                     }
                 }
 

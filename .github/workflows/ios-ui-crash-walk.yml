@@ -41,12 +41,7 @@ on:
         description: 'iOS 16 (launch check only)'
         type: boolean
         default: true
-  push:
-    branches:
-      - 'fix/**'
-    paths:
-      - 'apps/ios/**'
-      - '.github/workflows/ios-ui-crash-walk.yml'
+  # Manual only (Actions → Run workflow): no longer runs on every push.
 
 permissions:
   contents: read

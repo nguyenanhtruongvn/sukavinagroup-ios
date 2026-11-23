@@ -21,7 +21,33 @@ protocol RequestRecipient {
     var id: String { get }
     var fullName: String { get }
     var isSelf: Bool { get }
+    var employeeCode: String { get }
+    /// Who heads this person's team below the manager (the server's
+    /// management chain); nil from servers before 2026-11-23.
+    var teamLeadId: String? { get }
+    /// 1 for the manager's direct report, 2 below them, ...
+    var teamLevel: Int? { get }
+    /// Position in the chain read top-down, so a team lists in chain order.
+    var teamOrder: Int? { get }
 }
+
+extension RequestRecipient {
+    var employeeCode: String { "" }
+    var teamLeadId: String? { nil }
+    var teamLevel: Int? { nil }
+    var teamOrder: Int? { nil }
+}
+
+/// A team in the "by team" picker: who heads it and everyone below them.
+struct RecipientTeam<Person: RequestRecipient> {
+    let lead: Person
+    /// Everyone below the lead in chain order, with how far below (1, 2, 3).
+    let members: [(person: Person, depth: Int)]
+    var everyone: [Person] { [lead] + members.map(\.person) }
+}
+
+/// How much of a team is chosen (the tick at the head of the team).
+enum TeamSelection: Equatable { case none, some, all }
 
 enum RequestFormRules {
     // MARK: Durations
@@ -301,6 +327,11 @@ enum RequestFormRules {
         if chosen.count == 1 && chosen[0].isSelf { return "Tôi" }
         let all = Set(employees.map(\.id))
         if chosen.count > 1 && !all.isEmpty && selected.isSuperset(of: all) { return "Tất cả" }
+        // Many people (a whole team): a count, not a line of names.
+        if chosen.count > 3 {
+            let others = chosen.filter { !$0.isSelf }.count
+            return chosen.contains(where: \.isSelf) ? "Tôi và \(others) người" : "\(others) người"
+        }
         return chosen.map { $0.isSelf ? "Tôi" : $0.fullName }.joined(separator: ", ")
     }
 
@@ -346,6 +377,82 @@ enum RequestFormRules {
         return chosen.contains(where: \.isSelf)
             ? "Đơn của \(others) nhân viên được duyệt ngay · đơn của bạn gửi quản lý cấp trên duyệt."
             : "Đơn của \(others) nhân viên được duyệt ngay và báo cho quản lý cấp trên của bạn."
+    }
+
+    // MARK: Picker by team
+
+    /// Above this many people the pickers group them by team; fewer stay a
+    /// plain grid of names.
+    static let teamPickerThreshold = 12
+
+    /// The teams for the picker, in chain order, or nil to keep the plain
+    /// grid: few people, or an older server that sends no teams. A person
+    /// whose team head is not in the list heads a team of their own.
+    static func recipientTeams<Person: RequestRecipient>(_ people: [Person]) -> [RecipientTeam<Person>]? {
+        let others = people.filter { !$0.isSelf }
+        guard others.count > teamPickerThreshold, others.contains(where: { $0.teamLeadId != nil }) else { return nil }
+        let ids = Set(others.map(\.id))
+        func before(_ a: Person, _ b: Person) -> Bool {
+            let left = a.teamOrder ?? Int.max, right = b.teamOrder ?? Int.max
+            return left != right ? left < right : a.fullName.localizedCompare(b.fullName) == .orderedAscending
+        }
+        var leads: [Person] = []
+        var below: [String: [Person]] = [:]
+        for person in others {
+            let lead = person.teamLeadId.flatMap { ids.contains($0) ? $0 : nil } ?? person.id
+            if lead == person.id { leads.append(person) } else { below[lead, default: []].append(person) }
+        }
+        return leads.sorted(by: before).map { lead in
+            RecipientTeam(lead: lead, members: (below[lead.id] ?? []).sorted(by: before).map { person in
+                (person, min(3, max(1, (person.teamLevel ?? 0) - (lead.teamLevel ?? 0))))
+            })
+        }
+    }
+
+    static func teamSelection(_ ids: [String], selected: Set<String>) -> TeamSelection {
+        let chosen = ids.filter(selected.contains).count
+        return chosen == 0 ? .none : chosen == ids.count ? .all : .some
+    }
+
+    /// The tick at the head of a team: chooses everyone in it, or, when all
+    /// are chosen, nobody. Like the first person tapped, the first team
+    /// replaces the default "Tôi".
+    static func toggleTeam<Person: RequestRecipient>(
+        _ ids: [String], employees: [Person], selected: Set<String>, hasChosenManagedEmployee: Bool
+    ) -> (selected: Set<String>, hasChosenManagedEmployee: Bool) {
+        guard !ids.isEmpty else { return (selected, hasChosenManagedEmployee) }
+        var selected = selected
+        if Set(ids).isSubset(of: selected) {
+            selected.subtract(ids)
+            return (selected, true)
+        }
+        if let selfID = employees.first(where: \.isSelf)?.id, !hasChosenManagedEmployee, selected == [selfID] {
+            return (Set(ids), true)
+        }
+        selected.formUnion(ids)
+        return (selected, true)
+    }
+
+    /// Search by name or code, ignoring accents and letter case ("dan"
+    /// finds "Dắn", "đ" is "d").
+    static func searchRecipients<Person: RequestRecipient>(_ people: [Person], query: String) -> [Person] {
+        let key = searchKey(query)
+        guard !key.isEmpty else { return people }
+        return people.filter { searchKey($0.fullName).contains(key) || searchKey($0.employeeCode).contains(key) }
+    }
+
+    static func searchKey(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "đ", with: "d").replacingOccurrences(of: "Đ", with: "d")
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "vi_VN"))
+    }
+
+    /// "Tổ Nguyễn Phú Hữu" under a search result, for someone who is not the
+    /// head of their team.
+    static func teamCaption<Person: RequestRecipient>(of person: Person, in people: [Person]) -> String? {
+        guard let lead = person.teamLeadId, lead != person.id,
+              let name = people.first(where: { $0.id == lead })?.fullName else { return nil }
+        return "Tổ \(name)"
     }
 
     /// Tapping a direct report: the first one replaces the default "Tôi",
