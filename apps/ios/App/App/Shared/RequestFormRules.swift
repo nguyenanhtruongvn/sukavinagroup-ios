@@ -332,16 +332,20 @@ enum RequestFormRules {
         loaded && employees.contains { !$0.isSelf }
     }
 
-    /// Shown under "Tạo đơn cho" once anyone besides the user is chosen: a
-    /// request for others goes, as one request for everyone, to the user's
-    /// own manager.
+    /// Shown under "Tạo đơn cho" once anyone besides the user is chosen: the
+    /// reports' requests are approved at once (the server tells the user's
+    /// own manager); only the user's own request, when chosen, waits for that
+    /// manager.
     static func groupRoutingNote<Person: RequestRecipient>(
         employees: [Person], selected: Set<String>, loaded: Bool
     ) -> String? {
         guard loaded else { return nil }
         let chosen = employees.filter { selected.contains($0.id) }
-        guard chosen.contains(where: { !$0.isSelf }) else { return nil }
-        return "Gửi 1 đơn chung cho \(chosen.count) người · quản lý cấp trên của bạn sẽ duyệt."
+        let others = chosen.filter { !$0.isSelf }.count
+        guard others > 0 else { return nil }
+        return chosen.contains(where: \.isSelf)
+            ? "Đơn của \(others) nhân viên được duyệt ngay · đơn của bạn gửi quản lý cấp trên duyệt."
+            : "Đơn của \(others) nhân viên được duyệt ngay và báo cho quản lý cấp trên của bạn."
     }
 
     /// Tapping a direct report: the first one replaces the default "Tôi",
