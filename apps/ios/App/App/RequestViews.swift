@@ -117,7 +117,10 @@ private struct RequestRecipientsPickerSheet: View {
                                 )
                                 selectedIDs = result.selected
                                 hasChosenManagedEmployee = result.hasChosenManagedEmployee
-                            }
+                            },
+                            // The sheet grows to 82% of the screen; the title,
+                            // "Tôi"/"Tất cả", search and count take about 290 pt.
+                            maxListHeight: max(240, UIScreen.main.bounds.height * 0.82 - 290)
                         )
                     } else if !employees.isEmpty {
                         Text("TẠO ĐƠN CÙNG NHÂN VIÊN")
@@ -257,9 +260,10 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
     @State private var query = ""
     @State private var expanded: Set<String> = []
     @State private var listHeight: CGFloat = 0
-
-    /// The list scrolls inside this height; the search stays visible.
-    private static var maxListHeight: CGFloat { min(420, UIScreen.main.bounds.height * 0.5) }
+    /// The list scrolls inside this height; the search stays visible. The
+    /// list is as tall as its lines up to this, so the sheet is short for a
+    /// short list and uses the room for a long one.
+    private let maxListHeight: CGFloat
 
     // Explicit: the meal sheet (another file) creates it too, and private
     // state would make the synthesized initializer file-private.
@@ -270,8 +274,10 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
         isEnabled: @escaping (Person) -> Bool = { _ in true },
         disabledNote: String? = nil,
         toggle: @escaping (Person) -> Void,
-        toggleTeam: @escaping ([String]) -> Void
+        toggleTeam: @escaping ([String]) -> Void,
+        maxListHeight: CGFloat = min(420, UIScreen.main.bounds.height * 0.5)
     ) {
+        self.maxListHeight = maxListHeight
         self.teams = teams
         self.people = people
         self.selected = selected
@@ -326,7 +332,7 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
                         }
                     }
                 }
-                .frame(height: min(max(listHeight, 44), Self.maxListHeight))
+                .frame(height: min(max(listHeight, 44), maxListHeight))
                 .onPreferenceChange(TeamListHeightKey.self) { height in
                     if abs(height - listHeight) > 0.5 { listHeight = height }
                 }
