@@ -319,7 +319,7 @@ struct TeamRecipientList<Person: RequestRecipient & Identifiable>: View where Pe
             if searching && rows.isEmpty {
                 Text("Không tìm thấy nhân viên phù hợp.").font(.footnote).foregroundStyle(AppTheme.muted)
             } else {
-                ScrollView(showsIndicators: true) {
+                ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         ForEach(Array(rows.enumerated()), id: \.element.key) { index, row in
                             if index > 0 { Divider().padding(.leading, 12) }
