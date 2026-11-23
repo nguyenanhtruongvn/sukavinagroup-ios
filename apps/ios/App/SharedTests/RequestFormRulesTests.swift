@@ -331,6 +331,28 @@ final class RequestFormRulesTests: XCTestCase {
         XCTAssertNil(RequestFormRules.teamCaption(of: people[1], in: people))
     }
 
+    func testRowsOpenGroupsAndSubgroups() throws {
+        // Dắn above Luân above Thìn: Dắn and Luân are groups.
+        let teams = try XCTUnwrap(RequestFormRules.recipientTeams(teamPeople()))
+        let tree = RequestFormRules.recipientTree(teams[0])
+        XCTAssertEqual(tree.children.map(\.person.id), ["luan"])
+        XCTAssertEqual(tree.children[0].children.map(\.person.id), ["thin"])
+
+        let closed = RequestFormRules.recipientRows(teams, expanded: [])
+        XCTAssertEqual(closed.prefix(2).map(\.key), ["group-dan", "person-quan"])
+        XCTAssertEqual(closed[0].ids, ["dan", "luan", "thin"])
+
+        let open = RequestFormRules.recipientRows(teams, expanded: ["dan"])
+        XCTAssertEqual(open.prefix(4).map(\.key), ["group-dan", "onlySelf-dan", "group-luan", "person-quan"])
+        XCTAssertEqual(open[2].ids, ["luan", "thin"])
+        XCTAssertEqual(open[2].depth, 1)
+
+        let both = RequestFormRules.recipientRows(teams, expanded: ["dan", "luan"])
+        XCTAssertEqual(both.prefix(5).map(\.key), ["group-dan", "onlySelf-dan", "group-luan", "onlySelf-luan", "person-thin"])
+        XCTAssertEqual(both[4].depth, 2)
+        XCTAssertEqual(RequestFormRules.givenName("Đinh Lâm Khánh Thiện"), "Thiện")
+    }
+
     func testCaptionsShowTheRealJobTitle() throws {
         var people = teamPeople()
         people[1].jobTitle = "Quản đốc"

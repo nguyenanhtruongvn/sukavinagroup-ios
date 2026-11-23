@@ -52,6 +52,29 @@ struct RecipientTeam<Person: RequestRecipient> {
 /// How much of a team is chosen (the tick at the head of the team).
 enum TeamSelection: Equatable { case none, some, all }
 
+/// Someone in a group and everyone below them (the management chain).
+struct RecipientNode<Person: RequestRecipient> {
+    let person: Person
+    let children: [RecipientNode<Person>]
+    var everyone: [Person] { [person] + children.flatMap(\.everyone) }
+}
+
+/// One line of the picker by team, as shown:
+/// - group: someone with people below them (tick = all of them; tap opens);
+/// - onlySelf: first line inside an open group, "Chỉ chọn <tên>";
+/// - person: someone with nobody below them.
+enum RecipientRowKind: String { case group, onlySelf, person }
+
+struct RecipientRow<Person: RequestRecipient> {
+    let kind: RecipientRowKind
+    let person: Person
+    /// 0 for the groups of the manager's direct reports, +1 per level.
+    let depth: Int
+    /// Who the tick chooses: the group's everyone, or the person alone.
+    let ids: [String]
+    var key: String { "\(kind.rawValue)-\(person.id)" }
+}
+
 enum RequestFormRules {
     // MARK: Durations
 
@@ -407,7 +430,7 @@ enum RequestFormRules {
         }
         return leads.sorted(by: before).map { lead in
             RecipientTeam(lead: lead, members: (below[lead.id] ?? []).sorted(by: before).map { person in
-                (person, min(3, max(1, (person.teamLevel ?? 0) - (lead.teamLevel ?? 0))))
+                (person, max(1, (person.teamLevel ?? 0) - (lead.teamLevel ?? 0)))
             })
         }
     }
@@ -472,10 +495,55 @@ enum RequestFormRules {
 
     /// Under a group's head: their job title and how many people.
     static func teamSubtitle<Person: RequestRecipient>(_ team: RecipientTeam<Person>, picked: Int, state: TeamSelection) -> String {
-        let count = picked > 0 && state != .all
-            ? "\(team.everyone.count) người · đã chọn \(picked)"
-            : "\(team.everyone.count) người"
-        return [jobTitle(team.lead), count].compactMap { $0 }.joined(separator: " · ")
+        groupSubtitle(team.lead, count: team.everyone.count, picked: picked, state: state)
+    }
+
+    /// Under a group line: the head's job title, how many people, how many chosen.
+    static func groupSubtitle<Person: RequestRecipient>(_ head: Person, count: Int, picked: Int, state: TeamSelection) -> String {
+        let people = picked > 0 && state != .all ? "\(count) người · đã chọn \(picked)" : "\(count) người"
+        return [jobTitle(head), people].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// A team as a tree: the members come in chain order with how far below
+    /// the head they are, so each one's people follow them, deeper.
+    static func recipientTree<Person: RequestRecipient>(_ team: RecipientTeam<Person>) -> RecipientNode<Person> {
+        var index = 0
+        func children(below depth: Int) -> [RecipientNode<Person>] {
+            var result: [RecipientNode<Person>] = []
+            while index < team.members.count, team.members[index].depth > depth {
+                let member = team.members[index]
+                index += 1
+                result.append(RecipientNode(person: member.person, children: children(below: member.depth)))
+            }
+            return result
+        }
+        return RecipientNode(person: team.lead, children: children(below: 0))
+    }
+
+    /// The lines to show: every group closed unless in `expanded` (by the
+    /// head's id); an open group lists "Chỉ chọn <tên>" and then its people,
+    /// who are groups themselves when they have people below them.
+    static func recipientRows<Person: RequestRecipient>(
+        _ teams: [RecipientTeam<Person>], expanded: Set<String>
+    ) -> [RecipientRow<Person>] {
+        var rows: [RecipientRow<Person>] = []
+        func add(_ node: RecipientNode<Person>, depth: Int) {
+            guard !node.children.isEmpty else {
+                rows.append(RecipientRow(kind: .person, person: node.person, depth: depth, ids: [node.person.id]))
+                return
+            }
+            rows.append(RecipientRow(kind: .group, person: node.person, depth: depth, ids: node.everyone.map(\.id)))
+            guard expanded.contains(node.person.id) else { return }
+            rows.append(RecipientRow(kind: .onlySelf, person: node.person, depth: depth + 1, ids: [node.person.id]))
+            node.children.forEach { add($0, depth: depth + 1) }
+        }
+        teams.forEach { add(recipientTree($0), depth: 0) }
+        return rows
+    }
+
+    /// "Thiện" from "Đinh Lâm Khánh Thiện" (Vietnamese given name last).
+    static func givenName(_ fullName: String) -> String {
+        fullName.split(separator: " ").last.map(String.init) ?? fullName
     }
 
     /// Tapping a direct report: the first one replaces the default "Tôi",
