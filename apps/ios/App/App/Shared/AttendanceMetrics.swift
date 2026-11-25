@@ -204,6 +204,11 @@ enum AttendanceMetrics {
         // display (or 0/0 when the punch pair is incomplete).
         if note == "CT", day.checkIn != nil || day.checkOut != nil { return nil }
         if let manual = day.overrideCode, !manual.isEmpty { return note }
+        // Nghỉ lễ / Cho nghỉ with punches: the times (or the coefficient and
+        // overtime) are shown, not NL, as on the websites (2026-11-25).
+        let worked = day.checkIn != nil || day.checkOut != nil
+        let statuses = displayStatuses(day)
+        if worked, statuses.contains("holiday") || statuses.contains("company_leave") { return nil }
         if showWorkMetrics || (day.checkIn == nil && day.checkOut == nil && note != nil) {
             return note
         }

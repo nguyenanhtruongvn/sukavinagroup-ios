@@ -79,6 +79,22 @@ final class AttendanceMetricsTests: XCTestCase {
         XCTAssertEqual(AttendanceMetrics.calendarNote(data.days[0]), "NL")
     }
 
+    func testHolidayAndCompanyLeaveWithPunchesShowTimesNotTheirLabel() throws {
+        let data = try month([
+            day("2026-10-13", extra: #""statuses":["holiday"]"#),
+            day("2026-10-14", in: "07:30", out: "16:30", extra: #""statuses":["holiday"]"#),
+            day("2026-10-15", in: "07:30", extra: #""statuses":["leave"],"companyLeave":true,"workdayCode":"NP""#),
+            day("2026-10-16", in: "07:30", out: "16:30", extra: #""statuses":["holiday"],"overrideCode":"NN""#),
+        ])
+        for showWorkMetrics in [false, true] {
+            XCTAssertEqual(AttendanceMetrics.calendarDisplayNote(data.days[0], showWorkMetrics: showWorkMetrics), "NL")
+            XCTAssertNil(AttendanceMetrics.calendarDisplayNote(data.days[1], showWorkMetrics: showWorkMetrics))
+            XCTAssertNil(AttendanceMetrics.calendarDisplayNote(data.days[2], showWorkMetrics: showWorkMetrics))
+            // A code confirmed by an administrator still wins.
+            XCTAssertEqual(AttendanceMetrics.calendarDisplayNote(data.days[3], showWorkMetrics: showWorkMetrics), "NN")
+        }
+    }
+
     func testAbsenceDisplayUsesVForAllLegacyKccSources() throws {
         let data = try month([
             day("2026-10-05", extra: #""overrideCode":"KCC","workdayCode":"KCC","statuses":["absent"]"#),
