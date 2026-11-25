@@ -57,6 +57,8 @@ struct AttendanceDay: Codable, Identifiable {
     let statuses: [String]?
     /// Company-wide day off; same leave accounting, not an employee request.
     var companyLeave: Bool? = nil
+    /// Work on a Cho nghỉ day (from Nov 2026): overtime only (×1.5), no workday.
+    var companyLeaveWork: Bool? = nil
     let startTime: String?
     let endTime: String?
     let sources: [String]?
