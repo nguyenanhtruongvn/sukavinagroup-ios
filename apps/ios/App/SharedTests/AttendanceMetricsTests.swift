@@ -79,6 +79,19 @@ final class AttendanceMetricsTests: XCTestCase {
         XCTAssertEqual(AttendanceMetrics.calendarNote(data.days[0]), "NL")
     }
 
+    func testCompanyLeaveWorkDecodesAndCountsNoWorkday() throws {
+        let data = try month([
+            day("2026-11-27", in: "07:30", out: "16:30", extra: #""statuses":[],"companyLeaveWork":true,"workdayFactor":0,"overtimeHours":8"#),
+            day("2026-11-26", in: "07:30", out: "16:30"),
+        ])
+        XCTAssertEqual(data.days[0].companyLeaveWork, true)
+        XCTAssertNil(data.days[1].companyLeaveWork)
+        let metrics = AttendanceMetrics.workMetrics(data.days[0], month: data)
+        XCTAssertEqual(metrics.coefficient, 0)
+        XCTAssertEqual(metrics.overtimeHours, 8)
+        XCTAssertNil(AttendanceMetrics.calendarDisplayNote(data.days[0], showWorkMetrics: false))
+    }
+
     func testHolidayAndCompanyLeaveWithPunchesShowTimesNotTheirLabel() throws {
         let data = try month([
             day("2026-10-13", extra: #""statuses":["holiday"]"#),

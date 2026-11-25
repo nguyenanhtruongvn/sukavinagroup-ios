@@ -75,6 +75,8 @@ struct PreloadedAttendanceDayCell: View {
     private static let earlyColor = Color(red: 219.0 / 255.0, green: 39.0 / 255.0, blue: 119.0 / 255.0)
     private static let leaveColor = Color(red: 37.0 / 255.0, green: 99.0 / 255.0, blue: 235.0 / 255.0)
     private static let overtimeColor = Color(red: 124.0 / 255.0, green: 58.0 / 255.0, blue: 237.0 / 255.0)
+    /// Cho nghỉ worked (×1.5): light blue, apart from purple Sundays and the leave blue.
+    private static let companyLeaveWorkColor = Color(red: 56.0 / 255.0, green: 189.0 / 255.0, blue: 248.0 / 255.0)
     @Environment(\.colorScheme) private var colorScheme
     // Holiday is lime (distinct from purple overtime, blue leave and green present).
     private var holidayColor: Color {
@@ -336,6 +338,15 @@ struct PreloadedAttendanceDayCell: View {
         // neutral cell surface, including the KCC absence code.
         guard note == nil else {
             return AnyView(AppTheme.muted.opacity(0.1))
+        }
+        // Days worked as overtime only, one colour each, as on the websites:
+        // Cho nghỉ (×1.5) light blue, Chủ nhật (×2) purple ("overtime"),
+        // Lễ (×3) olive.
+        if day.companyLeaveWork == true {
+            return AnyView(Self.companyLeaveWorkColor.opacity(0.3))
+        }
+        if statuses.contains("holiday") {
+            return AnyView(holidayColor.opacity(0.3))
         }
         if statuses.contains("late") && statuses.contains("early") {
             return AnyView(HStack(spacing: 0) {
