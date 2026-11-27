@@ -62,6 +62,7 @@
 		F8E10000000000000000000E /* celebration_birthday.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E10000000000000000000E /* celebration_birthday.mp3 */; };
 		F8E20000000000000000000E /* celebration_christmas.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E20000000000000000000E /* celebration_christmas.mp3 */; };
 		F8E30000000000000000000E /* celebration_newyear.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E30000000000000000000E /* celebration_newyear.mp3 */; };
+		F8E40000000000000000000E /* celebration_tet.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E40000000000000000000E /* celebration_tet.mp3 */; };
 		B20000000000000000000012 /* Widget PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -170,6 +171,7 @@
 		F7E10000000000000000000E /* celebration_birthday.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_birthday.mp3; sourceTree = "<group>"; };
 		F7E20000000000000000000E /* celebration_christmas.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_christmas.mp3; sourceTree = "<group>"; };
 		F7E30000000000000000000E /* celebration_newyear.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_newyear.mp3; sourceTree = "<group>"; };
+		F7E40000000000000000000E /* celebration_tet.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_tet.mp3; sourceTree = "<group>"; };
 		B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -278,6 +280,7 @@
 				F7E10000000000000000000E /* celebration_birthday.mp3 */,
 				F7E20000000000000000000E /* celebration_christmas.mp3 */,
 				F7E30000000000000000000E /* celebration_newyear.mp3 */,
+				F7E40000000000000000000E /* celebration_tet.mp3 */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -411,6 +414,7 @@
 				F8E10000000000000000000E /* celebration_birthday.mp3 in Resources */,
 				F8E20000000000000000000E /* celebration_christmas.mp3 in Resources */,
 				F8E30000000000000000000E /* celebration_newyear.mp3 in Resources */,
+				F8E40000000000000000000E /* celebration_tet.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

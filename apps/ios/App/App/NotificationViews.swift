@@ -1198,7 +1198,7 @@ private struct ArticleImageView: View {
 
 // MARK: - Greeting card (birthday / Christmas / New Year)
 
-/// One greeting to show on the card: "birthday", "christmas" or "newyear".
+/// One greeting to show on the card: "birthday", "christmas", "newyear" (1/1) or "tet" (mùng 1 Tết).
 struct CelebrationItem: Decodable, Identifiable, Equatable {
     let key: String
     let title: String
@@ -1219,6 +1219,7 @@ enum Celebration {
         case "birthday_greeting": return "birthday"
         case "christmas_greeting": return "christmas"
         case "newyear_greeting": return "newyear"
+        case "tet_greeting": return "tet"
         default: return nil
         }
     }
@@ -1227,6 +1228,7 @@ enum Celebration {
         switch key {
         case "christmas": return "🎄"
         case "newyear": return "🎆"
+        case "tet": return "🧧"
         default: return "🎂"
         }
     }
@@ -1235,6 +1237,7 @@ enum Celebration {
         switch key {
         case "christmas": return Color(red: 0.18, green: 0.66, blue: 0.40)
         case "newyear": return Color(red: 0.95, green: 0.66, blue: 0.23)
+        case "tet": return Color(red: 0.86, green: 0.15, blue: 0.18)
         default: return Color(red: 1.0, green: 0.30, blue: 0.43)
         }
     }
@@ -1243,6 +1246,7 @@ enum Celebration {
         switch key {
         case "christmas": return "Giáng sinh an lành!"
         case "newyear": return "An khang thịnh vượng!"
+        case "tet": return "Vạn sự như ý!"
         default: return "Sinh nhật vui vẻ!"
         }
     }
@@ -1370,7 +1374,7 @@ enum CelebrationEffects {
         switch key {
         case "christmas":
             snow(t, &context, size)
-        case "newyear":
+        case "newyear", "tet":
             fireworks(t, &context, size)
             confetti(t, &context, size, colors: newYearColors, field: newYearField)
         default:
@@ -1533,8 +1537,8 @@ enum CelebrationEffects {
 }
 
 /// Soft background music for the greeting card (arrangements made for the
-/// app: "Jingle Bells" and "Happy Birthday" are public-domain melodies, the
-/// Tết tune is original). Each MP3 holds one loop plus its first 0.25 s, so a
+/// app: "Jingle Bells" and "Happy Birthday" are public-domain melodies; the
+/// New Year tune "Năm mới bên nhau" and the Tết tune are original). Each MP3 holds one loop plus its first 0.25 s, so a
 /// window of exactly one loop taken just after the decoder's start-up delay
 /// repeats without a gap.
 ///
@@ -1554,6 +1558,7 @@ final class CelebrationMusic {
         switch key {
         case "christmas": return ("celebration_christmas", 1_568_000)
         case "newyear": return ("celebration_newyear", 1_840_695)
+        case "tet": return ("celebration_tet", 1_840_695)
         default: return ("celebration_birthday", 1_323_000)
         }
     }
