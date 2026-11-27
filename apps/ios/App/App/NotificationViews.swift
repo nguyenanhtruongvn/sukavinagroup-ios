@@ -1228,7 +1228,7 @@ enum Celebration {
         switch key {
         case "christmas": return "🎄"
         case "newyear": return "🎆"
-        case "tet": return "🧧"
+        case "tet": return "🌸"
         default: return "🎂"
         }
     }
@@ -1273,9 +1273,9 @@ struct CelebrationOverlay: View {
     var body: some View {
         let accent = Celebration.color(item.key)
         ZStack {
-            // Tết: a deep red night; the others: dark.
-            (item.key == "tet" ? Color(red: 0.24, green: 0.03, blue: 0.04) : Color(red: 0.035, green: 0.043, blue: 0.063))
-                .opacity(shown ? 0.92 : 0)
+            // Tết: an opaque deep red (the screen behind does not show); the others: dark.
+            (item.key == "tet" ? Color(red: 0.3, green: 0.04, blue: 0.06) : Color(red: 0.035, green: 0.043, blue: 0.063))
+                .opacity(shown ? (item.key == "tet" ? 1 : 0.9) : 0)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
@@ -1317,6 +1317,15 @@ struct CelebrationOverlay: View {
 
     private func card(accent: Color) -> some View {
         let lines = item.message.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+        // Tết: a warm cream card with a gold border, red title and dark text.
+        let isTet = item.key == "tet"
+        let cardColors: [Color] = isTet
+            ? [Color(red: 1, green: 0.973, blue: 0.902), Color(red: 1, green: 0.929, blue: 0.761)]
+            : [Color(red: 0.165, green: 0.173, blue: 0.212), Color(red: 0.106, green: 0.11, blue: 0.137)]
+        let titleColor: Color = isTet ? Color(red: 0.7, green: 0.1, blue: 0.12) : .white
+        let firstLine: Color = isTet ? Color(red: 0.23, green: 0.16, blue: 0.1) : Color(white: 0.92)
+        let otherLines: Color = isTet ? Color(red: 0.42, green: 0.31, blue: 0.2) : Color(white: 0.78)
+        let border: Color = isTet ? Color(red: 0.96, green: 0.77, blue: 0.26) : accent.opacity(0.45)
         return VStack(spacing: 14) {
             TimelineView(.animation(paused: reduceMotion)) { timeline in
                 let bob = reduceMotion ? 0 : sin(timeline.date.timeIntervalSince(start) * 2.4) * 4
@@ -1330,14 +1339,14 @@ struct CelebrationOverlay: View {
             Text(item.title)
                 .font(.title2.weight(.heavy))
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.white)
+                .foregroundStyle(titleColor)
                 .accessibilityAddTraits(.isHeader)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 10) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                         Text(line)
                             .font(index == 0 ? .body.weight(.medium) : .subheadline)
-                            .foregroundStyle(index == 0 ? Color(white: 0.92) : Color(white: 0.78))
+                            .foregroundStyle(index == 0 ? firstLine : otherLines)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                     }
@@ -1358,10 +1367,10 @@ struct CelebrationOverlay: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 24)
         .background(
-            LinearGradient(colors: [Color(red: 0.165, green: 0.173, blue: 0.212), Color(red: 0.106, green: 0.11, blue: 0.137)], startPoint: .top, endPoint: .bottom),
+            LinearGradient(colors: cardColors, startPoint: .top, endPoint: .bottom),
             in: RoundedRectangle(cornerRadius: 28, style: .continuous)
         )
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(accent.opacity(0.45), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(border, lineWidth: isTet ? 2 : 1))
         // Taps on the card do not close it.
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .onTapGesture {}
@@ -1463,17 +1472,17 @@ enum CelebrationEffects {
         context.fill(centers, with: .color(Color(red: 0.76, green: 0.25, blue: 0.05)))
     }
 
-    /// Tết: red lanterns (福) hanging from the top edge, swaying gently.
+    /// Tết: red lanterns (Xuân, Phúc, Lộc, An) hanging from the top edge, swaying gently.
     private static func lanterns(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
         let w = Float(size.width)
         let scale: Float = min(1.1, max(0.7, w / 420))
-        lantern(&context, x: w * 0.12, t: t, scale: scale, phase: 0)
-        lantern(&context, x: w * 0.88, t: t, scale: scale, phase: 1.7)
-        lantern(&context, x: w * 0.3, t: t, scale: scale * 0.75, phase: 3.1)
-        lantern(&context, x: w * 0.7, t: t, scale: scale * 0.75, phase: 4.4)
+        lantern(&context, x: w * 0.12, t: t, scale: scale, phase: 0, word: "Xuân")
+        lantern(&context, x: w * 0.88, t: t, scale: scale, phase: 1.7, word: "Phúc")
+        lantern(&context, x: w * 0.3, t: t, scale: scale * 0.75, phase: 3.1, word: "Lộc")
+        lantern(&context, x: w * 0.7, t: t, scale: scale * 0.75, phase: 4.4, word: "An")
     }
 
-    private static func lantern(_ context: inout GraphicsContext, x: Float, t: Float, scale: Float, phase: Float) {
+    private static func lantern(_ context: inout GraphicsContext, x: Float, t: Float, scale: Float, phase: Float, word: String) {
         var c = context
         c.translateBy(x: CGFloat(x), y: 0)
         c.rotate(by: .radians(Double(sin(t * 1.3 + phase) * 0.08)))
@@ -1499,7 +1508,8 @@ enum CelebrationEffects {
             tassel.addLine(to: CGPoint(x: tx + sway, y: rope + lh + 20 * k))
         }
         c.stroke(tassel, with: .color(lanternGold), lineWidth: 1.3)
-        let mark = Text("福").font(.system(size: 15 * k, weight: .bold)).foregroundColor(Color(red: 1, green: 0.88, blue: 0.54))
+        let markSize: CGFloat = (word.count > 3 ? 10 : 12) * k
+        let mark = Text(word).font(.system(size: markSize, weight: .bold)).foregroundColor(Color(red: 1, green: 0.88, blue: 0.54))
         c.draw(mark, at: CGPoint(x: 0, y: rope + lh / 2))
     }
 
@@ -1641,7 +1651,7 @@ enum CelebrationEffects {
 
 /// Soft background music for the greeting card (arrangements made for the
 /// app: "Jingle Bells" and "Happy Birthday" are public-domain melodies; the
-/// New Year tune "Năm mới bên nhau" and the Tết tune are original). Each MP3 holds one loop plus its first 0.25 s, so a
+/// New Year tune "Năm mới bên nhau" and the Tết tune "Xuân sum vầy" are original). Each MP3 holds one loop plus its first 0.25 s, so a
 /// window of exactly one loop taken just after the decoder's start-up delay
 /// repeats without a gap.
 ///
@@ -1661,7 +1671,7 @@ final class CelebrationMusic {
         switch key {
         case "christmas": return ("celebration_christmas", 1_568_000)
         case "newyear": return ("celebration_newyear", 1_840_695)
-        case "tet": return ("celebration_tet", 1_840_695)
+        case "tet": return ("celebration_tet", 1_459_862)
         default: return ("celebration_birthday", 1_323_000)
         }
     }
