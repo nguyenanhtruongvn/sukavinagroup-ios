@@ -608,7 +608,7 @@ struct NotificationsView: View {
                 if let key = Celebration.key(forNotificationType: item.type) {
                     // Tết: the lì xì envelope with "Lộc" in calligraphy.
                     if key == "tet" {
-                        Image("lixi_envelope").resizable().scaledToFit().padding(.vertical, 5)
+                        Celebration.bundleImage("lixi_envelope").resizable().scaledToFit().padding(.vertical, 5)
                     } else {
                         Text(Celebration.emoji(key)).font(.system(size: 22))
                     }
@@ -1247,6 +1247,11 @@ enum Celebration {
         }
     }
 
+    /// A PNG shipped loose in the app bundle (the Tết art), by file name.
+    static func bundleImage(_ name: String) -> Image {
+        Image(uiImage: UIImage(named: name) ?? UIImage())
+    }
+
     static func buttonTitle(_ key: String) -> String {
         switch key {
         case "christmas": return "Giáng sinh an lành!"
@@ -1335,7 +1340,7 @@ struct CelebrationOverlay: View {
             TimelineView(.animation(paused: reduceMotion)) { timeline in
                 let bob = reduceMotion ? 0 : sin(timeline.date.timeIntervalSince(start) * 2.4) * 4
                 if isTet {
-                    Image("lixi_envelope").resizable().scaledToFit()
+                    Celebration.bundleImage("lixi_envelope").resizable().scaledToFit()
                         .frame(height: 128)
                         .offset(y: bob)
                 } else {
@@ -1369,7 +1374,7 @@ struct CelebrationOverlay: View {
                 Group {
                     if isTet {
                         // "Vạn sự như ý" in calligraphy (an image; read aloud as text).
-                        Image("van_su_nhu_y").resizable().scaledToFit()
+                        Celebration.bundleImage("van_su_nhu_y").resizable().scaledToFit()
                             .frame(height: 44)
                             .accessibilityLabel(Celebration.buttonTitle(item.key))
                     } else {
@@ -1530,7 +1535,7 @@ enum CelebrationEffects {
         }
         c.stroke(tassel, with: .color(lanternGold), lineWidth: 1.3)
         // The calligraphy word (an image), fitted inside the lantern body.
-        let mark = c.resolve(Image(word))
+        let mark = c.resolve(Celebration.bundleImage(word))
         let natural = mark.size
         if natural.width > 0, natural.height > 0 {
             let fit = min(lw * 0.9 / natural.width, lh * 0.66 / natural.height)
