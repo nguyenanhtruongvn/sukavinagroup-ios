@@ -606,7 +606,12 @@ struct NotificationsView: View {
             Group {
                 // Greetings show their day: cake, Christmas tree, fireworks.
                 if let key = Celebration.key(forNotificationType: item.type) {
-                    Text(Celebration.emoji(key)).font(.system(size: 22))
+                    // Tết: the lì xì envelope with "Lộc" in calligraphy.
+                    if key == "tet" {
+                        Image("lixi_envelope").resizable().scaledToFit().padding(.vertical, 5)
+                    } else {
+                        Text(Celebration.emoji(key)).font(.system(size: 22))
+                    }
                 } else {
                     Image(systemName: notificationIcon(item))
                 }
@@ -1246,7 +1251,7 @@ enum Celebration {
         switch key {
         case "christmas": return "Giáng sinh an lành!"
         case "newyear": return "An khang thịnh vượng!"
-        case "tet": return "Vạn sự như ý!"
+        case "tet": return "Vạn sự như ý"
         default: return "Sinh nhật vui vẻ!"
         }
     }
@@ -1329,11 +1334,17 @@ struct CelebrationOverlay: View {
         return VStack(spacing: 14) {
             TimelineView(.animation(paused: reduceMotion)) { timeline in
                 let bob = reduceMotion ? 0 : sin(timeline.date.timeIntervalSince(start) * 2.4) * 4
-                Text(Celebration.emoji(item.key))
-                    .font(.system(size: 52))
-                    .offset(y: bob)
+                if isTet {
+                    Image("lixi_envelope").resizable().scaledToFit()
+                        .frame(height: 128)
+                        .offset(y: bob)
+                } else {
+                    Text(Celebration.emoji(item.key))
+                        .font(.system(size: 52))
+                        .offset(y: bob)
+                }
             }
-            .frame(width: 88, height: 88)
+            .frame(width: isTet ? 132 : 88, height: isTet ? 132 : 88)
             .background(RadialGradient(colors: [accent.opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 44))
             .accessibilityHidden(true)
             Text(item.title)
@@ -1355,11 +1366,20 @@ struct CelebrationOverlay: View {
             .frame(maxHeight: 260)
             .fixedSize(horizontal: false, vertical: true)
             Button(action: close) {
-                Text(Celebration.buttonTitle(item.key))
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .background(AppTheme.red, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                Group {
+                    if isTet {
+                        // "Vạn sự như ý" in calligraphy (an image; read aloud as text).
+                        Image("van_su_nhu_y").resizable().scaledToFit()
+                            .frame(height: 44)
+                            .accessibilityLabel(Celebration.buttonTitle(item.key))
+                    } else {
+                        Text(Celebration.buttonTitle(item.key))
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: isTet ? 60 : 50)
+                .background(AppTheme.red, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
             .padding(.top, 6)
@@ -1386,9 +1406,10 @@ enum CelebrationEffects {
         case "christmas":
             snow(t, &context, size)
         case "tet":
-            lanterns(t, &context, size)
+            // Lanterns over the falling flowers, so their words stay readable.
             blossoms(t, &context, size)
             sparkles(t, &context, size)
+            lanterns(t, &context, size)
         case "newyear":
             fireworks(t, &context, size)
             confetti(t, &context, size, colors: newYearColors, field: newYearField)
@@ -1472,14 +1493,14 @@ enum CelebrationEffects {
         context.fill(centers, with: .color(Color(red: 0.76, green: 0.25, blue: 0.05)))
     }
 
-    /// Tết: red lanterns (Xuân, Phúc, Lộc, An) hanging from the top edge, swaying gently.
+    /// Tết: four red lanterns reading "Chúc Mừng Năm Mới" in calligraphy (images), swaying gently.
     private static func lanterns(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
         let w = Float(size.width)
-        let scale: Float = min(1.1, max(0.7, w / 420))
-        lantern(&context, x: w * 0.12, t: t, scale: scale, phase: 0, word: "Xuân")
-        lantern(&context, x: w * 0.88, t: t, scale: scale, phase: 1.7, word: "Phúc")
-        lantern(&context, x: w * 0.3, t: t, scale: scale * 0.75, phase: 3.1, word: "Lộc")
-        lantern(&context, x: w * 0.7, t: t, scale: scale * 0.75, phase: 4.4, word: "An")
+        let scale: Float = min(1.1, max(0.7, w / 420)) * 1.35
+        lantern(&context, x: w * 0.12, t: t, scale: scale, phase: 0, word: "lantern_chuc")
+        lantern(&context, x: w * 0.37, t: t, scale: scale, phase: 3.1, word: "lantern_mung")
+        lantern(&context, x: w * 0.63, t: t, scale: scale, phase: 4.4, word: "lantern_nam")
+        lantern(&context, x: w * 0.88, t: t, scale: scale, phase: 1.7, word: "lantern_moi")
     }
 
     private static func lantern(_ context: inout GraphicsContext, x: Float, t: Float, scale: Float, phase: Float, word: String) {
@@ -1508,9 +1529,15 @@ enum CelebrationEffects {
             tassel.addLine(to: CGPoint(x: tx + sway, y: rope + lh + 20 * k))
         }
         c.stroke(tassel, with: .color(lanternGold), lineWidth: 1.3)
-        let markSize: CGFloat = (word.count > 3 ? 10 : 12) * k
-        let mark = Text(word).font(.system(size: markSize, weight: .bold)).foregroundColor(Color(red: 1, green: 0.88, blue: 0.54))
-        c.draw(mark, at: CGPoint(x: 0, y: rope + lh / 2))
+        // The calligraphy word (an image), fitted inside the lantern body.
+        let mark = c.resolve(Image(word))
+        let natural = mark.size
+        if natural.width > 0, natural.height > 0 {
+            let fit = min(lw * 0.9 / natural.width, lh * 0.66 / natural.height)
+            let dw = natural.width * fit
+            let dh = natural.height * fit
+            c.draw(mark, in: CGRect(x: -dw / 2, y: rope + lh / 2 - dh / 2, width: dw, height: dh))
+        }
     }
 
     /// Tết: small gold sparkles twinkling.
@@ -1651,7 +1678,7 @@ enum CelebrationEffects {
 
 /// Soft background music for the greeting card (arrangements made for the
 /// app: "Jingle Bells" and "Happy Birthday" are public-domain melodies; the
-/// New Year tune "Năm mới bên nhau" and the Tết tune "Xuân sum vầy" are original). Each MP3 holds one loop plus its first 0.25 s, so a
+/// New Year tune "Năm mới bên nhau" and the Tết tune "Tết vui" are original). Each MP3 holds one loop plus its first 0.25 s, so a
 /// window of exactly one loop taken just after the decoder's start-up delay
 /// repeats without a gap.
 ///
@@ -1671,7 +1698,7 @@ final class CelebrationMusic {
         switch key {
         case "christmas": return ("celebration_christmas", 1_568_000)
         case "newyear": return ("celebration_newyear", 1_840_695)
-        case "tet": return ("celebration_tet", 1_459_862)
+        case "tet": return ("celebration_tet", 1_245_176)
         default: return ("celebration_birthday", 1_323_000)
         }
     }
