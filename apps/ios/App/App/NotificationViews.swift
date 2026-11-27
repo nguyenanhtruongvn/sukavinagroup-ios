@@ -1254,10 +1254,10 @@ enum Celebration {
 
     static func buttonTitle(_ key: String) -> String {
         switch key {
-        case "christmas": return "Giáng sinh an lành"
-        case "newyear": return "An khang thịnh vượng"
+        case "christmas": return "Giáng sinh an lành!"
+        case "newyear": return "An khang thịnh vượng!"
         case "tet": return "Vạn sự như ý"
-        default: return "Sinh nhật vui vẻ"
+        default: return "Sinh nhật vui vẻ!"
         }
     }
 
