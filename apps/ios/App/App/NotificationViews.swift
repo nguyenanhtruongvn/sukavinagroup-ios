@@ -1273,7 +1273,9 @@ struct CelebrationOverlay: View {
     var body: some View {
         let accent = Celebration.color(item.key)
         ZStack {
-            Color(red: 0.035, green: 0.043, blue: 0.063).opacity(shown ? 0.9 : 0)
+            // Tết: a deep red night; the others: dark.
+            (item.key == "tet" ? Color(red: 0.24, green: 0.03, blue: 0.04) : Color(red: 0.035, green: 0.043, blue: 0.063))
+                .opacity(shown ? 0.92 : 0)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
@@ -1374,7 +1376,11 @@ enum CelebrationEffects {
         switch key {
         case "christmas":
             snow(t, &context, size)
-        case "newyear", "tet":
+        case "tet":
+            lanterns(t, &context, size)
+            blossoms(t, &context, size)
+            sparkles(t, &context, size)
+        case "newyear":
             fireworks(t, &context, size)
             confetti(t, &context, size, colors: newYearColors, field: newYearField)
         default:
@@ -1420,6 +1426,103 @@ enum CelebrationEffects {
     private static let newYearField = Field(count: 50, per: 8, seed: 7_919)
     private static let snowField = Field(count: 110, per: 4, seed: 31_337)
     private static let balloonField = Field(count: 9, per: 4, seed: 104_729)
+    private static let blossomField = Field(count: 46, per: 6, seed: 52_711)
+    private static let maiColor = Color(red: 1, green: 0.82, blue: 0.25)
+    private static let daoColor = Color(red: 1, green: 0.62, blue: 0.78)
+    private static let lanternGold = Color(red: 0.96, green: 0.77, blue: 0.26)
+
+    /// Tết: hoa mai (yellow) and hoa đào (pink) drifting down, five petals each.
+    private static func blossoms(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        let w = Float(size.width), h = Float(size.height)
+        var mai = Path()
+        var dao = Path()
+        var centers = Path()
+        for i in 0..<blossomField.count {
+            let petal: Float = 3.5 + blossomField[i, 0] * 3.5
+            let speed: Float = h * (0.06 + blossomField[i, 1] * 0.08)
+            let life: Float = (h + 40) / speed
+            let phase: Float = (t + blossomField[i, 2] * life).truncatingRemainder(dividingBy: life)
+            let x: Float = blossomField[i, 3] * w + sin(phase * 0.9 + Float(i)) * 22
+            let y: Float = -20 + phase * speed
+            let turn: Float = i % 2 == 0 ? 1 : -1
+            let spin: Float = phase * (0.6 + blossomField[i, 4]) * turn
+            var flower = Path()
+            for k in 0..<5 {
+                let angle: Float = spin + Float(k) * 2 * Float.pi / 5
+                let px: Float = x + cos(angle) * petal * 0.9
+                let py: Float = y + sin(angle) * petal * 0.9
+                let r: Float = petal * 0.62
+                flower.addEllipse(in: CGRect(x: CGFloat(px - r), y: CGFloat(py - r), width: CGFloat(r * 2), height: CGFloat(r * 2)))
+            }
+            if blossomField[i, 5] < 0.55 { mai.addPath(flower) } else { dao.addPath(flower) }
+            let c: Float = petal * 0.3
+            centers.addEllipse(in: CGRect(x: CGFloat(x - c), y: CGFloat(y - c), width: CGFloat(c * 2), height: CGFloat(c * 2)))
+        }
+        context.fill(mai, with: .color(maiColor.opacity(0.95)))
+        context.fill(dao, with: .color(daoColor.opacity(0.95)))
+        context.fill(centers, with: .color(Color(red: 0.76, green: 0.25, blue: 0.05)))
+    }
+
+    /// Tết: red lanterns (福) hanging from the top edge, swaying gently.
+    private static func lanterns(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        let w = Float(size.width)
+        let scale: Float = min(1.1, max(0.7, w / 420))
+        lantern(&context, x: w * 0.12, t: t, scale: scale, phase: 0)
+        lantern(&context, x: w * 0.88, t: t, scale: scale, phase: 1.7)
+        lantern(&context, x: w * 0.3, t: t, scale: scale * 0.75, phase: 3.1)
+        lantern(&context, x: w * 0.7, t: t, scale: scale * 0.75, phase: 4.4)
+    }
+
+    private static func lantern(_ context: inout GraphicsContext, x: Float, t: Float, scale: Float, phase: Float) {
+        var c = context
+        c.translateBy(x: CGFloat(x), y: 0)
+        c.rotate(by: .radians(Double(sin(t * 1.3 + phase) * 0.08)))
+        let k = CGFloat(scale)
+        let rope: CGFloat = 44 * k
+        let lw: CGFloat = 38 * k
+        let lh: CGFloat = 46 * k
+        var line = Path()
+        line.move(to: .zero)
+        line.addLine(to: CGPoint(x: 0, y: rope))
+        c.stroke(line, with: .color(Color(red: 0.49, green: 0.18, blue: 0.07)), lineWidth: 1.5)
+        let body = Gradient(colors: [Color(red: 1, green: 0.45, blue: 0.3), Color(red: 0.73, green: 0.11, blue: 0.11)])
+        c.fill(Path(ellipseIn: CGRect(x: -lw / 2, y: rope, width: lw, height: lh)),
+               with: .radialGradient(body, center: CGPoint(x: 0, y: rope + lh / 2), startRadius: 2, endRadius: lw * 0.7))
+        c.fill(Path(CGRect(x: -lw * 0.28, y: rope - 4 * k, width: lw * 0.56, height: 6 * k)), with: .color(lanternGold))
+        c.fill(Path(CGRect(x: -lw * 0.28, y: rope + lh - 2 * k, width: lw * 0.56, height: 6 * k)), with: .color(lanternGold))
+        c.stroke(Path(ellipseIn: CGRect(x: -lw * 0.25, y: rope, width: lw * 0.5, height: lh)), with: .color(lanternGold.opacity(0.5)), lineWidth: 1)
+        var tassel = Path()
+        for strand in -2...2 {
+            let tx: CGFloat = CGFloat(strand) * 2.4 * k
+            let sway: CGFloat = CGFloat(sin(t * 2 + Float(strand)) * 1.5)
+            tassel.move(to: CGPoint(x: tx, y: rope + lh + 4 * k))
+            tassel.addLine(to: CGPoint(x: tx + sway, y: rope + lh + 20 * k))
+        }
+        c.stroke(tassel, with: .color(lanternGold), lineWidth: 1.3)
+        let mark = Text("福").font(.system(size: 15 * k, weight: .bold)).foregroundColor(Color(red: 1, green: 0.88, blue: 0.54))
+        c.draw(mark, at: CGPoint(x: 0, y: rope + lh / 2))
+    }
+
+    /// Tết: small gold sparkles twinkling.
+    private static func sparkles(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        let w = Float(size.width), h = Float(size.height)
+        var dim = Path()
+        var bright = Path()
+        for i in 0..<16 {
+            let x: Float = blossomField[i, 0] * w
+            let y: Float = blossomField[i + 16, 3] * h * 0.8
+            let twinkle: Float = (sin(t * (1.6 + blossomField[i, 4] * 2) + Float(i)) + 1) / 2
+            let s: Float = 2.5 + twinkle * 4
+            var star = Path()
+            star.move(to: CGPoint(x: CGFloat(x - s), y: CGFloat(y)))
+            star.addLine(to: CGPoint(x: CGFloat(x + s), y: CGFloat(y)))
+            star.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y - s)))
+            star.addLine(to: CGPoint(x: CGFloat(x), y: CGFloat(y + s)))
+            if twinkle > 0.5 { bright.addPath(star) } else { dim.addPath(star) }
+        }
+        context.stroke(dim, with: .color(lanternGold.opacity(0.4)), lineWidth: 1.3)
+        context.stroke(bright, with: .color(lanternGold.opacity(0.95)), lineWidth: 1.3)
+    }
 
     private static func confetti(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize, colors: [Color], field: Field) {
         let w = Float(size.width), h = Float(size.height)
