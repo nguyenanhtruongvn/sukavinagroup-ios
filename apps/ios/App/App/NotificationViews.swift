@@ -1254,17 +1254,92 @@ enum Celebration {
 
     static func buttonTitle(_ key: String) -> String {
         switch key {
-        case "christmas": return "Giáng sinh an lành!"
-        case "newyear": return "An khang thịnh vượng!"
+        case "christmas": return "Giáng sinh an lành"
+        case "newyear": return "An khang thịnh vượng"
         case "tet": return "Vạn sự như ý"
-        default: return "Sinh nhật vui vẻ!"
+        default: return "Sinh nhật vui vẻ"
+        }
+    }
+
+    /// The words without emoji (and their joiners), for the card only (the notification keeps them).
+    static func withoutEmoji(_ text: String) -> String {
+        var scalars = String.UnicodeScalarView()
+        for scalar in text.unicodeScalars {
+            let v = scalar.value
+            let emoji = (0x1F000...0x1FAFF).contains(v) || (0x2600...0x27BF).contains(v) || (0x2B00...0x2BFF).contains(v)
+                || v == 0xFE0F || v == 0x200D || v == 0x2728
+            if !emoji { scalars.append(scalar) }
+        }
+        return String(scalars)
+            .replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The year the New Year card celebrates, in Vietnam time (next year when
+    /// opened from October: a test or preview).
+    static func vietnamYear(_ now: Date = Date()) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Ho_Chi_Minh") ?? .current
+        let parts = calendar.dateComponents([.year, .month], from: now)
+        let year = parts.year ?? 2027
+        return (parts.month ?? 1) >= 10 ? year + 1 : year
+    }
+}
+
+/// The premium look of a greeting card: a quiet, rich backdrop, a frosted
+/// card with a gold hairline, a spaced eyebrow, a serif gold title and a
+/// metallic button (rose gold for birthdays).
+struct CelebrationTheme {
+    let backdrop: [Color]
+    let eyebrow: String
+    let accent: [Color]
+    let accentSolid: Color
+    let card: [Color]
+    let body: Color
+    let bodySoft: Color
+    let button: [Color]
+    let buttonText: Color
+
+    /// 0xRRGGBB with an opacity.
+    static func hex(_ value: UInt32, _ alpha: Double = 1) -> Color {
+        Color(red: Double((value >> 16) & 0xFF) / 255, green: Double((value >> 8) & 0xFF) / 255,
+              blue: Double(value & 0xFF) / 255, opacity: alpha)
+    }
+
+    private static let gold: [Color] = [hex(0xFFF1C1), hex(0xF1C760), hex(0xC9932E)]
+    private static let goldButton: [Color] = [hex(0xF7DC8B), hex(0xE9B949), hex(0xF7DC8B)]
+
+    static func of(_ key: String) -> CelebrationTheme {
+        switch key {
+        case "tet":
+            return CelebrationTheme(
+                backdrop: [hex(0x120203), hex(0x3A070B), hex(0x5E0E14)], eyebrow: "TẾT NGUYÊN ĐÁN",
+                accent: gold, accentSolid: hex(0xF1C760), card: [hex(0x5A0D13, 0.92), hex(0x2A0507, 0.95)],
+                body: hex(0xFBF1E4), bodySoft: hex(0xE2BFA6), button: goldButton, buttonText: hex(0x2A1804))
+        case "newyear":
+            return CelebrationTheme(
+                backdrop: [hex(0x04050D), hex(0x0B1030), hex(0x1A1036)], eyebrow: "CHÚC MỪNG NĂM MỚI",
+                accent: gold, accentSolid: hex(0xF1C760), card: [hex(0x1C2152, 0.9), hex(0x0B0F2C, 0.94)],
+                body: hex(0xF4F2EA), bodySoft: hex(0xB9B8C9), button: goldButton, buttonText: hex(0x2A1C05))
+        case "christmas":
+            return CelebrationTheme(
+                backdrop: [hex(0x020F0A), hex(0x052A1B), hex(0x0A3B26)], eyebrow: "MERRY CHRISTMAS",
+                accent: gold, accentSolid: hex(0xF1C760), card: [hex(0x113D29, 0.9), hex(0x051F14, 0.94)],
+                body: hex(0xF3F1E8), bodySoft: hex(0xAFC2B6), button: goldButton, buttonText: hex(0x14301F))
+        default:
+            return CelebrationTheme(
+                backdrop: [hex(0x12060F), hex(0x2E0C26), hex(0x4A1535)], eyebrow: "HAPPY BIRTHDAY",
+                accent: [hex(0xFFE3D6), hex(0xF2B5A0), hex(0xD9877A)], accentSolid: hex(0xF2B5A0),
+                card: [hex(0x441736, 0.9), hex(0x1E0918, 0.94)], body: hex(0xF7EEF1), bodySoft: hex(0xC9AEBB),
+                button: [hex(0xF6CBB8), hex(0xE59A8A), hex(0xF6CBB8)], buttonText: hex(0x3A0F24))
         }
     }
 }
 
 /// Full-screen greeting opened by tapping its notification: an animated
-/// background (balloons and confetti for a birthday, snow for Christmas,
-/// fireworks for New Year) under a card with the message. A tap outside the
+/// backdrop (gold dust and fine gold bursts for New Year, snow and warm
+/// lights for Christmas, rose-gold balloons for a birthday, lanterns and
+/// falling flowers for Tết) under a premium card with the message. A tap outside the
 /// card or on its button closes it. Still when Reduce Motion is on.
 struct CelebrationOverlay: View {
     let item: CelebrationItem
@@ -1281,11 +1356,11 @@ struct CelebrationOverlay: View {
     // starts once the card has opened, with its audio set up off the main
     // thread.
     var body: some View {
-        let accent = Celebration.color(item.key)
+        let theme = CelebrationTheme.of(item.key)
         ZStack {
-            // Tết: an opaque deep red (the screen behind does not show); the others: dark.
-            (item.key == "tet" ? Color(red: 0.3, green: 0.04, blue: 0.06) : Color(red: 0.035, green: 0.043, blue: 0.063))
-                .opacity(shown ? (item.key == "tet" ? 1 : 0.9) : 0)
+            // An opaque rich backdrop (the screen behind does not show).
+            LinearGradient(colors: theme.backdrop, startPoint: .top, endPoint: .bottom)
+                .opacity(shown ? 1 : 0)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: close)
@@ -1302,9 +1377,9 @@ struct CelebrationOverlay: View {
                 .allowsHitTesting(false)
                 .opacity(shown ? 1 : 0)
             }
-            card(accent: accent)
-                .padding(.horizontal, 24)
-                .frame(maxWidth: 440)
+            card(theme: theme)
+                .padding(.horizontal, 22)
+                .frame(maxWidth: 420)
                 .scaleEffect(shown || reduceMotion ? 1 : 0.92)
                 .opacity(shown ? 1 : 0)
         }
@@ -1325,79 +1400,106 @@ struct CelebrationOverlay: View {
         onDismiss()
     }
 
-    private func card(accent: Color) -> some View {
-        let lines = item.message.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-        // Tết: a warm cream card with a gold border, red title and dark text.
-        let isTet = item.key == "tet"
-        let cardColors: [Color] = isTet
-            ? [Color(red: 1, green: 0.973, blue: 0.902), Color(red: 1, green: 0.929, blue: 0.761)]
-            : [Color(red: 0.165, green: 0.173, blue: 0.212), Color(red: 0.106, green: 0.11, blue: 0.137)]
-        let titleColor: Color = isTet ? Color(red: 0.7, green: 0.1, blue: 0.12) : .white
-        let firstLine: Color = isTet ? Color(red: 0.23, green: 0.16, blue: 0.1) : Color(white: 0.92)
-        let otherLines: Color = isTet ? Color(red: 0.42, green: 0.31, blue: 0.2) : Color(white: 0.78)
-        let border: Color = isTet ? Color(red: 0.96, green: 0.77, blue: 0.26) : accent.opacity(0.45)
-        return VStack(spacing: 14) {
+    /// The art above the words: the lì xì for Tết, the year in gold for New
+    /// Year, gold line art (a bauble, a cake) otherwise.
+    @ViewBuilder
+    private func art(_ theme: CelebrationTheme) -> some View {
+        switch item.key {
+        case "tet":
+            Celebration.bundleImage("lixi_envelope").resizable().scaledToFit()
+                .frame(height: 146)
+                .shadow(color: .black.opacity(0.45), radius: 10, y: 8)
+        case "newyear":
+            Text(String(Celebration.vietnamYear()))
+                .font(.system(size: 84, weight: .light, design: .serif))
+                .tracking(4)
+                .foregroundStyle(LinearGradient(colors: theme.accent, startPoint: .top, endPoint: .bottom))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        default:
+            Celebration.bundleImage(item.key == "christmas" ? "line_christmas" : "line_birthday")
+                .resizable().scaledToFit()
+                .frame(width: 150, height: 150)
+        }
+    }
+
+    private func card(theme: CelebrationTheme) -> some View {
+        let lines = item.message.split(separator: "\n").map { Celebration.withoutEmoji(String($0)) }.filter { !$0.isEmpty }
+        let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
+        let hairline = Rectangle().fill(theme.accentSolid.opacity(0.6)).frame(width: 26, height: 1)
+        return VStack(spacing: 0) {
             TimelineView(.animation(paused: reduceMotion)) { timeline in
-                let bob = reduceMotion ? 0 : sin(timeline.date.timeIntervalSince(start) * 2.4) * 4
-                if isTet {
-                    Celebration.bundleImage("lixi_envelope").resizable().scaledToFit()
-                        .frame(height: 128)
-                        .offset(y: bob)
-                } else {
-                    Text(Celebration.emoji(item.key))
-                        .font(.system(size: 52))
-                        .offset(y: bob)
-                }
+                let bob = reduceMotion ? 0 : sin(timeline.date.timeIntervalSince(start) * 1.8) * 3
+                art(theme).offset(y: bob)
             }
-            .frame(width: isTet ? 132 : 88, height: isTet ? 132 : 88)
-            .background(RadialGradient(colors: [accent.opacity(0.35), .clear], center: .center, startRadius: 0, endRadius: 44))
+            .frame(height: 150)
+            .frame(maxWidth: .infinity)
             .accessibilityHidden(true)
-            Text(item.title)
-                .font(.title2.weight(.heavy))
+            HStack(spacing: 10) {
+                hairline
+                Text(theme.eyebrow)
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(3)
+                    .foregroundStyle(theme.accentSolid)
+                    .lineLimit(1)
+                hairline
+            }
+            .padding(.top, 8)
+            .accessibilityHidden(true)
+            Text(Celebration.withoutEmoji(item.title))
+                .font(.system(.title2, design: .serif).weight(.semibold))
                 .multilineTextAlignment(.center)
-                .foregroundStyle(titleColor)
+                .foregroundStyle(LinearGradient(colors: theme.accent, startPoint: .top, endPoint: .bottom))
+                .padding(.top, 14)
                 .accessibilityAddTraits(.isHeader)
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                         Text(line)
-                            .font(index == 0 ? .body.weight(.medium) : .subheadline)
-                            .foregroundStyle(index == 0 ? firstLine : otherLines)
+                            .font(index == 0 ? .body : .system(.subheadline, design: .serif).italic())
+                            .foregroundStyle(index == 0 ? theme.body : theme.bodySoft)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                     }
                 }
             }
-            .frame(maxHeight: 260)
+            .frame(maxHeight: 240)
             .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, 14)
             Button(action: close) {
                 Group {
-                    if isTet {
+                    if item.key == "tet" {
                         // "Vạn sự như ý" in calligraphy (an image; read aloud as text).
-                        Celebration.bundleImage("van_su_nhu_y").resizable().scaledToFit()
-                            .frame(height: 44)
+                        Celebration.bundleImage("van_su_nhu_y_dark").resizable().scaledToFit()
+                            .frame(height: 42)
+                            .padding(.vertical, 6)
                             .accessibilityLabel(Celebration.buttonTitle(item.key))
                     } else {
                         Text(Celebration.buttonTitle(item.key))
                             .font(.headline)
-                            .foregroundStyle(.white)
+                            .tracking(0.6)
+                            .foregroundStyle(theme.buttonText)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: isTet ? 60 : 50)
-                .background(AppTheme.red, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background(LinearGradient(colors: theme.button, startPoint: .leading, endPoint: .trailing), in: Capsule())
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 6)
             }
             .buttonStyle(.plain)
-            .padding(.top, 6)
+            .padding(.top, 24)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 24)
-        .background(
-            LinearGradient(colors: cardColors, startPoint: .top, endPoint: .bottom),
-            in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 26)
+        .background(LinearGradient(colors: theme.card, startPoint: .top, endPoint: .bottom), in: shape)
+        .overlay(
+            shape.stroke(
+                LinearGradient(colors: [theme.accentSolid.opacity(0.8), theme.accentSolid.opacity(0.2), theme.accentSolid.opacity(0.6)],
+                               startPoint: .top, endPoint: .bottom),
+                lineWidth: 1)
         )
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(border, lineWidth: isTet ? 2 : 1))
+        .shadow(color: .black.opacity(0.5), radius: 30, y: 18)
         // Taps on the card do not close it.
-        .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .contentShape(shape)
         .onTapGesture {}
     }
 }
@@ -1409,29 +1511,24 @@ enum CelebrationEffects {
     static func draw(_ key: String, t: Float, in context: inout GraphicsContext, size: CGSize) {
         switch key {
         case "christmas":
-            snow(t, &context, size)
+            christmasSnow(t, &context, size)
         case "tet":
-            // Lanterns over the falling flowers, so their words stay readable.
+            // Gold dust and falling flowers, then the lanterns on top so their words stay readable.
+            centreGlow(&context, size, gold)
+            goldDust(t, &context, size, count: 60, seed: 1302)
             blossoms(t, &context, size)
             sparkles(t, &context, size)
             lanterns(t, &context, size)
         case "newyear":
-            fireworks(t, &context, size)
-            confetti(t, &context, size, colors: newYearColors, field: newYearField)
+            newYearNight(t, &context, size)
         default:
-            balloons(t, &context, size)
-            confetti(t, &context, size, colors: birthdayColors, field: birthdayField)
+            birthdayParty(t, &context, size)
         }
     }
 
-    private static let birthdayColors: [Color] = [
-        Color(red: 1, green: 0.30, blue: 0.43), Color(red: 1, green: 0.76, blue: 0.27), Color(red: 0.30, green: 0.79, blue: 0.94),
-        Color(red: 0.50, green: 0.93, blue: 0.60), Color(red: 0.72, green: 0.58, blue: 0.96), Color(red: 1, green: 0.56, blue: 0.67),
-    ]
-    private static let newYearColors: [Color] = [
-        Color(red: 1, green: 0.82, blue: 0.40), Color(red: 1, green: 0.91, blue: 0.64), Color(red: 0.91, green: 0.12, blue: 0.16),
-        .white, Color(red: 0.96, green: 0.64, blue: 0.35),
-    ]
+    private static let gold = CelebrationTheme.hex(0xF1C760)
+    private static let dust = CelebrationTheme.hex(0xF6D98B)
+    private static let roseGold = CelebrationTheme.hex(0xF2B5A0)
 
     /// Small deterministic random numbers (same sequence for the same seed).
     private struct Seeded {
@@ -1457,10 +1554,6 @@ enum CelebrationEffects {
         subscript(i: Int, k: Int) -> Float { values[i * per + k] }
     }
 
-    private static let birthdayField = Field(count: 80, per: 8, seed: 7_919)
-    private static let newYearField = Field(count: 50, per: 8, seed: 7_919)
-    private static let snowField = Field(count: 110, per: 4, seed: 31_337)
-    private static let balloonField = Field(count: 9, per: 4, seed: 104_729)
     private static let blossomField = Field(count: 46, per: 6, seed: 52_711)
     private static let maiColor = Color(red: 1, green: 0.82, blue: 0.25)
     private static let daoColor = Color(red: 1, green: 0.62, blue: 0.78)
@@ -1566,118 +1659,141 @@ enum CelebrationEffects {
         context.stroke(bright, with: .color(lanternGold.opacity(0.95)), lineWidth: 1.3)
     }
 
-    private static func confetti(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize, colors: [Color], field: Field) {
-        let w = Float(size.width), h = Float(size.height)
-        var paths = Array(repeating: Path(), count: colors.count)
-        for i in 0..<field.count {
-            let speed = h * (0.16 + field[i, 0] * 0.22)
-            let local = t - field[i, 1] * 2.5
-            if local < 0 { continue }
-            let life = (h * 1.15) / speed
-            let phase = local.truncatingRemainder(dividingBy: life)
-            let x = field[i, 2] * w + sin(phase * (1.2 + field[i, 3] * 1.6) + Float(i)) * 28
-            let y = -40 + phase * speed
-            let halfW = (4 + field[i, 4] * 5) / 2
-            let halfH = max((2.5 + field[i, 5] * 3.5) * abs(cos(phase * (3 + field[i, 7] * 4))), 0.4) / 2
-            let angle = phase * (1.6 + field[i, 6] * 4.5) * (i % 2 == 0 ? 1 : -1)
-            let c = cos(angle), s = sin(angle)
-            // The rotated strip's four corners.
-            func corner(_ dx: Float, _ dy: Float) -> CGPoint {
-                CGPoint(x: CGFloat(x + dx * c - dy * s), y: CGFloat(y + dx * s + dy * c))
-            }
-            paths[i % colors.count].addLines([corner(-halfW, -halfH), corner(halfW, -halfH), corner(halfW, halfH), corner(-halfW, halfH)])
-            paths[i % colors.count].closeSubpath()
-        }
-        for (index, path) in paths.enumerated() { context.fill(path, with: .color(colors[index])) }
+    // MARK: premium backdrops
+
+    private static func dot(_ x: Float, _ y: Float, _ r: Float) -> CGRect {
+        CGRect(x: CGFloat(x - r), y: CGFloat(y - r), width: CGFloat(r * 2), height: CGFloat(r * 2))
     }
 
-    private static func balloons(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
-        let w = Float(size.width), h = Float(size.height)
-        for i in 0..<balloonField.count {
-            let radius = 18 + balloonField[i, 0] * 12
-            let speed = h * (0.07 + balloonField[i, 1] * 0.06)
-            let life = (h + radius * 6) / speed
-            let phase = (t + balloonField[i, 2] * life).truncatingRemainder(dividingBy: life)
-            let baseX = (Float(i) + 0.5) / 9 * w + (balloonField[i, 3] - 0.5) * 40
-            let x = baseX + sin(phase * 0.9 + Float(i)) * 16
-            let y = h + radius * 2 - phase * speed
-            let color = birthdayColors[i % birthdayColors.count]
-            var string = Path()
-            string.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y + radius * 1.15)))
-            string.addLine(to: CGPoint(x: CGFloat(x + sin(phase * 2) * 6), y: CGFloat(y + radius * 3.2)))
-            context.stroke(string, with: .color(.white.opacity(0.35)), lineWidth: 1)
-            context.fill(Path(ellipseIn: CGRect(x: CGFloat(x - radius), y: CGFloat(y - radius * 1.2), width: CGFloat(radius * 2), height: CGFloat(radius * 2.4))), with: .color(color.opacity(0.9)))
-            context.fill(Path(ellipseIn: CGRect(x: CGFloat(x - radius * 0.55), y: CGFloat(y - radius * 0.85), width: CGFloat(radius * 0.5), height: CGFloat(radius * 0.7))), with: .color(.white.opacity(0.35)))
-        }
+    /// A soft light behind the card.
+    private static func centreGlow(_ context: inout GraphicsContext, _ size: CGSize, _ color: Color) {
+        let c = CGPoint(x: size.width / 2, y: size.height * 0.46)
+        let r = min(size.width, size.height) * 0.75
+        context.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
+                     with: .radialGradient(Gradient(colors: [color.opacity(0.16), color.opacity(0)]), center: c, startRadius: 0, endRadius: r))
     }
 
-    private static func snow(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+    /// Gold dust rising slowly, twinkling (twinkling specks in their own path).
+    private static func goldDust(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize, count: Int, seed: Int) {
         let w = Float(size.width), h = Float(size.height)
-        // Four depth layers, one path each (nearer flakes are bigger and brighter).
-        var layers = Array(repeating: Path(), count: 4)
-        for i in 0..<snowField.count {
-            let depth = snowField[i, 0]
-            let radius = 1 + depth * 3
-            let speed = h * (0.04 + depth * 0.09)
-            let life = (h + 20) / speed
-            let phase = (t + snowField[i, 1] * life).truncatingRemainder(dividingBy: life)
-            let x = snowField[i, 2] * w + sin(phase * (0.6 + depth) + Float(i)) * (10 + depth * 18)
-            let y = -10 + phase * speed
-            layers[min(3, Int(depth * 4))].addEllipse(in: CGRect(x: CGFloat(x - radius), y: CGFloat(y - radius), width: CGFloat(radius * 2), height: CGFloat(radius * 2)))
-        }
-        for (layer, path) in layers.enumerated() {
-            context.fill(path, with: .color(.white.opacity(0.4 + Double(layer) * 0.17)))
-        }
-        var stars = Path()
+        var r = Seeded(seed)
+        var dim = Path()
         var bright = Path()
-        for i in 0..<14 {
-            let x = snowField[i, 3] * w, y = snowField[i + 14, 3] * h * 0.45
-            let twinkle = (sin(t * (1.5 + snowField[i + 28, 3] * 2) + Float(i)) + 1) / 2
-            let s = 3 + twinkle * 4
-            var star = Path()
-            star.move(to: CGPoint(x: CGFloat(x - s), y: CGFloat(y))); star.addLine(to: CGPoint(x: CGFloat(x + s), y: CGFloat(y)))
-            star.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y - s))); star.addLine(to: CGPoint(x: CGFloat(x), y: CGFloat(y + s)))
-            if twinkle > 0.5 { bright.addPath(star) } else { stars.addPath(star) }
+        for i in 0..<count {
+            let x0 = r.next() * w
+            let speed = h * (0.015 + r.next() * 0.03)
+            let life = h / speed
+            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
+            let x = x0 + sin(t * 0.6 + Float(i)) * 10
+            let y = h - phase * speed
+            let twinkle = (sin(t * (1.5 + r.next() * 2) + Float(i)) + 1) / 2
+            let rect = dot(x, y, 0.5 + r.next() * 1.4)
+            if twinkle > 0.5 { bright.addEllipse(in: rect) } else { dim.addEllipse(in: rect) }
         }
-        let gold = Color(red: 1, green: 0.88, blue: 0.54)
-        context.stroke(stars, with: .color(gold.opacity(0.45)), lineWidth: 1.3)
-        context.stroke(bright, with: .color(gold.opacity(0.9)), lineWidth: 1.3)
+        context.fill(dim, with: .color(dust.opacity(0.3)))
+        context.fill(bright, with: .color(dust.opacity(0.68)))
     }
 
-    private static func fireworks(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+    /// New Year: gold dust and a few fine gold bursts.
+    private static func newYearNight(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        centreGlow(&context, size, gold)
+        goldDust(t, &context, size, count: 80, seed: 2027)
         let w = Float(size.width), h = Float(size.height)
-        let every: Float = 0.75, burstLife: Float = 1.9
+        let every: Float = 1.7, life: Float = 2.2
         let newest = Int(t / every)
-        for n in max(0, newest - 3)...max(0, newest) {
+        for n in max(0, newest - 1)...max(0, newest) {
             let age = t - Float(n) * every
-            if age < 0 || age > burstLife { continue }
-            var r = Seeded(n * 6151 + 11)
+            if age < 0 || age > life { continue }
+            var r = Seeded(n * 7919 + 3)
             let cx = w * (0.15 + r.next() * 0.7)
-            let cy = h * (0.12 + r.next() * 0.35)
-            let base = newYearColors[n % newYearColors.count]
-            let color = base == .white ? Color(red: 0.5, green: 0.86, blue: 1) : base
-            let progress = age / burstLife
-            let reach = min(w, h) * (0.16 + r.next() * 0.08)
-            let alpha = Double(max(0, 1 - progress))
-            if age < 0.25 {
-                let flash = 12 + age * 60
-                context.fill(Path(ellipseIn: CGRect(x: CGFloat(cx - flash), y: CGFloat(cy - flash), width: CGFloat(flash * 2), height: CGFloat(flash * 2))), with: .color(.white.opacity(Double(0.6 * (1 - age / 0.25)))))
-            }
-            let dist = reach * (1 - (1 - progress) * (1 - progress))
-            let drop = age * age * 20
-            // All tails of a burst in one path, all spark heads in another.
+            let cy = h * (0.08 + r.next() * 0.22)
+            let p = age / life
+            let reach = min(w, h) * (0.12 + r.next() * 0.06) * (1 - (1 - p) * (1 - p))
+            let alpha = Double(max(0, 1 - p))
+            let drop = age * age * 12
             var tails = Path()
             var heads = Path()
-            for s in 0..<36 {
-                let angle = 2 * Float.pi * Float(s) / 36 + r.next() * 0.08
-                let px = cx + cos(angle) * dist, py = cy + sin(angle) * dist + drop
-                tails.move(to: CGPoint(x: CGFloat(cx + cos(angle) * dist * 0.82), y: CGFloat(cy + sin(angle) * dist * 0.82 + drop)))
-                tails.addLine(to: CGPoint(x: CGFloat(px), y: CGFloat(py)))
-                heads.addEllipse(in: CGRect(x: CGFloat(px - 1.6), y: CGFloat(py - 1.6), width: 3.2, height: 3.2))
+            for s in 0..<28 {
+                let a = 2 * Float.pi * Float(s) / 28
+                let ex = cx + cos(a) * reach, ey = cy + sin(a) * reach + drop
+                tails.move(to: CGPoint(x: CGFloat(cx + cos(a) * reach * 0.7), y: CGFloat(cy + sin(a) * reach * 0.7 + drop)))
+                tails.addLine(to: CGPoint(x: CGFloat(ex), y: CGFloat(ey)))
+                heads.addEllipse(in: dot(ex, ey, 1.2))
             }
-            context.stroke(tails, with: .color(color.opacity(alpha * 0.55)), lineWidth: 1.4)
-            context.fill(heads, with: .color(color.opacity(alpha)))
+            context.stroke(tails, with: .color(dust.opacity(alpha * 0.7)), lineWidth: 1.1)
+            context.fill(heads, with: .color(CelebrationTheme.hex(0xFFF4D6, alpha)))
         }
+    }
+
+    /// Christmas: warm out-of-focus lights and snow at four depths.
+    private static func christmasSnow(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        centreGlow(&context, size, gold)
+        let w = Float(size.width), h = Float(size.height)
+        var r = Seeded(1225)
+        let warm = CelebrationTheme.hex(0xFFD58A)
+        for i in 0..<10 {
+            let x = r.next() * w, y = r.next() * h
+            let radius = 24 + r.next() * 40
+            let pulse = Double(0.05 + 0.05 * (sin(t * 0.7 + Float(i)) + 1) / 2)
+            context.fill(Path(ellipseIn: dot(x, y, radius)),
+                         with: .radialGradient(Gradient(colors: [warm.opacity(pulse), warm.opacity(0)]),
+                                               center: CGPoint(x: CGFloat(x), y: CGFloat(y)), startRadius: 0, endRadius: CGFloat(radius)))
+        }
+        var layers = Array(repeating: Path(), count: 4)
+        for i in 0..<120 {
+            let depth = r.next()
+            let radius = 0.8 + depth * 2.6
+            let speed = h * (0.03 + depth * 0.07)
+            let life = (h + 20) / speed
+            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
+            let x = r.next() * w + sin(phase * (0.5 + depth) + Float(i)) * (8 + depth * 14)
+            let y = -10 + phase * speed
+            layers[min(3, Int(depth * 4))].addEllipse(in: dot(x, y, radius))
+        }
+        for (layer, path) in layers.enumerated() {
+            context.fill(path, with: .color(.white.opacity(0.25 + (Double(layer) + 0.5) / 4 * 0.55)))
+        }
+    }
+
+    /// Birthday: glossy rose-gold balloons drifting up and fine gold foil falling.
+    private static func birthdayParty(_ t: Float, _ context: inout GraphicsContext, _ size: CGSize) {
+        centreGlow(&context, size, roseGold)
+        let w = Float(size.width), h = Float(size.height)
+        let colors = [roseGold, CelebrationTheme.hex(0xF7DC8B), CelebrationTheme.hex(0xE8A0B4), CelebrationTheme.hex(0xD7C3F0), CelebrationTheme.hex(0xFFE6D8)]
+        var r = Seeded(1990)
+        var strings = Path()
+        for i in 0..<9 {
+            let radius = 16 + r.next() * 12
+            let speed = h * (0.035 + r.next() * 0.03)
+            let life = (h + radius * 6) / speed
+            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
+            let x = w * ((Float(i) + 0.5) / 9) + sin(phase * 0.7 + Float(i)) * 14
+            let y = h + radius * 2 - phase * speed
+            let color = colors[i % colors.count]
+            strings.move(to: CGPoint(x: CGFloat(x), y: CGFloat(y + radius * 1.2)))
+            strings.addLine(to: CGPoint(x: CGFloat(x + sin(phase) * 5), y: CGFloat(y + radius * 3.6)))
+            let shine = CGPoint(x: CGFloat(x - radius * 0.35), y: CGFloat(y - radius * 0.45))
+            context.fill(Path(ellipseIn: CGRect(x: CGFloat(x - radius), y: CGFloat(y - radius * 1.2), width: CGFloat(radius * 2), height: CGFloat(radius * 2.4))),
+                         with: .radialGradient(Gradient(colors: [.white.opacity(0.9), color, color.opacity(0.85)]),
+                                               center: shine, startRadius: 0, endRadius: CGFloat(radius * 1.6)))
+        }
+        context.stroke(strings, with: .color(.white.opacity(0.25)), lineWidth: 0.8)
+        var dim = Path()
+        var bright = Path()
+        for i in 0..<46 {
+            let speed = h * (0.04 + r.next() * 0.05)
+            let life = (h + 20) / speed
+            let phase = (t + r.next() * life).truncatingRemainder(dividingBy: life)
+            let x = r.next() * w + sin(phase * 1.3 + Float(i)) * 12
+            let y = -10 + phase * speed
+            let shimmer = (sin(t * 4 + Float(i)) + 1) / 2
+            let width = (2 + r.next() * 3) * (0.3 + shimmer * 0.7)
+            let rect = CGRect(x: CGFloat(x), y: CGFloat(y), width: CGFloat(width), height: 4)
+            if shimmer > 0.5 { bright.addRect(rect) } else { dim.addRect(rect) }
+        }
+        let foil = CelebrationTheme.hex(0xF7DC8B)
+        context.fill(dim, with: .color(foil.opacity(0.45)))
+        context.fill(bright, with: .color(foil.opacity(0.8)))
     }
 }
 
