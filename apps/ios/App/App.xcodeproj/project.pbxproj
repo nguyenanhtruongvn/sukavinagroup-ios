@@ -63,6 +63,12 @@
 		F8E20000000000000000000E /* celebration_christmas.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E20000000000000000000E /* celebration_christmas.mp3 */; };
 		F8E30000000000000000000E /* celebration_newyear.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E30000000000000000000E /* celebration_newyear.mp3 */; };
 		F8E40000000000000000000E /* celebration_tet.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F7E40000000000000000000E /* celebration_tet.mp3 */; };
+		F8E50000000000000000000E /* lixi_envelope.png in Resources */ = {isa = PBXBuildFile; fileRef = F7E50000000000000000000E /* lixi_envelope.png */; };
+		F8E60000000000000000000E /* lantern_chuc.png in Resources */ = {isa = PBXBuildFile; fileRef = F7E60000000000000000000E /* lantern_chuc.png */; };
+		F8E70000000000000000000E /* lantern_mung.png in Resources */ = {isa = PBXBuildFile; fileRef = F7E70000000000000000000E /* lantern_mung.png */; };
+		F8E80000000000000000000E /* lantern_nam.png in Resources */ = {isa = PBXBuildFile; fileRef = F7E80000000000000000000E /* lantern_nam.png */; };
+		F8E90000000000000000000E /* lantern_moi.png in Resources */ = {isa = PBXBuildFile; fileRef = F7E90000000000000000000E /* lantern_moi.png */; };
+		F8EA0000000000000000000E /* van_su_nhu_y.png in Resources */ = {isa = PBXBuildFile; fileRef = F7EA0000000000000000000E /* van_su_nhu_y.png */; };
 		B20000000000000000000012 /* Widget PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -172,6 +178,12 @@
 		F7E20000000000000000000E /* celebration_christmas.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_christmas.mp3; sourceTree = "<group>"; };
 		F7E30000000000000000000E /* celebration_newyear.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_newyear.mp3; sourceTree = "<group>"; };
 		F7E40000000000000000000E /* celebration_tet.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = celebration_tet.mp3; sourceTree = "<group>"; };
+		F7E50000000000000000000E /* lixi_envelope.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = lixi_envelope.png; sourceTree = "<group>"; };
+		F7E60000000000000000000E /* lantern_chuc.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = lantern_chuc.png; sourceTree = "<group>"; };
+		F7E70000000000000000000E /* lantern_mung.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = lantern_mung.png; sourceTree = "<group>"; };
+		F7E80000000000000000000E /* lantern_nam.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = lantern_nam.png; sourceTree = "<group>"; };
+		F7E90000000000000000000E /* lantern_moi.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = lantern_moi.png; sourceTree = "<group>"; };
+		F7EA0000000000000000000E /* van_su_nhu_y.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = van_su_nhu_y.png; sourceTree = "<group>"; };
 		B20000000000000000000013 /* Widget PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -281,6 +293,12 @@
 				F7E20000000000000000000E /* celebration_christmas.mp3 */,
 				F7E30000000000000000000E /* celebration_newyear.mp3 */,
 				F7E40000000000000000000E /* celebration_tet.mp3 */,
+				F7E50000000000000000000E /* lixi_envelope.png */,
+				F7E60000000000000000000E /* lantern_chuc.png */,
+				F7E70000000000000000000E /* lantern_mung.png */,
+				F7E80000000000000000000E /* lantern_nam.png */,
+				F7E90000000000000000000E /* lantern_moi.png */,
+				F7EA0000000000000000000E /* van_su_nhu_y.png */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -415,6 +433,12 @@
 				F8E20000000000000000000E /* celebration_christmas.mp3 in Resources */,
 				F8E30000000000000000000E /* celebration_newyear.mp3 in Resources */,
 				F8E40000000000000000000E /* celebration_tet.mp3 in Resources */,
+				F8E50000000000000000000E /* lixi_envelope.png in Resources */,
+				F8E60000000000000000000E /* lantern_chuc.png in Resources */,
+				F8E70000000000000000000E /* lantern_mung.png in Resources */,
+				F8E80000000000000000000E /* lantern_nam.png in Resources */,
+				F8E90000000000000000000E /* lantern_moi.png in Resources */,
+				F8EA0000000000000000000E /* van_su_nhu_y.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
