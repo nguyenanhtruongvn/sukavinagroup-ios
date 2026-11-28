@@ -475,7 +475,11 @@ enum MeetingLiveActivityExpiry {
 
     static func schedule(bookingID: String, endsAt: Date) {
         guard #available(iOS 17.0, *) else { return }
-        let delay = max(0, endsAt.timeIntervalSinceNow)
+        // UInt64(_:) traps on NaN, infinity or overflow (e.g. a far-future
+        // end date); clamp to 0...7 days. A close that wakes early re-checks
+        // the activity's current end time, so it never ends a meeting early.
+        let rawDelay = endsAt.timeIntervalSinceNow
+        let delay = rawDelay.isFinite ? min(max(rawDelay, 0), 7 * 24 * 60 * 60) : 0
         let task = Task {
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))

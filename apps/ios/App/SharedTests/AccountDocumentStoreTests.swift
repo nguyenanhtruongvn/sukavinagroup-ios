@@ -40,6 +40,19 @@ final class AccountDocumentStoreTests: XCTestCase {
         XCTAssertEqual(makeStore().data(forKey: "cached-session-profile-v1"), Data("legacy".utf8))
     }
 
+    func testReadBeforeQueuedWriteFinishesIsNotMarkedAbsent() {
+        let store = makeStore(keepsInMemory: false)
+        let key = "revalidation-dashboard"
+        store.set(Data("etag-body".utf8), forKey: key)
+        // Read while the write may still be queued: the value is served from
+        // the pending entry and the key must not be cached as absent.
+        XCTAssertEqual(store.data(forKey: key), Data("etag-body".utf8))
+        store.flush()
+        XCTAssertEqual(store.data(forKey: key), Data("etag-body".utf8))
+        XCTAssertEqual(store.allKeys(), [key])
+        XCTAssertEqual(makeStore(keepsInMemory: false).data(forKey: key), Data("etag-body".utf8))
+    }
+
     func testRemoveAllDropsDocumentsAndQueuedWrites() {
         let store = makeStore()
         store.set(Data("a".utf8), forKey: "native-attendance-month-cache-v2-00010-2026-09")

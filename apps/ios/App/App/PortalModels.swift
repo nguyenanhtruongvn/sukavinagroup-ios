@@ -8,6 +8,51 @@ import WidgetKit
 import AVFoundation
 import CoreImage.CIFilterBuiltins
 
+/// Decodes a JSON array element by element and skips (and logs) elements
+/// that fail to decode, so one malformed record no longer rejects a whole
+/// screen's response. Encodes as the plain array, so the JSON shape of API
+/// payloads and of cached documents is unchanged.
+@propertyWrapper
+struct LossyArray<Element: Codable>: Codable {
+    var wrappedValue: [Element]
+
+    init(wrappedValue: [Element]) {
+        self.wrappedValue = wrappedValue
+    }
+
+    init(from decoder: Decoder) throws {
+        var container = try decoder.unkeyedContainer()
+        var elements: [Element] = []
+        if let count = container.count { elements.reserveCapacity(count) }
+        while !container.isAtEnd {
+            let indexBefore = container.currentIndex
+            do {
+                elements.append(try container.decode(Element.self))
+            } catch {
+                ConnectionDiagnostics.record("Skipped undecodable \(Element.self) at index \(indexBefore): \(error)")
+                // Step over the bad element; stop if the container cannot advance.
+                if (try? container.decodeNil()) != true {
+                    _ = try? container.decode(SkippedArrayElement.self)
+                }
+                if container.currentIndex == indexBefore { break }
+            }
+        }
+        wrappedValue = elements
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+}
+
+extension LossyArray: Sendable where Element: Sendable {}
+
+/// Reads nothing; decoding it only moves an unkeyed container past an element.
+private struct SkippedArrayElement: Decodable {
+    init(from decoder: Decoder) throws {}
+}
+
 struct MeetingRoom: Codable, Identifiable, Equatable {
     let id: String
     let name: String
@@ -90,8 +135,9 @@ struct MeetingBooking: Codable, Identifiable, Equatable {
             roomId: try values.decode(String.self, forKey: .roomId),
             startsAt: try values.decode(String.self, forKey: .startsAt),
             endsAt: try values.decode(String.self, forKey: .endsAt),
-            title: try values.decode(String.self, forKey: .title),
-            attendeeCount: try values.decode(Int.self, forKey: .attendeeCount),
+            // Display-only fields: a missing value must not drop the booking.
+            title: try values.decodeIfPresent(String.self, forKey: .title) ?? "",
+            attendeeCount: try values.decodeIfPresent(Int.self, forKey: .attendeeCount) ?? 0,
             status: try values.decode(String.self, forKey: .status),
             isMine: try values.decodeIfPresent(Bool.self, forKey: .isMine),
             isOwner: try values.decodeIfPresent(Bool.self, forKey: .isOwner),
@@ -101,8 +147,8 @@ struct MeetingBooking: Codable, Identifiable, Equatable {
 }
 
 struct MeetingScheduleResponse: Codable {
-    let rooms: [MeetingRoom]
-    let bookings: [MeetingBooking]
+    @LossyArray var rooms: [MeetingRoom]
+    @LossyArray var bookings: [MeetingBooking]
 }
 
 /// The schedule intentionally contains only the fields needed to draw a day.
@@ -376,17 +422,37 @@ struct ContentItem: Codable, Identifiable, Equatable {
         id = try values.decode(String.self, forKey: .id)
         page = try values.decode(String.self, forKey: .page)
         key = try values.decode(String.self, forKey: .key)
-        title = try values.decode(String.self, forKey: .title)
-        body = try values.decode(String.self, forKey: .body)
-        sortOrder = try values.decode(Int.self, forKey: .sortOrder)
+        // Display-only fields: a missing value must not drop the article.
+        title = try values.decodeIfPresent(String.self, forKey: .title) ?? ""
+        body = try values.decodeIfPresent(String.self, forKey: .body) ?? ""
+        sortOrder = try values.decodeIfPresent(Int.self, forKey: .sortOrder) ?? 0
         published = try values.decode(Bool.self, forKey: .published)
         createdAt = try values.decode(Date.self, forKey: .createdAt)
 
         // Only the teaser is needed for lists. The article's blocks are parsed
         // when it is opened; parsing every article on every dashboard decode
         // (including the launch cache restore) was wasted work.
+        preview = Self.previewText(from: body)
+    }
+
+    private static let previewLength = 145
+
+    /// The list teaser. Stripping the HTML of a very large body (inline images,
+    /// long tables) for 145 characters was wasted work, so only the leading
+    /// part is stripped when it already yields enough text. The margin keeps
+    /// the first 145 characters identical to stripping the whole body (a cut
+    /// can only change the last few characters: a split entity or tag).
+    /// Bodies whose leading part has too little text fall back to the full body.
+    private static func previewText(from body: String) -> String {
+        let headLength = 8_000
+        if body.utf8.count > headLength {
+            let head = String(body.prefix(headLength)).safeHTMLText
+            if head.count > previewLength + 64 {
+                return String(head.prefix(previewLength)) + "…"
+            }
+        }
         let text = body.safeHTMLText
-        preview = text.count > 145 ? String(text.prefix(145)) + "…" : text
+        return text.count > previewLength ? String(text.prefix(previewLength)) + "…" : text
     }
 }
 
@@ -710,7 +776,8 @@ struct Dashboard: Codable {
     let attendanceCheckOut: String?
     let attendanceClassification: String?
     let attendanceRecords: [AttendanceRecord]?
-    let contentItems: [ContentItem]
+    /// Lossy: one malformed article must not reject the whole dashboard.
+    @LossyArray var contentItems: [ContentItem]
 }
 
 struct AttendanceRecord: Codable, Identifiable {

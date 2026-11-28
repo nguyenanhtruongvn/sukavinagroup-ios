@@ -123,6 +123,22 @@ enum SessionGeneration {
         value &+= 1
         lock.unlock()
     }
+
+    private static var signInValue = 0
+
+    /// Counts sessions applied by a sign-in. Background sign-out work
+    /// captures it and skips clearing/revoking once a newer sign-in exists.
+    static var signInEpoch: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return signInValue
+    }
+
+    static func noteSignIn() {
+        lock.lock()
+        signInValue &+= 1
+        lock.unlock()
+    }
 }
 
 actor SessionRefreshCoordinator {

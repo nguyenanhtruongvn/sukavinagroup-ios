@@ -28,6 +28,12 @@ final class AccountDocumentStore: @unchecked Sendable {
     private var memory: [String: Data] = [:]
     /// Keys known to have no document (avoids repeated disk lookups).
     private var absent: Set<String> = []
+    /// Values queued for disk but not written yet when `keepsInMemory` is
+    /// off, so a read meanwhile neither misses them nor marks the key absent.
+    private var pending: [String: (id: Int, value: Data)] = [:]
+    /// Bumped by every `set`; a disk miss records "absent" only when no write
+    /// happened while the file was being read.
+    private var mutations = 0
     /// Bumped by `removeAll()` so writes queued before it are dropped.
     private var generation = 0
     private let writer: DispatchQueue
@@ -48,7 +54,9 @@ final class AccountDocumentStore: @unchecked Sendable {
     func data(forKey key: String) -> Data? {
         lock.lock()
         if let value = memory[key] { lock.unlock(); return value }
+        if let value = pending[key]?.value { lock.unlock(); return value }
         if absent.contains(key) { lock.unlock(); return nil }
+        let observedMutations = mutations
         lock.unlock()
 
         if let value = try? Data(contentsOf: fileURL(for: key)) {
@@ -62,7 +70,7 @@ final class AccountDocumentStore: @unchecked Sendable {
             return value
         }
         lock.lock()
-        absent.insert(key)
+        if mutations == observedMutations { absent.insert(key) }
         lock.unlock()
         return nil
     }
@@ -77,11 +85,17 @@ final class AccountDocumentStore: @unchecked Sendable {
         }
         if keepsInMemory { memory[key] = value }
         absent.remove(key)
+        mutations &+= 1
+        let writeID = mutations
+        if !keepsInMemory { pending[key] = (writeID, value) }
         let generation = generation
         lock.unlock()
         writer.async { [self] in
             guard isCurrent(generation) else { return }
             write(value, to: fileURL(for: key))
+            lock.lock()
+            if pending[key]?.id == writeID { pending[key] = nil }
+            lock.unlock()
         }
     }
 
@@ -94,7 +108,7 @@ final class AccountDocumentStore: @unchecked Sendable {
         let keys = allKeys().filter(shouldRemove)
         guard !keys.isEmpty else { return }
         lock.lock()
-        keys.forEach { memory[$0] = nil; absent.insert($0) }
+        keys.forEach { memory[$0] = nil; pending[$0] = nil; absent.insert($0) }
         let generation = generation
         lock.unlock()
         writer.async { [self] in
@@ -107,6 +121,7 @@ final class AccountDocumentStore: @unchecked Sendable {
     func removeAll() {
         lock.lock()
         memory.removeAll()
+        pending.removeAll()
         absent.removeAll()
         generation += 1
         lock.unlock()
@@ -165,6 +180,7 @@ final class AccountDocumentStore: @unchecked Sendable {
             .compactMap { $0.removingPercentEncoding })
         lock.lock()
         keys.formUnion(memory.keys)
+        keys.formUnion(pending.keys)
         keys.subtract(absent)
         lock.unlock()
         return Array(keys)
