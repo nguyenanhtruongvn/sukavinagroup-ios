@@ -76,5 +76,40 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Certificate pinning (iOS 14+): only accept sukavinagroup.net when its
+		     chain contains a Let's Encrypt / ISRG root key. Roots, not the site
+		     certificate, are pinned so automatic renewals keep working. A proxy
+		     CA installed on the phone is rejected. Before moving the site to
+		     another CA, ship an update that adds the new root keys. -->
+		<key>NSPinnedDomains</key>
+		<dict>
+			<key>sukavinagroup.net</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSPinnedCAIdentities</key>
+				<array>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</string>
+					</dict>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</string>
+					</dict>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=</string>
+					</dict>
+					<dict>
+						<key>SPKI-SHA256-BASE64</key>
+						<string>fk6IOKit1ild5647BH06ujSIq5XbCgqlbYl6ANhhi88=</string>
+					</dict>
+				</array>
+			</dict>
+		</dict>
+	</dict>
 </dict>
 </plist>
