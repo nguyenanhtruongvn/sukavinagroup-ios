@@ -2105,7 +2105,13 @@ private final class LegacyRequestComposerController: UIViewController, UITextVie
         for index in stride(from: 0, to: choices.count, by: 2) {
             let row = UIStackView(); row.axis = .horizontal; row.spacing = 8; row.distribution = .fillEqually
             row.addArrangedSubview(requestKindButton(choices[index]))
-            row.addArrangedSubview(requestKindButton(choices[index + 1]))
+            // An odd number of kinds leaves the last row with one button and
+            // an empty half instead of reading past the end.
+            if index + 1 < choices.count {
+                row.addArrangedSubview(requestKindButton(choices[index + 1]))
+            } else {
+                row.addArrangedSubview(UIView())
+            }
             columns.addArrangedSubview(row)
         }
         return columns

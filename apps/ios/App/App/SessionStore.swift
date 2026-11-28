@@ -102,7 +102,8 @@ enum ServerSignOut {
         refreshToken: String?,
         pushToken: String?,
         installationID: String?,
-        keepBiometric: Bool
+        keepBiometric: Bool,
+        signInEpoch: Int
     ) async {
         guard accessToken != nil || refreshToken != nil else { return }
         if keepBiometric {
@@ -124,7 +125,10 @@ enum ServerSignOut {
         }
         // The user may have signed in again meanwhile (biometric sign-in
         // reuses this session); never revoke a session that is in use.
-        guard KeychainStore.loadRefreshToken() == nil else { return }
+        // The Keychain save of a new sign-in runs asynchronously, so also
+        // compare the sign-in epoch captured at sign-out.
+        guard SessionGeneration.signInEpoch == signInEpoch,
+              KeychainStore.loadRefreshToken() == nil else { return }
         let _: MessageResponse? = try? await APIClient.shared.request(
             "auth/logout",
             method: "POST",
@@ -1425,6 +1429,9 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// Background sign-out tasks (Keychain clear + server sign-out) still running.
+    private var serverSignOutsInFlight = 0
+
     // The sensor type never changes while the app runs; views read this on
     // every redraw, so query LocalAuthentication once.
     private lazy var biometryType: LABiometryType = {
@@ -1445,7 +1452,21 @@ final class SessionStore: ObservableObject {
         guard biometricsEnabled else { return false }
         isWorking = true
         defer { isWorking = false }
-        guard let savedRefreshToken = BiometricKeychain.load(prompt: "Đăng nhập Sukavina") else {
+        // Right after a sign-out, its background work may still be swapping
+        // the biometric token for a dedicated session and revoking the old
+        // one. Reading the old token now would race that revoke, so wait
+        // (bounded) for it to finish.
+        var signOutWaits = 0
+        while serverSignOutsInFlight > 0, signOutWaits < 40 {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            signOutWaits += 1
+        }
+        // The Keychain read blocks until the Face ID / Touch ID prompt is
+        // answered; run it off the main actor so the UI (spinner) stays live.
+        let loadedRefreshToken = await Task.detached(priority: .userInitiated) {
+            BiometricKeychain.load(prompt: "Đăng nhập Sukavina")
+        }.value
+        guard let savedRefreshToken = loadedRefreshToken else {
             errorTitle = "Không thể xác thực"
             errorMessage = "Không thể xác thực sinh trắc học. Vui lòng thử lại hoặc đăng nhập bằng mật khẩu."
             return false
@@ -1494,9 +1515,10 @@ final class SessionStore: ObservableObject {
             let context = LAContext()
             context.localizedCancelTitle = "Hủy"
             var evaluationError: NSError?
+            let storedRefreshToken = await Self.storedRefreshToken()
             guard let employeeCode = profile?.employeeCode,
                   context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &evaluationError),
-                  let refreshToken = KeychainStore.loadRefreshToken() else {
+                  let refreshToken = storedRefreshToken else {
                 biometricsEnabled = false
                 errorTitle = "Không thể bật sinh trắc học"
                 errorMessage = "Thiết bị chưa thiết lập Face ID/Touch ID hoặc chưa bật mật mã màn hình."
@@ -1507,7 +1529,14 @@ final class SessionStore: ObservableObject {
                     .deviceOwnerAuthenticationWithBiometrics,
                     localizedReason: "Xác nhận bật \(biometricName) để đăng nhập Sukavina"
                 )
-                guard confirmed, BiometricKeychain.save(refreshToken: refreshToken) else {
+                // Security.framework work stays off the main actor.
+                var saved = false
+                if confirmed {
+                    saved = await Task.detached(priority: .userInitiated) {
+                        BiometricKeychain.save(refreshToken: refreshToken)
+                    }.value
+                }
+                guard saved else {
                     biometricsEnabled = false
                     errorTitle = "Không thể bật sinh trắc học"
                     errorMessage = "Không thể lưu thông tin đăng nhập sinh trắc học. Vui lòng thử lại."
@@ -1760,7 +1789,12 @@ final class SessionStore: ObservableObject {
         // devices SecItemDelete can wait for the protected-data service.
         state = .signedOut
         sessionRestoreLogger.notice("Sign-out completed: showing authentication")
-        Task.detached(priority: .utility) {
+        let signInEpoch = SessionGeneration.signInEpoch
+        serverSignOutsInFlight += 1
+        let serverSignOut = Task.detached(priority: .utility) {
+            // A sign-in that already happened owns the Keychain tokens now;
+            // clearing them would sign it out on the next launch.
+            guard SessionGeneration.signInEpoch == signInEpoch else { return }
             // Read the refresh token before the local clear; the server
             // sign-out runs afterwards so the UI never waits on the network.
             let logoutRefreshToken = KeychainStore.loadRefreshToken()
@@ -1770,8 +1804,13 @@ final class SessionStore: ObservableObject {
                 refreshToken: logoutRefreshToken,
                 pushToken: deviceToken,
                 installationID: installationID,
-                keepBiometric: keepBiometric
+                keepBiometric: keepBiometric,
+                signInEpoch: signInEpoch
             )
+        }
+        Task { @MainActor [weak self] in
+            await serverSignOut.value
+            self?.serverSignOutsInFlight -= 1
         }
     }
 
@@ -1823,6 +1862,7 @@ final class SessionStore: ObservableObject {
     /// `tokensPersisted`: `APIClient.refreshSession()` already wrote the tokens
     /// to Keychain; a second, later write could restore a rotated-away token.
     private func applySession(_ response: LoginResponse, isRenewal: Bool = false, tokensPersisted: Bool = false) {
+        if !isRenewal { SessionGeneration.noteSignIn() }
         // Apply the authenticated identity in memory first. Keychain persistence
         // must not sit on the UI-critical path between HTTP 201 and the portal.
         token = response.accessToken
@@ -1956,7 +1996,10 @@ final class SessionStore: ObservableObject {
                 // lives 10 minutes or less the renewal date is already past,
                 // which refreshed in a tight loop.
                 let minimumWait: TimeInterval = renewedOnce ? 60 : 0
-                let wait = max(renewal.timeIntervalSinceNow, backoff, minimumWait)
+                let rawWait = max(renewal.timeIntervalSinceNow, backoff, minimumWait)
+                // UInt64(_:) traps on NaN, infinity or overflow (e.g. a token
+                // with an absurd exp claim); clamp to 0...7 days.
+                let wait = rawWait.isFinite ? min(max(rawWait, 0), 7 * 24 * 60 * 60) : 60
                 try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
                 guard !Task.isCancelled, let self else { return }
                 do {
