@@ -516,6 +516,8 @@ struct NotificationsView: View {
     }
     private func notificationIcon(_ item: RequestNotification) -> String {
         let type = item.type
+        // Server warnings (e.g. the SSL certificate check): not an approval.
+        if type == "system_alert" { return "exclamationmark.triangle.fill" }
         if type == "meeting_room_booking" { return "building.2.badge.plus" }
         if type == "meeting_invite" { return "calendar.badge.clock" }
         if type == "meeting_reminder" { return "bell.badge.fill" }
@@ -534,6 +536,7 @@ struct NotificationsView: View {
     private func notificationColor(_ item: RequestNotification) -> Color {
         let type = item.type
         if let key = Celebration.key(forNotificationType: type) { return Celebration.color(key) }
+        if type == "system_alert" { return .orange }
         if type == "meeting_room_booking" { return .teal }
         if type == "meeting_invite" { return .blue }
         if type == "meeting_reminder" { return .orange }
